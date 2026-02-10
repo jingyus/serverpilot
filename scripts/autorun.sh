@@ -47,7 +47,7 @@ BATCH_SIZE=5           # 每次生成任务数量
 
 # Token 使用统计和成本控制
 TOTAL_TOKENS=0                    # 总 Token 使用量
-MAX_TOKENS=1000000                # 最大 Token 限制（100万）
+MAX_TOKENS=10000000                # 最大 Token 限制（100万）
 COST_PER_1K_INPUT_TOKENS=0.003    # Claude 输入定价（美元/1K tokens）
 COST_PER_1K_OUTPUT_TOKENS=0.015   # Claude 输出定价（美元/1K tokens）
 TOKEN_LOG="$PROJECT_DIR/TOKEN_USAGE.log"  # Token 使用日志
@@ -551,6 +551,13 @@ run_claude_batch_generate() {
 check_and_generate_tasks() {
     local stats=$(get_task_stats "$TASK_QUEUE")
     read total pending in_progress completed failed <<< "$stats"
+
+    # 确保变量有默认值
+    pending="${pending:-0}"
+    in_progress="${in_progress:-0}"
+    total="${total:-0}"
+    completed="${completed:-0}"
+    failed="${failed:-0}"
 
     if [ "$pending" -eq 0 ] && [ "$in_progress" -eq 0 ]; then
         log_info "任务队列为空，开始批量生成任务..."

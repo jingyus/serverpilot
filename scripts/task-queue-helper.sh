@@ -12,11 +12,20 @@ get_task_stats() {
         return
     fi
 
-    local total=$(grep -c "^### \[" "$queue_file" 2>/dev/null || echo "0")
-    local pending=$(grep -c "^### \[pending\]" "$queue_file" 2>/dev/null || echo "0")
-    local in_progress=$(grep -c "^### \[in_progress\]" "$queue_file" 2>/dev/null || echo "0")
-    local completed=$(grep -c "^### \[completed\]" "$queue_file" 2>/dev/null || echo "0")
-    local failed=$(grep -c "^### \[failed\]" "$queue_file" 2>/dev/null || echo "0")
+    # grep -c 在没有匹配时输出 0 但退出码为 1，所以不需要 || echo "0"
+    # 直接使用 grep -c 的输出即可
+    local total=$(grep -c "^### \[" "$queue_file" 2>/dev/null || true)
+    local pending=$(grep -c "^### \[pending\]" "$queue_file" 2>/dev/null || true)
+    local in_progress=$(grep -c "^### \[in_progress\]" "$queue_file" 2>/dev/null || true)
+    local completed=$(grep -c "^### \[completed\]" "$queue_file" 2>/dev/null || true)
+    local failed=$(grep -c "^### \[failed\]" "$queue_file" 2>/dev/null || true)
+
+    # 确保变量有默认值
+    total="${total:-0}"
+    pending="${pending:-0}"
+    in_progress="${in_progress:-0}"
+    completed="${completed:-0}"
+    failed="${failed:-0}"
 
     echo "$total $pending $in_progress $completed $failed"
 }
