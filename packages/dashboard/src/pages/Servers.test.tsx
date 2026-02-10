@@ -1,0 +1,374 @@
+import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { Servers } from './Servers';
+import { useServersStore } from '@/stores/servers';
+import type { Server } from '@/types/server';
+
+const mockNavigate = vi.fn();
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual('react-router-dom');
+  return { ...actual, useNavigate: () => mockNavigate };
+});
+
+const mockServers: Server[] = [
+  {
+    id: 'srv-1',
+    name: 'web-prod-01',
+    status: 'online',
+    tags: ['production', 'web'],
+    createdAt: '2026-01-01T00:00:00Z',
+    updatedAt: '2026-01-15T00:00:00Z',
+    osInfo: {
+      platform: 'linux',
+      arch: 'x64',
+      version: 'Ubuntu 22.04',
+      kernel: '5.15',
+      hostname: 'web-prod-01',
+      uptime: 86400,
+    },
+    lastSeen: '2026-02-09T12:00:00Z',
+  },
+  {
+    id: 'srv-2',
+    name: 'db-prod-01',
+    status: 'offline',
+    tags: ['production', 'database'],
+    createdAt: '2026-01-02T00:00:00Z',
+    updatedAt: '2026-01-16T00:00:00Z',
+    osInfo: null,
+    lastSeen: null,
+  },
+  {
+    id: 'srv-3',
+    name: 'staging-app',
+    status: 'error',
+    tags: ['staging'],
+    createdAt: '2026-01-03T00:00:00Z',
+    updatedAt: '2026-01-17T00:00:00Z',
+    osInfo: null,
+    lastSeen: null,
+  },
+];
+
+function renderServers() {
+  return render(
+    <MemoryRouter>
+      <Servers />
+    </MemoryRouter>
+  );
+}
+
+describe('Servers Page', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useServersStore.setState({
+      servers: mockServers,
+      isLoading: false,
+      error: null,
+      statusFilter: 'all',
+      searchQuery: '',
+      fetchServers: vi.fn().mockResolvedValue(undefined),
+      addServer: vi.fn(),
+      deleteServer: vi.fn().mockResolvedValue(undefined),
+      setStatusFilter: vi.fn((status: string) => {
+        useServersStore.setState({ statusFilter: status });
+      }),
+      setSearchQuery: vi.fn((query: string) => {
+        useServersStore.setState({ searchQuery: query });
+      }),
+      clearError: vi.fn(() => {
+        useServersStore.setState({ error: null });
+      }),
+    });
+  });
+
+  describe('rendering', () => {
+    it('renders page title and description', () => {
+      renderServers();
+      expect(screen.getByText('Servers')).toBeInTheDocument();
+      expect(
+        screen.getByText('Manage your servers and view their status.')
+      ).toBeInTheDocument();
+    });
+
+    it('renders Add Server button', () => {
+      renderServers();
+      expect(
+        screen.getByRole('button', { name: /Add Server/i })
+      ).toBeInTheDocument();
+    });
+
+    it('renders server stats', () => {
+      renderServers();
+      const stats = screen.getByTestId('server-stats');
+      expect(within(stats).getByText('3')).toBeInTheDocument(); // total
+      expect(within(stats).getByText('Total Servers')).toBeInTheDocument();
+      // online/offline/error each have count 1 so use getAllByText
+      const ones = within(stats).getAllByText('1');
+      expect(ones).toHaveLength(3);
+    });
+
+    it('renders server cards', () => {
+      renderServers();
+      expect(screen.getByTestId('server-card-srv-1')).toBeInTheDocument();
+      expect(screen.getByTestId('server-card-srv-2')).toBeInTheDocument();
+      expect(screen.getByTestId('server-card-srv-3')).toBeInTheDocument();
+    });
+
+    it('renders server name and OS info', () => {
+      renderServers();
+      expect(screen.getByText('web-prod-01')).toBeInTheDocument();
+      expect(screen.getByText('linux Ubuntu 22.04')).toBeInTheDocument();
+    });
+
+    it('renders status badges on server cards', () => {
+      renderServers();
+      const card1 = screen.getByTestId('server-card-srv-1');
+      expect(within(card1).getByText('Online')).toBeInTheDocument();
+      const card2 = screen.getByTestId('server-card-srv-2');
+      expect(within(card2).getByText('Offline')).toBeInTheDocument();
+      const card3 = screen.getByTestId('server-card-srv-3');
+      expect(within(card3).getByText('Error')).toBeInTheDocument();
+    });
+
+    it('renders server tags', () => {
+      renderServers();
+      // "production" tag appears on both srv-1 and srv-2
+      const productionTags = screen.getAllByText('production');
+      expect(productionTags).toHaveLength(2);
+      const card1 = screen.getByTestId('server-card-srv-1');
+      expect(within(card1).getByText('web')).toBeInTheDocument();
+    });
+
+    it('renders search input', () => {
+      renderServers();
+      expect(screen.getByLabelText('Search servers')).toBeInTheDocument();
+    });
+
+    it('renders status filter buttons', () => {
+      renderServers();
+      expect(screen.getByRole('group', { name: 'Filter by status' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'All' })).toBeInTheDocument();
+    });
+  });
+
+  describe('loading state', () => {
+    it('shows loading spinner when loading', () => {
+      useServersStore.setState({ isLoading: true, servers: [] });
+      renderServers();
+      expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+    });
+
+    it('does not show server grid when loading', () => {
+      useServersStore.setState({ isLoading: true, servers: [] });
+      renderServers();
+      expect(screen.queryByTestId('server-grid')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('empty state', () => {
+    it('shows empty state when no servers', () => {
+      useServersStore.setState({ servers: [] });
+      renderServers();
+      expect(screen.getByTestId('empty-state')).toBeInTheDocument();
+      expect(screen.getByText('No servers yet')).toBeInTheDocument();
+      expect(
+        screen.getByText('Add your first server to get started.')
+      ).toBeInTheDocument();
+    });
+
+    it('shows add server button in empty state', () => {
+      useServersStore.setState({ servers: [] });
+      renderServers();
+      const emptyState = screen.getByTestId('empty-state');
+      expect(
+        within(emptyState).getByRole('button', { name: /Add Server/i })
+      ).toBeInTheDocument();
+    });
+
+    it('shows "no match" when filters exclude all servers', () => {
+      useServersStore.setState({ statusFilter: 'error', servers: [mockServers[0]] });
+      renderServers();
+      expect(screen.getByText('No servers match')).toBeInTheDocument();
+      expect(
+        screen.getByText('Try adjusting your search or filter.')
+      ).toBeInTheDocument();
+    });
+  });
+
+  describe('error state', () => {
+    it('shows error alert', () => {
+      useServersStore.setState({ error: 'Failed to load servers' });
+      renderServers();
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+      expect(screen.getByText('Failed to load servers')).toBeInTheDocument();
+    });
+
+    it('dismisses error on click', async () => {
+      const user = userEvent.setup();
+      useServersStore.setState({ error: 'Some error' });
+      renderServers();
+
+      await user.click(screen.getByRole('button', { name: 'Dismiss' }));
+      expect(useServersStore.getState().error).toBeNull();
+    });
+  });
+
+  describe('filtering', () => {
+    it('filters by status when clicking filter button', async () => {
+      const user = userEvent.setup();
+      renderServers();
+
+      await user.click(screen.getByRole('button', { name: 'Online' }));
+
+      // After filter, only online server should show
+      expect(screen.getByTestId('server-card-srv-1')).toBeInTheDocument();
+      expect(screen.queryByTestId('server-card-srv-2')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('server-card-srv-3')).not.toBeInTheDocument();
+    });
+
+    it('searches by server name', async () => {
+      const user = userEvent.setup();
+      renderServers();
+
+      await user.type(screen.getByLabelText('Search servers'), 'web');
+
+      expect(screen.getByTestId('server-card-srv-1')).toBeInTheDocument();
+      expect(screen.queryByTestId('server-card-srv-2')).not.toBeInTheDocument();
+    });
+
+    it('searches by tag', async () => {
+      const user = userEvent.setup();
+      renderServers();
+
+      await user.type(screen.getByLabelText('Search servers'), 'database');
+
+      expect(screen.queryByTestId('server-card-srv-1')).not.toBeInTheDocument();
+      expect(screen.getByTestId('server-card-srv-2')).toBeInTheDocument();
+    });
+  });
+
+  describe('navigation', () => {
+    it('navigates to server detail on card click', async () => {
+      const user = userEvent.setup();
+      renderServers();
+
+      await user.click(screen.getByTestId('server-card-srv-1'));
+      expect(mockNavigate).toHaveBeenCalledWith('/servers/srv-1');
+    });
+
+    it('navigates to chat on chat button click', async () => {
+      const user = userEvent.setup();
+      renderServers();
+
+      await user.click(screen.getByLabelText('Chat with web-prod-01'));
+      expect(mockNavigate).toHaveBeenCalledWith('/chat/srv-1');
+    });
+  });
+
+  describe('delete server', () => {
+    it('shows delete confirmation dialog', async () => {
+      const user = userEvent.setup();
+      renderServers();
+
+      await user.click(screen.getByLabelText('Delete web-prod-01'));
+
+      expect(screen.getByText('Delete Server')).toBeInTheDocument();
+      // "web-prod-01" appears in both card and dialog, check dialog text
+      expect(
+        screen.getByText(/This action cannot be undone/)
+      ).toBeInTheDocument();
+    });
+
+    it('calls deleteServer on confirm', async () => {
+      const user = userEvent.setup();
+      const deleteMock = vi.fn().mockResolvedValue(undefined);
+      useServersStore.setState({ deleteServer: deleteMock });
+      renderServers();
+
+      await user.click(screen.getByLabelText('Delete web-prod-01'));
+      await user.click(screen.getByRole('button', { name: 'Delete' }));
+
+      expect(deleteMock).toHaveBeenCalledWith('srv-1');
+    });
+
+    it('closes dialog on cancel', async () => {
+      const user = userEvent.setup();
+      renderServers();
+
+      await user.click(screen.getByLabelText('Delete web-prod-01'));
+      expect(screen.getByText('Delete Server')).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Cancel' }));
+      // Delete Server dialog title should be gone
+      expect(screen.queryByText('Delete Server')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('add server dialog', () => {
+    it('opens add server dialog on button click', async () => {
+      const user = userEvent.setup();
+      renderServers();
+
+      // Click the header "Add Server" button
+      const addButtons = screen.getAllByRole('button', { name: /Add Server/i });
+      await user.click(addButtons[0]);
+
+      expect(screen.getByLabelText('Server Name')).toBeInTheDocument();
+      expect(
+        screen.getByText('Enter a name and optional tags for your new server.')
+      ).toBeInTheDocument();
+    });
+
+    it('validates empty server name', async () => {
+      const user = userEvent.setup();
+      renderServers();
+
+      const addButtons = screen.getAllByRole('button', { name: /Add Server/i });
+      await user.click(addButtons[0]);
+
+      // Click Add Server button in dialog without entering a name
+      // After opening dialog, there are multiple "Add Server" buttons; get the last one (in dialog)
+      const allAddBtns = screen.getAllByRole('button', { name: /Add Server/i });
+      await user.click(allAddBtns[allAddBtns.length - 1]);
+
+      expect(screen.getByText('Server name is required')).toBeInTheDocument();
+    });
+
+    it('shows install command after successful add', async () => {
+      const user = userEvent.setup();
+      const addMock = vi.fn().mockResolvedValue({
+        server: mockServers[0],
+        token: 'tok-abc123',
+        installCommand: 'curl -sSL https://install.serverpilot.dev | bash -s tok-abc123',
+      });
+      useServersStore.setState({ addServer: addMock });
+      renderServers();
+
+      const addButtons = screen.getAllByRole('button', { name: /Add Server/i });
+      await user.click(addButtons[0]);
+
+      await user.type(screen.getByLabelText('Server Name'), 'my-server');
+      // Click the dialog's Add Server button (last one)
+      const allAddBtns = screen.getAllByRole('button', { name: /Add Server/i });
+      await user.click(allAddBtns[allAddBtns.length - 1]);
+
+      expect(addMock).toHaveBeenCalledWith('my-server', undefined);
+      expect(screen.getByTestId('install-command')).toBeInTheDocument();
+      expect(
+        screen.getByText(/curl -sSL/)
+      ).toBeInTheDocument();
+    });
+  });
+
+  describe('fetchServers on mount', () => {
+    it('calls fetchServers on mount', () => {
+      const fetchMock = vi.fn().mockResolvedValue(undefined);
+      useServersStore.setState({ fetchServers: fetchMock });
+      renderServers();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+  });
+});

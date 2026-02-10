@@ -1,0 +1,13 @@
+/**
+ * @aiinstaller/shared - Shared types, protocols, and utilities
+ *
+ * This package contains shared code used by both the server and agent packages.
+ */
+
+export const PACKAGE_NAME = '@aiinstaller/shared';
+export const PACKAGE_VERSION = '0.1.0';
+
+// Protocol exports
+export * from './protocol/messages.js';
+export * from './protocol/types.js';
+export * from './protocol/schemas.js';

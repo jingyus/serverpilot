@@ -1,0 +1,67 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Logs
+*.log
+logs/
+test.log
+dev.log
+autorun.log
+
+# Environment variables (重要：不要上传敏感配置)
+.env
+.env.local
+.env.*.local
+.env.production
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+data/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Coverage
+coverage/
+.nyc_output/
+
+# State files (生成的状态文件不提交)
+AUTORUN_STATE.md
+CURRENT_TASK.md
+STATE.md
+
+# History
+.history/
+
+# Test artifacts
+test-results/
+playwright-report/
+
+# Fly.io
+.fly/
+
+# Docker
+.dockerignore

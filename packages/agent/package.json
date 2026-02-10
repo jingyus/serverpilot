@@ -1,0 +1,41 @@
+{
+  "name": "@aiinstaller/agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI Installer agent - Client-side environment detection, command execution, and terminal UI",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist",
+    "build:binary": "bun ../../scripts/build-binary.ts",
+    "build:binary:all": "bun ../../scripts/build-binary.ts --all"
+  },
+  "dependencies": {
+    "@aiinstaller/shared": "workspace:*",
+    "@clack/prompts": "^0.10.0",
+    "chalk": "^5.4.0",
+    "osc-progress": "^0.3.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

@@ -1,0 +1,139 @@
+/**
+ * AI Provider abstraction layer.
+ *
+ * Defines the contract all AI providers must implement to be used
+ * by the ServerPilot AI engine. Supports tiered model capabilities,
+ * chat, streaming, and structured JSON responses.
+ *
+ * @module ai/providers/base
+ */
+
+import { z } from 'zod';
+
+// ============================================================================
+// Types
+// ============================================================================
+
+/** Message in a conversation */
+export interface ChatMessage {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+}
+
+/** Options for a chat request */
+export interface ChatOptions {
+  /** Conversation messages */
+  messages: ChatMessage[];
+  /** System prompt */
+  system?: string;
+  /** Maximum tokens to generate */
+  maxTokens?: number;
+  /** Request timeout in milliseconds */
+  timeoutMs?: number;
+}
+
+/** Token usage from a response */
+export interface TokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+}
+
+/** Result of a chat request */
+export interface ChatResponse {
+  /** The generated text content */
+  content: string;
+  /** Token usage statistics */
+  usage: TokenUsage;
+}
+
+/** Callbacks for streaming responses */
+export interface ProviderStreamCallbacks {
+  /** Called when streaming starts */
+  onStart?: () => void;
+  /** Called for each text token */
+  onToken?: (token: string, accumulated: string) => void;
+  /** Called when streaming completes */
+  onComplete?: (content: string, usage: TokenUsage) => void;
+  /** Called on error */
+  onError?: (error: Error) => void;
+}
+
+/** Result of a streaming request */
+export interface StreamResponse {
+  /** The full accumulated text */
+  content: string;
+  /** Token usage statistics */
+  usage: TokenUsage;
+  /** Whether the request succeeded */
+  success: boolean;
+  /** Error message if failed */
+  error?: string;
+}
+
+/** Configuration for an AI provider */
+export interface ProviderConfig {
+  /** Base URL for the API */
+  baseUrl?: string;
+  /** API key (optional for local providers like Ollama) */
+  apiKey?: string;
+  /** Model name */
+  model?: string;
+  /** Request timeout in milliseconds */
+  timeoutMs?: number;
+}
+
+// ============================================================================
+// Provider Interface
+// ============================================================================
+
+/**
+ * AI Provider contract.
+ *
+ * All AI providers (Claude, Ollama, OpenAI, DeepSeek) must implement
+ * this interface. Providers are tiered by capability:
+ * - Tier 1: Claude (highest capability)
+ * - Tier 2: GPT-4o, DeepSeek
+ * - Tier 3: Ollama local models
+ */
+export interface AIProviderInterface {
+  /** Provider name identifier */
+  readonly name: string;
+  /** Model capability tier (1 = highest, 3 = lowest) */
+  readonly tier: 1 | 2 | 3;
+
+  /**
+   * Send a chat request and get a response.
+   *
+   * @param options - Chat request options
+   * @returns The chat response with content and usage
+   */
+  chat(options: ChatOptions): Promise<ChatResponse>;
+
+  /**
+   * Send a chat request with streaming response.
+   *
+   * @param options - Chat request options
+   * @param callbacks - Streaming event callbacks
+   * @returns The complete stream response
+   */
+  stream(options: ChatOptions, callbacks?: ProviderStreamCallbacks): Promise<StreamResponse>;
+
+  /**
+   * Check if the provider is available and configured.
+   *
+   * @returns true if the provider can accept requests
+   */
+  isAvailable(): Promise<boolean>;
+}
+
+// ============================================================================
+// Validation Helpers
+// ============================================================================
+
+/** Zod schema for provider configuration */
+export const ProviderConfigSchema = z.object({
+  baseUrl: z.string().url().optional(),
+  apiKey: z.string().optional(),
+  model: z.string().optional(),
+  timeoutMs: z.number().int().positive().optional(),
+});

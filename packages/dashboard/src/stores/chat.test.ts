@@ -1,0 +1,366 @@
+import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import { useChatStore } from './chat';
+
+vi.mock('@/api/client', () => ({
+  apiRequest: vi.fn(),
+  ApiError: class ApiError extends Error {
+    status: number;
+    code: string;
+    constructor(status: number, code: string, message: string) {
+      super(message);
+      this.status = status;
+      this.code = code;
+    }
+  },
+}));
+
+vi.mock('@/api/sse', () => ({
+  createSSEConnection: vi.fn(() => ({ abort: vi.fn() })),
+}));
+
+import { apiRequest } from '@/api/client';
+import { createSSEConnection } from '@/api/sse';
+
+describe('useChatStore', () => {
+  beforeEach(() => {
+    useChatStore.setState({
+      serverId: null,
+      sessionId: null,
+      messages: [],
+      sessions: [],
+      isLoading: false,
+      isStreaming: false,
+      streamingContent: '',
+      error: null,
+      currentPlan: null,
+      planStatus: 'none',
+      execution: {
+        activeStepId: null,
+        outputs: {},
+        completedSteps: {},
+        success: null,
+        operationId: null,
+      },
+    });
+    vi.clearAllMocks();
+  });
+
+  describe('setServerId', () => {
+    it('sets the server ID', () => {
+      useChatStore.getState().setServerId('srv-1');
+      expect(useChatStore.getState().serverId).toBe('srv-1');
+    });
+
+    it('sets server ID to null', () => {
+      useChatStore.getState().setServerId('srv-1');
+      useChatStore.getState().setServerId(null);
+      expect(useChatStore.getState().serverId).toBeNull();
+    });
+  });
+
+  describe('sendMessage', () => {
+    it('sets error if no server selected', () => {
+      useChatStore.getState().sendMessage('hello');
+      expect(useChatStore.getState().error).toBe('No server selected');
+    });
+
+    it('adds user message and starts streaming', () => {
+      useChatStore.setState({ serverId: 'srv-1' });
+      useChatStore.getState().sendMessage('install nginx');
+
+      const state = useChatStore.getState();
+      expect(state.messages).toHaveLength(1);
+      expect(state.messages[0].role).toBe('user');
+      expect(state.messages[0].content).toBe('install nginx');
+      expect(state.isStreaming).toBe(true);
+    });
+
+    it('calls createSSEConnection with correct parameters', () => {
+      useChatStore.setState({ serverId: 'srv-1', sessionId: 'sess-1' });
+      useChatStore.getState().sendMessage('hello');
+
+      expect(createSSEConnection).toHaveBeenCalledWith(
+        '/chat/srv-1',
+        { message: 'hello', sessionId: 'sess-1' },
+        expect.any(Object)
+      );
+    });
+
+    it('clears previous plan and error on new message', () => {
+      useChatStore.setState({
+        serverId: 'srv-1',
+        error: 'old error',
+        currentPlan: {
+          planId: 'old',
+          description: '',
+          steps: [],
+          totalRisk: 'green',
+          requiresConfirmation: false,
+        },
+        planStatus: 'preview',
+      });
+      useChatStore.getState().sendMessage('new message');
+
+      const state = useChatStore.getState();
+      expect(state.error).toBeNull();
+      expect(state.currentPlan).toBeNull();
+      expect(state.planStatus).toBe('none');
+    });
+  });
+
+  describe('rejectPlan', () => {
+    it('clears plan and adds system message', () => {
+      useChatStore.setState({
+        currentPlan: {
+          planId: 'p1',
+          description: 'Test',
+          steps: [],
+          totalRisk: 'green',
+          requiresConfirmation: true,
+        },
+        planStatus: 'preview',
+      });
+
+      useChatStore.getState().rejectPlan();
+
+      const state = useChatStore.getState();
+      expect(state.currentPlan).toBeNull();
+      expect(state.planStatus).toBe('none');
+      expect(state.messages).toHaveLength(1);
+      expect(state.messages[0].role).toBe('system');
+    });
+  });
+
+  describe('newSession', () => {
+    it('resets chat state', () => {
+      useChatStore.setState({
+        sessionId: 'sess-1',
+        messages: [
+          { id: '1', role: 'user', content: 'hi', timestamp: '' },
+        ],
+        currentPlan: {
+          planId: 'p1',
+          description: 'Test',
+          steps: [],
+          totalRisk: 'green',
+          requiresConfirmation: true,
+        },
+        planStatus: 'preview',
+        isStreaming: true,
+        streamingContent: 'partial',
+        error: 'old error',
+      });
+
+      useChatStore.getState().newSession();
+
+      const state = useChatStore.getState();
+      expect(state.sessionId).toBeNull();
+      expect(state.messages).toHaveLength(0);
+      expect(state.currentPlan).toBeNull();
+      expect(state.planStatus).toBe('none');
+      expect(state.isStreaming).toBe(false);
+      expect(state.streamingContent).toBe('');
+      expect(state.error).toBeNull();
+    });
+  });
+
+  describe('cancelStream', () => {
+    it('adds partial message if streaming content exists', () => {
+      useChatStore.setState({
+        isStreaming: true,
+        streamingContent: 'partial response',
+      });
+
+      useChatStore.getState().cancelStream();
+
+      const state = useChatStore.getState();
+      expect(state.isStreaming).toBe(false);
+      expect(state.messages).toHaveLength(1);
+      expect(state.messages[0].content).toContain('partial response');
+      expect(state.messages[0].content).toContain('[Cancelled]');
+    });
+
+    it('does not add message if no streaming content', () => {
+      useChatStore.setState({
+        isStreaming: true,
+        streamingContent: '',
+      });
+
+      useChatStore.getState().cancelStream();
+
+      const state = useChatStore.getState();
+      expect(state.isStreaming).toBe(false);
+      expect(state.messages).toHaveLength(0);
+    });
+  });
+
+  describe('fetchSessions', () => {
+    it('fetches sessions and updates state', async () => {
+      const sessions = [
+        {
+          id: 'sess-1',
+          serverId: 'srv-1',
+          messageCount: 3,
+          createdAt: '2025-01-01',
+          updatedAt: '2025-01-01',
+        },
+      ];
+      (apiRequest as Mock).mockResolvedValueOnce({ sessions });
+
+      await useChatStore.getState().fetchSessions('srv-1');
+
+      const state = useChatStore.getState();
+      expect(state.sessions).toEqual(sessions);
+      expect(state.isLoading).toBe(false);
+    });
+
+    it('sets error on failure', async () => {
+      (apiRequest as Mock).mockRejectedValueOnce(new Error('Network error'));
+
+      await useChatStore.getState().fetchSessions('srv-1');
+
+      expect(useChatStore.getState().error).toBe('Failed to load sessions');
+      expect(useChatStore.getState().isLoading).toBe(false);
+    });
+  });
+
+  describe('loadSession', () => {
+    it('loads session messages', async () => {
+      const messages = [
+        { id: '1', role: 'user', content: 'hi', timestamp: '2025-01-01' },
+      ];
+      (apiRequest as Mock).mockResolvedValueOnce({
+        session: { id: 'sess-1', messages },
+      });
+
+      await useChatStore.getState().loadSession('srv-1', 'sess-1');
+
+      const state = useChatStore.getState();
+      expect(state.sessionId).toBe('sess-1');
+      expect(state.messages).toEqual(messages);
+    });
+  });
+
+  describe('deleteSession', () => {
+    it('removes session from list', async () => {
+      useChatStore.setState({
+        sessions: [
+          {
+            id: 'sess-1',
+            serverId: 'srv-1',
+            messageCount: 1,
+            createdAt: '',
+            updatedAt: '',
+          },
+          {
+            id: 'sess-2',
+            serverId: 'srv-1',
+            messageCount: 2,
+            createdAt: '',
+            updatedAt: '',
+          },
+        ],
+      });
+      (apiRequest as Mock).mockResolvedValueOnce({});
+
+      await useChatStore.getState().deleteSession('srv-1', 'sess-1');
+
+      const state = useChatStore.getState();
+      expect(state.sessions).toHaveLength(1);
+      expect(state.sessions[0].id).toBe('sess-2');
+    });
+
+    it('clears active session if deleted', async () => {
+      useChatStore.setState({
+        sessionId: 'sess-1',
+        messages: [
+          { id: '1', role: 'user', content: 'hi', timestamp: '' },
+        ],
+        sessions: [
+          {
+            id: 'sess-1',
+            serverId: 'srv-1',
+            messageCount: 1,
+            createdAt: '',
+            updatedAt: '',
+          },
+        ],
+      });
+      (apiRequest as Mock).mockResolvedValueOnce({});
+
+      await useChatStore.getState().deleteSession('srv-1', 'sess-1');
+
+      const state = useChatStore.getState();
+      expect(state.sessionId).toBeNull();
+      expect(state.messages).toHaveLength(0);
+    });
+  });
+
+  describe('clearError', () => {
+    it('clears the error', () => {
+      useChatStore.setState({ error: 'some error' });
+      useChatStore.getState().clearError();
+      expect(useChatStore.getState().error).toBeNull();
+    });
+  });
+
+  describe('confirmPlan', () => {
+    it('does nothing without required state', () => {
+      useChatStore.getState().confirmPlan();
+      expect(createSSEConnection).not.toHaveBeenCalled();
+    });
+
+    it('starts execution with correct parameters', () => {
+      useChatStore.setState({
+        serverId: 'srv-1',
+        sessionId: 'sess-1',
+        currentPlan: {
+          planId: 'plan-1',
+          description: 'Test',
+          steps: [],
+          totalRisk: 'green',
+          requiresConfirmation: true,
+        },
+      });
+
+      useChatStore.getState().confirmPlan();
+
+      expect(useChatStore.getState().planStatus).toBe('executing');
+      expect(createSSEConnection).toHaveBeenCalledWith(
+        '/chat/srv-1/execute',
+        { planId: 'plan-1', sessionId: 'sess-1' },
+        expect.any(Object)
+      );
+    });
+
+    it('resets execution state', () => {
+      useChatStore.setState({
+        serverId: 'srv-1',
+        sessionId: 'sess-1',
+        currentPlan: {
+          planId: 'plan-1',
+          description: 'Test',
+          steps: [],
+          totalRisk: 'green',
+          requiresConfirmation: true,
+        },
+        execution: {
+          activeStepId: 'old',
+          outputs: { old: 'data' },
+          completedSteps: { old: { exitCode: 0, duration: 100 } },
+          success: true,
+          operationId: 'old-op',
+        },
+      });
+
+      useChatStore.getState().confirmPlan();
+
+      const exec = useChatStore.getState().execution;
+      expect(exec.activeStepId).toBeNull();
+      expect(exec.outputs).toEqual({});
+      expect(exec.completedSteps).toEqual({});
+      expect(exec.success).toBeNull();
+      expect(exec.operationId).toBeNull();
+    });
+  });
+});

@@ -1,0 +1,669 @@
+/**
+ * Tests for chat API routes.
+ *
+ * Validates SSE streaming, session management, authentication,
+ * plan generation, and plan execution endpoints.
+ */
+
+import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
+import { Hono } from 'hono';
+import { createApiApp } from './index.js';
+import { initJwtConfig, generateTokens, _resetJwtConfig } from '../middleware/auth.js';
+import {
+  InMemoryServerRepository,
+  setServerRepository,
+  _resetServerRepository,
+} from '../../db/repositories/server-repository.js';
+import { getSessionManager, _resetSessionManager } from '../../core/session/manager.js';
+import { _resetChatAIAgent, initChatAIAgent } from './chat-ai.js';
+import type { ApiEnv } from './types.js';
+
+// ============================================================================
+// Mock the AI module
+// ============================================================================
+
+vi.mock('./chat-ai.js', async () => {
+  const actual = await vi.importActual('./chat-ai.js');
+  let _mockAgent: unknown = null;
+
+  return {
+    ...actual as object,
+    getChatAIAgent: () => _mockAgent,
+    initChatAIAgent: (opts: unknown) => {
+      _mockAgent = opts;
+      return _mockAgent;
+    },
+    _resetChatAIAgent: () => { _mockAgent = null; },
+    _setMockAgent: (agent: unknown) => { _mockAgent = agent; },
+  };
+});
+
+// Import the internal setter after the mock is defined
+const { _setMockAgent } = await import('./chat-ai.js') as unknown as {
+  _setMockAgent: (agent: unknown) => void;
+};
+
+// ============================================================================
+// Test Setup
+// ============================================================================
+
+const TEST_SECRET = 'test-secret-key-that-is-at-least-32-chars-long!!';
+const USER_A = 'user-aaa-111';
+const USER_B = 'user-bbb-222';
+
+let app: Hono<ApiEnv>;
+let repo: InMemoryServerRepository;
+let tokenA: string;
+let tokenB: string;
+
+beforeAll(async () => {
+  _resetJwtConfig();
+  initJwtConfig({ secret: TEST_SECRET });
+
+  const tokensA = await generateTokens(USER_A);
+  const tokensB = await generateTokens(USER_B);
+  tokenA = tokensA.accessToken;
+  tokenB = tokensB.accessToken;
+});
+
+beforeEach(() => {
+  repo = new InMemoryServerRepository();
+  setServerRepository(repo);
+  _resetSessionManager();
+  _resetChatAIAgent();
+  app = createApiApp();
+});
+
+// ============================================================================
+// Request Helpers
+// ============================================================================
+
+function authHeaders(token: string): Record<string, string> {
+  return { Authorization: `Bearer ${token}` };
+}
+
+function req(path: string, token: string, init?: RequestInit): Promise<Response> {
+  return app.request(path, {
+    ...init,
+    headers: { ...authHeaders(token), ...init?.headers },
+  });
+}
+
+function jsonPost(path: string, body: unknown, token: string): Promise<Response> {
+  return req(path, token, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+async function createServer(
+  name: string,
+  token: string,
+): Promise<{ id: string; agentToken: string }> {
+  const res = await jsonPost('/api/v1/servers', { name }, token);
+  const body = await res.json();
+  return body.server;
+}
+
+/** Parse SSE events from a response body */
+async function parseSSEEvents(response: Response): Promise<Array<{ event: string; data: string }>> {
+  const text = await response.text();
+  const events: Array<{ event: string; data: string }> = [];
+  const lines = text.split('\n');
+
+  let currentEvent = 'message';
+  for (const line of lines) {
+    if (line.startsWith('event: ')) {
+      currentEvent = line.slice(7).trim();
+    } else if (line.startsWith('data: ')) {
+      events.push({ event: currentEvent, data: line.slice(6) });
+    } else if (line === '') {
+      currentEvent = 'message';
+    }
+  }
+
+  return events;
+}
+
+// ============================================================================
+// Authentication
+// ============================================================================
+
+describe('Chat Authentication', () => {
+  it('should reject requests without token', async () => {
+    const res = await app.request('/api/v1/chat/some-id/sessions');
+    expect(res.status).toBe(401);
+  });
+
+  it('should reject requests with invalid token', async () => {
+    const res = await app.request('/api/v1/chat/some-id/sessions', {
+      headers: { Authorization: 'Bearer bad-token' },
+    });
+    expect(res.status).toBe(401);
+  });
+});
+
+// ============================================================================
+// POST /chat/:serverId — Chat with SSE
+// ============================================================================
+
+describe('POST /api/v1/chat/:serverId', () => {
+  it('should return 404 for non-existent server', async () => {
+    const res = await jsonPost(
+      '/api/v1/chat/550e8400-e29b-41d4-a716-446655440000',
+      { message: 'hello' },
+      tokenA,
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it('should return 404 for another user\'s server', async () => {
+    const server = await createServer('web-01', tokenA);
+    const res = await jsonPost(
+      `/api/v1/chat/${server.id}`,
+      { message: 'hello' },
+      tokenB,
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it('should validate message is required', async () => {
+    const server = await createServer('web-01', tokenA);
+    const res = await jsonPost(`/api/v1/chat/${server.id}`, {}, tokenA);
+    expect(res.status).toBe(400);
+  });
+
+  it('should validate message is not empty', async () => {
+    const server = await createServer('web-01', tokenA);
+    const res = await jsonPost(`/api/v1/chat/${server.id}`, { message: '' }, tokenA);
+    expect(res.status).toBe(400);
+  });
+
+  it('should stream SSE when AI is not configured', async () => {
+    const server = await createServer('web-01', tokenA);
+
+    const res = await jsonPost(
+      `/api/v1/chat/${server.id}`,
+      { message: 'Install Redis' },
+      tokenA,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/event-stream');
+
+    const events = await parseSSEEvents(res);
+    expect(events.length).toBeGreaterThanOrEqual(2);
+
+    // First event should contain sessionId
+    const firstEvent = events.find(e => e.event === 'message');
+    expect(firstEvent).toBeDefined();
+    const firstData = JSON.parse(firstEvent!.data);
+    expect(firstData.sessionId).toBeDefined();
+
+    // Should have a message about AI not configured
+    const aiMessage = events.find(e =>
+      e.event === 'message' && e.data.includes('AI service is not configured'),
+    );
+    expect(aiMessage).toBeDefined();
+
+    // Should end with complete event
+    const completeEvent = events.find(e => e.event === 'complete');
+    expect(completeEvent).toBeDefined();
+    const completeData = JSON.parse(completeEvent!.data);
+    expect(completeData.success).toBe(false);
+  });
+
+  it('should stream AI response with plan', async () => {
+    const server = await createServer('web-01', tokenA);
+
+    // Set up mock agent
+    const mockAgent = {
+      chat: vi.fn().mockResolvedValue({
+        text: 'I will install Redis for you.',
+        plan: {
+          description: 'Install Redis',
+          steps: [
+            { id: 'step-1', description: 'Update apt', command: 'sudo apt update', timeout: 60000, canRollback: false, onError: 'abort' },
+            { id: 'step-2', description: 'Install redis-server', command: 'sudo apt install -y redis-server', timeout: 120000, canRollback: true, onError: 'abort' },
+          ],
+          estimatedTime: 180000,
+          risks: [{ level: 'low', description: 'Standard package installation' }],
+        },
+      }),
+    };
+    _setMockAgent(mockAgent);
+
+    const res = await jsonPost(
+      `/api/v1/chat/${server.id}`,
+      { message: 'Install Redis' },
+      tokenA,
+    );
+
+    expect(res.status).toBe(200);
+    const events = await parseSSEEvents(res);
+
+    // Should have sessionId
+    const sessionEvent = events.find(e =>
+      e.event === 'message' && JSON.parse(e.data).sessionId,
+    );
+    expect(sessionEvent).toBeDefined();
+
+    // Should have a plan event
+    const planEvent = events.find(e => e.event === 'plan');
+    expect(planEvent).toBeDefined();
+    const planData = JSON.parse(planEvent!.data);
+    expect(planData.planId).toBeDefined();
+    expect(planData.steps).toHaveLength(2);
+    expect(planData.requiresConfirmation).toBe(true);
+    expect(planData.description).toBe('Install Redis');
+
+    // Should end with complete
+    const completeEvent = events.find(e => e.event === 'complete');
+    expect(completeEvent).toBeDefined();
+    expect(JSON.parse(completeEvent!.data).success).toBe(true);
+  });
+
+  it('should stream AI text response without plan', async () => {
+    const server = await createServer('web-01', tokenA);
+
+    const mockAgent = {
+      chat: vi.fn().mockImplementation(async (
+        _message: string,
+        _serverCtx: string,
+        _convCtx: string,
+        callbacks?: { onToken?: (t: string) => void | Promise<void> },
+      ) => {
+        if (callbacks?.onToken) {
+          await callbacks.onToken('Hello ');
+          await callbacks.onToken('there!');
+        }
+        return { text: 'Hello there!', plan: null };
+      }),
+    };
+    _setMockAgent(mockAgent);
+
+    const res = await jsonPost(
+      `/api/v1/chat/${server.id}`,
+      { message: 'Hello' },
+      tokenA,
+    );
+
+    expect(res.status).toBe(200);
+    const events = await parseSSEEvents(res);
+
+    // Should have token events with content
+    const tokenEvents = events.filter(e =>
+      e.event === 'message' && JSON.parse(e.data).content,
+    );
+    expect(tokenEvents.length).toBeGreaterThanOrEqual(1);
+
+    // Should NOT have a plan event
+    const planEvent = events.find(e => e.event === 'plan');
+    expect(planEvent).toBeUndefined();
+  });
+
+  it('should reuse existing session when sessionId provided', async () => {
+    const server = await createServer('web-01', tokenA);
+    _setMockAgent({
+      chat: vi.fn().mockResolvedValue({ text: 'response', plan: null }),
+    });
+
+    // First message creates session
+    const res1 = await jsonPost(
+      `/api/v1/chat/${server.id}`,
+      { message: 'first' },
+      tokenA,
+    );
+    const events1 = await parseSSEEvents(res1);
+    const sessionEvent1 = events1.find(e =>
+      e.event === 'message' && JSON.parse(e.data).sessionId,
+    );
+    const sessionId = JSON.parse(sessionEvent1!.data).sessionId;
+
+    // Second message with sessionId
+    const res2 = await jsonPost(
+      `/api/v1/chat/${server.id}`,
+      { message: 'second', sessionId },
+      tokenA,
+    );
+    const events2 = await parseSSEEvents(res2);
+    const sessionEvent2 = events2.find(e =>
+      e.event === 'message' && JSON.parse(e.data).sessionId,
+    );
+    const sessionId2 = JSON.parse(sessionEvent2!.data).sessionId;
+
+    expect(sessionId2).toBe(sessionId);
+  });
+
+  it('should handle AI errors gracefully', async () => {
+    const server = await createServer('web-01', tokenA);
+    _setMockAgent({
+      chat: vi.fn().mockRejectedValue(new Error('API rate limited')),
+    });
+
+    const res = await jsonPost(
+      `/api/v1/chat/${server.id}`,
+      { message: 'hello' },
+      tokenA,
+    );
+
+    expect(res.status).toBe(200);
+    const events = await parseSSEEvents(res);
+
+    // Should have error message
+    const errorEvent = events.find(e =>
+      e.event === 'message' && e.data.includes('API rate limited'),
+    );
+    expect(errorEvent).toBeDefined();
+
+    // Should complete with success: false
+    const completeEvent = events.find(e => e.event === 'complete');
+    expect(JSON.parse(completeEvent!.data).success).toBe(false);
+  });
+
+  it('should store messages in session', async () => {
+    const server = await createServer('web-01', tokenA);
+    _setMockAgent({
+      chat: vi.fn().mockImplementation(async (
+        _m: string, _s: string, _c: string,
+        callbacks?: { onToken?: (t: string) => void | Promise<void> },
+      ) => {
+        if (callbacks?.onToken) await callbacks.onToken('response text');
+        return { text: 'response text', plan: null };
+      }),
+    });
+
+    const res = await jsonPost(
+      `/api/v1/chat/${server.id}`,
+      { message: 'hello' },
+      tokenA,
+    );
+    const events = await parseSSEEvents(res);
+    const sessionEvent = events.find(e =>
+      e.event === 'message' && JSON.parse(e.data).sessionId,
+    );
+    const sessionId = JSON.parse(sessionEvent!.data).sessionId;
+
+    // Check messages are stored
+    const session = getSessionManager().getSession(sessionId);
+    expect(session).toBeDefined();
+    expect(session!.messages).toHaveLength(2); // user + assistant
+    expect(session!.messages[0].role).toBe('user');
+    expect(session!.messages[0].content).toBe('hello');
+    expect(session!.messages[1].role).toBe('assistant');
+    expect(session!.messages[1].content).toBe('response text');
+  });
+});
+
+// ============================================================================
+// POST /chat/:serverId/execute — Execute Plan (SSE)
+// ============================================================================
+
+describe('POST /api/v1/chat/:serverId/execute', () => {
+  it('should return 404 for non-existent server', async () => {
+    const res = await jsonPost(
+      '/api/v1/chat/550e8400-e29b-41d4-a716-446655440000/execute',
+      { planId: 'p1', sessionId: 's1' },
+      tokenA,
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it('should return 404 for non-existent plan', async () => {
+    const server = await createServer('web-01', tokenA);
+    const session = getSessionManager().getOrCreate(server.id);
+
+    const res = await jsonPost(
+      `/api/v1/chat/${server.id}/execute`,
+      { planId: 'nonexistent', sessionId: session.id },
+      tokenA,
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it('should validate planId is required', async () => {
+    const server = await createServer('web-01', tokenA);
+    const res = await jsonPost(
+      `/api/v1/chat/${server.id}/execute`,
+      { sessionId: 's1' },
+      tokenA,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('should validate sessionId is required', async () => {
+    const server = await createServer('web-01', tokenA);
+    const res = await jsonPost(
+      `/api/v1/chat/${server.id}/execute`,
+      { planId: 'p1' },
+      tokenA,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('should stream execution events for a stored plan', async () => {
+    const server = await createServer('web-01', tokenA);
+    const sessionMgr = getSessionManager();
+    const session = sessionMgr.getOrCreate(server.id);
+
+    // Store a plan
+    sessionMgr.storePlan(session.id, {
+      planId: 'plan-1',
+      description: 'Install Redis',
+      steps: [
+        {
+          id: 'step-1',
+          description: 'Update apt',
+          command: 'sudo apt update',
+          riskLevel: 'green',
+          timeout: 30000,
+          canRollback: false,
+        },
+        {
+          id: 'step-2',
+          description: 'Install redis',
+          command: 'sudo apt install -y redis-server',
+          riskLevel: 'yellow',
+          timeout: 60000,
+          canRollback: true,
+        },
+      ],
+      totalRisk: 'yellow',
+      requiresConfirmation: true,
+    });
+
+    const res = await jsonPost(
+      `/api/v1/chat/${server.id}/execute`,
+      { planId: 'plan-1', sessionId: session.id },
+      tokenA,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/event-stream');
+
+    const events = await parseSSEEvents(res);
+
+    // Should have step_start events
+    const stepStarts = events.filter(e => e.event === 'step_start');
+    expect(stepStarts).toHaveLength(2);
+    expect(JSON.parse(stepStarts[0].data).stepId).toBe('step-1');
+    expect(JSON.parse(stepStarts[1].data).stepId).toBe('step-2');
+
+    // Should have output events
+    const outputs = events.filter(e => e.event === 'output');
+    expect(outputs.length).toBeGreaterThanOrEqual(2);
+
+    // Should have step_complete events
+    const stepCompletes = events.filter(e => e.event === 'step_complete');
+    expect(stepCompletes).toHaveLength(2);
+    expect(JSON.parse(stepCompletes[0].data).stepId).toBe('step-1');
+    expect(JSON.parse(stepCompletes[0].data).exitCode).toBe(0);
+    expect(JSON.parse(stepCompletes[0].data).duration).toBeDefined();
+
+    // Should end with complete
+    const completeEvent = events.find(e => e.event === 'complete');
+    expect(completeEvent).toBeDefined();
+    const completeData = JSON.parse(completeEvent!.data);
+    expect(completeData.success).toBe(true);
+    expect(completeData.operationId).toBeDefined();
+  });
+});
+
+// ============================================================================
+// GET /chat/:serverId/sessions — List Sessions
+// ============================================================================
+
+describe('GET /api/v1/chat/:serverId/sessions', () => {
+  it('should return 404 for non-existent server', async () => {
+    const res = await req(
+      '/api/v1/chat/550e8400-e29b-41d4-a716-446655440000/sessions',
+      tokenA,
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it('should return empty list initially', async () => {
+    const server = await createServer('web-01', tokenA);
+    const res = await req(`/api/v1/chat/${server.id}/sessions`, tokenA);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.sessions).toEqual([]);
+  });
+
+  it('should return sessions for the server', async () => {
+    const server = await createServer('web-01', tokenA);
+    const sessionMgr = getSessionManager();
+    const session = sessionMgr.getOrCreate(server.id);
+    sessionMgr.addMessage(session.id, 'user', 'Hello');
+
+    const res = await req(`/api/v1/chat/${server.id}/sessions`, tokenA);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.sessions).toHaveLength(1);
+    expect(body.sessions[0].id).toBe(session.id);
+    expect(body.sessions[0].messageCount).toBe(1);
+  });
+
+  it('should not return sessions from other servers', async () => {
+    const s1 = await createServer('web-01', tokenA);
+    const s2 = await createServer('web-02', tokenA);
+    const sessionMgr = getSessionManager();
+    sessionMgr.getOrCreate(s1.id);
+    sessionMgr.getOrCreate(s2.id);
+
+    const res = await req(`/api/v1/chat/${s1.id}/sessions`, tokenA);
+    const body = await res.json();
+    expect(body.sessions).toHaveLength(1);
+    expect(body.sessions[0].serverId).toBe(s1.id);
+  });
+
+  it('should not list sessions for another user\'s server', async () => {
+    const server = await createServer('web-01', tokenA);
+    const res = await req(`/api/v1/chat/${server.id}/sessions`, tokenB);
+    expect(res.status).toBe(404);
+  });
+});
+
+// ============================================================================
+// GET /chat/:serverId/sessions/:sessionId — Get Session
+// ============================================================================
+
+describe('GET /api/v1/chat/:serverId/sessions/:sessionId', () => {
+  it('should return session with messages', async () => {
+    const server = await createServer('web-01', tokenA);
+    const sessionMgr = getSessionManager();
+    const session = sessionMgr.getOrCreate(server.id);
+    sessionMgr.addMessage(session.id, 'user', 'Hello');
+    sessionMgr.addMessage(session.id, 'assistant', 'Hi!');
+
+    const res = await req(
+      `/api/v1/chat/${server.id}/sessions/${session.id}`,
+      tokenA,
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.session.id).toBe(session.id);
+    expect(body.session.messages).toHaveLength(2);
+    expect(body.session.messages[0].role).toBe('user');
+    expect(body.session.messages[1].role).toBe('assistant');
+  });
+
+  it('should return 404 for non-existent session', async () => {
+    const server = await createServer('web-01', tokenA);
+    const res = await req(
+      `/api/v1/chat/${server.id}/sessions/nonexistent-id`,
+      tokenA,
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it('should return 404 for session belonging to different server', async () => {
+    const s1 = await createServer('web-01', tokenA);
+    const s2 = await createServer('web-02', tokenA);
+    const sessionMgr = getSessionManager();
+    const session = sessionMgr.getOrCreate(s2.id);
+
+    const res = await req(
+      `/api/v1/chat/${s1.id}/sessions/${session.id}`,
+      tokenA,
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it('should return 404 for another user\'s server', async () => {
+    const server = await createServer('web-01', tokenA);
+    const session = getSessionManager().getOrCreate(server.id);
+
+    const res = await req(
+      `/api/v1/chat/${server.id}/sessions/${session.id}`,
+      tokenB,
+    );
+    expect(res.status).toBe(404);
+  });
+});
+
+// ============================================================================
+// DELETE /chat/:serverId/sessions/:sessionId — Delete Session
+// ============================================================================
+
+describe('DELETE /api/v1/chat/:serverId/sessions/:sessionId', () => {
+  it('should delete a session', async () => {
+    const server = await createServer('web-01', tokenA);
+    const session = getSessionManager().getOrCreate(server.id);
+
+    const res = await req(
+      `/api/v1/chat/${server.id}/sessions/${session.id}`,
+      tokenA,
+      { method: 'DELETE' },
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+
+    // Verify it's gone
+    expect(getSessionManager().getSession(session.id)).toBeUndefined();
+  });
+
+  it('should return 404 for non-existent session', async () => {
+    const server = await createServer('web-01', tokenA);
+    const res = await req(
+      `/api/v1/chat/${server.id}/sessions/nonexistent`,
+      tokenA,
+      { method: 'DELETE' },
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it('should return 404 for another user\'s server', async () => {
+    const server = await createServer('web-01', tokenA);
+    const session = getSessionManager().getOrCreate(server.id);
+
+    const res = await req(
+      `/api/v1/chat/${server.id}/sessions/${session.id}`,
+      tokenB,
+      { method: 'DELETE' },
+    );
+    expect(res.status).toBe(404);
+  });
+});
