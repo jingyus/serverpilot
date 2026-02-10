@@ -25,6 +25,7 @@ import { getSnapshotService } from './core/snapshot/snapshot-service.js';
 import { getRollbackService } from './core/rollback/rollback-service.js';
 import { getTaskExecutor } from './core/task/executor.js';
 import { getTaskScheduler } from './core/task/scheduler.js';
+import { initAgentConnector } from './core/agent/agent-connector.js';
 import { InstallAIAgent } from './ai/agent.js';
 import { initLogger, logger, logConnectionEvent, logError } from './utils/logger.js';
 import { getMemoryMonitor } from './utils/memory-monitor.js';
@@ -184,6 +185,7 @@ export function createServer(serverConfig: ServerConfig): InstallServer {
 
   // Initialize services that depend on the server instance
   // Note: TaskExecutor must be initialized before TaskScheduler
+  initAgentConnector(server);
   getSnapshotService(server);
   getRollbackService(server);
   getTaskExecutor(server);

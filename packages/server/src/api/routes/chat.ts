@@ -21,6 +21,8 @@ import { getSessionManager } from '../../core/session/manager.js';
 import { getServerRepository } from '../../db/repositories/server-repository.js';
 import { getChatAIAgent } from './chat-ai.js';
 import { logger } from '../../utils/logger.js';
+import { findConnectedAgent } from '../../core/agent/agent-connector.js';
+import { getTaskExecutor } from '../../core/task/executor.js';
 import type { InstallStep } from '@aiinstaller/shared';
 import type { ChatMessageBody, ExecutePlanBody } from './schemas.js';
 import type { ApiEnv } from './types.js';
@@ -193,9 +195,45 @@ chat.post('/:serverId/execute', validateBody(ExecutePlanBodySchema), async (c) =
   return streamSSE(c, async (stream) => {
     const operationId = randomUUID();
 
+    // Check if agent is connected
+    const clientId = findConnectedAgent(serverId);
+    if (!clientId) {
+      await stream.writeSSE({
+        event: 'output',
+        data: JSON.stringify({
+          stepId: 'connection-check',
+          content: '[ERROR] No agent connected for this server. Please start the agent and try again.\n',
+        }),
+      });
+
+      await stream.writeSSE({
+        event: 'complete',
+        data: JSON.stringify({
+          success: false,
+          operationId,
+          error: 'Agent not connected',
+        }),
+      });
+
+      return;
+    }
+
+    const executor = getTaskExecutor();
+    let allSucceeded = true;
+    let firstFailedStep: string | null = null;
+
+    // Set up progress callback for real-time output
+    const executionOutputMap = new Map<string, string>();
+
+    executor.setProgressCallback((executionId, status, output) => {
+      if (output) {
+        // Accumulate output for this execution
+        const current = executionOutputMap.get(executionId) || '';
+        executionOutputMap.set(executionId, current + output);
+      }
+    });
+
     // Execute each step sequentially
-    // In the future, this will send commands to the agent via WebSocket
-    // For now, we simulate execution feedback
     for (const step of plan.steps) {
       const startTime = Date.now();
 
@@ -209,7 +247,7 @@ chat.post('/:serverId/execute', validateBody(ExecutePlanBodySchema), async (c) =
         }),
       });
 
-      // Simulate step output (in production, this comes from agent WebSocket)
+      // Show command about to execute
       await stream.writeSSE({
         event: 'output',
         data: JSON.stringify({
@@ -218,36 +256,122 @@ chat.post('/:serverId/execute', validateBody(ExecutePlanBodySchema), async (c) =
         }),
       });
 
-      // TODO: Send command to agent via WebSocket and await response
-      // For now, report step as pending execution
-      await stream.writeSSE({
-        event: 'output',
-        data: JSON.stringify({
-          stepId: step.id,
-          content: '[Awaiting agent connection for execution]\n',
-        }),
-      });
+      try {
+        // Execute command through WebSocket
+        const result = await executor.executeCommand({
+          serverId,
+          userId,
+          clientId,
+          command: step.command,
+          description: step.description,
+          riskLevel: step.riskLevel as 'green' | 'yellow' | 'red' | 'critical',
+          type: 'execute',
+          sessionId: body.sessionId,
+          timeoutMs: step.timeout || 300000, // Default 5 minutes
+        });
 
-      const duration = Date.now() - startTime;
+        // Stream any accumulated output
+        if (result.stdout) {
+          await stream.writeSSE({
+            event: 'output',
+            data: JSON.stringify({
+              stepId: step.id,
+              content: result.stdout,
+            }),
+          });
+        }
 
-      await stream.writeSSE({
-        event: 'step_complete',
-        data: JSON.stringify({
-          stepId: step.id,
-          exitCode: 0,
-          duration,
-        }),
-      });
+        if (result.stderr) {
+          await stream.writeSSE({
+            event: 'output',
+            data: JSON.stringify({
+              stepId: step.id,
+              content: result.stderr,
+            }),
+          });
+        }
+
+        const duration = Date.now() - startTime;
+
+        // Send step completion
+        await stream.writeSSE({
+          event: 'step_complete',
+          data: JSON.stringify({
+            stepId: step.id,
+            exitCode: result.exitCode,
+            duration,
+            success: result.success,
+          }),
+        });
+
+        if (!result.success) {
+          allSucceeded = false;
+          firstFailedStep = step.id;
+          logger.warn(
+            {
+              operation: 'plan_execute',
+              serverId,
+              planId: body.planId,
+              stepId: step.id,
+              exitCode: result.exitCode,
+            },
+            `Step failed: ${step.description}`,
+          );
+          break; // Stop execution on first failure
+        }
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+        logger.error(
+          {
+            operation: 'plan_execute',
+            serverId,
+            planId: body.planId,
+            stepId: step.id,
+            error: errorMsg,
+          },
+          `Step execution error: ${step.description}`,
+        );
+
+        await stream.writeSSE({
+          event: 'output',
+          data: JSON.stringify({
+            stepId: step.id,
+            content: `[ERROR] ${errorMsg}\n`,
+          }),
+        });
+
+        await stream.writeSSE({
+          event: 'step_complete',
+          data: JSON.stringify({
+            stepId: step.id,
+            exitCode: -1,
+            duration: Date.now() - startTime,
+            success: false,
+          }),
+        });
+
+        allSucceeded = false;
+        firstFailedStep = step.id;
+        break;
+      }
     }
 
+    // Clear progress callback
+    executor.setProgressCallback(null);
+
     // Store operation record
-    sessionMgr.addMessage(body.sessionId, 'system', `Plan executed: ${plan.description}`);
+    const resultMessage = allSucceeded
+      ? `Plan executed successfully: ${plan.description}`
+      : `Plan execution failed at step ${firstFailedStep}: ${plan.description}`;
+
+    sessionMgr.addMessage(body.sessionId, 'system', resultMessage);
 
     await stream.writeSSE({
       event: 'complete',
       data: JSON.stringify({
-        success: true,
+        success: allSucceeded,
         operationId,
+        failedAtStep: firstFailedStep,
       }),
     });
   });
