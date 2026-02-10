@@ -775,6 +775,43 @@ More content.
         );
         expect(hasInstallDoc).toBe(true);
       });
+
+      it('should have all 6 technology categories with 3+ docs each', () => {
+        if (!existsSync(realKBDir)) {
+          return;
+        }
+
+        const loader = new DocumentLoader({ baseDir: realKBDir });
+        const { documents } = loader.loadAll();
+
+        const expectedCategories = ['nginx', 'mysql', 'docker', 'nodejs', 'postgresql', 'redis'];
+        for (const category of expectedCategories) {
+          const categoryDocs = documents.filter((d) => d.category === category);
+          expect(categoryDocs.length).toBeGreaterThanOrEqual(3);
+        }
+      });
+
+      it('should have installation, configuration, troubleshooting docs per category', () => {
+        if (!existsSync(realKBDir)) {
+          return;
+        }
+
+        const loader = new DocumentLoader({ baseDir: realKBDir });
+        const { documents } = loader.loadAll();
+
+        const expectedCategories = ['nginx', 'mysql', 'docker', 'nodejs', 'postgresql', 'redis'];
+        const expectedFileTypes = ['installation', 'configuration', 'troubleshooting'];
+
+        for (const category of expectedCategories) {
+          for (const fileType of expectedFileTypes) {
+            const doc = documents.find(
+              (d) => d.category === category && d.id.includes(fileType),
+            );
+            expect(doc).toBeDefined();
+            expect(doc!.content.length).toBeGreaterThan(100);
+          }
+        }
+      });
     });
 
     // --------------------------------------------------------------------------

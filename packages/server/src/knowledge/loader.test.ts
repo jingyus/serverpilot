@@ -717,4 +717,93 @@ describe('KnowledgeBase', () => {
       expect(results.length).toBe(1);
     });
   });
+
+  // ==========================================================================
+  // Integration with real knowledge base
+  // ==========================================================================
+
+  describe('integration with real knowledge base', () => {
+    const realKBDir = path.resolve(
+      __dirname,
+      '..', // src
+      '..', // packages/server
+      '..', // packages
+      '..', // project root
+      'knowledge-base',
+    );
+
+    it('should load all 18 knowledge base documents', () => {
+      const kb = new KnowledgeBase({ baseDir: realKBDir });
+      const count = kb.loadDocuments();
+      expect(count).toBeGreaterThanOrEqual(18);
+    });
+
+    it('should have all 6 technology categories', () => {
+      const kb = new KnowledgeBase({ baseDir: realKBDir });
+      kb.loadDocuments();
+
+      const categories = new Set(kb.getDocuments().map((d) => d.category));
+      for (const cat of ['nginx', 'mysql', 'docker', 'nodejs', 'postgresql', 'redis']) {
+        expect(categories.has(cat)).toBe(true);
+      }
+    });
+
+    it('should find Nginx installation content when searching "如何安装 Nginx"', () => {
+      const kb = new KnowledgeBase({ baseDir: realKBDir });
+      kb.loadDocuments();
+
+      const results = kb.search('安装 Nginx');
+      expect(results.length).toBeGreaterThan(0);
+      expect(results[0].document.category).toBe('nginx');
+    });
+
+    it('should find Docker troubleshooting when searching for container errors', () => {
+      const kb = new KnowledgeBase({ baseDir: realKBDir });
+      kb.loadDocuments();
+
+      const results = kb.search('Docker 容器 故障');
+      expect(results.length).toBeGreaterThan(0);
+      expect(results[0].document.category).toBe('docker');
+    });
+
+    it('should find Redis configuration when searching for Redis config', () => {
+      const kb = new KnowledgeBase({ baseDir: realKBDir });
+      kb.loadDocuments();
+
+      const results = kb.search('Redis 配置 maxmemory');
+      expect(results.length).toBeGreaterThan(0);
+      const hasRedis = results.some((r) => r.document.category === 'redis');
+      expect(hasRedis).toBe(true);
+    });
+
+    it('should find MySQL content when searching for database queries', () => {
+      const kb = new KnowledgeBase({ baseDir: realKBDir });
+      kb.loadDocuments();
+
+      const results = kb.search('MySQL 慢查询');
+      expect(results.length).toBeGreaterThan(0);
+      const hasMySQL = results.some((r) => r.document.category === 'mysql');
+      expect(hasMySQL).toBe(true);
+    });
+
+    it('should find PostgreSQL content when searching for backup', () => {
+      const kb = new KnowledgeBase({ baseDir: realKBDir });
+      kb.loadDocuments();
+
+      const results = kb.search('PostgreSQL 备份');
+      expect(results.length).toBeGreaterThan(0);
+      const hasPG = results.some((r) => r.document.category === 'postgresql');
+      expect(hasPG).toBe(true);
+    });
+
+    it('should find Node.js content when searching for npm issues', () => {
+      const kb = new KnowledgeBase({ baseDir: realKBDir });
+      kb.loadDocuments();
+
+      const results = kb.search('Node.js npm');
+      expect(results.length).toBeGreaterThan(0);
+      const hasNodejs = results.some((r) => r.document.category === 'nodejs');
+      expect(hasNodejs).toBe(true);
+    });
+  });
 });
