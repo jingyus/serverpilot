@@ -23,6 +23,7 @@ import { knowledge } from './knowledge.js';
 import docSources from './doc-sources.js';
 import { settings } from './settings.js';
 import { metricsRoutes } from './metrics.js';
+import { openapi } from './openapi.js';
 import { onError, onNotFound } from '../middleware/error-handler.js';
 import type { ApiEnv } from './types.js';
 
@@ -62,6 +63,12 @@ export function createApiApp(): Hono<ApiEnv> {
   app.get('/health', (c) =>
     c.json({ status: 'ok', timestamp: Date.now() }),
   );
+
+  // --------------------------------------------------------------------------
+  // API documentation (Swagger UI + OpenAPI spec)
+  // --------------------------------------------------------------------------
+
+  app.route('/api-docs', openapi);
 
   // --------------------------------------------------------------------------
   // API v1 routes
