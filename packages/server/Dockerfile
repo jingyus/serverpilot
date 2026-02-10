@@ -4,6 +4,8 @@
 # Multi-stage build for minimal image size.
 # Uses pnpm workspace with only the server and shared packages.
 # SQLite database stored in /data volume for persistence.
+#
+# Target image size: < 200MB
 # ==============================================================================
 
 # --------------------------------------------------------------------------
@@ -49,21 +51,20 @@ RUN pnpm --filter @aiinstaller/shared build && \
     pnpm --filter @aiinstaller/server build
 
 # --------------------------------------------------------------------------
-# Stage 3: Production runtime
+# Stage 3: Production runtime (minimal)
 # --------------------------------------------------------------------------
 FROM node:22-alpine AS runtime
 
-# Add labels for image metadata
 LABEL maintainer="ServerPilot Team"
 LABEL description="ServerPilot Server - REST API + WebSocket with AI agent integration"
 LABEL version="0.1.0"
 
 # Create non-root user for security
-RUN addgroup -g 1001 -S aiinstaller && \
-    adduser -S aiinstaller -u 1001 -G aiinstaller
+RUN addgroup -g 1001 -S serverpilot && \
+    adduser -S serverpilot -u 1001 -G serverpilot
 
 # Create data directory for SQLite persistence
-RUN mkdir -p /data && chown aiinstaller:aiinstaller /data
+RUN mkdir -p /data && chown serverpilot:serverpilot /data
 
 WORKDIR /app
 
@@ -82,14 +83,18 @@ COPY --from=build /app/packages/shared/package.json ./packages/shared/package.js
 COPY --from=build /app/packages/server/package.json ./packages/server/package.json
 COPY --from=build /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
 
+# Copy Drizzle migration files for DB migrations
+COPY --from=build /app/packages/server/drizzle.config.ts ./packages/server/drizzle.config.ts
+COPY --from=build /app/packages/server/src/db/migrations ./packages/server/src/db/migrations
+
 # Copy knowledge-base if it exists (optional runtime data)
 COPY knowledge-base/ ./knowledge-base/
 
 # Set ownership
-RUN chown -R aiinstaller:aiinstaller /app
+RUN chown -R serverpilot:serverpilot /app
 
 # Switch to non-root user
-USER aiinstaller
+USER serverpilot
 
 # Default environment variables
 ENV NODE_ENV=production
@@ -102,7 +107,7 @@ ENV LOG_LEVEL=info
 EXPOSE 3000
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+HEALTHCHECK --interval=10s --timeout=5s --start-period=20s --retries=5 \
   CMD node -e "const http = require('http'); http.get('http://localhost:3000/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))" || exit 1
 
 # Start the server

@@ -21,6 +21,7 @@ import { routeMessage } from './api/handlers.js';
 import { createApiApp } from './api/routes/index.js';
 import { initJwtConfig } from './api/middleware/auth.js';
 import { initDatabase, closeDatabase, createTables } from './db/connection.js';
+import { seedDefaultAdmin } from './db/seed-admin.js';
 import { getSnapshotService } from './core/snapshot/snapshot-service.js';
 import { getRollbackService } from './core/rollback/rollback-service.js';
 import { getTaskExecutor } from './core/task/executor.js';
@@ -288,6 +289,9 @@ export async function startServer(): Promise<InstallServer> {
   initDatabase(serverConfig.databasePath);
   createTables();
   logger.info({ operation: 'startup' }, 'Database initialized with tables');
+
+  // 1b. Seed default admin (only on first run when users table is empty)
+  await seedDefaultAdmin();
 
   // 2. Initialize JWT
   initJwtConfig({ secret: serverConfig.jwtSecret });

@@ -1,8 +1,10 @@
 # ==============================================================================
 # ServerPilot Dashboard - Production Dockerfile
 # ==============================================================================
-# Multi-stage build: Node.js build → Nginx static serving
+# Multi-stage build: Node.js build -> Nginx static serving
 # Nginx also acts as reverse proxy for API/WebSocket to the server container.
+#
+# Target image size: < 50MB
 # ==============================================================================
 
 # --------------------------------------------------------------------------
@@ -39,6 +41,9 @@ LABEL maintainer="ServerPilot Team"
 LABEL description="ServerPilot Dashboard - React SPA with Nginx reverse proxy"
 LABEL version="0.1.0"
 
+# Install curl for health checks
+RUN apk add --no-cache curl
+
 # Remove default nginx config
 RUN rm /etc/nginx/conf.d/default.conf
 
@@ -49,5 +54,9 @@ COPY packages/dashboard/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/packages/dashboard/dist /usr/share/nginx/html
 
 EXPOSE 80
+
+# Health check for nginx itself
+HEALTHCHECK --interval=10s --timeout=3s --start_period=5s --retries=3 \
+  CMD curl -f http://localhost/ || exit 1
 
 CMD ["nginx", "-g", "daemon off;"]
