@@ -1126,7 +1126,7 @@ describe('src/api/handlers.ts', () => {
       ws.close();
     });
 
-    it('should return failure for step.output (not handled)', async () => {
+    it('should return success for step.output (handled)', async () => {
       port = nextPort();
       server = new InstallServer({ port });
       await server.start();
@@ -1148,8 +1148,7 @@ describe('src/api/handlers.ts', () => {
       });
 
       const result = await routeMessage(server, clientId, message);
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('Unhandled message type');
+      expect(result.success).toBe(true);
 
       ws.close();
     });

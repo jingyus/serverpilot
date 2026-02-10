@@ -44,6 +44,26 @@ const { _setMockAgent } = await import('./chat-ai.js') as unknown as {
 };
 
 // ============================================================================
+// Mock agent connector and task executor
+// ============================================================================
+
+vi.mock('../../core/agent/agent-connector.js', () => ({
+  findConnectedAgent: vi.fn((serverId: string) => `mock-agent-${serverId}`),
+}));
+
+vi.mock('../../core/task/executor.js', () => ({
+  getTaskExecutor: vi.fn(() => ({
+    executeCommand: vi.fn(async () => ({
+      stdout: 'mock command output\n',
+      stderr: '',
+      exitCode: 0,
+      success: true,
+    })),
+    setProgressCallback: vi.fn(),
+  })),
+}));
+
+// ============================================================================
 // Test Setup
 // ============================================================================
 

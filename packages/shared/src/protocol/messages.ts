@@ -34,6 +34,7 @@ export const MessageType = {
   SNAPSHOT_RESPONSE: 'snapshot.response',
   ROLLBACK_REQUEST: 'rollback.request',
   ROLLBACK_RESPONSE: 'rollback.response',
+  METRICS_REPORT: 'metrics.report',
 } as const;
 
 export type MessageType = (typeof MessageType)[keyof typeof MessageType];
@@ -546,6 +547,37 @@ export const RollbackResponseMessageSchema = z.object({
 export type RollbackResponseMessage = z.infer<typeof RollbackResponseMessageSchema>;
 
 // ============================================================================
+// Metrics (Agent → Server: System metrics reporting)
+// ============================================================================
+
+/** Agent -> Server: Report system metrics */
+export const MetricsReportMessageSchema = z.object({
+  type: z.literal(MessageType.METRICS_REPORT),
+  payload: z.object({
+    /** Server ID this metrics belongs to */
+    serverId: z.string(),
+    /** CPU usage percentage (0-100) */
+    cpuUsage: z.number().min(0).max(100),
+    /** Memory usage in bytes */
+    memoryUsage: z.number().int().nonnegative(),
+    /** Total memory in bytes */
+    memoryTotal: z.number().int().positive(),
+    /** Disk usage in bytes */
+    diskUsage: z.number().int().nonnegative(),
+    /** Total disk in bytes */
+    diskTotal: z.number().int().positive(),
+    /** Network inbound bytes/s */
+    networkIn: z.number().int().nonnegative(),
+    /** Network outbound bytes/s */
+    networkOut: z.number().int().nonnegative(),
+  }),
+  timestamp: z.number(),
+  requestId: z.string().optional(),
+});
+
+export type MetricsReportMessage = z.infer<typeof MetricsReportMessageSchema>;
+
+// ============================================================================
 // Union Message Type
 // ============================================================================
 
@@ -570,6 +602,7 @@ export const MessageSchema = z.discriminatedUnion('type', [
   SnapshotResponseMessageSchema,
   RollbackRequestMessageSchema,
   RollbackResponseMessageSchema,
+  MetricsReportMessageSchema,
 ]);
 
 /** Any valid message in the protocol */

@@ -13,6 +13,8 @@ logs/
 test.log
 dev.log
 autorun.log
+npm-debug.log*
+pnpm-debug.log*
 
 # Environment variables (重要：不要上传敏感配置)
 .env
@@ -28,14 +30,14 @@ autorun.log
 *.sqlite3
 data/
 
-# IDE
+# IDE and editor
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# OS
+# OS files
 .DS_Store
 Thumbs.db
 
@@ -44,7 +46,7 @@ tmp/
 temp/
 *.tmp
 
-# Coverage
+# Test and coverage
 coverage/
 .nyc_output/
 

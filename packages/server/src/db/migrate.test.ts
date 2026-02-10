@@ -3,7 +3,7 @@
  *
  * Validates that:
  * - Migrations run successfully on a fresh in-memory database
- * - All 10 tables are created with correct structure
+ * - All 15 tables are created with correct structure
  * - All indexes exist after migration
  * - Foreign key constraints work after migration
  * - Migrations are idempotent (safe to run multiple times)
@@ -65,7 +65,7 @@ describe('migrate: runMigrations', () => {
     expect(result.migrationsPath).toBe(MIGRATIONS_PATH);
   });
 
-  it('should create all 10 tables', () => {
+  it('should create all 17 tables', () => {
     const sqlite = new Database(':memory:');
     openConnections.push(sqlite);
     sqlite.pragma('foreign_keys = ON');
@@ -80,14 +80,21 @@ describe('migrate: runMigrations', () => {
     const tableNames = tables.map((t) => t.name).sort();
     expect(tableNames).toEqual([
       'agents',
+      'alert_rules',
       'alerts',
+      'doc_source_history',
+      'doc_sources',
       'knowledge_cache',
+      'metrics',
+      'metrics_daily',
+      'metrics_hourly',
       'operations',
       'profiles',
       'servers',
       'sessions',
       'snapshots',
       'tasks',
+      'user_settings',
       'users',
     ]);
   });
@@ -126,6 +133,10 @@ describe('migrate: runMigrations', () => {
     expect(indexNames).toContain('knowledge_cache_software_idx');
     expect(indexNames).toContain('knowledge_cache_platform_idx');
     expect(indexNames).toContain('knowledge_cache_software_platform_idx');
+    expect(indexNames).toContain('metrics_hourly_server_id_idx');
+    expect(indexNames).toContain('metrics_hourly_server_bucket_idx');
+    expect(indexNames).toContain('metrics_daily_server_id_idx');
+    expect(indexNames).toContain('metrics_daily_server_bucket_idx');
   });
 
   it('should be idempotent (safe to run multiple times)', () => {
@@ -143,7 +154,7 @@ describe('migrate: runMigrations', () => {
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '__drizzle%' ORDER BY name")
       .all() as { name: string }[];
 
-    expect(tables).toHaveLength(10);
+    expect(tables).toHaveLength(17);
   });
 });
 
@@ -172,7 +183,7 @@ describe('migrate: table structure', () => {
     expect(colNames).toContain('updated_at');
   });
 
-  it('should create operations table with all 14 columns', () => {
+  it('should create operations table with all 16 columns', () => {
     const sqlite = new Database(':memory:');
     openConnections.push(sqlite);
     const db = drizzle(sqlite, { schema });
@@ -182,11 +193,13 @@ describe('migrate: table structure', () => {
       .prepare("PRAGMA table_info('operations')")
       .all() as { name: string }[];
 
-    expect(columns).toHaveLength(14);
+    expect(columns).toHaveLength(16);
     const colNames = columns.map((c) => c.name);
     expect(colNames).toContain('snapshot_id');
     expect(colNames).toContain('duration');
     expect(colNames).toContain('completed_at');
+    expect(colNames).toContain('input_tokens');
+    expect(colNames).toContain('output_tokens');
   });
 });
 
@@ -317,6 +330,6 @@ describe('migrate: runMigrationsWithConnection', () => {
       .prepare("SELECT count(*) as cnt FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '__drizzle%'")
       .get() as { cnt: number };
 
-    expect(tables.cnt).toBe(10);
+    expect(tables.cnt).toBe(17);
   });
 });

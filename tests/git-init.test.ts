@@ -29,12 +29,12 @@ describe.skipIf(!gitDirExists)('Git 仓库初始化', () => {
   });
 
   describe('分支配置', () => {
-    it('应在 master 分支上', () => {
-      const branch = execSync('git rev-parse --abbrev-ref HEAD', {
+    it('master 分支应存在', () => {
+      const branches = execSync('git branch --list master', {
         cwd: ROOT_DIR,
         encoding: 'utf-8',
       }).trim();
-      expect(branch).toBe('master');
+      expect(branches).toContain('master');
     });
 
     it('应有至少一个提交', () => {

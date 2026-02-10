@@ -171,23 +171,23 @@ describe('验收: AI 能生成适合当前环境的安装计划（至少 3 个�
       });
 
       it('should generate a plan with at least 3 steps', async () => {
-        const plan = await generateInstallPlan(mockAgent, macOSEnvironment, 'openclaw');
-        expect(plan).not.toBeNull();
-        expect(plan!.steps.length).toBeGreaterThanOrEqual(3);
+        const result = await generateInstallPlan(mockAgent, macOSEnvironment, 'openclaw');
+        expect(result.plan).not.toBeNull();
+        expect(result.plan!.steps.length).toBeGreaterThanOrEqual(3);
       });
 
       it('should include macOS-specific commands (brew)', async () => {
-        const plan = await generateInstallPlan(mockAgent, macOSEnvironment, 'openclaw');
-        expect(plan).not.toBeNull();
-        const commands = plan!.steps.map(s => s.command);
+        const result = await generateInstallPlan(mockAgent, macOSEnvironment, 'openclaw');
+        expect(result.plan).not.toBeNull();
+        const commands = result.plan!.steps.map(s => s.command);
         expect(commands.some(c => c.includes('brew'))).toBe(true);
       });
 
       it('should include prerequisite check and verification steps', async () => {
-        const plan = await generateInstallPlan(mockAgent, macOSEnvironment, 'openclaw');
-        expect(plan).not.toBeNull();
-        expect(plan!.steps.some(s => s.id.includes('check') || s.id.includes('prereq'))).toBe(true);
-        expect(plan!.steps.some(s => s.id === 'verify')).toBe(true);
+        const result = await generateInstallPlan(mockAgent, macOSEnvironment, 'openclaw');
+        expect(result.plan).not.toBeNull();
+        expect(result.plan!.steps.some(s => s.id.includes('check') || s.id.includes('prereq'))).toBe(true);
+        expect(result.plan!.steps.some(s => s.id === 'verify')).toBe(true);
       });
     });
 
@@ -203,15 +203,15 @@ describe('验收: AI 能生成适合当前环境的安装计划（至少 3 个�
       });
 
       it('should generate a plan with at least 3 steps', async () => {
-        const plan = await generateInstallPlan(mockAgent, linuxEnvironment, 'openclaw');
-        expect(plan).not.toBeNull();
-        expect(plan!.steps.length).toBeGreaterThanOrEqual(3);
+        const result = await generateInstallPlan(mockAgent, linuxEnvironment, 'openclaw');
+        expect(result.plan).not.toBeNull();
+        expect(result.plan!.steps.length).toBeGreaterThanOrEqual(3);
       });
 
       it('should include Linux-specific commands (apt)', async () => {
-        const plan = await generateInstallPlan(mockAgent, linuxEnvironment, 'openclaw');
-        expect(plan).not.toBeNull();
-        const commands = plan!.steps.map(s => s.command);
+        const result = await generateInstallPlan(mockAgent, linuxEnvironment, 'openclaw');
+        expect(result.plan).not.toBeNull();
+        const commands = result.plan!.steps.map(s => s.command);
         expect(commands.some(c => c.includes('apt'))).toBe(true);
       });
     });
@@ -228,15 +228,15 @@ describe('验收: AI 能生成适合当前环境的安装计划（至少 3 个�
       });
 
       it('should generate a plan with at least 3 steps', async () => {
-        const plan = await generateInstallPlan(mockAgent, windowsEnvironment, 'openclaw');
-        expect(plan).not.toBeNull();
-        expect(plan!.steps.length).toBeGreaterThanOrEqual(3);
+        const result = await generateInstallPlan(mockAgent, windowsEnvironment, 'openclaw');
+        expect(result.plan).not.toBeNull();
+        expect(result.plan!.steps.length).toBeGreaterThanOrEqual(3);
       });
 
       it('should use npm for Windows (no brew/apt)', async () => {
-        const plan = await generateInstallPlan(mockAgent, windowsEnvironment, 'openclaw');
-        expect(plan).not.toBeNull();
-        const commands = plan!.steps.map(s => s.command);
+        const result = await generateInstallPlan(mockAgent, windowsEnvironment, 'openclaw');
+        expect(result.plan).not.toBeNull();
+        const commands = result.plan!.steps.map(s => s.command);
         expect(commands.some(c => c.includes('npm'))).toBe(true);
       });
     });
@@ -410,9 +410,9 @@ describe('验收: AI 能生成适合当前环境的安装计划（至少 3 个�
         }),
       } as unknown as InstallAIAgent;
 
-      const plan = await generateInstallPlan(mockAgent, macOSEnvironment, 'openclaw');
-      // generateInstallPlan returns null on failure, caller should use fallback
-      expect(plan).toBeNull();
+      const result = await generateInstallPlan(mockAgent, macOSEnvironment, 'openclaw');
+      // generateInstallPlan returns { plan: null } on failure, caller should use fallback
+      expect(result.plan).toBeNull();
 
       // Verify fallback produces at least 3 steps
       const fallback = generateFallbackPlan(macOSEnvironment, 'openclaw');
@@ -424,8 +424,8 @@ describe('验收: AI 能生成适合当前环境的安装计划（至少 3 个�
         generateInstallPlanStreaming: vi.fn().mockRejectedValue(new Error('Network error')),
       } as unknown as InstallAIAgent;
 
-      const plan = await generateInstallPlan(mockAgent, macOSEnvironment, 'openclaw');
-      expect(plan).toBeNull();
+      const result = await generateInstallPlan(mockAgent, macOSEnvironment, 'openclaw');
+      expect(result.plan).toBeNull();
 
       // Verify fallback is valid
       const fallback = generateFallbackPlan(macOSEnvironment, 'openclaw');

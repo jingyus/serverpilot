@@ -102,11 +102,11 @@ describe('generateInstallPlan', () => {
   });
 
   it('should generate installation plan with AI', async () => {
-    const plan = await generateInstallPlan(mockAgent, mockEnvironment, 'openclaw');
+    const result = await generateInstallPlan(mockAgent, mockEnvironment, 'openclaw');
 
-    expect(plan).not.toBeNull();
-    expect(plan?.steps).toHaveLength(3);
-    expect(plan?.steps[0].id).toBe('check-node');
+    expect(result.plan).not.toBeNull();
+    expect(result.plan?.steps).toHaveLength(3);
+    expect(result.plan?.steps[0].id).toBe('check-node');
     expect(mockAgent.generateInstallPlanStreaming).toHaveBeenCalledWith(
       mockEnvironment,
       'openclaw',
@@ -117,9 +117,9 @@ describe('generateInstallPlan', () => {
   });
 
   it('should include knowledge base context when available', async () => {
-    const plan = await generateInstallPlan(mockAgent, mockEnvironment, 'openclaw');
+    const result = await generateInstallPlan(mockAgent, mockEnvironment, 'openclaw');
 
-    expect(plan).not.toBeNull();
+    expect(result.plan).not.toBeNull();
     expect(mockAgent.generateInstallPlanStreaming).toHaveBeenCalled();
 
     // Verify knowledge context was passed (5th argument)
@@ -127,15 +127,15 @@ describe('generateInstallPlan', () => {
     expect(calls[0][4]).toBeDefined();
   });
 
-  it('should return null when AI generation fails', async () => {
+  it('should return null plan when AI generation fails', async () => {
     mockAgent.generateInstallPlanStreaming = vi.fn().mockResolvedValue({
       success: false,
       error: 'AI service unavailable',
     });
 
-    const plan = await generateInstallPlan(mockAgent, mockEnvironment, 'openclaw');
+    const result = await generateInstallPlan(mockAgent, mockEnvironment, 'openclaw');
 
-    expect(plan).toBeNull();
+    expect(result.plan).toBeNull();
   });
 
   it('should support optional version parameter', async () => {
@@ -172,9 +172,9 @@ describe('generateInstallPlan', () => {
   it('should handle errors gracefully', async () => {
     mockAgent.generateInstallPlanStreaming = vi.fn().mockRejectedValue(new Error('Network error'));
 
-    const plan = await generateInstallPlan(mockAgent, mockEnvironment, 'openclaw');
+    const result = await generateInstallPlan(mockAgent, mockEnvironment, 'openclaw');
 
-    expect(plan).toBeNull();
+    expect(result.plan).toBeNull();
   });
 });
 

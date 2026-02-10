@@ -15,6 +15,7 @@ import type {
   StepOutputMessage,
   ErrorOccurredMessage,
   AuthRequestMessage,
+  MetricsReportMessage,
   Message,
   ErrorContext,
 } from '@aiinstaller/shared';
@@ -782,6 +783,65 @@ async function handleRollbackResponse(
   }
 }
 
+/**
+ * Handle a metrics report from the agent.
+ *
+ * Stores system metrics (CPU, memory, disk, network) in the database
+ * for monitoring and alerting purposes.
+ *
+ * @param server - The InstallServer instance
+ * @param clientId - The client that sent the message
+ * @param message - The metrics.report message
+ * @returns Result indicating success or failure
+ */
+export async function handleMetricsReport(
+  server: InstallServer,
+  clientId: string,
+  message: MetricsReportMessage,
+): Promise<HandlerResult> {
+  try {
+    const requestId = message.requestId ?? randomUUID();
+    const logger = createContextLogger({
+      requestId,
+      clientId,
+      serverId: message.payload.serverId,
+    });
+
+    logMessageRoute('metrics.report', {
+      requestId,
+      clientId,
+    }, {
+      serverId: message.payload.serverId,
+      cpuUsage: message.payload.cpuUsage.toFixed(2),
+      memoryUsageMB: (message.payload.memoryUsage / 1024 / 1024).toFixed(2),
+    });
+
+    // Import metrics repository
+    const { getMetricsRepository } = await import('../db/repositories/metrics-repository.js');
+    const metricsRepo = getMetricsRepository();
+
+    // Store metrics in database
+    await metricsRepo.record({
+      serverId: message.payload.serverId,
+      cpuUsage: message.payload.cpuUsage,
+      memoryUsage: message.payload.memoryUsage,
+      memoryTotal: message.payload.memoryTotal,
+      diskUsage: message.payload.diskUsage,
+      diskTotal: message.payload.diskTotal,
+      networkIn: message.payload.networkIn,
+      networkOut: message.payload.networkOut,
+    });
+
+    logger.debug('Metrics stored successfully');
+
+    return { success: true };
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    logError(err as Error, { clientId, operation: 'metrics.report' }, 'Failed to handle metrics report');
+    return { success: false, error: errorMsg };
+  }
+}
+
 // ============================================================================
 // Message Router
 // ============================================================================
@@ -835,6 +895,8 @@ export async function routeMessage(
       return await handleSnapshotResponse(message);
     case MessageType.ROLLBACK_RESPONSE:
       return await handleRollbackResponse(message);
+    case MessageType.METRICS_REPORT:
+      return await handleMetricsReport(server, clientId, message);
     default:
       return { success: false, error: `Unhandled message type: ${(message as Message).type}` };
   }

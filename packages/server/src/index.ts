@@ -32,6 +32,7 @@ import { getMemoryMonitor } from './utils/memory-monitor.js';
 import { getAlertEvaluator } from './core/alert/alert-evaluator.js';
 import { createEmailNotifier } from './core/alert/email-notifier.js';
 import { createDocAutoFetcher, type DocAutoFetcher } from './knowledge/doc-auto-fetcher.js';
+import { startMetricsCleanupScheduler, stopMetricsCleanupScheduler } from './core/metrics-cleanup-scheduler.js';
 
 // ============================================================================
 // Constants
@@ -238,6 +239,7 @@ export function registerShutdownHandlers(server: InstallServer, httpServer?: Htt
     try {
       getAlertEvaluator().stop();
       getTaskScheduler().stop();
+      stopMetricsCleanupScheduler();
       if (_docAutoFetcher) {
         _docAutoFetcher.stop();
       }
@@ -354,6 +356,10 @@ export async function startServer(): Promise<InstallServer> {
       'Documentation auto-fetcher started',
     );
   }
+
+  // Start the metrics cleanup scheduler
+  startMetricsCleanupScheduler();
+  logger.info({ operation: 'startup' }, 'Metrics cleanup scheduler started');
 
   logger.info({
     operation: 'startup',

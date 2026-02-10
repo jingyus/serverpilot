@@ -454,6 +454,76 @@ export const metrics = sqliteTable(
 );
 
 // ============================================================================
+// Metrics Hourly (aggregated per hour, retained 30 days)
+// ============================================================================
+
+export const metricsHourly = sqliteTable(
+  'metrics_hourly',
+  {
+    id: text('id').primaryKey(),
+    serverId: text('server_id')
+      .references(() => servers.id, { onDelete: 'cascade' })
+      .notNull(),
+    cpuAvg: integer('cpu_avg').notNull(), // 0-10000
+    cpuMin: integer('cpu_min').notNull(),
+    cpuMax: integer('cpu_max').notNull(),
+    memoryAvg: integer('memory_avg').notNull(), // bytes
+    memoryMin: integer('memory_min').notNull(),
+    memoryMax: integer('memory_max').notNull(),
+    memoryTotal: integer('memory_total').notNull(),
+    diskAvg: integer('disk_avg').notNull(),
+    diskMin: integer('disk_min').notNull(),
+    diskMax: integer('disk_max').notNull(),
+    diskTotal: integer('disk_total').notNull(),
+    networkInAvg: integer('network_in_avg').notNull(),
+    networkInMax: integer('network_in_max').notNull(),
+    networkOutAvg: integer('network_out_avg').notNull(),
+    networkOutMax: integer('network_out_max').notNull(),
+    sampleCount: integer('sample_count').notNull(),
+    bucketTime: integer('bucket_time', { mode: 'timestamp' }).notNull(),
+  },
+  (table) => [
+    index('metrics_hourly_server_id_idx').on(table.serverId),
+    index('metrics_hourly_server_bucket_idx').on(table.serverId, table.bucketTime),
+  ],
+);
+
+// ============================================================================
+// Metrics Daily (aggregated per day, retained 1 year)
+// ============================================================================
+
+export const metricsDaily = sqliteTable(
+  'metrics_daily',
+  {
+    id: text('id').primaryKey(),
+    serverId: text('server_id')
+      .references(() => servers.id, { onDelete: 'cascade' })
+      .notNull(),
+    cpuAvg: integer('cpu_avg').notNull(),
+    cpuMin: integer('cpu_min').notNull(),
+    cpuMax: integer('cpu_max').notNull(),
+    memoryAvg: integer('memory_avg').notNull(),
+    memoryMin: integer('memory_min').notNull(),
+    memoryMax: integer('memory_max').notNull(),
+    memoryTotal: integer('memory_total').notNull(),
+    diskAvg: integer('disk_avg').notNull(),
+    diskMin: integer('disk_min').notNull(),
+    diskMax: integer('disk_max').notNull(),
+    diskTotal: integer('disk_total').notNull(),
+    networkInAvg: integer('network_in_avg').notNull(),
+    networkInMax: integer('network_in_max').notNull(),
+    networkOutAvg: integer('network_out_avg').notNull(),
+    networkOutMax: integer('network_out_max').notNull(),
+    sampleCount: integer('sample_count').notNull(),
+    bucketTime: integer('bucket_time', { mode: 'timestamp' }).notNull(),
+  },
+  (table) => [
+    index('metrics_daily_server_id_idx').on(table.serverId),
+    index('metrics_daily_server_bucket_idx').on(table.serverId, table.bucketTime),
+  ],
+);
+
+// ============================================================================
 // Knowledge Cache
 // ============================================================================
 

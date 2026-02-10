@@ -34,6 +34,7 @@ export const MessageType = {
   SNAPSHOT_RESPONSE: 'snapshot.response',
   ROLLBACK_REQUEST: 'rollback.request',
   ROLLBACK_RESPONSE: 'rollback.response',
+  METRICS_REPORT: 'metrics.report',
 } as const;
 
 export type MessageTypeValue = (typeof MessageType)[keyof typeof MessageType];

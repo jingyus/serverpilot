@@ -23,7 +23,13 @@ import {
 
 describe('DANGEROUS_PARAMS', () => {
   it('should contain all required dangerous parameters from spec', () => {
-    const requiredFlags = ['--purge', '--force', '--no-preserve-root', '-rf', '--hard', '--no-verify'];
+    const requiredFlags = [
+      '--purge', '--force', '--no-preserve-root', '-rf', '--hard',
+      '--no-verify', '--no-check', '--delete', '-y', '--yes',
+      '--no-backup', '--overwrite', '--recursive', '--assume-yes',
+      '--force-with-lease', '--prune', '--wipe-data', '--reset',
+      '--destroy', '--no-preserve', '--remove-all', '--cascade',
+    ];
     for (const flag of requiredFlags) {
       expect(DANGEROUS_FLAGS).toContain(flag);
     }
@@ -43,12 +49,44 @@ describe('DANGEROUS_PARAMS', () => {
       expect(DANGEROUS_FLAGS[i]).toBe(DANGEROUS_PARAMS[i].flag);
     }
   });
+
+  it('should have at least 36 dangerous params', () => {
+    expect(DANGEROUS_PARAMS.length).toBeGreaterThanOrEqual(36);
+  });
+
+  it('should contain new enhanced dangerous parameters', () => {
+    const newFlags = [
+      '--no-deps', '--skip-validation', '--force-conflicts',
+      '--ignore-errors', '--no-confirm', '--allow-root',
+      '--unsafe', '--force-delete', '--no-keep-alive',
+    ];
+    for (const flag of newFlags) {
+      expect(DANGEROUS_FLAGS).toContain(flag);
+    }
+  });
 });
 
 describe('PROTECTED_PATHS', () => {
   it('should contain all required protected paths from spec', () => {
-    const requiredPaths = ['/etc', '/boot', '/usr', '/var/lib/mysql', '/var/lib/postgresql', '/root'];
+    const requiredPaths = [
+      '/etc', '/boot', '/usr', '/var/lib/mysql',
+      '/var/lib/postgresql', '/root', '/bin', '/sbin',
+      '/lib', '/proc', '/sys', '/dev',
+    ];
     for (const p of requiredPaths) {
+      expect(PROTECTED_PATH_LIST).toContain(p);
+    }
+  });
+
+  it('should contain enhanced protected paths', () => {
+    const enhancedPaths = [
+      '/lib64', '/var/lib/docker', '/var/lib/redis',
+      '/var/lib/mongodb', '/var/lib/elasticsearch',
+      '/home', '/opt', '/var/log',
+      '/var/lib/containerd', '/var/lib/grafana',
+      '/var/lib/prometheus', '/var/backups', '/srv',
+    ];
+    for (const p of enhancedPaths) {
       expect(PROTECTED_PATH_LIST).toContain(p);
     }
   });
@@ -65,6 +103,22 @@ describe('PROTECTED_PATHS', () => {
     expect(PROTECTED_PATH_LIST).toHaveLength(PROTECTED_PATHS.length);
     for (let i = 0; i < PROTECTED_PATHS.length; i++) {
       expect(PROTECTED_PATH_LIST[i]).toBe(PROTECTED_PATHS[i].path);
+    }
+  });
+
+  it('should have at least 40 protected paths', () => {
+    expect(PROTECTED_PATHS.length).toBeGreaterThanOrEqual(40);
+  });
+
+  it('should contain new enhanced protected paths', () => {
+    const newPaths = [
+      '/var/lib/lxc', '/var/lib/lxd', '/var/lib/cni',
+      '/var/lib/rancher', '/var/lib/consul', '/var/lib/nomad',
+      '/var/lib/vault', '/var/lib/minio', '/var/lib/clickhouse',
+      '/var/lib/cassandra', '/var/lib/influxdb',
+    ];
+    for (const p of newPaths) {
+      expect(PROTECTED_PATH_LIST).toContain(p);
     }
   });
 });
@@ -108,6 +162,19 @@ describe('auditCommand — dangerous parameters', () => {
     ['rm -fr /tmp/old', '-fr'],
     ['git reset --hard HEAD~1', '--hard'],
     ['git commit --no-verify', '--no-verify'],
+    ['some-tool --no-backup', '--no-backup'],
+    ['cp --overwrite /src /dst', '--overwrite'],
+    ['rm --recursive /tmp/dir', '--recursive'],
+    ['apt install --assume-yes nginx', '--assume-yes'],
+    ['tool --no-prompt', '--no-prompt'],
+    ['git push --force-with-lease origin main', '--force-with-lease'],
+    ['git remote prune origin --prune', '--prune'],
+    ['tool --wipe-data', '--wipe-data'],
+    ['tool --reset', '--reset'],
+    ['terraform destroy --destroy', '--destroy'],
+    ['tool --no-preserve /data', '--no-preserve'],
+    ['tool --remove-all', '--remove-all'],
+    ['kubectl delete --cascade pod/my-pod', '--cascade'],
   ])('should warn for "%s" containing %s', (command, flag) => {
     const result = auditCommand(command);
     expect(result.warnings.length).toBeGreaterThan(0);
@@ -122,10 +189,7 @@ describe('auditCommand — dangerous parameters', () => {
   });
 
   it('should not warn when dangerous flag appears only as part of a path', () => {
-    // The string "--force" appears in a path, not as a flag
     const result = auditCommand('cat /tmp/--force-log/output.txt');
-    // "/tmp/--force-log/output.txt" is a path argument, not a flag
-    // The tokenizer sees it as a single token that doesn't start with -
     expect(result.warnings.length).toBe(0);
   });
 
@@ -156,10 +220,24 @@ describe('auditCommand — dangerous parameters', () => {
   });
 
   it('should detect --no-check flag', () => {
-    const result = auditCommand('pip install --no-check-certificate package');
-    // --no-check-certificate is not --no-check exactly, but let's test exact --no-check
     const result2 = auditCommand('some-tool --no-check');
     expect(result2.warnings.some((w) => w.includes('--no-check'))).toBe(true);
+  });
+
+  it.each([
+    ['tool --no-deps install pkg', '--no-deps'],
+    ['tool --skip-validation deploy', '--skip-validation'],
+    ['tool --force-conflicts merge', '--force-conflicts'],
+    ['tool --ignore-errors run', '--ignore-errors'],
+    ['tool --no-confirm delete', '--no-confirm'],
+    ['npm install --allow-root', '--allow-root'],
+    ['tool --unsafe exec', '--unsafe'],
+    ['tool --force-delete resource', '--force-delete'],
+    ['tool --no-keep-alive check', '--no-keep-alive'],
+  ])('should warn for new param "%s" containing %s', (command, flag) => {
+    const result = auditCommand(command);
+    expect(result.warnings.length).toBeGreaterThan(0);
+    expect(result.warnings.some((w) => w.includes(flag))).toBe(true);
   });
 });
 
@@ -200,6 +278,17 @@ describe('auditCommand — protected paths with destructive ops', () => {
     ['rm -rf /root/.ssh/', '/root'],
     ['rm /bin/ls', '/bin'],
     ['rm /sbin/init', '/sbin'],
+    ['rm /var/lib/docker/overlay2/', '/var/lib/docker'],
+    ['rm /var/lib/redis/dump.rdb', '/var/lib/redis'],
+    ['rm /var/lib/mongodb/data/', '/var/lib/mongodb'],
+    ['rm /var/log/syslog', '/var/log'],
+    ['rm /home/user/important.txt', '/home'],
+    ['rm /opt/app/data', '/opt'],
+    ['rm /var/lib/containerd/data', '/var/lib/containerd'],
+    ['rm /var/lib/grafana/grafana.db', '/var/lib/grafana'],
+    ['rm /var/lib/prometheus/data/', '/var/lib/prometheus'],
+    ['rm /var/backups/daily.tar.gz', '/var/backups'],
+    ['rm /srv/www/index.html', '/srv'],
   ])('should block destructive rm on "%s" (path: %s)', (command, path) => {
     const result = auditCommand(command);
     expect(result.safe).toBe(false);
@@ -252,7 +341,6 @@ describe('auditCommand — protected paths with destructive ops', () => {
   });
 
   it('should not false-positive on paths that start with protected path prefix', () => {
-    // /etcetera is not /etc
     const result = auditCommand('rm /etcetera/file.txt');
     expect(result.blockers.some((b) => b.includes('/etc'))).toBe(false);
   });
@@ -261,6 +349,23 @@ describe('auditCommand — protected paths with destructive ops', () => {
     const result = auditCommand('rm /etc/nginx/sites-enabled/default');
     expect(result.safe).toBe(false);
     expect(result.blockers.some((b) => b.includes('/etc'))).toBe(true);
+  });
+
+  it.each([
+    ['rm /var/lib/consul/data/', '/var/lib/consul'],
+    ['rm /var/lib/vault/core/', '/var/lib/vault'],
+    ['rm /var/lib/nomad/data/', '/var/lib/nomad'],
+    ['rm /var/lib/minio/data/', '/var/lib/minio'],
+    ['rm /var/lib/clickhouse/data/', '/var/lib/clickhouse'],
+    ['rm /var/lib/cassandra/data/', '/var/lib/cassandra'],
+    ['rm /var/lib/influxdb/data/', '/var/lib/influxdb'],
+    ['rm /var/lib/lxc/container/', '/var/lib/lxc'],
+    ['rm /var/lib/rancher/data/', '/var/lib/rancher'],
+  ])('should block destructive rm on new path "%s" (path: %s)', (command, path) => {
+    const result = auditCommand(command);
+    expect(result.safe).toBe(false);
+    expect(result.blockers.length).toBeGreaterThan(0);
+    expect(result.blockers.some((b) => b.includes(path))).toBe(true);
   });
 });
 
@@ -287,10 +392,10 @@ describe('auditCommand — combined warnings and blockers', () => {
 });
 
 // ============================================================================
-// auditCommand — sudo handling
+// auditCommand — alias handling (sudo, doas, pkexec)
 // ============================================================================
 
-describe('auditCommand — sudo prefix handling', () => {
+describe('auditCommand — alias prefix handling', () => {
   it('should strip sudo and audit the underlying command', () => {
     const result = auditCommand('sudo rm --force /etc/nginx/nginx.conf');
     expect(result.warnings.some((w) => w.includes('--force'))).toBe(true);
@@ -308,6 +413,18 @@ describe('auditCommand — sudo prefix handling', () => {
     const result = auditCommand('sudo --preserve-env rm --force /boot/grub/');
     expect(result.warnings.some((w) => w.includes('--force'))).toBe(true);
     expect(result.blockers.some((b) => b.includes('/boot'))).toBe(true);
+  });
+
+  it('should strip doas and audit the underlying command', () => {
+    const result = auditCommand('doas rm --force /etc/nginx/nginx.conf');
+    expect(result.warnings.some((w) => w.includes('--force'))).toBe(true);
+    expect(result.blockers.some((b) => b.includes('/etc'))).toBe(true);
+  });
+
+  it('should strip pkexec and audit the underlying command', () => {
+    const result = auditCommand('pkexec rm --force /etc/hosts');
+    expect(result.warnings.some((w) => w.includes('--force'))).toBe(true);
+    expect(result.blockers.some((b) => b.includes('/etc'))).toBe(true);
   });
 });
 
@@ -337,7 +454,6 @@ describe('auditCommand — edge cases', () => {
   });
 
   it('should handle commands with quoted arguments', () => {
-    // Quoted path should still be detected
     const result = auditCommand('rm "/etc/nginx/nginx.conf"');
     expect(result.safe).toBe(false);
     expect(result.blockers.some((b) => b.includes('/etc'))).toBe(true);
@@ -350,9 +466,8 @@ describe('auditCommand — edge cases', () => {
   });
 
   it('should handle SQL destructive operations', () => {
-    // These don't target filesystem paths, so no path blockers
     const result = auditCommand('DROP TABLE users');
-    expect(result.safe).toBe(true); // No protected filesystem paths involved
+    expect(result.safe).toBe(true);
   });
 
   it('should handle commands with pipe operators', () => {
@@ -370,6 +485,8 @@ describe('hasDangerousParams', () => {
     expect(hasDangerousParams('rm -rf /tmp/old')).toBe(true);
     expect(hasDangerousParams('git push --force')).toBe(true);
     expect(hasDangerousParams('apt remove --purge nginx')).toBe(true);
+    expect(hasDangerousParams('tool --no-backup')).toBe(true);
+    expect(hasDangerousParams('cp --overwrite src dst')).toBe(true);
   });
 
   it('should return false when no dangerous params exist', () => {
@@ -389,11 +506,13 @@ describe('hasProtectedPaths', () => {
     expect(hasProtectedPaths('cat /etc/hosts')).toBe(true);
     expect(hasProtectedPaths('ls /boot/')).toBe(true);
     expect(hasProtectedPaths('ls /var/lib/mysql/')).toBe(true);
+    expect(hasProtectedPaths('ls /var/lib/docker/')).toBe(true);
+    expect(hasProtectedPaths('ls /home/user/')).toBe(true);
+    expect(hasProtectedPaths('ls /var/log/')).toBe(true);
   });
 
   it('should return false when no protected paths exist', () => {
     expect(hasProtectedPaths('ls /tmp/')).toBe(false);
-    expect(hasProtectedPaths('cat /home/user/file.txt')).toBe(false);
     expect(hasProtectedPaths('docker ps')).toBe(false);
   });
 
@@ -507,7 +626,6 @@ describe('AuditResult structure', () => {
       expect(typeof result.safe).toBe('boolean');
       expect(Array.isArray(result.warnings)).toBe(true);
       expect(Array.isArray(result.blockers)).toBe(true);
-      // Validate against schema
       expect(() => AuditResultSchema.parse(result)).not.toThrow();
     }
   });
@@ -542,6 +660,9 @@ describe('auditCommand — security boundaries', () => {
     const commands = [
       'rm -rf /var/lib/mysql/',
       'rm -rf /var/lib/postgresql/14/main/',
+      'rm -rf /var/lib/redis/',
+      'rm -rf /var/lib/mongodb/',
+      'rm -rf /var/lib/elasticsearch/',
     ];
     for (const cmd of commands) {
       const result = auditCommand(cmd);
@@ -573,7 +694,6 @@ describe('auditCommand — security boundaries', () => {
   });
 
   it('safe=true should never be returned when blockers exist', () => {
-    // This is a fundamental invariant
     const dangerousCommands = [
       'rm /etc/hosts',
       'rm -rf /boot/',

@@ -105,9 +105,9 @@ const sampleFixStrategy: FixStrategy = {
 // ============================================================================
 
 describe('MessageType Constants', () => {
-  it('should define all 19 message type strings', () => {
-    // 11 original + 4 AI streaming + 4 snapshot/rollback = 19
-    expect(Object.keys(MessageType)).toHaveLength(19);
+  it('should define all 20 message type strings', () => {
+    // 11 original + 4 AI streaming + 4 snapshot/rollback + 1 metrics = 20
+    expect(Object.keys(MessageType)).toHaveLength(20);
   });
 
   it('should have correct type values', () => {

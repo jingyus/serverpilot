@@ -53,6 +53,21 @@ export function getDatabase(): DrizzleDB {
 }
 
 /**
+ * Get the raw better-sqlite3 connection.
+ * Useful for direct SQL execution in tests.
+ *
+ * @throws {Error} If the database has not been initialized
+ */
+export function getRawDatabase(): Database.Database {
+  if (!_sqlite) {
+    throw new Error(
+      'Database not initialized. Call initDatabase() first.',
+    );
+  }
+  return _sqlite;
+}
+
+/**
  * Close the database connection and reset state.
  */
 export function closeDatabase(): void {
@@ -236,6 +251,54 @@ export function createTables(db?: DrizzleDB): void {
     );
     CREATE INDEX IF NOT EXISTS metrics_server_id_idx ON metrics(server_id);
     CREATE INDEX IF NOT EXISTS metrics_server_timestamp_idx ON metrics(server_id, timestamp);
+
+    CREATE TABLE IF NOT EXISTS metrics_hourly (
+      id TEXT PRIMARY KEY,
+      server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+      cpu_avg INTEGER NOT NULL,
+      cpu_min INTEGER NOT NULL,
+      cpu_max INTEGER NOT NULL,
+      memory_avg INTEGER NOT NULL,
+      memory_min INTEGER NOT NULL,
+      memory_max INTEGER NOT NULL,
+      memory_total INTEGER NOT NULL,
+      disk_avg INTEGER NOT NULL,
+      disk_min INTEGER NOT NULL,
+      disk_max INTEGER NOT NULL,
+      disk_total INTEGER NOT NULL,
+      network_in_avg INTEGER NOT NULL,
+      network_in_max INTEGER NOT NULL,
+      network_out_avg INTEGER NOT NULL,
+      network_out_max INTEGER NOT NULL,
+      sample_count INTEGER NOT NULL,
+      bucket_time INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS metrics_hourly_server_id_idx ON metrics_hourly(server_id);
+    CREATE INDEX IF NOT EXISTS metrics_hourly_server_bucket_idx ON metrics_hourly(server_id, bucket_time);
+
+    CREATE TABLE IF NOT EXISTS metrics_daily (
+      id TEXT PRIMARY KEY,
+      server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+      cpu_avg INTEGER NOT NULL,
+      cpu_min INTEGER NOT NULL,
+      cpu_max INTEGER NOT NULL,
+      memory_avg INTEGER NOT NULL,
+      memory_min INTEGER NOT NULL,
+      memory_max INTEGER NOT NULL,
+      memory_total INTEGER NOT NULL,
+      disk_avg INTEGER NOT NULL,
+      disk_min INTEGER NOT NULL,
+      disk_max INTEGER NOT NULL,
+      disk_total INTEGER NOT NULL,
+      network_in_avg INTEGER NOT NULL,
+      network_in_max INTEGER NOT NULL,
+      network_out_avg INTEGER NOT NULL,
+      network_out_max INTEGER NOT NULL,
+      sample_count INTEGER NOT NULL,
+      bucket_time INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS metrics_daily_server_id_idx ON metrics_daily(server_id);
+    CREATE INDEX IF NOT EXISTS metrics_daily_server_bucket_idx ON metrics_daily(server_id, bucket_time);
 
     CREATE TABLE IF NOT EXISTS knowledge_cache (
       id TEXT PRIMARY KEY,
