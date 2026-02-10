@@ -34,14 +34,30 @@ DEV_STANDARD="$PROJECT_DIR/docs/开发标准.md"        # 开发标准
 LOG_FILE="$PROJECT_DIR/autorun.log"
 STATE_FILE="$PROJECT_DIR/AUTORUN_STATE.md"
 TASK_FILE="$PROJECT_DIR/CURRENT_TASK.md"
+TASK_QUEUE="$PROJECT_DIR/TASK_QUEUE.md"             # 任务队列
 TEST_LOG="$PROJECT_DIR/test.log"
 
 # 配置
 INTERVAL=30            # 循环间隔（秒）
 MAX_ITERATIONS=1000    # 最大迭代次数
-ANALYZE_TIMEOUT=3600   # 分析阶段超时（30分钟）
-EXECUTE_TIMEOUT=3600   # 执行阶段超时（30分钟）
+ANALYZE_TIMEOUT=3600   # 分析阶段超时（60分钟）
+EXECUTE_TIMEOUT=3600   # 执行阶段超时（60分钟）
 MAX_RETRIES=3          # 单任务最大重试次数
+BATCH_SIZE=5           # 每次生成任务数量
+
+# Token 使用统计和成本控制
+TOTAL_TOKENS=0                    # 总 Token 使用量
+MAX_TOKENS=1000000                # 最大 Token 限制（100万）
+COST_PER_1K_INPUT_TOKENS=0.003    # Claude 输入定价（美元/1K tokens）
+COST_PER_1K_OUTPUT_TOKENS=0.015   # Claude 输出定价（美元/1K tokens）
+TOKEN_LOG="$PROJECT_DIR/TOKEN_USAGE.log"  # Token 使用日志
+
+# 通知配置
+ENABLE_NOTIFICATION=true          # 是否启用邮件通知
+NOTIFICATION_SCRIPT="$SCRIPT_DIR/send-notification.py"  # 通知脚本路径
+
+# 加载任务队列辅助函数
+source "$SCRIPT_DIR/task-queue-helper.sh"
 
 # 日志函数
 log_info() {
@@ -72,6 +88,142 @@ log_task() {
 log_ai() {
     echo -e "${CYAN}[AI]${NC} $1"
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] AI: $1" >> "$LOG_FILE"
+}
+
+# Token 使用统计函数
+log_token_usage() {
+    local input_tokens="${1:-0}"
+    local output_tokens="${2:-0}"
+    local operation="$3"
+
+    # 累计 Token 使用量
+    TOTAL_TOKENS=$((TOTAL_TOKENS + input_tokens + output_tokens))
+
+    # 计算成本（美元）
+    local input_cost=$(echo "scale=4; $input_tokens * $COST_PER_1K_INPUT_TOKENS / 1000" | bc)
+    local output_cost=$(echo "scale=4; $output_tokens * $COST_PER_1K_OUTPUT_TOKENS / 1000" | bc)
+    local operation_cost=$(echo "scale=4; $input_cost + $output_cost" | bc)
+    local total_cost=$(echo "scale=2; $TOTAL_TOKENS * ($COST_PER_1K_INPUT_TOKENS + $COST_PER_1K_OUTPUT_TOKENS) / 2000" | bc)
+
+    # 记录到日志
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    echo "[$timestamp] $operation | 输入: $input_tokens | 输出: $output_tokens | 成本: \$$operation_cost | 累计: $TOTAL_TOKENS tokens (\$$total_cost)" >> "$TOKEN_LOG"
+
+    # 显示统计信息
+    log_info "Token 使用 - 输入: $input_tokens, 输出: $output_tokens, 本次成本: \$$operation_cost"
+    log_info "累计 Token: $TOTAL_TOKENS (\$$total_cost) / 限制: $MAX_TOKENS"
+
+    # 检查是否超限
+    if [ $TOTAL_TOKENS -gt $MAX_TOKENS ]; then
+        log_error "已达到 Token 限制 ($MAX_TOKENS)，停止执行以避免高额费用"
+        log_error "累计成本: \$$total_cost"
+        exit 1
+    fi
+
+    # 警告：当使用量达到80%时
+    local usage_percent=$((TOTAL_TOKENS * 100 / MAX_TOKENS))
+    if [ $usage_percent -ge 80 ] && [ $usage_percent -lt 90 ]; then
+        log_warning "Token 使用已达 ${usage_percent}%，接近限制"
+    elif [ $usage_percent -ge 90 ]; then
+        log_warning "⚠️  Token 使用已达 ${usage_percent}%，即将达到限制！"
+    fi
+}
+
+# 估算 Token 使用量（基于字符数的粗略估算）
+estimate_tokens() {
+    local text="$1"
+    local char_count=${#text}
+    # 粗略估算：英文约4字符/token，中文约1.5字符/token，取平均2.5
+    echo $((char_count / 3))
+}
+
+# 错误分类函数
+classify_error() {
+    local error_output="$1"
+
+    if echo "$error_output" | grep -qi "network\|timeout\|connection\|ECONNREFUSED\|ETIMEDOUT"; then
+        echo "network"  # 网络问题 → 重试
+    elif echo "$error_output" | grep -qi "rate limit\|too many requests\|429"; then
+        echo "rate_limit"  # API 限流 → 等待更长时间
+    elif echo "$error_output" | grep -qi "authentication\|unauthorized\|401\|403"; then
+        echo "auth"  # 认证问题 → 需要人工介入
+    elif echo "$error_output" | grep -qi "out of memory\|ENOMEM"; then
+        echo "memory"  # 内存问题
+    elif echo "$error_output" | grep -qi "disk full\|ENOSPC"; then
+        echo "disk"  # 磁盘空间问题
+    else
+        echo "unknown"
+    fi
+}
+
+# 智能重试函数
+smart_retry() {
+    local error_output="$1"
+    local retry_count="$2"
+    local error_type=$(classify_error "$error_output")
+
+    case "$error_type" in
+        network)
+            local wait_time=$((60 * retry_count))  # 网络问题：1分钟、2分钟、3分钟
+            log_warning "检测到网络问题，等待 $wait_time 秒后重试..."
+            sleep $wait_time
+            return 0  # 可以重试
+            ;;
+        rate_limit)
+            local wait_time=$((300 * retry_count))  # API 限流：5分钟、10分钟、15分钟
+            log_warning "检测到 API 限流，等待 $((wait_time / 60)) 分钟后重试..."
+            sleep $wait_time
+            return 0  # 可以重试
+            ;;
+        auth)
+            log_error "检测到认证失败，需要人工检查 API 密钥配置"
+            return 1  # 不重试
+            ;;
+        memory)
+            log_error "检测到内存不足，需要人工处理"
+            return 1  # 不重试
+            ;;
+        disk)
+            log_error "检测到磁盘空间不足，需要人工清理"
+            return 1  # 不重试
+            ;;
+        *)
+            local wait_time=30
+            log_warning "未知错误类型，等待 $wait_time 秒后重试..."
+            sleep $wait_time
+            return 0  # 默认重试
+            ;;
+    esac
+}
+
+# 发送通知函数
+send_notification() {
+    local title="$1"
+    local message="$2"
+    local status="${3:-info}"  # success/error/info
+
+    # 检查是否启用通知
+    if [ "$ENABLE_NOTIFICATION" != "true" ]; then
+        return 0
+    fi
+
+    # 检查 Python 和通知脚本是否存在
+    if ! command -v python3 &> /dev/null; then
+        log_warning "Python3 未安装，跳过邮件通知"
+        return 1
+    fi
+
+    if [ ! -f "$NOTIFICATION_SCRIPT" ]; then
+        log_warning "通知脚本不存在: $NOTIFICATION_SCRIPT"
+        return 1
+    fi
+
+    # 发送通知（后台运行，不阻塞主流程）
+    (
+        python3 "$NOTIFICATION_SCRIPT" "$title" "$message" "$status" >> "$LOG_FILE" 2>&1
+    ) &
+
+    return 0
 }
 
 # 检查环境
@@ -287,6 +439,129 @@ $test_output
 EOF
 }
 
+# 构建批量生成任务的 Prompt
+build_batch_generate_prompt() {
+    cat << 'EOF'
+你是 ServerPilot 项目的 AI 开发助手。请分析项目当前状态，**批量生成**接下来要完成的任务。
+
+## 项目目标
+
+**产品方案**: docs/产品方案-目录.md - MVP 范围、优先级、技术栈概要
+**完整方案**: docs/DevOps产品方案.md - 详细产品设计（需要时查阅）
+**开发标准**: docs/开发标准.md - 技术架构、代码规范、Git 工作流、测试标准
+
+## 你的任务
+
+1. **阅读产品方案目录**: 读 docs/产品方案-目录.md，了解 MVP 范围和开发优先级
+2. **遵循开发标准**: 查看 docs/开发标准.md，了解技术架构和代码规范
+3. **分析当前代码**: 检查 packages/ 目录下各模块的实现状态
+4. **批量生成任务**: 根据优先级生成 5-10 个待完成任务（按重要性排序）
+
+## 输出格式
+
+请严格按以下格式输出多个任务（用 `---` 分隔）：
+
+```tasks
+### [pending] 任务1标题
+
+**ID**: task-001
+**优先级**: P0
+**模块路径**: packages/server/src/core/
+**任务描述**: 详细说明要实现什么功能
+**产品需求**: 对应产品方案中的哪个功能点
+**验收标准**: 如何验证任务完成
+**创建时间**: $(date '+%Y-%m-%d %H:%M:%S')
+**完成时间**: -
+
+---
+
+### [pending] 任务2标题
+
+**ID**: task-002
+**优先级**: P0
+**模块路径**: packages/server/src/db/
+**任务描述**: ...
+**产品需求**: ...
+**验收标准**: ...
+**创建时间**: $(date '+%Y-%m-%d %H:%M:%S')
+**完成时间**: -
+
+---
+
+... (继续生成更多任务)
+```
+
+## 注意事项
+
+- **任务粒度**: 每个任务 1-2 小时可完成
+- **优先级**: 优先生成 P0 任务，然后 P1、P2
+- **依赖关系**: 考虑任务之间的依赖，先生成基础任务
+- **数量**: 生成 5-10 个任务（根据项目状态决定）
+- **可执行性**: 每个任务描述要清晰、可独立执行
+
+开始分析并生成任务列表...
+EOF
+}
+
+# 批量生成任务并添加到队列
+run_claude_batch_generate() {
+    local prompt=$(build_batch_generate_prompt)
+    local output_file=$(mktemp)
+
+    log_ai "AI 正在批量生成任务..."
+
+    # 估算输入 Token
+    local input_tokens=$(estimate_tokens "$prompt")
+
+    if echo "$prompt" | claude -p > "$output_file" 2>&1; then
+        # 提取任务块
+        local tasks_content=$(sed -n '/```tasks/,/```/p' "$output_file" | sed '1d;$d')
+
+        if [ -n "$tasks_content" ]; then
+            # 添加任务到队列
+            add_tasks_to_queue "$TASK_QUEUE" "$tasks_content"
+
+            # 估算输出 Token
+            local output_tokens=$(estimate_tokens "$tasks_content")
+            log_token_usage $input_tokens $output_tokens "批量生成任务"
+
+            # 显示统计
+            local stats=$(get_task_stats "$TASK_QUEUE")
+            read total pending in_progress completed failed <<< "$stats"
+            log_success "成功生成 $pending 个新任务"
+            log_info "任务队列: 总计 $total | 待完成 $pending | 进行中 $in_progress | 已完成 $completed | 失败 $failed"
+
+            rm -f "$output_file"
+            return 0
+        else
+            log_error "AI 未能生成有效任务格式"
+            cat "$output_file"
+            rm -f "$output_file"
+            return 1
+        fi
+    else
+        log_error "AI 批量生成任务失败"
+        cat "$output_file"
+        rm -f "$output_file"
+        return 1
+    fi
+}
+
+# 检查并生成任务
+check_and_generate_tasks() {
+    local stats=$(get_task_stats "$TASK_QUEUE")
+    read total pending in_progress completed failed <<< "$stats"
+
+    if [ "$pending" -eq 0 ] && [ "$in_progress" -eq 0 ]; then
+        log_info "任务队列为空，开始批量生成任务..."
+        run_claude_batch_generate
+        return $?
+    else
+        log_info "任务队列状态: 总计 $total | 待完成 $pending | 进行中 $in_progress | 已完成 $completed | 失败 $failed"
+        return 0
+    fi
+}
+
 # 运行Claude分析任务（带超时）
 run_claude_analyze() {
     local iteration="$1"
@@ -371,6 +646,12 @@ run_claude_analyze() {
             echo "$task_block" > "$TASK_FILE"
             log_success "AI 生成了新任务"
             cat "$TASK_FILE"
+
+            # Token 统计
+            local input_tokens=$(estimate_tokens "$prompt")
+            local output_tokens=$(estimate_tokens "$task_block")
+            log_token_usage $input_tokens $output_tokens "任务分析"
+
             rm -f "$output_file" "$pid_file" "$pid_file.exit"
             return 0
         else
@@ -474,6 +755,14 @@ run_claude_execute() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
 
+    # Token 统计
+    if [ $exit_code -eq 0 ]; then
+        local input_tokens=$(estimate_tokens "$prompt")
+        local output_content=$(cat "$output_file" 2>/dev/null || echo "")
+        local output_tokens=$(estimate_tokens "$output_content")
+        log_token_usage $input_tokens $output_tokens "任务执行"
+    fi
+
     rm -f "$output_file" "$pid_file" "$pid_file.exit"
 
     if [ $exit_code -eq 0 ]; then
@@ -485,9 +774,111 @@ run_claude_execute() {
     fi
 }
 
-# 运行测试
+# 增量测试 - 只测试变更的模块
+run_incremental_tests() {
+    log_info "运行增量测试（智能检测变更模块）..."
+
+    if [ ! -f "package.json" ]; then
+        log_warning "package.json 不存在，跳过测试"
+        return 0
+    fi
+
+    if ! grep -q '"test"' package.json; then
+        log_warning "测试脚本未配置，跳过测试"
+        return 0
+    fi
+
+    # 检查是否是 git 仓库
+    if [ ! -d ".git" ]; then
+        log_warning "不是 Git 仓库，运行全量测试"
+        run_tests
+        return $?
+    fi
+
+    # 检测变更的文件
+    local changed_files=$(git diff --name-only HEAD 2>/dev/null || git ls-files --others --exclude-standard)
+
+    if [ -z "$changed_files" ]; then
+        log_info "没有文件变更，跳过测试"
+        return 0
+    fi
+
+    log_info "检测到以下文件变更:"
+    echo "$changed_files" | sed 's/^/  - /'
+
+    # 判断需要测试的模块
+    local test_server=false
+    local test_agent=false
+    local test_dashboard=false
+    local test_shared=false
+    local test_all=false
+
+    while IFS= read -r file; do
+        if echo "$file" | grep -q "^packages/server/"; then
+            test_server=true
+        elif echo "$file" | grep -q "^packages/agent/"; then
+            test_agent=true
+        elif echo "$file" | grep -q "^packages/dashboard/"; then
+            test_dashboard=true
+        elif echo "$file" | grep -q "^packages/shared/"; then
+            test_shared=true
+            test_all=true  # shared 模块变更，影响全部
+        fi
+    done <<< "$changed_files"
+
+    # 如果 shared 模块变更，运行全量测试
+    if [ "$test_all" = true ]; then
+        log_warning "检测到 shared 模块变更，运行全量测试"
+        run_tests
+        return $?
+    fi
+
+    # 运行对应模块的测试
+    local test_failed=false
+
+    if [ "$test_server" = true ]; then
+        log_info "测试 server 模块..."
+        if pnpm --filter @serverpilot/server test > "$TEST_LOG" 2>&1; then
+            log_success "server 模块测试通过"
+        else
+            log_error "server 模块测试失败"
+            test_failed=true
+        fi
+    fi
+
+    if [ "$test_agent" = true ]; then
+        log_info "测试 agent 模块..."
+        if pnpm --filter @serverpilot/agent test >> "$TEST_LOG" 2>&1; then
+            log_success "agent 模块测试通过"
+        else
+            log_error "agent 模块测试失败"
+            test_failed=true
+        fi
+    fi
+
+    if [ "$test_dashboard" = true ]; then
+        log_info "测试 dashboard 模块..."
+        if pnpm --filter @serverpilot/dashboard test >> "$TEST_LOG" 2>&1; then
+            log_success "dashboard 模块测试通过"
+        else
+            log_error "dashboard 模块测试失败"
+            test_failed=true
+        fi
+    fi
+
+    if [ "$test_failed" = true ]; then
+        log_error "增量测试失败"
+        tail -50 "$TEST_LOG"
+        return 1
+    else
+        log_success "增量测试全部通过"
+        return 0
+    fi
+}
+
+# 运行测试（全量测试）
 run_tests() {
-    log_info "运行测试..."
+    log_info "运行全量测试..."
 
     if [ ! -f "package.json" ]; then
         log_warning "package.json 不存在，跳过测试"
@@ -661,81 +1052,73 @@ main() {
     while [ $iteration -lt $MAX_ITERATIONS ]; do
         iteration=$((iteration + 1))
 
-        show_progress $iteration "${BLUE}分析中...${NC}"
+        show_progress $iteration "${BLUE}检查任务队列...${NC}"
 
-        # 步骤1: AI 分析项目并生成任务（带重试）
-        log_task "第 $iteration 轮: 分析项目状态..."
+        # 步骤1: 检查任务队列，如果为空则批量生成任务
+        log_task "第 $iteration 轮: 检查任务队列..."
 
-        local analyze_retry=0
-        local analyze_success=false
-
-        while [ $analyze_retry -lt $MAX_RETRIES ]; do
-            analyze_retry=$((analyze_retry + 1))
-
-            if [ $analyze_retry -gt 1 ]; then
-                log_warning "分析阶段第 $analyze_retry 次尝试..."
-            fi
-
-            if run_claude_analyze $iteration; then
-                local task_name=$(grep "任务名称:" "$TASK_FILE" | cut -d':' -f2- | xargs)
-
-                if [ -n "$task_name" ]; then
-                    analyze_success=true
-                    break
-                else
-                    log_warning "未提取到有效任务名称"
-                fi
-            else
-                local analyze_exit=$?
-                if [ $analyze_exit -eq 2 ]; then
-                    log_error "分析阶段超时"
-                else
-                    log_error "分析阶段失败"
-                fi
-            fi
-
-            if [ $analyze_retry -lt $MAX_RETRIES ]; then
-                log_warning "等待30秒后重试分析..."
-                sleep 30
-            fi
-        done
-
-        # 分析失败，记录并跳过本轮
-        if [ "$analyze_success" != true ]; then
-            log_error "分析阶段失败 (已尝试 $MAX_RETRIES 次)，跳过本轮"
-            record_state $iteration "分析失败" "⏭️ 跳过 (分析阶段失败 $MAX_RETRIES 次)"
-            show_progress $iteration "${RED}跳过: 分析阶段失败${NC}"
+        if ! check_and_generate_tasks; then
+            log_error "任务队列检查/生成失败，跳过本轮"
+            record_state $iteration "任务队列错误" "⏭️ 跳过 (任务队列错误)"
+            show_progress $iteration "${RED}跳过: 任务队列错误${NC}"
             log_info "等待 ${INTERVAL}秒 后继续下一轮..."
             sleep $INTERVAL
             continue
         fi
 
-        log_task "第 $iteration 轮: $task_name"
+        # 步骤2: 从队列获取下一个任务
+        local task_content=$(get_next_task "$TASK_QUEUE")
+
+        if [ -z "$task_content" ]; then
+            log_warning "任务队列为空，等待下一轮重新生成"
+            sleep $INTERVAL
+            continue
+        fi
+
+        # 提取任务信息
+        local task_id=$(echo "$task_content" | grep "^**ID**:" | cut -d':' -f2- | xargs)
+        local task_title=$(echo "$task_content" | head -1 | sed 's/^### \[pending\] //')
+        local task_name="${task_title}"
+
+        log_task "第 $iteration 轮: $task_name (ID: $task_id)"
         show_progress $iteration "${YELLOW}执行中: $task_name${NC}"
 
-        # 步骤2: AI 执行任务（带重试）
+        # 标记任务为进行中
+        mark_task_in_progress "$TASK_QUEUE" "$task_id"
+
+        # 将任务内容写入 TASK_FILE 供执行使用
+        echo "$task_content" > "$TASK_FILE"
+
+        # 步骤3: AI 执行任务（带智能重试）
         local execute_retry=0
         local task_success=false
+        local last_error_output=""
 
         while [ $execute_retry -lt $MAX_RETRIES ]; do
             execute_retry=$((execute_retry + 1))
 
             if [ $execute_retry -gt 1 ]; then
                 log_warning "执行阶段第 $execute_retry 次尝试..."
+                # 使用智能重试策略
+                if ! smart_retry "$last_error_output" $execute_retry; then
+                    log_error "错误类型不支持重试，停止尝试"
+                    break
+                fi
             fi
 
             if run_claude_execute $iteration; then
-                # 步骤3: 运行测试
-                if run_tests; then
+                # 步骤4: 运行增量测试
+                if run_incremental_tests; then
                     task_success=true
                     break
                 else
                     # 测试失败，让AI修复
                     log_warning "测试失败，尝试让 AI 修复..."
+                    last_error_output=$(tail -100 "$TEST_LOG")
                     run_claude_fix
 
                     # 再次运行测试
-                    if run_tests; then
+                    if run_incremental_tests; then
                         task_success=true
                         break
                     fi
@@ -744,28 +1127,63 @@ main() {
                 local execute_exit=$?
                 if [ $execute_exit -eq 2 ]; then
                     log_error "执行阶段超时"
+                    last_error_output="timeout"
                 else
                     log_error "执行阶段失败"
+                    # 获取错误输出用于智能重试判断
+                    last_error_output=$(tail -50 "$LOG_FILE")
                 fi
             fi
 
             if [ $execute_retry -lt $MAX_RETRIES ]; then
-                log_warning "等待30秒后重试执行..."
-                sleep 30
+                # 如果不是智能重试决定等待，则默认等待30秒
+                if [ -z "$last_error_output" ]; then
+                    log_warning "等待30秒后重试执行..."
+                    sleep 30
+                fi
             fi
         done
 
-        # 记录状态
+        # 记录状态并更新任务队列
         if [ "$task_success" = true ]; then
+            # 标记任务为完成
+            mark_task_completed "$TASK_QUEUE" "$task_id"
             record_state $iteration "$task_name" "✅ 完成"
             show_progress $iteration "${GREEN}完成: $task_name${NC}"
 
             # Git 自动提交（仅在任务成功时）
-            log_info "步骤 4: Git 提交变更..."
+            log_info "步骤 5: Git 提交变更..."
             run_git_commit $iteration "$task_name" "✅ 完成"
+
+            # 发送成功通知
+            local success_msg="任务: $task_name
+ID: $task_id
+状态: 已完成
+轮次: 第 $iteration 轮
+时间: $(date '+%Y-%m-%d %H:%M:%S')
+
+✅ 任务执行成功，测试通过，已提交到 Git。"
+            send_notification "任务完成: $task_name" "$success_msg" "success"
         else
-            record_state $iteration "$task_name" "❌ 失败 (执行阶段尝试 $MAX_RETRIES 次)"
+            # 标记任务为失败
+            local error_msg="执行阶段尝试 $execute_retry 次"
+            mark_task_failed "$TASK_QUEUE" "$task_id" "$error_msg"
+            record_state $iteration "$task_name" "❌ 失败 ($error_msg)"
             show_progress $iteration "${RED}失败: $task_name${NC}"
+
+            # 发送失败通知
+            local failure_msg="任务: $task_name
+ID: $task_id
+状态: 失败
+轮次: 第 $iteration 轮
+重试次数: $execute_retry
+时间: $(date '+%Y-%m-%d %H:%M:%S')
+
+❌ 任务执行失败，已标记为失败状态。
+
+错误摘要:
+$(echo "$last_error_output" | head -20)"
+            send_notification "任务失败: $task_name" "$failure_msg" "error"
         fi
 
         # 等待间隔
