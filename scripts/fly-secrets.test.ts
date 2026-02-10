@@ -165,7 +165,7 @@ describe('parseEnvExample()', () => {
     const result = parseEnvExample();
     const entry = result.get('DASHBOARD_PORT');
     expect(entry).toBeDefined();
-    expect(entry!.defaultValue).toBe('80');
+    expect(entry!.defaultValue).toBe('3001');
   });
 
   it('应解析出 AI_MODEL 的默认值', () => {

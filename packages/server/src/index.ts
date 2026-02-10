@@ -109,8 +109,8 @@ export interface ServerConfig {
 export function loadConfig(): ServerConfig {
   config();
 
-  // Generate a random JWT secret if not set (development only)
-  const jwtSecret = process.env.JWT_SECRET ?? randomBytes(32).toString('base64');
+  // Generate a random JWT secret if not set or empty
+  const jwtSecret = process.env.JWT_SECRET || randomBytes(32).toString('base64');
 
   const serverConfig: ServerConfig = {
     port: parseInt(process.env.SERVER_PORT ?? '3000', 10),

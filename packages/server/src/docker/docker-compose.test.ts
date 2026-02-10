@@ -86,7 +86,7 @@ describe('port mapping', () => {
   });
 
   it('should allow configurable dashboard host port', () => {
-    expect(composeContent).toMatch(/\$\{DASHBOARD_PORT:-80\}:80/);
+    expect(composeContent).toMatch(/\$\{DASHBOARD_PORT:-3001\}:80/);
   });
 });
 
@@ -137,13 +137,13 @@ describe('environment variables', () => {
 // ============================================================================
 
 describe('volumes', () => {
-  it('should define a knowledge-base volume', () => {
+  it('should define a server-data volume for SQLite persistence', () => {
     expect(composeContent).toMatch(/^volumes:/m);
-    expect(composeContent).toMatch(/knowledge-base:/);
+    expect(composeContent).toMatch(/server-data:/);
   });
 
-  it('should mount knowledge-base volume to /app/knowledge-base', () => {
-    expect(composeContent).toMatch(/knowledge-base:\/app\/knowledge-base/);
+  it('should mount server-data volume to /data', () => {
+    expect(composeContent).toMatch(/server-data:\/data/);
   });
 });
 

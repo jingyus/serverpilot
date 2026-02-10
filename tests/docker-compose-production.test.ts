@@ -248,15 +248,15 @@ describe('Docker Compose Production Deployment', () => {
       expect(hasDataVolume).toBe(true);
     });
 
-    it('should mount knowledge-base to server', () => {
+    it('should mount server-data volume for SQLite persistence', () => {
       const content = readFileSync(dockerComposePath, 'utf-8');
       const config = parseYaml(content);
 
       const serverVolumes = config.services.server.volumes;
-      const hasKnowledgeBase = serverVolumes.some((vol: string) =>
-        vol.includes('knowledge-base:/app/knowledge-base')
+      const hasDataVolume = serverVolumes.some((vol: string) =>
+        vol.includes('server-data:/data')
       );
-      expect(hasKnowledgeBase).toBe(true);
+      expect(hasDataVolume).toBe(true);
     });
   });
 

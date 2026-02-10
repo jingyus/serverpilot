@@ -13,6 +13,9 @@
 # --------------------------------------------------------------------------
 FROM node:22-alpine AS deps
 
+# Install build tools for native modules (better-sqlite3)
+RUN apk add --no-cache python3 make g++
+
 RUN corepack enable && corepack prepare pnpm@10.13.1 --activate
 
 WORKDIR /app
@@ -31,6 +34,9 @@ RUN pnpm install --frozen-lockfile --prod
 # Stage 2: Build TypeScript
 # --------------------------------------------------------------------------
 FROM node:22-alpine AS build
+
+# Install build tools for native modules (better-sqlite3)
+RUN apk add --no-cache python3 make g++
 
 RUN corepack enable && corepack prepare pnpm@10.13.1 --activate
 
@@ -87,11 +93,7 @@ COPY --from=build /app/packages/shared/package.json ./packages/shared/package.js
 COPY --from=build /app/packages/server/package.json ./packages/server/package.json
 COPY --from=build /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
 
-# Copy Drizzle migration files for DB migrations
-COPY --from=build /app/packages/server/drizzle.config.ts ./packages/server/drizzle.config.ts
-COPY --from=build /app/packages/server/src/db/migrations ./packages/server/src/db/migrations
-
-# Copy knowledge-base if it exists (optional runtime data)
+# Copy knowledge-base (built-in documentation for AI agent)
 COPY knowledge-base/ ./knowledge-base/
 
 # Set ownership
@@ -111,7 +113,7 @@ ENV LOG_LEVEL=info
 EXPOSE 3000
 
 # Health check
-HEALTHCHECK --interval=10s --timeout=5s --start-period=20s --retries=5 \
+HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=5 \
   CMD node -e "const http = require('http'); http.get('http://localhost:3000/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))" || exit 1
 
 # Start the server
