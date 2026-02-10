@@ -308,6 +308,216 @@ describe('OpenAPI Routes', () => {
   });
 
   // ==========================================================================
+  // Response schemas and examples
+  // ==========================================================================
+
+  describe('Response Schemas', () => {
+    it('should have typed response schemas for auth endpoints', async () => {
+      const res = await app.request('/api-docs/openapi.json');
+      const doc = await res.json() as Record<string, unknown>;
+      const paths = doc.paths as Record<string, Record<string, { responses: Record<string, { content?: Record<string, { schema?: Record<string, unknown> }> }> }>>;
+
+      // POST /auth/login should have 200 response with schema
+      const loginResp = paths['/api/v1/auth/login'].post.responses['200'];
+      expect(loginResp.content).toBeDefined();
+      expect(loginResp.content!['application/json']).toBeDefined();
+      expect(loginResp.content!['application/json'].schema).toBeDefined();
+
+      // POST /auth/register should have 201 response with schema
+      const registerResp = paths['/api/v1/auth/register'].post.responses['201'];
+      expect(registerResp.content).toBeDefined();
+      expect(registerResp.content!['application/json'].schema).toBeDefined();
+    });
+
+    it('should have typed response schemas for server endpoints', async () => {
+      const res = await app.request('/api-docs/openapi.json');
+      const doc = await res.json() as Record<string, unknown>;
+      const paths = doc.paths as Record<string, Record<string, { responses: Record<string, { content?: Record<string, { schema?: Record<string, unknown> }> }> }>>;
+
+      // GET /servers should have 200 response with schema containing "servers" array
+      const listResp = paths['/api/v1/servers'].get.responses['200'];
+      expect(listResp.content).toBeDefined();
+      const listSchema = listResp.content!['application/json'].schema as Record<string, unknown>;
+      expect(listSchema.properties).toHaveProperty('servers');
+
+      // POST /servers should have 201 response with schema containing "server" + "agentToken"
+      const createResp = paths['/api/v1/servers'].post.responses['201'];
+      expect(createResp.content).toBeDefined();
+      const createSchema = createResp.content!['application/json'].schema as { properties: { server: { properties: Record<string, unknown> } } };
+      expect(createSchema.properties.server.properties).toHaveProperty('agentToken');
+    });
+
+    it('should have typed response schemas for task endpoints', async () => {
+      const res = await app.request('/api-docs/openapi.json');
+      const doc = await res.json() as Record<string, unknown>;
+      const paths = doc.paths as Record<string, Record<string, { responses: Record<string, { content?: Record<string, { schema?: Record<string, unknown> }> }> }>>;
+
+      // GET /tasks should have pagination fields
+      const listResp = paths['/api/v1/tasks'].get.responses['200'];
+      const listSchema = listResp.content!['application/json'].schema as Record<string, unknown>;
+      expect(listSchema.properties).toHaveProperty('tasks');
+      expect(listSchema.properties).toHaveProperty('total');
+      expect(listSchema.properties).toHaveProperty('limit');
+      expect(listSchema.properties).toHaveProperty('offset');
+
+      // POST /tasks/{id}/run should have execution result schema
+      const runResp = paths['/api/v1/tasks/{id}/run'].post.responses['200'];
+      const runSchema = runResp.content!['application/json'].schema as Record<string, unknown>;
+      expect(runSchema.properties).toHaveProperty('exitCode');
+      expect(runSchema.properties).toHaveProperty('stdout');
+      expect(runSchema.properties).toHaveProperty('stderr');
+    });
+
+    it('should have typed response schemas for alert endpoints', async () => {
+      const res = await app.request('/api-docs/openapi.json');
+      const doc = await res.json() as Record<string, unknown>;
+      const paths = doc.paths as Record<string, Record<string, { responses: Record<string, { content?: Record<string, { schema?: Record<string, unknown> }> }> }>>;
+
+      // PATCH /alerts/{id}/resolve should include both success and alert
+      const resolveResp = paths['/api/v1/alerts/{id}/resolve'].patch.responses['200'];
+      const resolveSchema = resolveResp.content!['application/json'].schema as Record<string, unknown>;
+      expect(resolveSchema.properties).toHaveProperty('success');
+      expect(resolveSchema.properties).toHaveProperty('alert');
+    });
+
+    it('should have typed response schemas for operation endpoints', async () => {
+      const res = await app.request('/api-docs/openapi.json');
+      const doc = await res.json() as Record<string, unknown>;
+      const paths = doc.paths as Record<string, Record<string, { responses: Record<string, { content?: Record<string, { schema?: Record<string, unknown> }> }> }>>;
+
+      // GET /operations/stats should have stats object
+      const statsResp = paths['/api/v1/operations/stats'].get.responses['200'];
+      const statsSchema = statsResp.content!['application/json'].schema as Record<string, unknown>;
+      expect(statsSchema.properties).toHaveProperty('stats');
+    });
+
+    it('should have typed response schemas for metrics endpoints', async () => {
+      const res = await app.request('/api-docs/openapi.json');
+      const doc = await res.json() as Record<string, unknown>;
+      const paths = doc.paths as Record<string, Record<string, { responses: Record<string, { content?: Record<string, { schema?: Record<string, unknown> }> }> }>>;
+
+      // GET /metrics should have metrics array
+      const metricsResp = paths['/api/v1/metrics'].get.responses['200'];
+      const metricsSchema = metricsResp.content!['application/json'].schema as Record<string, unknown>;
+      expect(metricsSchema.properties).toHaveProperty('metrics');
+
+      // GET /metrics/aggregated should have metrics with avg/min/max
+      const aggResp = paths['/api/v1/metrics/aggregated'].get.responses['200'];
+      expect(aggResp.content).toBeDefined();
+    });
+
+    it('should have typed response schemas for settings endpoints', async () => {
+      const res = await app.request('/api-docs/openapi.json');
+      const doc = await res.json() as Record<string, unknown>;
+      const paths = doc.paths as Record<string, Record<string, { responses: Record<string, { content?: Record<string, { schema?: Record<string, unknown> }> }> }>>;
+
+      // GET /settings should have all setting sections
+      const settingsResp = paths['/api/v1/settings'].get.responses['200'];
+      const settingsSchema = settingsResp.content!['application/json'].schema as Record<string, unknown>;
+      expect(settingsSchema.properties).toHaveProperty('aiProvider');
+      expect(settingsSchema.properties).toHaveProperty('userProfile');
+      expect(settingsSchema.properties).toHaveProperty('notifications');
+      expect(settingsSchema.properties).toHaveProperty('knowledgeBase');
+    });
+
+    it('should have typed response for health check', async () => {
+      const res = await app.request('/api-docs/openapi.json');
+      const doc = await res.json() as Record<string, unknown>;
+      const paths = doc.paths as Record<string, Record<string, { responses: Record<string, { content?: Record<string, { schema?: Record<string, unknown> }> }> }>>;
+
+      const healthResp = paths['/health'].get.responses['200'];
+      const healthSchema = healthResp.content!['application/json'].schema as Record<string, unknown>;
+      expect(healthSchema.properties).toHaveProperty('status');
+      expect(healthSchema.properties).toHaveProperty('timestamp');
+    });
+  });
+
+  // ==========================================================================
+  // Example values
+  // ==========================================================================
+
+  describe('Example Values', () => {
+    it('should include examples in response schemas', async () => {
+      const res = await app.request('/api-docs/openapi.json');
+      const doc = await res.json() as Record<string, unknown>;
+      const paths = doc.paths as Record<string, Record<string, { responses: Record<string, { content?: Record<string, { schema?: Record<string, unknown> }> }> }>>;
+
+      // Check that auth response schema properties have examples
+      const loginSchema = paths['/api/v1/auth/login'].post.responses['200']
+        .content!['application/json'].schema as { properties: Record<string, { properties?: Record<string, { example?: unknown }> }> };
+      const userProps = loginSchema.properties.user?.properties;
+      expect(userProps?.email?.example).toBe('admin@example.com');
+    });
+
+    it('should include examples in agent version response', async () => {
+      const res = await app.request('/api-docs/openapi.json');
+      const doc = await res.json() as Record<string, unknown>;
+      const paths = doc.paths as Record<string, Record<string, { responses: Record<string, { content?: Record<string, { schema?: Record<string, unknown> }> }> }>>;
+
+      const versionSchema = paths['/api/v1/agent/version'].get.responses['200']
+        .content!['application/json'].schema as { properties: Record<string, { example?: unknown }> };
+      expect(versionSchema.properties.latest?.example).toBe('0.2.0');
+      expect(versionSchema.properties.updateAvailable?.example).toBe(true);
+    });
+
+    it('should include descriptions in endpoint definitions', async () => {
+      const res = await app.request('/api-docs/openapi.json');
+      const doc = await res.json() as Record<string, unknown>;
+      const paths = doc.paths as Record<string, Record<string, { description?: string }>>;
+
+      // Chat endpoints should have descriptions about SSE streaming
+      expect(paths['/api/v1/chat/{serverId}'].post.description).toContain('Server-Sent Events');
+      expect(paths['/api/v1/chat/{serverId}/execute'].post.description).toContain('SSE');
+    });
+  });
+
+  // ==========================================================================
+  // Endpoint count completeness
+  // ==========================================================================
+
+  describe('Endpoint Completeness', () => {
+    it('should document all server profile sub-routes', async () => {
+      const res = await app.request('/api-docs/openapi.json');
+      const doc = await res.json() as { paths: Record<string, unknown> };
+
+      expect(doc.paths).toHaveProperty('/api/v1/servers/{id}/profile');
+      expect(doc.paths).toHaveProperty('/api/v1/servers/{id}/metrics');
+      expect(doc.paths).toHaveProperty('/api/v1/servers/{id}/operations');
+      expect(doc.paths).toHaveProperty('/api/v1/servers/{id}/profile/notes');
+      expect(doc.paths).toHaveProperty('/api/v1/servers/{id}/profile/preferences');
+      expect(doc.paths).toHaveProperty('/api/v1/servers/{id}/profile/history');
+      expect(doc.paths).toHaveProperty('/api/v1/servers/{id}/profile/summary');
+    });
+
+    it('should document all knowledge sub-routes', async () => {
+      const res = await app.request('/api-docs/openapi.json');
+      const doc = await res.json() as { paths: Record<string, unknown> };
+
+      expect(doc.paths).toHaveProperty('/api/v1/knowledge/scrape');
+      expect(doc.paths).toHaveProperty('/api/v1/knowledge/scrape/builtin');
+      expect(doc.paths).toHaveProperty('/api/v1/knowledge/sources');
+      expect(doc.paths).toHaveProperty('/api/v1/knowledge/docs');
+      expect(doc.paths).toHaveProperty('/api/v1/knowledge/tasks');
+      expect(doc.paths).toHaveProperty('/api/v1/knowledge/tasks/{taskId}');
+      expect(doc.paths).toHaveProperty('/api/v1/knowledge/search');
+    });
+
+    it('should have at least 60 unique endpoint operations', async () => {
+      const res = await app.request('/api-docs/openapi.json');
+      const doc = await res.json() as { paths: Record<string, Record<string, unknown>> };
+
+      let operationCount = 0;
+      const httpMethods = ['get', 'post', 'put', 'patch', 'delete'];
+      for (const pathMethods of Object.values(doc.paths)) {
+        for (const method of httpMethods) {
+          if (pathMethods[method]) operationCount++;
+        }
+      }
+      expect(operationCount).toBeGreaterThanOrEqual(60);
+    });
+  });
+
+  // ==========================================================================
   // generateOpenAPIDocument
   // ==========================================================================
 
