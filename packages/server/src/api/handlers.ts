@@ -12,6 +12,7 @@ import type {
   SessionCreateMessage,
   EnvReportMessage,
   StepCompleteMessage,
+  StepOutputMessage,
   ErrorOccurredMessage,
   AuthRequestMessage,
   Message,
@@ -416,6 +417,40 @@ export async function handleEnvReport(
 }
 
 /**
+ * Handle a step.output message from the agent.
+ *
+ * Routes the streaming output to the TaskExecutor, which will forward it
+ * to any registered progress callbacks for real-time output display.
+ *
+ * @param server - The InstallServer instance
+ * @param clientId - The client that sent the message
+ * @param message - The step.output message
+ * @returns Result indicating success or failure
+ */
+export function handleStepOutput(
+  server: InstallServer,
+  clientId: string,
+  message: StepOutputMessage,
+): HandlerResult {
+  try {
+    // Route output to TaskExecutor if available
+    // If the executor isn't initialized (e.g., in tests), just succeed silently
+    try {
+      const executor = getTaskExecutor(server);
+      executor.handleStepOutput(message.payload.stepId, message.payload.output);
+    } catch {
+      // TaskExecutor not initialized - skip routing (likely in test environment)
+    }
+
+    return { success: true };
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    logError(err as Error, { clientId, operation: 'step.output' }, 'Failed to handle step output');
+    return { success: false, error: errorMsg };
+  }
+}
+
+/**
  * Handle a step completion report from the agent.
  *
  * Processes the result of a completed step. If the step failed,
@@ -452,6 +487,16 @@ export function handleStepComplete(
       stepId: message.payload.stepId,
       success: message.payload.success,
     });
+
+    // Route the result to TaskExecutor (which will resolve waiting executions)
+    // This is a best-effort operation - if the executor isn't initialized
+    // (e.g., in tests), we skip this step without failing
+    try {
+      const executor = getTaskExecutor(server);
+      executor.handleStepComplete(message.payload);
+    } catch {
+      // TaskExecutor not initialized - skip routing (likely in test environment)
+    }
 
     if (message.payload.success) {
       // Step succeeded - keep session in executing status
@@ -759,6 +804,8 @@ export async function routeMessage(
       return handleCreateSession(server, clientId, message);
     case MessageType.ENV_REPORT:
       return await handleEnvReport(server, clientId, message, aiAgent);
+    case MessageType.STEP_OUTPUT:
+      return handleStepOutput(server, clientId, message);
     case MessageType.STEP_COMPLETE:
       return handleStepComplete(server, clientId, message);
     case MessageType.ERROR_OCCURRED:
