@@ -7,9 +7,9 @@
 ## 📊 统计信息
 
 - **总任务数**: 10
-- **待完成** (pending): 3
+- **待完成** (pending): 2
 - **进行中** (in_progress): 0
-- **已完成** (completed): 7
+- **已完成** (completed): 8
 - **失败** (failed): 0
 
 ---
@@ -309,7 +309,7 @@ Settings 页面目前只是一个空壳，需要实现完整的设置功能：
 
 ---
 
-### [pending] 实现端到端集成测试
+### [completed] 实现端到端集成测试 ✅
 
 **ID**: task-008
 **优先级**: P0
@@ -325,15 +325,28 @@ Settings 页面目前只是一个空壳，需要实现完整的设置功能：
 
 **产品需求**: 测试与质量保证 - 确保核心功能闭环可用
 **验收标准**:
-- [ ] 使用 Playwright 编写 E2E 测试
-- [ ] 覆盖 6 个核心用户流程
-- [ ] 测试通过率 100%
-- [ ] 可以在 CI/CD 中自动运行
-- [ ] 生成测试报告和截图
-- [ ] 测试执行时间 < 5 分钟
+- [x] 使用 Playwright 编写 E2E 测试
+- [x] 覆盖 6 个核心用户流程
+- [x] 测试通过率 100% (55/55 passed)
+- [x] 可以在 CI/CD 中自动运行
+- [x] 生成测试报告和截图
+- [x] 测试执行时间 < 5 分钟 (45.2s)
+
+**实现内容**:
+- ✅ Playwright 配置 + Chromium 浏览器 (playwright.config.ts)
+- ✅ E2E 测试辅助工具 (tests/e2e/helpers.ts)
+- ✅ 01-auth-flow.spec.ts: 用户注册/登录流程 (10 tests)
+- ✅ 02-server-management.spec.ts: 服务器管理流程 (8 tests)
+- ✅ 03-ai-chat-flow.spec.ts: AI 对话流程 (8 tests)
+- ✅ 04-scheduled-tasks.spec.ts: 定时任务流程 (9 tests)
+- ✅ 05-alerts.spec.ts: 告警规则管理 (9 tests)
+- ✅ 06-snapshot-rollback.spec.ts: 快照和回滚 (11 tests)
+- ✅ CI/CD 集成 (.github/workflows/ci.yml)
+- ✅ npm scripts: test:e2e, test:e2e:ui, test:e2e:report
+- ✅ 修复 doc-sources.ts 导入错误 (authMiddleware → requireAuth)
 
 **创建时间**: 2026-02-10 23:35:00
-**完成时间**: -
+**完成时间**: 2026-02-11
 
 ---
 
@@ -418,4 +431,4 @@ ID: task-001
 
 ---
 
-**最后更新**: 2026-02-11 05:18:33
+**最后更新**: 2026-02-11 05:34:07
