@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Save, Loader2, AlertCircle, CheckCircle2, Key, User, Bell, Shield, Book } from 'lucide-react';
+import { DocSourceSection } from '@/components/knowledge/DocSourceSection';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -488,12 +489,9 @@ export function Settings() {
 
           <Separator />
 
-          <div className="space-y-2">
-            <Label>Document Sources</Label>
-            <p className="text-sm text-muted-foreground">
-              Configure custom documentation sources in v0.2
-            </p>
-          </div>
+          <DocSourceSection />
+
+          <Separator />
 
           <Button
             onClick={handleSaveKnowledgeBase}

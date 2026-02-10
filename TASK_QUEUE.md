@@ -7,9 +7,9 @@
 ## 📊 统计信息
 
 - **总任务数**: 20
-- **待完成** (pending): 7
+- **待完成** (pending): 6
 - **进行中** (in_progress): 0
-- **已完成** (completed): 13
+- **已完成** (completed): 14
 - **失败** (failed): 0
 
 ---
@@ -123,7 +123,7 @@
 
 ---
 
-### [pending] 文档自动抓取功能实现
+### [completed] 文档自动抓取功能实现 ✅
 
 **ID**: task-004
 **优先级**: P1
@@ -131,13 +131,34 @@
 **任务描述**: TODO.md 中 Phase 2 唯一未完成的任务。knowledge 模块中已有 github-doc-scraper.ts、web-doc-scraper.ts、doc-fetcher.ts、doc-auto-fetcher.ts 等文件，需要验证这些组件是否能正常工作，并补充集成逻辑：(1) 通过 Dashboard Settings 页面配置文档源 URL (2) 定时自动拉取并更新知识库 (3) 文档变更检测避免重复抓取 (4) 将抓取内容索引到向量数据库供 RAG 使用。
 **产品需求**: Phase 2 - "文档自动抓取：GitHub/官网文档解析"
 **验收标准**:
-- 可以通过 API 添加文档源（GitHub repo URL 或网页 URL）
-- 文档抓取能正确解析 Markdown/HTML 内容
-- 抓取的文档被自动分块并索引到向量数据库
-- Dashboard Settings 页面可以管理文档源
-- 变更检测能识别已更新的文档并增量更新
+- [x] 可以通过 API 添加文档源（GitHub repo URL 或网页 URL）
+- [x] 文档抓取能正确解析 Markdown/HTML 内容
+- [x] 抓取的文档被自动分块并索引到向量数据库
+- [x] Dashboard Settings 页面可以管理文档源
+- [x] 变更检测能识别已更新的文档并增量更新
+
+**实现内容**:
+- ✅ Server: doc-sources CRUD API (POST/GET/PATCH/DELETE /api/v1/doc-sources)
+- ✅ Server: 手动触发抓取 (POST /api/v1/doc-sources/:id/fetch)
+- ✅ Server: 抓取状态查询 (GET /api/v1/doc-sources/:id/status)
+- ✅ Server: DocAutoFetcher 启动时自动定时抓取 (index.ts 集成)
+- ✅ Server: GitHub SHA / Website Hash 变更检测避免重复抓取
+- ✅ Server: IntegratedKnowledgeLoader 统一加载静态+抓取文档
+- ✅ Dashboard: DocSourceSection 组件 - 文档源管理 UI
+- ✅ Dashboard: 添加/删除/启用/禁用文档源
+- ✅ Dashboard: 手动触发抓取，查看状态和文档计数
+- ✅ Dashboard: Zustand store (useDocSourcesStore) 完整状态管理
+- ✅ Dashboard: Settings 页面集成 DocSourceSection
+
+**测试覆盖率**:
+- doc-sources API 路由测试: 20/20 通过 (100%)
+- doc-sources store 测试: 11/11 通过 (100%)
+- DocSourceSection 组件测试: 11/11 通过 (100%)
+- 知识模块已有测试: 1157/1157 通过 (100%)
+- Dashboard 全量测试: 744/744 通过 (100%)
+
 **创建时间**: 2026-02-11 00:00:00
-**完成时间**: -
+**完成时间**: 2026-02-11 07:55:00
 
 ---
 
@@ -689,4 +710,4 @@ ID: task-001
 
 ---
 
-**最后更新**: 2026-02-11 07:40:38
+**最后更新**: 2026-02-11 07:53:02

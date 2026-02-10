@@ -7,6 +7,9 @@ import { useAuthStore } from '@/stores/auth';
 
 vi.mock('@/stores/settings');
 vi.mock('@/stores/auth');
+vi.mock('@/components/knowledge/DocSourceSection', () => ({
+  DocSourceSection: () => <div data-testid="doc-source-section">DocSourceSection</div>,
+}));
 
 const mockUseSettingsStore = vi.mocked(useSettingsStore);
 const mockUseAuthStore = vi.mocked(useAuthStore);
