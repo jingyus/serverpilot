@@ -174,7 +174,7 @@ build_analyze_prompt() {
 ## 你的任务
 
 1. **阅读产品方案目录**: 先读 docs/产品方案-目录.md，了解 MVP 范围和开发优先级
-2. **参考技术方案**: 查看 docs/SERVERPILOT技术方案.md，了解技术实现细节
+2. **参考技术方案**: 如果需要查看 docs/SERVERPILOT技术方案.md，了解技术实现细节
 3. **分析当前代码**: 检查 packages/ 目录下各模块的实现状态
 4. **确定下一个任务**: 根据"产品方案-目录.md"中的开发优先级，选择一个最重要的任务
 5. **生成任务描述**: 输出一个明确的任务描述
@@ -567,14 +567,16 @@ Status: ${status}"
             log_success "Git 提交成功: ${commit_sha}"
             log_info "分支: ${branch_name}"
 
-            # 可选：推送到远程（如果配置了 remote）
-            if git remote | grep -q "origin"; then
-                log_info "检测到远程仓库，尝试推送..."
+            # 只在任务成功时推送到远程（如果配置了 remote）
+            if [ "$status" = "✅ 完成" ] && git remote | grep -q "origin"; then
+                log_info "任务成功，推送到远程仓库..."
                 if git push -u origin "$branch_name" 2>&1 | tail -5; then
-                    log_success "推送到远程成功"
+                    log_success "推送到远程成功: origin/$branch_name"
                 else
                     log_warning "推送失败（可能需要配置认证）"
                 fi
+            elif [ "$status" != "✅ 完成" ]; then
+                log_info "任务未完全成功，跳过推送到远程"
             fi
 
             return 0
