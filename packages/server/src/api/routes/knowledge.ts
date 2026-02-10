@@ -22,6 +22,7 @@ import type { GitHubDocSource } from '../../knowledge/github-doc-scraper.js';
 import type { WebDocSource } from '../../knowledge/web-doc-scraper.js';
 import type { ScrapeDocBody } from './schemas.js';
 import type { ApiEnv } from './types.js';
+import { getKnowledgeRepository } from '../../db/repositories/knowledge-repository.js';
 
 // ============================================================================
 // State
@@ -178,6 +179,48 @@ knowledge.get('/tasks/:taskId', (c) => {
     return c.json({ error: 'Task not found' }, 404);
   }
   return c.json({ task });
+});
+
+// --------------------------------------------------------------------------
+// GET /knowledge/search — Search knowledge base entries
+// --------------------------------------------------------------------------
+
+knowledge.get('/search', async (c) => {
+  const query = c.req.query('q');
+  const source = c.req.query('source') as 'builtin' | 'auto_learn' | 'scrape' | 'community' | undefined;
+
+  if (!query) {
+    return c.json({ error: 'Query parameter "q" is required' }, 400);
+  }
+
+  logger.info({ query, source }, 'Searching knowledge base');
+
+  const repo = getKnowledgeRepository();
+
+  let results = await repo.search(query);
+
+  // Filter by source if provided
+  if (source) {
+    results = results.filter((r) => r.source === source);
+  }
+
+  logger.info({ query, count: results.length }, 'Knowledge search completed');
+
+  return c.json({
+    query,
+    count: results.length,
+    results: results.map((r) => ({
+      id: r.id,
+      software: r.software,
+      platform: r.platform,
+      content: r.content,
+      source: r.source,
+      successCount: r.successCount,
+      lastUsed: r.lastUsed,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+    })),
+  });
 });
 
 export { knowledge };

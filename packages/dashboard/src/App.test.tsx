@@ -42,6 +42,11 @@ describe('App', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'AI Chat' })).toBeInTheDocument();
   });
 
+  it('renders search page at /search', () => {
+    renderApp('/search');
+    expect(screen.getByRole('heading', { level: 1, name: 'Knowledge Base' })).toBeInTheDocument();
+  });
+
   it('redirects / to /dashboard', () => {
     renderApp('/');
     expect(screen.getByRole('heading', { level: 1, name: 'Dashboard' })).toBeInTheDocument();

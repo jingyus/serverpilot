@@ -80,6 +80,7 @@ describe('Sidebar', () => {
       expect(screen.getByText('Dashboard')).toBeInTheDocument();
       expect(screen.getByText('Servers')).toBeInTheDocument();
       expect(screen.getByText('AI Chat')).toBeInTheDocument();
+      expect(screen.getByText('Knowledge')).toBeInTheDocument();
       expect(screen.getByText('Tasks')).toBeInTheDocument();
       expect(screen.getByText('Operations')).toBeInTheDocument();
       expect(screen.getByText('Settings')).toBeInTheDocument();
@@ -203,6 +204,7 @@ describe('Sidebar', () => {
         '/dashboard',
         '/servers',
         '/chat',
+        '/search',
         '/tasks',
         '/operations',
         '/settings',

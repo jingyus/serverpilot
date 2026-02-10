@@ -10,6 +10,7 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
+  BookOpen,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth';
@@ -28,6 +29,7 @@ const navItems: NavItem[] = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/servers', label: 'Servers', icon: Server },
   { to: '/chat', label: 'AI Chat', icon: MessageCircle },
+  { to: '/search', label: 'Knowledge', icon: BookOpen },
   { to: '/tasks', label: 'Tasks', icon: ListChecks },
   { to: '/operations', label: 'Operations', icon: History },
   { to: '/settings', label: 'Settings', icon: Settings },
