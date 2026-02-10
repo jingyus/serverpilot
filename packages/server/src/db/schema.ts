@@ -27,6 +27,57 @@ export const users = sqliteTable('users', {
 });
 
 // ============================================================================
+// User Settings (AI Provider, Notifications, Knowledge Base)
+// ============================================================================
+
+/** AI Provider configuration stored as JSON */
+export interface UserSettingsAIProvider {
+  provider: 'claude' | 'openai' | 'ollama';
+  apiKey?: string;
+  model?: string;
+  baseUrl?: string;
+}
+
+/** Notification preferences stored as JSON */
+export interface UserSettingsNotifications {
+  emailNotifications: boolean;
+  taskCompletion: boolean;
+  systemAlerts: boolean;
+  operationReports: boolean;
+}
+
+/** Knowledge base configuration stored as JSON */
+export interface UserSettingsKnowledgeBase {
+  autoLearning: boolean;
+  documentSources: string[];
+}
+
+export const userSettings = sqliteTable(
+  'user_settings',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull()
+      .unique(),
+    aiProvider: text('ai_provider', { mode: 'json' })
+      .$type<UserSettingsAIProvider>()
+      .notNull(),
+    notifications: text('notifications', { mode: 'json' })
+      .$type<UserSettingsNotifications>()
+      .notNull(),
+    knowledgeBase: text('knowledge_base', { mode: 'json' })
+      .$type<UserSettingsKnowledgeBase>()
+      .notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+  },
+  (table) => [
+    uniqueIndex('user_settings_user_id_idx').on(table.userId),
+  ],
+);
+
+// ============================================================================
 // Servers
 // ============================================================================
 

@@ -315,3 +315,43 @@ export const ScrapeDocBodySchema = z.discriminatedUnion('type', [
   }),
 ]);
 export type ScrapeDocBody = z.infer<typeof ScrapeDocBodySchema>;
+
+// ============================================================================
+// Settings Schemas
+// ============================================================================
+
+/** AI Provider type */
+const aiProvider = z.enum(['claude', 'openai', 'ollama']);
+
+/** Update AI Provider configuration */
+export const UpdateAIProviderBodySchema = z.object({
+  provider: aiProvider,
+  apiKey: z.string().min(1).max(500).optional(),
+  model: z.string().min(1).max(200).optional(),
+  baseUrl: z.string().url('Invalid URL').max(500).optional(),
+});
+export type UpdateAIProviderBody = z.infer<typeof UpdateAIProviderBodySchema>;
+
+/** Update user profile */
+export const UpdateUserProfileBodySchema = z.object({
+  name: z.string().min(1).max(100),
+  email: z.string().email('Invalid email format'),
+  timezone: z.string().min(1).max(100),
+});
+export type UpdateUserProfileBody = z.infer<typeof UpdateUserProfileBodySchema>;
+
+/** Update notification preferences */
+export const UpdateNotificationsBodySchema = z.object({
+  emailNotifications: z.boolean(),
+  taskCompletion: z.boolean(),
+  systemAlerts: z.boolean(),
+  operationReports: z.boolean(),
+});
+export type UpdateNotificationsBody = z.infer<typeof UpdateNotificationsBodySchema>;
+
+/** Update knowledge base configuration */
+export const UpdateKnowledgeBaseBodySchema = z.object({
+  autoLearning: z.boolean(),
+  documentSources: z.array(z.string().max(500)).max(50),
+});
+export type UpdateKnowledgeBaseBody = z.infer<typeof UpdateKnowledgeBaseBodySchema>;
