@@ -535,6 +535,9 @@ export const docSources = sqliteTable(
     }),
     lastFetchError: text('last_fetch_error'),
     documentCount: integer('document_count').default(0).notNull(),
+    lastSha: text('last_sha'),
+    lastHash: text('last_hash'),
+    lastUpdateTime: integer('last_update_time', { mode: 'timestamp' }),
     createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
     updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
   },
@@ -543,5 +546,47 @@ export const docSources = sqliteTable(
     index('doc_sources_software_idx').on(table.software),
     index('doc_sources_enabled_idx').on(table.enabled),
     index('doc_sources_auto_update_idx').on(table.autoUpdate),
+  ],
+);
+
+// ============================================================================
+// Document Source History (update tracking)
+// ============================================================================
+
+/** Document source update history entry */
+export interface DocSourceHistoryEntry {
+  sourceId: string;
+  sourceName: string;
+  changeType: 'initial' | 'update' | 'no_change';
+  previousVersion?: string;
+  currentVersion?: string;
+}
+
+export const docSourceHistory = sqliteTable(
+  'doc_source_history',
+  {
+    id: text('id').primaryKey(),
+    sourceId: text('source_id')
+      .references(() => docSources.id, { onDelete: 'cascade' })
+      .notNull(),
+    userId: text('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+    changeType: text('change_type', {
+      enum: ['initial', 'update', 'no_change'],
+    }).notNull(),
+    previousVersion: text('previous_version'),
+    currentVersion: text('current_version'),
+    status: text('status', {
+      enum: ['success', 'failed'],
+    }).notNull(),
+    error: text('error'),
+    documentCount: integer('document_count').default(0).notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  },
+  (table) => [
+    index('doc_source_history_source_id_idx').on(table.sourceId),
+    index('doc_source_history_user_id_idx').on(table.userId),
+    index('doc_source_history_created_at_idx').on(table.createdAt),
   ],
 );

@@ -75,6 +75,9 @@ function createMockDocSource(overrides?: Partial<RepoDocSource>): RepoDocSource 
     lastFetchStatus: null,
     lastFetchError: null,
     documentCount: 0,
+    lastSha: null,
+    lastHash: null,
+    lastUpdateTime: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -746,6 +749,228 @@ describe('DocAutoFetcher', () => {
 
       expect(fetcher).toBeDefined();
       // The fetcher should use projectRoot/knowledge-base
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Incremental Update Logic
+  // --------------------------------------------------------------------------
+
+  describe('incremental update tracking', () => {
+    it('should use stored SHA for GitHub update check', async () => {
+      const source = createMockDocSource({
+        lastSha: 'old-sha-123',
+        lastUpdateTime: new Date(Date.now() - 24 * 60 * 60 * 1000), // 1 day ago
+      });
+
+      vi.mocked(checkGitHubUpdate).mockResolvedValue({
+        hasUpdate: false,
+        currentVersion: 'old-sha-123',
+        previousVersion: 'old-sha-123',
+        reason: 'No new commits',
+      });
+
+      const fetcher = new DocAutoFetcher({
+        outputBaseDir: tmpDir,
+      });
+
+      const result = await fetcher.fetchSource(source);
+
+      expect(checkGitHubUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          previousSha: 'old-sha-123',
+        }),
+      );
+      expect(result.success).toBe(true);
+      expect(result.documentsAdded).toBe(0); // No fetch happened
+      expect(mockRepository.recordFetchResult).toHaveBeenCalledWith(
+        source.id,
+        source.userId,
+        expect.objectContaining({
+          status: 'success',
+          changeType: 'no_change',
+        }),
+      );
+    });
+
+    it('should use stored hash for website update check', async () => {
+      const source = createMockDocSource({
+        type: 'website',
+        githubConfig: null,
+        websiteConfig: {
+          baseUrl: 'https://example.com',
+          maxPages: 10,
+        },
+        lastHash: 'old-hash-456',
+        lastUpdateTime: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      });
+
+      vi.mocked(checkWebsiteUpdate).mockResolvedValue({
+        hasUpdate: false,
+        currentVersion: 'old-hash-456',
+        previousVersion: 'old-hash-456',
+        reason: 'Content unchanged',
+      });
+
+      const fetcher = new DocAutoFetcher({
+        outputBaseDir: tmpDir,
+      });
+
+      const result = await fetcher.fetchSource(source);
+
+      expect(checkWebsiteUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          previousHash: 'old-hash-456',
+        }),
+      );
+      expect(result.success).toBe(true);
+      expect(result.documentsAdded).toBe(0);
+    });
+
+    it('should detect and fetch updates when SHA changes', async () => {
+      const source = createMockDocSource({
+        lastSha: 'old-sha-123',
+        documentCount: 3,
+      });
+
+      vi.mocked(checkGitHubUpdate).mockResolvedValue({
+        hasUpdate: true,
+        currentVersion: 'new-sha-456',
+        previousVersion: 'old-sha-123',
+        reason: 'New commits detected',
+      });
+
+      vi.spyOn(DocFetcher.prototype, 'fetchSource').mockResolvedValue({
+        id: 'task-id',
+        sourceId: source.id,
+        status: 'completed',
+        startedAt: new Date().toISOString(),
+        completedAt: new Date().toISOString(),
+      } as FetchTask);
+
+      setupMockDocuments(tmpDir, 'nginx', 'github', 5);
+
+      const fetcher = new DocAutoFetcher({
+        outputBaseDir: tmpDir,
+      });
+
+      const result = await fetcher.fetchSource(source);
+
+      expect(result.success).toBe(true);
+      expect(result.documentsAdded).toBe(5);
+      expect(mockRepository.recordFetchResult).toHaveBeenCalledWith(
+        source.id,
+        source.userId,
+        expect.objectContaining({
+          status: 'success',
+          currentVersion: 'new-sha-456',
+          changeType: 'update',
+        }),
+      );
+    });
+
+    it('should mark first fetch as initial', async () => {
+      const source = createMockDocSource({
+        lastSha: null,
+        lastHash: null,
+        lastUpdateTime: null,
+      });
+
+      vi.mocked(checkGitHubUpdate).mockResolvedValue({
+        hasUpdate: true,
+        currentVersion: 'first-sha-789',
+        reason: 'No previous version recorded',
+      });
+
+      vi.spyOn(DocFetcher.prototype, 'fetchSource').mockResolvedValue({
+        id: 'task-id',
+        sourceId: source.id,
+        status: 'completed',
+        startedAt: new Date().toISOString(),
+        completedAt: new Date().toISOString(),
+      } as FetchTask);
+
+      setupMockDocuments(tmpDir, 'nginx', 'github', 5);
+
+      const fetcher = new DocAutoFetcher({
+        outputBaseDir: tmpDir,
+      });
+
+      const result = await fetcher.fetchSource(source);
+
+      expect(result.success).toBe(true);
+      expect(mockRepository.recordFetchResult).toHaveBeenCalledWith(
+        source.id,
+        source.userId,
+        expect.objectContaining({
+          status: 'success',
+          currentVersion: 'first-sha-789',
+          changeType: 'initial',
+        }),
+      );
+    });
+
+    it('should store version info on successful fetch', async () => {
+      const source = createMockDocSource({
+        lastSha: 'old-sha',
+      });
+
+      vi.mocked(checkGitHubUpdate).mockResolvedValue({
+        hasUpdate: true,
+        currentVersion: 'new-sha-999',
+      });
+
+      vi.spyOn(DocFetcher.prototype, 'fetchSource').mockResolvedValue({
+        id: 'task-id',
+        sourceId: source.id,
+        status: 'completed',
+        startedAt: new Date().toISOString(),
+        completedAt: new Date().toISOString(),
+      } as FetchTask);
+
+      setupMockDocuments(tmpDir, 'nginx', 'github', 2);
+
+      const fetcher = new DocAutoFetcher({
+        outputBaseDir: tmpDir,
+      });
+
+      await fetcher.fetchSource(source);
+
+      expect(mockRepository.recordFetchResult).toHaveBeenCalledWith(
+        source.id,
+        source.userId,
+        expect.objectContaining({
+          currentVersion: 'new-sha-999',
+        }),
+      );
+    });
+
+    it('should not skip fetch on update check failure', async () => {
+      const source = createMockDocSource({
+        lastSha: 'old-sha',
+      });
+
+      vi.mocked(checkGitHubUpdate).mockRejectedValue(new Error('Network error'));
+
+      vi.spyOn(DocFetcher.prototype, 'fetchSource').mockResolvedValue({
+        id: 'task-id',
+        sourceId: source.id,
+        status: 'completed',
+        startedAt: new Date().toISOString(),
+        completedAt: new Date().toISOString(),
+      } as FetchTask);
+
+      setupMockDocuments(tmpDir, 'nginx', 'github', 3);
+
+      const fetcher = new DocAutoFetcher({
+        outputBaseDir: tmpDir,
+      });
+
+      const result = await fetcher.fetchSource(source);
+
+      // Should proceed with fetch even when update check fails
+      expect(result.success).toBe(true);
+      expect(result.documentsAdded).toBe(3);
     });
   });
 });

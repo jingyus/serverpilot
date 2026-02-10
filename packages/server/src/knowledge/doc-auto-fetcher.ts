@@ -192,10 +192,19 @@ export class DocAutoFetcher {
 
     try {
       // Check for updates first
-      const hasUpdate = await this.checkSourceUpdate(source);
+      const updateCheck = await this.checkSourceUpdate(source);
 
-      if (!hasUpdate) {
+      if (!updateCheck.hasUpdate) {
         logger.info({ sourceId: source.id }, 'No updates detected, skipping fetch');
+
+        // Record no-change history entry
+        await this.repository.recordFetchResult(source.id, source.userId, {
+          status: 'success',
+          documentCount: source.documentCount,
+          currentVersion: updateCheck.currentVersion,
+          changeType: 'no_change',
+        });
+
         return {
           sourceId: source.id,
           sourceName: source.name,
@@ -213,6 +222,8 @@ export class DocAutoFetcher {
         await this.repository.recordFetchResult(source.id, source.userId, {
           status: 'failed',
           error: task.error,
+          currentVersion: updateCheck.currentVersion,
+          changeType: updateCheck.changeType,
         });
 
         return {
@@ -236,12 +247,15 @@ export class DocAutoFetcher {
       await this.repository.recordFetchResult(source.id, source.userId, {
         status: 'success',
         documentCount,
+        currentVersion: updateCheck.currentVersion,
+        changeType: updateCheck.changeType,
       });
 
       logger.info(
         {
           sourceId: source.id,
           documentCount,
+          changeType: updateCheck.changeType,
           duration: Date.now() - startTime,
         },
         'Successfully fetched documentation',
@@ -292,35 +306,56 @@ export class DocAutoFetcher {
 
   /**
    * Check if a source has updates available.
+   * Returns update check result with version information.
    */
-  private async checkSourceUpdate(source: DocSource): Promise<boolean> {
+  private async checkSourceUpdate(source: DocSource): Promise<{
+    hasUpdate: boolean;
+    currentVersion?: string;
+    changeType: 'initial' | 'update' | 'no_change';
+  }> {
     try {
       if (source.type === 'github' && source.githubConfig) {
         const result = await checkGitHubUpdate({
           owner: source.githubConfig.owner,
           repo: source.githubConfig.repo,
           branch: source.githubConfig.branch ?? 'main',
-          // TODO: Store and use previous SHA from source metadata
+          previousSha: source.lastSha ?? undefined,
         });
-        return result.hasUpdate;
+
+        return {
+          hasUpdate: result.hasUpdate,
+          currentVersion: result.currentVersion,
+          changeType: !source.lastSha ? 'initial' : (result.hasUpdate ? 'update' : 'no_change'),
+        };
       }
 
       if (source.type === 'website' && source.websiteConfig) {
         const result = await checkWebsiteUpdate({
           url: source.websiteConfig.baseUrl,
-          // TODO: Store and use previous hash from source metadata
+          previousHash: source.lastHash ?? undefined,
         });
-        return result.hasUpdate;
+
+        return {
+          hasUpdate: result.hasUpdate,
+          currentVersion: result.currentVersion,
+          changeType: !source.lastHash ? 'initial' : (result.hasUpdate ? 'update' : 'no_change'),
+        };
       }
 
       // If we can't check, assume update is needed
-      return true;
+      return {
+        hasUpdate: true,
+        changeType: 'initial',
+      };
     } catch (err) {
       logger.warn(
         { sourceId: source.id, error: err },
         'Update check failed, will fetch anyway',
       );
-      return true;
+      return {
+        hasUpdate: true,
+        changeType: source.lastSha || source.lastHash ? 'update' : 'initial',
+      };
     }
   }
 

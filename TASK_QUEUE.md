@@ -7,9 +7,9 @@
 ## 📊 统计信息
 
 - **总任务数**: 10
-- **待完成** (pending): 7
+- **待完成** (pending): 6
 - **进行中** (in_progress): 0
-- **已完成** (completed): 3
+- **已完成** (completed): 4
 - **失败** (failed): 0
 
 ---
@@ -136,7 +136,7 @@ Settings 页面目前只是一个空壳，需要实现完整的设置功能：
 
 ---
 
-### [pending] 实现文档源更新历史跟踪
+### [completed] 实现文档源更新历史跟踪 ✅
 
 **ID**: task-004
 **优先级**: P1
@@ -150,14 +150,28 @@ Settings 页面目前只是一个空壳，需要实现完整的设置功能：
 
 **产品需求**: 知识库自成长 - 文档自动抓取功能
 **验收标准**:
-- [ ] docSources 表包含 lastSha、lastHash、lastUpdateTime 字段
-- [ ] 抓取前检查 SHA/Hash 变化
-- [ ] 未变化的文档跳过抓取
-- [ ] 更新历史记录到 docSourceHistory 表
-- [ ] 编写单元测试验证增量更新逻辑
+- [x] docSources 表包含 lastSha、lastHash、lastUpdateTime 字段
+- [x] 抓取前检查 SHA/Hash 变化
+- [x] 未变化的文档跳过抓取
+- [x] 更新历史记录到 docSourceHistory 表
+- [x] 编写单元测试验证增量更新逻辑
+
+**实现内容**:
+- ✅ 添加 lastSha、lastHash、lastUpdateTime 字段到 docSources 表
+- ✅ 创建 docSourceHistory 表用于记录更新历史
+- ✅ 更新 DocSource 类型定义和 repository 方法
+- ✅ 增强 checkSourceUpdate 返回版本信息和变更类型
+- ✅ 修改 fetchSource 使用版本检查，跳过未变化文档
+- ✅ recordFetchResult 自动存储版本信息和历史记录
+- ✅ 添加 6 个新单元测试验证增量更新逻辑
+- ✅ 生成数据库迁移文件 (0002_wealthy_bucky.sql)
+
+**测试覆盖率**:
+- 增量更新测试: 6/6 通过 (100%)
+- 所有 doc-auto-fetcher 测试: 33/33 通过 (100%)
 
 **创建时间**: 2026-02-10 23:35:00
-**完成时间**: -
+**完成时间**: 2026-02-11 02:51:00
 
 ---
 
@@ -351,4 +365,4 @@ ID: task-001
 
 ---
 
-**最后更新**: 2026-02-11 02:44:30
+**最后更新**: 2026-02-11 02:51:00

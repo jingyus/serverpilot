@@ -11,7 +11,7 @@
 import { eq, and, desc } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { getDatabase } from '../connection.js';
-import { docSources, type DocSourceGitHubConfig, type DocSourceWebConfig } from '../schema.js';
+import { docSources, docSourceHistory, type DocSourceGitHubConfig, type DocSourceWebConfig } from '../schema.js';
 
 // ============================================================================
 // Types
@@ -33,6 +33,9 @@ export interface DocSource {
   lastFetchStatus: 'success' | 'failed' | 'pending' | null;
   lastFetchError: string | null;
   documentCount: number;
+  lastSha: string | null;
+  lastHash: string | null;
+  lastUpdateTime: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -65,6 +68,8 @@ export interface FetchResultData {
   status: 'success' | 'failed';
   error?: string;
   documentCount?: number;
+  currentVersion?: string;
+  changeType?: 'initial' | 'update' | 'no_change';
 }
 
 // ============================================================================
@@ -96,6 +101,9 @@ export class DocSourceRepository {
       lastFetchStatus: null,
       lastFetchError: null,
       documentCount: 0,
+      lastSha: null,
+      lastHash: null,
+      lastUpdateTime: null,
       createdAt: now,
       updatedAt: now,
     };
@@ -198,6 +206,10 @@ export class DocSourceRepository {
   ): Promise<DocSource | null> {
     const now = new Date();
 
+    // Get the source to access its previous version info
+    const source = await this.findById(id, userId);
+    if (!source) return null;
+
     const updateValues: Record<string, unknown> = {
       lastFetchedAt: now,
       lastFetchStatus: result.status,
@@ -214,12 +226,64 @@ export class DocSourceRepository {
       updateValues.documentCount = result.documentCount;
     }
 
+    // Store version information based on source type
+    if (result.currentVersion && result.status === 'success') {
+      if (source.type === 'github') {
+        updateValues.lastSha = result.currentVersion;
+      } else if (source.type === 'website') {
+        updateValues.lastHash = result.currentVersion;
+      }
+      updateValues.lastUpdateTime = now;
+    }
+
     await this.db
       .update(docSources)
       .set(updateValues)
       .where(and(eq(docSources.id, id), eq(docSources.userId, userId)));
 
+    // Record history entry
+    const previousVersion = source.type === 'github' ? source.lastSha : source.lastHash;
+    const changeType = result.changeType ?? (previousVersion ? 'update' : 'initial');
+
+    await this.recordHistory({
+      sourceId: id,
+      userId,
+      changeType,
+      previousVersion: previousVersion ?? undefined,
+      currentVersion: result.currentVersion,
+      status: result.status,
+      error: result.error,
+      documentCount: result.documentCount ?? 0,
+    });
+
     return this.findById(id, userId);
+  }
+
+  /**
+   * Record a history entry for a fetch operation.
+   */
+  private async recordHistory(data: {
+    sourceId: string;
+    userId: string;
+    changeType: 'initial' | 'update' | 'no_change';
+    previousVersion?: string;
+    currentVersion?: string;
+    status: 'success' | 'failed';
+    error?: string;
+    documentCount: number;
+  }): Promise<void> {
+    await this.db.insert(docSourceHistory).values({
+      id: randomUUID(),
+      sourceId: data.sourceId,
+      userId: data.userId,
+      changeType: data.changeType,
+      previousVersion: data.previousVersion ?? null,
+      currentVersion: data.currentVersion ?? null,
+      status: data.status,
+      error: data.error ?? null,
+      documentCount: data.documentCount,
+      createdAt: new Date(),
+    });
   }
 
   /**
