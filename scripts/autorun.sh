@@ -110,7 +110,7 @@ log_token_usage() {
     echo "[$timestamp] $operation | 输入: $input_tokens | 输出: $output_tokens | 成本: \$$operation_cost | 累计: $TOTAL_TOKENS tokens (\$$total_cost)" >> "$TOKEN_LOG"
 
     # 显示统计信息
-    log_info "Token 使用 - 输入: $input_tokens, 输出: $output_tokens, 本次成本: \$$operation_cost"
+    log_info "Token 使用（估算，含上下文）- 输入: $input_tokens, 输出: $output_tokens, 本次成本: \$$operation_cost"
     log_info "累计 Token: $TOTAL_TOKENS (\$$total_cost) / 限制: $MAX_TOKENS"
 
     # 检查是否超限
@@ -133,8 +133,25 @@ log_token_usage() {
 estimate_tokens() {
     local text="$1"
     local char_count=${#text}
-    # 粗略估算：英文约4字符/token，中文约1.5字符/token，取平均2.5
-    echo $((char_count / 3))
+
+    # Claude tokenization 规则：
+    # - 英文：约 4 字符/token
+    # - 中文：约 1.5-2 字符/token
+    # - 代码：约 2.5-3 字符/token
+    #
+    # 对于混合内容（中文prompt + 英文代码 + 中文注释），使用 2.2 作为平均值
+    #
+    # ⚠️ 重要：Claude Code CLI 会自动添加大量上下文（项目文件、系统prompt等）
+    # 实际 token 使用量通常是我们看到的 3-5 倍
+    # 因此我们使用一个 CONTEXT_MULTIPLIER 来近似这部分开销
+
+    local base_tokens=$((char_count * 10 / 22))  # char_count / 2.2
+
+    # Claude Code CLI 上下文倍数（保守估计为 4 倍）
+    # 这包括：项目文件索引、系统prompt、工具定义、对话历史等
+    local CONTEXT_MULTIPLIER=4
+
+    echo $((base_tokens * CONTEXT_MULTIPLIER))
 }
 
 # 错误分类函数
@@ -1083,7 +1100,7 @@ main() {
         fi
 
         # 提取任务信息
-        local task_id=$(echo "$task_content" | grep "^**ID**:" | cut -d':' -f2- | xargs)
+        local task_id=$(echo "$task_content" | grep "^\*\*ID\*\*:" | cut -d':' -f2- | xargs)
         local task_title=$(echo "$task_content" | head -1 | sed 's/^### \[pending\] //')
         local task_name="${task_title}"
 

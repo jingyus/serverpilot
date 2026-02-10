@@ -6,8 +6,8 @@
 
 ## 📊 统计信息
 
-- **总任务数**: 10
-- **待完成** (pending): 0
+- **总任务数**: 20
+- **待完成** (pending): 10
 - **进行中** (in_progress): 0
 - **已完成** (completed): 10
 - **失败** (failed): 0
@@ -17,6 +17,186 @@
 ## 📋 任务列表
 
 <!-- 任务将由 AI 自动生成和更新 -->
+### [pending] 填充内置知识库内容
+
+**ID**: task-001
+**优先级**: P0
+**模块路径**: knowledge-base/
+**任务描述**: knowledge-base/ 目录下已创建 nginx/mysql/docker/nodejs/postgresql/redis 6 个子目录，但全部为空。需要为每个技术栈编写知识库文档，包含：安装指南（各发行版）、常用配置模板、常见故障排查、最佳实践、安全加固建议。每个技术栈至少 3 个 Markdown 文件。这是 AI 对话运维的核心依赖——没有知识库内容，RAG 检索无法提供上下文增强。
+**产品需求**: MVP 核心功能 - "内置知识库 (10+ 常见软件) + RAG 检索注入"
+**验收标准**:
+- 6 个技术栈目录各含 3+ 篇 Markdown 文档
+- 文档包含安装步骤、配置示例、故障排查
+- knowledge loader 能成功加载并索引这些文档
+- 通过 AI 对话能检索到知识库内容（如问"如何安装 Nginx"能返回相关知识）
+**创建时间**: 2026-02-11 00:00:00
+**完成时间**: -
+
+---
+
+### [pending] 端到端集成测试 - 完整对话运维闭环验证
+
+**ID**: task-002
+**优先级**: P0
+**模块路径**: tests/e2e/
+**任务描述**: 目前各模块单元测试充分，但缺少完整的端到端闭环验证。需要编写集成测试验证：用户登录 → 添加服务器 → Agent 连接认证 → 发起 AI 对话 → AI 生成执行计划 → Agent 执行命令 → 结果反馈到 Dashboard 的完整流程。使用 Playwright 测试 Dashboard 交互，mock AI Provider 避免真实 API 调用。
+**产品需求**: MVP 核心目标 - "完成'自部署 → 安装 Agent → 连接 → 对话运维'的基本闭环"
+**验收标准**:
+- 完整的用户旅程 E2E 测试通过（登录→添加服务器→对话→执行）
+- Dashboard ↔ Server ↔ Agent 三端通信正常
+- SSE 流式响应在 Dashboard 正确渲染
+- 计划执行进度实时更新
+- 错误场景有合理的降级处理
+**创建时间**: 2026-02-11 00:00:00
+**完成时间**: -
+
+---
+
+### [pending] Docker Compose 一键部署验证与修复
+
+**ID**: task-003
+**优先级**: P0
+**模块路径**: docker-compose.yml, packages/server/Dockerfile, packages/dashboard/Dockerfile
+**任务描述**: docker-compose.yml 和 Dockerfile 已存在，但需要验证完整的部署流程是否可用。运行 `docker compose up` 确认：(1) Server 容器正确启动并初始化数据库 (2) Dashboard 容器 Nginx 代理正常 (3) API 代理和 WebSocket 代理可通 (4) init.sh 初始化脚本能正确配置环境。修复发现的任何问题，确保新用户可以零配置一键启动。
+**产品需求**: MVP 部署方式 - "`docker compose up` 一键自部署"
+**验收标准**:
+- `docker compose up` 能成功启动所有服务
+- 访问 http://localhost:3001 可以看到 Dashboard 登录页
+- 默认管理员账户可以登录
+- API 路由 /api/v1/* 通过 Nginx 代理可访问
+- WebSocket 连接可建立（/ws 路径）
+- `docker compose down && docker compose up` 数据持久化正常
+**创建时间**: 2026-02-11 00:00:00
+**完成时间**: -
+
+---
+
+### [pending] 文档自动抓取功能实现
+
+**ID**: task-004
+**优先级**: P1
+**模块路径**: packages/server/src/knowledge/
+**任务描述**: TODO.md 中 Phase 2 唯一未完成的任务。knowledge 模块中已有 github-doc-scraper.ts、web-doc-scraper.ts、doc-fetcher.ts、doc-auto-fetcher.ts 等文件，需要验证这些组件是否能正常工作，并补充集成逻辑：(1) 通过 Dashboard Settings 页面配置文档源 URL (2) 定时自动拉取并更新知识库 (3) 文档变更检测避免重复抓取 (4) 将抓取内容索引到向量数据库供 RAG 使用。
+**产品需求**: Phase 2 - "文档自动抓取：GitHub/官网文档解析"
+**验收标准**:
+- 可以通过 API 添加文档源（GitHub repo URL 或网页 URL）
+- 文档抓取能正确解析 Markdown/HTML 内容
+- 抓取的文档被自动分块并索引到向量数据库
+- Dashboard Settings 页面可以管理文档源
+- 变更检测能识别已更新的文档并增量更新
+**创建时间**: 2026-02-11 00:00:00
+**完成时间**: -
+
+---
+
+### [pending] 添加 LICENSE 文件和开源合规准备
+
+**ID**: task-005
+**优先级**: P1
+**模块路径**: /, packages/server/, packages/agent/
+**任务描述**: 项目计划开源但目前缺少 LICENSE 文件。根据产品方案 Open Core 模式：Agent 使用 Apache 2.0（100% 开源可审计），Server 使用 AGPL 3.0（开源但限制云服务商直接使用）。需要：(1) 在根目录和各 package 下添加对应 LICENSE 文件 (2) 在各源文件头部添加简短的许可声明 (3) 创建 SECURITY.md 安全策略文件。
+**产品需求**: Phase 3 开源发布准备 - "Open Core 商业模式"
+**验收标准**:
+- 根目录有 LICENSE 文件（AGPL 3.0）
+- packages/agent/ 有 LICENSE（Apache 2.0）
+- packages/server/ 有 LICENSE（AGPL 3.0）
+- SECURITY.md 包含漏洞报告流程
+- package.json 的 license 字段正确设置
+**创建时间**: 2026-02-11 00:00:00
+**完成时间**: -
+
+---
+
+### [pending] CONTRIBUTING.md 和 Issue/PR 模板
+
+**ID**: task-006
+**优先级**: P1
+**模块路径**: /, .github/
+**任务描述**: 为开源发布准备社区贡献基础设施：(1) 编写 CONTRIBUTING.md 包含开发环境搭建、代码规范、PR 流程、测试要求 (2) 创建 GitHub Issue 模板（Bug Report、Feature Request、知识库贡献）(3) 创建 PR 模板 (4) 创建 CODE_OF_CONDUCT.md。
+**产品需求**: Phase 3 - "贡献指南 CONTRIBUTING.md"
+**验收标准**:
+- CONTRIBUTING.md 包含完整的贡献指南
+- .github/ISSUE_TEMPLATE/ 下有 bug_report.md 和 feature_request.md
+- .github/PULL_REQUEST_TEMPLATE.md 存在
+- CODE_OF_CONDUCT.md 存在
+- CONTRIBUTING.md 中的开发环境搭建步骤可以实际跑通
+**创建时间**: 2026-02-11 00:00:00
+**完成时间**: -
+
+---
+
+### [pending] CI/CD 流水线完善 - 自动测试 + Docker 镜像发布
+
+**ID**: task-007
+**优先级**: P1
+**模块路径**: .github/workflows/
+**任务描述**: 当前有 ci.yml、test.yml、deploy-website.yml 三个 workflow，但缺少：(1) 自动化测试流水线（PR 触发，跑全量单元测试 + lint + typecheck）(2) Docker 镜像构建并推送到 Docker Hub / GitHub Container Registry (3) Release 流水线（打 tag 自动构建 Agent 二进制并创建 GitHub Release）(4) 依赖安全扫描（Dependabot 或 Snyk）。
+**产品需求**: Phase 3 - "CI/CD 流水线"、"Docker Hub 发布"
+**验收标准**:
+- PR 提交自动运行 lint + typecheck + test
+- main 分支合并自动构建 Docker 镜像并推送
+- Tag 推送自动创建 GitHub Release 并附带 Agent 二进制
+- Dependabot 配置文件存在并生效
+- CI 状态徽章显示在 README.md
+**创建时间**: 2026-02-11 00:00:00
+**完成时间**: -
+
+---
+
+### [pending] Server ↔ Agent 实际连接调试与协议兼容性验证
+
+**ID**: task-008
+**优先级**: P0
+**模块路径**: packages/server/src/api/, packages/agent/src/client/, packages/shared/src/protocol/
+**任务描述**: Server 和 Agent 的 WebSocket 通信代码各自独立开发完成，但需要验证两端协议是否完全兼容。启动 Server 后用 Agent 实际连接，验证：(1) Agent 认证握手流程 (2) 环境信息上报与 Profile 更新 (3) 命令下发与执行结果回传 (4) 心跳保活与断线重连 (5) 流式输出传输。修复发现的协议不兼容问题。
+**产品需求**: MVP - "Agent 安装、密钥生成、WSS 连接、系统探测、命令执行"
+**验收标准**:
+- Agent 能成功连接 Server 并完成认证
+- `env.report` 消息被 Server 正确解析并存入数据库
+- Server 能向 Agent 下发命令并收到执行结果
+- 心跳包正常交换，Server 能检测 Agent 离线
+- 断线后 Agent 能自动重连并恢复状态
+- Shared protocol 的 Zod schemas 在两端一致使用
+**创建时间**: 2026-02-11 00:00:00
+**完成时间**: -
+
+---
+
+### [pending] Dashboard ↔ Server API 联调与错误处理优化
+
+**ID**: task-009
+**优先级**: P0
+**模块路径**: packages/dashboard/src/api/, packages/dashboard/src/stores/, packages/server/src/api/routes/
+**任务描述**: Dashboard 的 API Client 和 Zustand Stores 已实现，Server 的 REST API 也已完成，但两端需要实际联调确认：(1) 所有 API 端点的请求/响应格式匹配 (2) JWT Token 刷新机制正常工作 (3) SSE 流式对话在浏览器中正确渲染 (4) WebSocket 实时通知在 Dashboard 正确展示 (5) 错误码和错误消息在 Dashboard 上有友好的提示。
+**产品需求**: MVP Dashboard - "服务器列表、密钥连接、基本监控、对话界面"
+**验收标准**:
+- 登录/注册/Token 刷新正常
+- 服务器列表页正确展示服务器状态（在线/离线）
+- 对话页面 SSE 流式消息正确逐字显示
+- 计划预览组件正确渲染步骤和风险等级
+- API 错误（401/403/500）在 Dashboard 有友好提示
+- WebSocket 连接状态在 UI 上有指示
+**创建时间**: 2026-02-11 00:00:00
+**完成时间**: -
+
+---
+
+### [pending] README.md 重写 - 面向开源社区的项目介绍
+
+**ID**: task-010
+**优先级**: P1
+**模块路径**: /README.md
+**任务描述**: 当前 README.md 主要是内部开发文档，需要重写为面向开源社区的项目介绍。包含：(1) 项目 Logo 和一句话描述 (2) 功能截图/GIF 演示 (3) 30 秒快速开始（docker compose up）(4) 架构图（Server/Agent/Dashboard 三层）(5) 功能特性列表 (6) 与宝塔面板、其他运维工具的对比 (7) 社区和贡献链接 (8) 许可证说明。
+**产品需求**: Phase 3 - "README 完善：项目介绍、快速开始"
+**验收标准**:
+- README 包含清晰的项目描述和价值主张
+- 有架构图（可以是 ASCII 或 Mermaid）
+- Quick Start 部分能让新用户 5 分钟内跑起来
+- 有 CI 状态、许可证、Docker 镜像等徽章
+- 中英文双语（或先中文，留英文占位）
+**创建时间**: 2026-02-11 00:00:00
+**完成时间**: -
+
 ### [completed] 完成 Settings 页面功能实现 ✅
 
 **ID**: task-001
@@ -457,4 +637,4 @@ ID: task-001
 
 ---
 
-**最后更新**: 2026-02-11 06:24:21
+**最后更新**: 2026-02-11 06:38:19

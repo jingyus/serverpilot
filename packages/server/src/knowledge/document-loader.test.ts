@@ -757,7 +757,7 @@ More content.
         expect(summary.failed).toBe(0);
       });
 
-      it('should find openclaw docs in real knowledge base', () => {
+      it('should find installation docs in real knowledge base', () => {
         if (!existsSync(realKBDir)) {
           return;
         }
@@ -771,7 +771,7 @@ More content.
         }
 
         const hasInstallDoc = documents.some(
-          (d) => d.id.includes('installation') && d.category === 'openclaw',
+          (d) => d.id.includes('installation') && d.category === 'nginx',
         );
         expect(hasInstallDoc).toBe(true);
       });
