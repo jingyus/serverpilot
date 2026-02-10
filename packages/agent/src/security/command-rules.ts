@@ -73,6 +73,15 @@ export const FORBIDDEN_PATTERNS: PatternRule[] = [
   { pattern: /\bopenssl\s+enc\s+.*-e\s+.*-in\s+\//, reason: 'Bulk file encryption on system paths' },
   // cgroup/namespace abuse
   { pattern: /\bnsenter\s+.*--target\s+1\b/, reason: 'Container escape via nsenter to PID 1' },
+  // iptables flush (firewall wipe)
+  { pattern: /\biptables\s+-F(\s|$)/, reason: 'Firewall rules flush (iptables)' },
+  { pattern: /\biptables\s+--flush(\s|$)/, reason: 'Firewall rules flush (iptables)' },
+  // Cgroup resource exhaustion
+  { pattern: /\bcgdelete\b/, reason: 'Cgroup deletion' },
+  // GRUB bootloader overwrite
+  { pattern: /\bgrub-install\b/, reason: 'GRUB bootloader installation (can brick system)' },
+  // Systemd mask of critical services
+  { pattern: /\bsystemctl\s+mask\s+(networking|network|sshd|systemd-journald)/, reason: 'Masking critical system service' },
 ];
 
 // CRITICAL patterns — destructive commands
@@ -182,6 +191,35 @@ export const CRITICAL_PATTERNS: PatternRule[] = [
   { pattern: /\bdocker\s+stack\s+rm\s/, reason: 'Docker Swarm stack removal' },
   { pattern: /\bdocker\s+secret\s+rm\s/, reason: 'Docker secret removal' },
   { pattern: /\bdocker\s+config\s+rm\s/, reason: 'Docker config removal' },
+  // Cargo/Rust uninstall
+  { pattern: /\bcargo\s+uninstall\s/, reason: 'Rust package removal' },
+  // Go clean
+  { pattern: /\bgo\s+clean\s+-cache/, reason: 'Go module cache deletion' },
+  // Git branch deletion
+  { pattern: /\bgit\s+branch\s+-[dD]\s/, reason: 'Git branch deletion' },
+  { pattern: /\bgit\s+branch\s+--delete\s/, reason: 'Git branch deletion' },
+  // Git tag deletion
+  { pattern: /\bgit\s+tag\s+-d\s/, reason: 'Git tag deletion' },
+  // Snap remove (already present but adding flatpak)
+  { pattern: /\bflatpak\s+uninstall\s/, reason: 'Flatpak package removal' },
+  // Nix garbage collection
+  { pattern: /\bnix-collect-garbage\b/, reason: 'Nix store garbage collection' },
+  // MongoDB destructive
+  { pattern: /\bmongo(sh)?\s+.*db\.dropDatabase/, reason: 'MongoDB database drop' },
+  { pattern: /\bmongo(sh)?\s+.*\.drop\(\)/, reason: 'MongoDB collection drop' },
+  // Elasticsearch destructive
+  { pattern: /\bcurl\s+.*-X\s+DELETE\s+.*localhost:9200/, reason: 'Elasticsearch index deletion' },
+  // AWS additional destructive
+  { pattern: /\baws\s+iam\s+delete-user\b/, reason: 'AWS IAM user deletion' },
+  { pattern: /\baws\s+iam\s+delete-role\b/, reason: 'AWS IAM role deletion' },
+  { pattern: /\baws\s+lambda\s+delete-function\b/, reason: 'AWS Lambda function deletion' },
+  { pattern: /\baws\s+ecs\s+delete-cluster\b/, reason: 'AWS ECS cluster deletion' },
+  // Docker network prune
+  { pattern: /\bdocker\s+network\s+prune/, reason: 'Docker network prune' },
+  // Git reset --hard
+  { pattern: /\bgit\s+reset\s+--hard/, reason: 'Git hard reset (destructive)' },
+  // Database GRANT/REVOKE (privilege modification)
+  { pattern: /\bREVOKE\s+/i, reason: 'Database privilege revocation' },
 ];
 
 // GREEN patterns — read-only commands, safe to auto-execute
@@ -248,7 +286,12 @@ export const GREEN_PATTERNS: PatternRule[] = [
   { pattern: /^\s*netstat(\s|$)/, reason: 'Network statistics (read-only)' },
   { pattern: /^\s*ss(\s|$)/, reason: 'Socket statistics (read-only)' },
   { pattern: /^\s*ifconfig(\s|$)/, reason: 'Network interfaces (read-only)' },
-  { pattern: /^\s*ip\s+(addr|link|route|neigh)\s*(show)?(\s|$)/, reason: 'Network info (read-only)' },
+  { pattern: /^\s*ip\s+(addr|link|neigh)\s+(show|list)\b/, reason: 'Network info (read-only)' },
+  { pattern: /^\s*ip\s+(addr|link|neigh)\s*$/, reason: 'Network info display (read-only)' },
+  { pattern: /^\s*ip\s+(addr|link|neigh)\s+-/, reason: 'Network info with flags (read-only)' },
+  { pattern: /^\s*ip\s+route\s+(show|list|get)\b/, reason: 'IP route info (read-only)' },
+  { pattern: /^\s*ip\s+route\s*$/, reason: 'IP route display (read-only)' },
+  { pattern: /^\s*ip\s+route\s+-/, reason: 'IP route display with flags (read-only)' },
   { pattern: /^\s*arp(\s|$)/, reason: 'ARP table (read-only)' },
   { pattern: /^\s*ethtool(\s|$)/, reason: 'Ethernet device info (read-only)' },
   { pattern: /^\s*mtr(\s|$)/, reason: 'Network diagnostic (read-only)' },
@@ -402,6 +445,64 @@ export const GREEN_PATTERNS: PatternRule[] = [
   // Ansible inventory
   { pattern: /^\s*ansible\s+(--list-hosts|.*--list)(\s|$)/, reason: 'Ansible inventory list (read-only)' },
   { pattern: /^\s*ansible-inventory(\s|$)/, reason: 'Ansible inventory (read-only)' },
+  // Flatpak/Snap read-only
+  { pattern: /^\s*flatpak\s+(list|info|search|remote-ls)(\s|$)/, reason: 'Flatpak query (read-only)' },
+  { pattern: /^\s*snap\s+(info|find|connections)(\s|$)/, reason: 'Snap query (read-only)' },
+  // Nix read-only
+  { pattern: /^\s*nix-env\s+(-q|--query)/, reason: 'Nix package query (read-only)' },
+  { pattern: /^\s*nix\s+(search|show|path-info)(\s|$)/, reason: 'Nix query (read-only)' },
+  // Cargo read-only
+  { pattern: /^\s*cargo\s+(check|test|clippy|doc|bench)(\s|$)/, reason: 'Cargo check/test (read-only)' },
+  // Go read-only
+  { pattern: /^\s*go\s+(test|vet|list|mod\s+(tidy|graph|verify))(\s|$)/, reason: 'Go check/test (read-only)' },
+  // Python read-only
+  { pattern: /^\s*pip\s+(list|show|freeze|check)(\s|$)/, reason: 'Pip query (read-only)' },
+  { pattern: /^\s*pip3\s+(list|show|freeze|check)(\s|$)/, reason: 'Pip3 query (read-only)' },
+  { pattern: /^\s*python3?\s+-m\s+pytest(\s|$)/, reason: 'Python test runner (read-only)' },
+  // Ruby read-only
+  { pattern: /^\s*gem\s+(list|info|search|environment)(\s|$)/, reason: 'Ruby gem query (read-only)' },
+  { pattern: /^\s*bundle\s+(list|show|check|exec)(\s|$)/, reason: 'Ruby bundle query (read-only)' },
+  // .NET read-only
+  { pattern: /^\s*dotnet\s+(list|test|nuget\s+list)(\s|$)/, reason: '.NET query (read-only)' },
+  // PHP read-only
+  { pattern: /^\s*composer\s+(show|info|depends|validate|check-platform-reqs)(\s|$)/, reason: 'Composer query (read-only)' },
+  { pattern: /^\s*php\s+-v(\s|$)/, reason: 'PHP version (read-only)' },
+  // Disk/partition read-only
+  { pattern: /^\s*tune2fs\s+-l\s/, reason: 'Filesystem info (read-only)' },
+  { pattern: /^\s*xfs_info(\s|$)/, reason: 'XFS filesystem info (read-only)' },
+  // Network extended
+  { pattern: /^\s*ip\s+(-[46]\s+)?rule(\s+show)?(\s|$)/, reason: 'IP routing rules (read-only)' },
+  { pattern: /^\s*ip\s+(-[46]\s+)?tunnel(\s+show)?(\s|$)/, reason: 'IP tunnels (read-only)' },
+  { pattern: /^\s*tc\s+(qdisc|class|filter)\s+show(\s|$)/, reason: 'Traffic control info (read-only)' },
+  // Kubernetes extended
+  { pattern: /^\s*kubectl\s+api-resources(\s|$)/, reason: 'K8s API resources (read-only)' },
+  { pattern: /^\s*kubectl\s+config\s+(view|get-contexts|current-context)(\s|$)/, reason: 'K8s config (read-only)' },
+  { pattern: /^\s*kubectl\s+version(\s|$)/, reason: 'K8s version (read-only)' },
+  // Docker extended
+  { pattern: /^\s*docker\s+history(\s|$)/, reason: 'Docker image history (read-only)' },
+  { pattern: /^\s*docker\s+image\s+ls(\s|$)/, reason: 'Docker image list (read-only)' },
+  { pattern: /^\s*docker\s+container\s+ls(\s|$)/, reason: 'Docker container list (read-only)' },
+  { pattern: /^\s*docker\s+system\s+df(\s|$)/, reason: 'Docker disk usage (read-only)' },
+  // Systemd extended
+  { pattern: /^\s*systemctl\s+list-dependencies(\s|$)/, reason: 'Service dependencies (read-only)' },
+  { pattern: /^\s*systemctl\s+list-sockets(\s|$)/, reason: 'Socket list (read-only)' },
+  { pattern: /^\s*systemctl\s+cat(\s|$)/, reason: 'Service unit file display (read-only)' },
+  // Maven/Gradle read-only
+  { pattern: /^\s*mvn\s+(dependency:tree|help|validate|test|verify)(\s|$)/, reason: 'Maven query/test (read-only)' },
+  { pattern: /^\s*gradle\s+(dependencies|tasks|properties|test|check)(\s|$)/, reason: 'Gradle query/test (read-only)' },
+  // Monitoring tools
+  { pattern: /^\s*atop(\s|$)/, reason: 'Advanced system monitor (read-only)' },
+  { pattern: /^\s*nmon(\s|$)/, reason: 'System performance monitor (read-only)' },
+  { pattern: /^\s*glances(\s|$)/, reason: 'System monitoring (read-only)' },
+  { pattern: /^\s*iotop(\s|$)/, reason: 'I/O monitoring (read-only)' },
+  { pattern: /^\s*strace\s/, reason: 'System call trace (read-only)' },
+  { pattern: /^\s*ltrace\s/, reason: 'Library call trace (read-only)' },
+  // Security audit tools (read-only)
+  { pattern: /^\s*lynis\s+(audit|show)(\s|$)/, reason: 'Security audit (read-only)' },
+  { pattern: /^\s*chkrootkit(\s|$)/, reason: 'Rootkit check (read-only)' },
+  { pattern: /^\s*rkhunter\s+--check(\s|$)/, reason: 'Rootkit check (read-only)' },
+  // Terraform extended
+  { pattern: /^\s*terraform\s+(fmt|graph|providers|version|workspace\s+list)(\s|$)/, reason: 'Terraform info (read-only)' },
 ];
 
 // YELLOW patterns — installation/download commands
@@ -500,6 +601,20 @@ export const YELLOW_PATTERNS: PatternRule[] = [
   { pattern: /\bdotnet\s+(build|publish|restore)(\s|$)/, reason: '.NET build command' },
   // Podman compose
   { pattern: /\bpodman-compose\s+(up|build|pull)(\s|$)/, reason: 'Podman Compose operation' },
+  // Flatpak install
+  { pattern: /\bflatpak\s+install\s/, reason: 'Flatpak package installation' },
+  { pattern: /\bflatpak\s+update(\s|$)/, reason: 'Flatpak package update' },
+  // Nix install
+  { pattern: /\bnix-env\s+-i\s/, reason: 'Nix package installation' },
+  { pattern: /\bnix\s+profile\s+install\s/, reason: 'Nix profile installation' },
+  // Snap refresh
+  { pattern: /\bsnap\s+refresh(\s|$)/, reason: 'Snap package refresh' },
+  // Rustup
+  { pattern: /\brustup\s+(update|install|default)(\s|$)/, reason: 'Rust toolchain management' },
+  // PHP PECL
+  { pattern: /\bpecl\s+install\s/, reason: 'PHP PECL extension installation' },
+  // Lua
+  { pattern: /\bluarocks\s+install\s/, reason: 'Lua package installation' },
 ];
 
 // RED patterns — modification commands
@@ -600,4 +715,45 @@ export const RED_PATTERNS: PatternRule[] = [
   { pattern: /\blogrotate\s+-f\s/, reason: 'Forced log rotation' },
   // Auditctl rules modification
   { pattern: /\bauditctl\s/, reason: 'Audit rules modification' },
+  // Database modification (non-destructive)
+  { pattern: /\bINSERT\s+INTO\s+/i, reason: 'Database insert operation' },
+  { pattern: /\bUPDATE\s+.*\bSET\b/i, reason: 'Database update operation' },
+  { pattern: /\bGRANT\s+/i, reason: 'Database privilege grant' },
+  { pattern: /\bALTER\s+TABLE\s+.*\bADD\b/i, reason: 'Database schema modification' },
+  { pattern: /\bCREATE\s+(TABLE|INDEX|VIEW|DATABASE)\b/i, reason: 'Database object creation' },
+  // System configuration modification
+  { pattern: /\bsysctl\s+-w\s/, reason: 'Kernel parameter modification' },
+  { pattern: /\btimedatectl\s+set/, reason: 'System time/timezone modification' },
+  { pattern: /\bhostnamectl\s+set/, reason: 'System hostname modification' },
+  { pattern: /\blocalectl\s+set/, reason: 'System locale modification' },
+  // Snap management
+  { pattern: /\bsnap\s+(set|connect|disconnect|alias)(\s|$)/, reason: 'Snap configuration modification' },
+  // Flatpak management
+  { pattern: /\bflatpak\s+override\s/, reason: 'Flatpak permission override' },
+  // Git advanced operations
+  { pattern: /\bgit\s+clean\s/, reason: 'Git working tree cleanup' },
+  { pattern: /\bgit\s+revert\s/, reason: 'Git commit revert' },
+  { pattern: /\bgit\s+am\s/, reason: 'Git apply mailbox patches' },
+  { pattern: /\bgit\s+bisect\s/, reason: 'Git binary search' },
+  // Helm extended
+  { pattern: /\bhelm\s+repo\s+(add|remove|update)(\s|$)/, reason: 'Helm repository modification' },
+  // Terraform extended
+  { pattern: /\bterraform\s+(init|import|taint|untaint)(\s|$)/, reason: 'Terraform state/init modification' },
+  // Crontab replacement
+  { pattern: /\bat\s+/, reason: 'Scheduled command (at)' },
+  // Podman extended
+  { pattern: /\bpodman\s+push\s/, reason: 'Podman image push to registry' },
+  { pattern: /\bpodman\s+commit\s/, reason: 'Podman container commit' },
+  // Docker commit/tag
+  { pattern: /\bdocker\s+commit\s/, reason: 'Docker container commit' },
+  { pattern: /\bdocker\s+tag\s/, reason: 'Docker image tagging' },
+  // Kubernetes extended
+  { pattern: /\bkubectl\s+cordon\s/, reason: 'Kubernetes node cordon' },
+  { pattern: /\bkubectl\s+uncordon\s/, reason: 'Kubernetes node uncordon' },
+  { pattern: /\bkubectl\s+drain\s/, reason: 'Kubernetes node drain' },
+  { pattern: /\bkubectl\s+taint\s/, reason: 'Kubernetes node taint' },
+  { pattern: /\bkubectl\s+label\s/, reason: 'Kubernetes resource labeling' },
+  { pattern: /\bkubectl\s+annotate\s/, reason: 'Kubernetes resource annotation' },
+  // IP route modification
+  { pattern: /\bip\s+route\s+(add|del|change|replace)\s/, reason: 'IP routing modification' },
 ];

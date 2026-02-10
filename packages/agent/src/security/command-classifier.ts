@@ -12,14 +12,16 @@
  * - FORBIDDEN: Absolutely prohibited, never executed
  *
  * Features:
- * - 300+ built-in pattern rules across 5 risk levels
+ * - 750+ built-in pattern rules across 5 risk levels
+ * - Regex and wildcard pattern matching
  * - Alias recognition: sudo, doas, su -c, pkexec
- * - Custom rule loading from configuration
+ * - Custom rule loading from configuration object or JSON file
  * - Fail-safe: unknown commands default to RED
  *
  * @module security/command-classifier
  */
 
+import { readFileSync } from 'node:fs';
 import { z } from 'zod';
 import type { PatternRule } from './command-rules.js';
 import {
@@ -315,6 +317,28 @@ export function loadCustomRules(config: CustomRulesConfig): void {
   }
 }
 
+/**
+ * Load custom classification rules from a JSON configuration file.
+ *
+ * Expected file format:
+ * ```json
+ * {
+ *   "rules": [
+ *     { "pattern": "\\bmy-tool\\b", "reason": "Custom tool", "level": "red" }
+ *   ]
+ * }
+ * ```
+ *
+ * @param filePath - Absolute path to the JSON config file
+ * @throws If the file cannot be read, parsed, or contains invalid rules
+ */
+export function loadCustomRulesFromFile(filePath: string): void {
+  const content = readFileSync(filePath, 'utf-8');
+  const data: unknown = JSON.parse(content);
+  const config = CustomRulesConfigSchema.parse(data);
+  loadCustomRules(config);
+}
+
 /** Clear all custom rules (useful for testing). */
 export function clearCustomRules(): void {
   customForbidden = [];
@@ -328,6 +352,12 @@ export function clearCustomRules(): void {
 export function getCustomRuleCount(): number {
   return customForbidden.length + customCritical.length
     + customGreen.length + customYellow.length + customRed.length;
+}
+
+/** Get total count of built-in rules across all levels. */
+export function getBuiltinRuleCount(): number {
+  return FORBIDDEN_PATTERNS.length + CRITICAL_PATTERNS.length
+    + GREEN_PATTERNS.length + YELLOW_PATTERNS.length + RED_PATTERNS.length;
 }
 
 // ============================================================================

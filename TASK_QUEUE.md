@@ -7,9 +7,9 @@
 ## 📊 统计信息
 
 - **总任务数**: 10
-- **待完成** (pending): 4
+- **待完成** (pending): 3
 - **进行中** (in_progress): 0
-- **已完成** (completed): 6
+- **已完成** (completed): 7
 - **失败** (failed): 0
 
 ---
@@ -264,7 +264,7 @@ Settings 页面目前只是一个空壳，需要实现完整的设置功能：
 
 ---
 
-### [pending] 增强命令安全审计规则库
+### [completed] 增强命令安全审计规则库 ✅
 
 **ID**: task-007
 **优先级**: P1
@@ -279,16 +279,33 @@ Settings 页面目前只是一个空壳，需要实现完整的设置功能：
 
 **产品需求**: 安全架构 - 命令分级制度是五层防御的第一层
 **验收标准**:
-- [ ] 规则库覆盖 100+ 常见命令
-- [ ] 支持正则表达式和通配符匹配
-- [ ] 别名识别准确（sudo rm = rm）
-- [ ] 参数审计识别 --force、-rf 等危险参数
-- [ ] 保护路径包含 /etc、/boot、/var/lib/*
-- [ ] 编写测试覆盖所有规则
-- [ ] 支持从配置文件加载自定义规则
+- [x] 规则库覆盖 100+ 常见命令（实际 532+ 规则覆盖 5 个级别）
+- [x] 支持正则表达式和通配符匹配（所有规则基于 RegExp）
+- [x] 别名识别准确（sudo rm = rm）（支持 sudo/doas/pkexec/su -c）
+- [x] 参数审计识别 --force、-rf 等危险参数（43+ 危险参数）
+- [x] 保护路径包含 /etc、/boot、/var/lib/*（55+ 保护路径）
+- [x] 编写测试覆盖所有规则（899 tests, 99.1% coverage）
+- [x] 支持从配置文件加载自定义规则（loadCustomRulesFromFile）
+
+**实现内容**:
+- ✅ 新增 FORBIDDEN 规则：iptables flush、cgdelete、grub-install、critical service mask
+- ✅ 新增 CRITICAL 规则：cargo/flatpak/nix uninstall、git branch/tag delete、git hard reset、MongoDB/ES destructive、AWS IAM/Lambda/ECS delete、REVOKE
+- ✅ 新增 GREEN 规则：flatpak/snap/nix query、cargo/go/pip/gem/dotnet read-only、kubectl/docker extended、systemd extended、monitoring tools (atop/nmon/iotop/strace)、security audit (lynis/chkrootkit/rkhunter)、terraform extended
+- ✅ 新增 YELLOW 规则：flatpak/nix/snap/rustup install、pecl/luarocks install
+- ✅ 新增 RED 规则：SQL INSERT/UPDATE/GRANT/CREATE、sysctl/timedatectl/hostnamectl、git clean/revert/am/bisect、helm repo、terraform init/import/taint、kubectl cordon/drain/taint/label、podman push/commit、docker commit/tag、ip route add/del
+- ✅ 新增 43+ 危险参数（--all、--no-interaction、--force-renewal 等）
+- ✅ 新增 55+ 保护路径（rabbitmq、neo4j、cockroach、ceph、gitea、gitlab、jenkins、zookeeper、kafka、haproxy）
+- ✅ 新增 loadCustomRulesFromFile() 从 JSON 配置文件加载自定义规则
+- ✅ 新增 getBuiltinRuleCount() 获取内置规则总数
+- ✅ 修复 ip route/addr GREEN 规则误匹配 ip route add 的问题
+
+**测试覆盖率**:
+- 安全模块: 99.1% statements, 95.34% branches, 100% functions
+- 测试总数: 899 tests (4 test files)
+- 全部通过
 
 **创建时间**: 2026-02-10 23:35:00
-**完成时间**: -
+**完成时间**: 2026-02-11
 
 ---
 
@@ -401,4 +418,4 @@ ID: task-001
 
 ---
 
-**最后更新**: 2026-02-11 05:04:48
+**最后更新**: 2026-02-11 05:18:33

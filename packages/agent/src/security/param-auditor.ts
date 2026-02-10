@@ -60,6 +60,15 @@ export const DANGEROUS_PARAMS: readonly DangerousParam[] = [
   { flag: '--unsafe', description: '不安全模式' },
   { flag: '--force-delete', description: '强制删除' },
   { flag: '--no-keep-alive', description: '禁用保活检查' },
+  { flag: '--all', description: '操作所有目标' },
+  { flag: '--no-interaction', description: '禁用交互确认' },
+  { flag: '--force-renewal', description: '强制续期（证书）' },
+  { flag: '--skip-checks', description: '跳过预检查' },
+  { flag: '--no-preserve-env', description: '不保留环境变量' },
+  { flag: '--force-overwrite', description: '强制覆盖' },
+  { flag: '--disable-verification', description: '禁用验证' },
+  { flag: '--skip-hooks', description: '跳过钩子执行' },
+  { flag: '--no-audit', description: '跳过安全审计' },
 ] as const;
 
 export const DANGEROUS_FLAGS: readonly string[] = DANGEROUS_PARAMS.map((p) => p.flag);
@@ -115,6 +124,16 @@ export const PROTECTED_PATHS: readonly ProtectedPath[] = [
   { path: '/var/lib/clickhouse', description: 'ClickHouse 数据目录' },
   { path: '/var/lib/cassandra', description: 'Cassandra 数据目录' },
   { path: '/var/lib/influxdb', description: 'InfluxDB 数据目录' },
+  { path: '/var/lib/rabbitmq', description: 'RabbitMQ 数据目录' },
+  { path: '/var/lib/neo4j', description: 'Neo4j 数据目录' },
+  { path: '/var/lib/cockroach', description: 'CockroachDB 数据目录' },
+  { path: '/var/lib/ceph', description: 'Ceph 存储数据目录' },
+  { path: '/var/lib/gitea', description: 'Gitea 数据目录' },
+  { path: '/var/lib/gitlab', description: 'GitLab 数据目录' },
+  { path: '/var/lib/jenkins', description: 'Jenkins 数据目录' },
+  { path: '/var/lib/zookeeper', description: 'ZooKeeper 数据目录' },
+  { path: '/var/lib/kafka', description: 'Kafka 数据目录' },
+  { path: '/var/lib/haproxy', description: 'HAProxy 数据目录' },
 ] as const;
 
 export const PROTECTED_PATH_LIST: readonly string[] = PROTECTED_PATHS.map((p) => p.path);
