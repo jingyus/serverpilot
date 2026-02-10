@@ -30,7 +30,7 @@ cd "$PROJECT_DIR"
 # 文件路径
 PRODUCT_GUIDE="$PROJECT_DIR/docs/产品方案-目录.md"  # 精简版产品方案
 PRODUCT_DOC="$PROJECT_DIR/docs/DevOps产品方案.md"   # 完整产品方案
-TECH_SPEC="$PROJECT_DIR/docs/SERVERPILOT技术方案.md"
+DEV_STANDARD="$PROJECT_DIR/docs/开发标准.md"        # 开发标准
 LOG_FILE="$PROJECT_DIR/autorun.log"
 STATE_FILE="$PROJECT_DIR/AUTORUN_STATE.md"
 TASK_FILE="$PROJECT_DIR/CURRENT_TASK.md"
@@ -39,8 +39,8 @@ TEST_LOG="$PROJECT_DIR/test.log"
 # 配置
 INTERVAL=30            # 循环间隔（秒）
 MAX_ITERATIONS=1000    # 最大迭代次数
-ANALYZE_TIMEOUT=1800   # 分析阶段超时（30分钟）
-EXECUTE_TIMEOUT=1800   # 执行阶段超时（30分钟）
+ANALYZE_TIMEOUT=3600   # 分析阶段超时（30分钟）
+EXECUTE_TIMEOUT=3600   # 执行阶段超时（30分钟）
 MAX_RETRIES=3          # 单任务最大重试次数
 
 # 日志函数
@@ -114,11 +114,11 @@ check_environment() {
         log_success "完整产品方案: $PRODUCT_DOC"
     fi
 
-    # 检查技术方案文档
-    if [ ! -f "$TECH_SPEC" ]; then
-        log_warning "技术方案文档不存在: $TECH_SPEC"
+    # 检查开发标准文档
+    if [ ! -f "$DEV_STANDARD" ]; then
+        log_warning "开发标准文档不存在: $DEV_STANDARD"
     else
-        log_success "技术方案文档: $TECH_SPEC"
+        log_success "开发标准文档: $DEV_STANDARD"
     fi
 }
 
@@ -167,19 +167,21 @@ build_analyze_prompt() {
 
 ## 项目目标
 
-**产品方案**: docs/产品方案-目录.md - 包含 MVP 范围、优先级、技术栈概要
+**产品方案**: docs/产品方案-目录.md - MVP 范围、优先级、技术栈概要
 **完整方案**: docs/DevOps产品方案.md - 详细产品设计（需要时查阅）
-**技术方案**: docs/SERVERPILOT技术方案.md - 技术架构设计
+**开发标准**: docs/开发标准.md - 技术架构、代码规范、Git 工作流、测试标准
 
 ## 你的任务
 
 1. **阅读产品方案目录**: 先读 docs/产品方案-目录.md，了解 MVP 范围和开发优先级
-2. **参考技术方案**: 如果需要查看 docs/SERVERPILOT技术方案.md，了解技术实现细节
+2. **遵循开发标准**: 查看 docs/开发标准.md，了解技术架构和代码规范
 3. **分析当前代码**: 检查 packages/ 目录下各模块的实现状态
 4. **确定下一个任务**: 根据"产品方案-目录.md"中的开发优先级，选择一个最重要的任务
 5. **生成任务描述**: 输出一个明确的任务描述
 
-**注意**: 优先完成 MVP (v0.1) 范围内的功能，按照"第一优先级 → 第二优先级 → 第三优先级"顺序开发
+**注意**:
+- 优先完成 MVP (v0.1) 范围内的功能，按照"第一优先级 → 第二优先级 → 第三优先级"顺序开发
+- 必须遵守开发标准中的代码规范、命名规则、Git 提交规范
 
 ## 输出格式
 
@@ -223,7 +225,7 @@ build_execute_prompt() {
 
 ## 项目目标
 **产品方案**: docs/产品方案-目录.md - MVP 范围、优先级、技术栈
-**技术方案**: docs/SERVERPILOT技术方案.md - 技术架构和实现细节
+**开发标准**: docs/开发标准.md - 技术架构、代码规范、Git 工作流、测试标准
 
 ## 项目信息
 - **技术栈**: Node.js 22+ / TypeScript / Hono / React / Drizzle ORM / SQLite
@@ -236,13 +238,19 @@ $task_content
 ## 开发要求
 
 1. **对照产品方案**: 确保实现符合 docs/产品方案-目录.md 中的 MVP 范围
-2. **参考技术方案**: 按照 docs/SERVERPILOT技术方案.md 中的设计实现
-3. **代码规范**:
+2. **遵循开发标准**: 严格按照 docs/开发标准.md 中的规范执行：
+   - 技术架构：分层架构、模块职责、技术栈选型
+   - 代码规范：TypeScript strict mode、命名规则、文件结构
+   - 测试标准：安全模块 ≥95%、AI 模块 ≥90%、整体 ≥80%
+   - Git 规范：分支命名、Commit Message 格式
+   - 安全边界：五层纵深防御、命令分级制度
+4. **代码质量**:
    - 使用 TypeScript，确保类型安全
    - 使用 Zod 进行数据验证
    - 遵循项目现有代码风格
-4. **编写测试**: 为新功能编写单元测试
-5. **增量开发**: 只实现当前任务，不要过度设计
+   - 单文件不超过 500 行（硬限制 800 行）
+5. **编写测试**: 为新功能编写单元测试，确保覆盖率达标
+6. **增量开发**: 只实现当前任务，不要过度设计
 
 ## 安全规则
 - 不执行破坏性命令
@@ -642,7 +650,7 @@ main() {
     echo ""
     log_info "启动 AI 自循环开发..."
     log_info "产品方案目录: $PRODUCT_GUIDE"
-    log_info "技术方案: $TECH_SPEC"
+    log_info "开发标准: $DEV_STANDARD"
     log_info "循环间隔: ${INTERVAL}秒"
     log_info "按 Ctrl+C 可随时停止"
     echo ""
