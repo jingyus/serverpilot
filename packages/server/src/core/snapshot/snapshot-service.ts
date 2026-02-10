@@ -112,7 +112,7 @@ export const CreateSnapshotRequestSchema = z.object({
   expirationMs: z.number().int().positive().default(DEFAULT_EXPIRATION_MS),
 });
 
-export type CreateSnapshotRequest = z.infer<typeof CreateSnapshotRequestSchema>;
+export type CreateSnapshotRequest = z.input<typeof CreateSnapshotRequestSchema>;
 
 // ============================================================================
 // SnapshotService

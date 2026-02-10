@@ -12,7 +12,9 @@ import { z } from 'zod';
 import { requireAuth } from '../middleware/auth.js';
 import { validateBody } from '../middleware/validate.js';
 import { getDocSourceRepository } from '../../db/repositories/doc-source-repository.js';
+import type { CreateDocSourceData, UpdateDocSourceData } from '../../db/repositories/doc-source-repository.js';
 import { DocFetcher } from '../../knowledge/doc-fetcher.js';
+import type { DocSource as FetcherDocSource } from '../../knowledge/doc-fetcher.js';
 import type { ApiEnv } from './types.js';
 
 // ============================================================================
@@ -111,7 +113,7 @@ app.get('/:id', requireAuth, async (c) => {
  */
 app.post('/', requireAuth, validateBody(CreateDocSourceSchema), async (c) => {
   const userId = c.get('userId');
-  const data = c.get('validatedBody');
+  const data = c.get('validatedBody') as z.infer<typeof CreateDocSourceSchema>;
   const repository = getDocSourceRepository();
 
   // Validate that the appropriate config is provided
@@ -125,7 +127,7 @@ app.post('/', requireAuth, validateBody(CreateDocSourceSchema), async (c) => {
   const source = await repository.create({
     userId,
     ...data,
-  });
+  } as CreateDocSourceData);
 
   return c.json({ source }, 201);
 });
@@ -136,7 +138,7 @@ app.post('/', requireAuth, validateBody(CreateDocSourceSchema), async (c) => {
 app.patch('/:id', requireAuth, validateBody(UpdateDocSourceSchema), async (c) => {
   const userId = c.get('userId');
   const id = c.req.param('id');
-  const data = c.get('validatedBody');
+  const data = c.get('validatedBody') as UpdateDocSourceData;
   const repository = getDocSourceRepository();
 
   const source = await repository.update(id, userId, data);
@@ -189,13 +191,15 @@ app.post('/:id/fetch', requireAuth, async (c) => {
   });
 
   try {
-    const docSource = {
+    const docSource: FetcherDocSource = {
       id: source.id,
       type: source.type,
       software: source.software,
       label: source.name,
       github: source.githubConfig ?? undefined,
-      website: source.websiteConfig ?? undefined,
+      website: source.websiteConfig
+        ? { ...source.websiteConfig, software: source.software }
+        : undefined,
     };
 
     const task = await fetcher.fetchSource(docSource);

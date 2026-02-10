@@ -9,7 +9,7 @@ beforeEach(() => {
 });
 
 /** A component that throws on render */
-function ThrowingChild({ message = 'Test error' }: { message?: string }) {
+function ThrowingChild({ message = 'Test error' }: { message?: string }): never {
   throw new Error(message);
 }
 

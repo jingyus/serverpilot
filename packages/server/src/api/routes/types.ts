@@ -23,3 +23,6 @@ export interface ApiEnv {
     userId: string;
   };
 }
+
+/** Alias for routes that use auth context */
+export type AuthContext = ApiEnv;

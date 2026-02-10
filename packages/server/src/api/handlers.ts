@@ -30,6 +30,7 @@ import { checkRateLimit, incrementAICall, logAICall, createQuotaExceededMessage,
 import { getResponseTimeTracker } from '../utils/response-time-tracker.js';
 import { getSnapshotService } from '../core/snapshot/snapshot-service.js';
 import { getRollbackService } from '../core/rollback/rollback-service.js';
+import { getTaskExecutor } from '../core/task/executor.js';
 
 // ============================================================================
 // Types

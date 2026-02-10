@@ -17,9 +17,11 @@ RUN corepack enable && corepack prepare pnpm@10.13.1 --activate
 WORKDIR /app
 
 # Copy workspace config and lockfile first for layer caching
-COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.json ./
 COPY packages/shared/package.json packages/shared/package.json
 COPY packages/dashboard/package.json packages/dashboard/package.json
+COPY packages/agent/package.json packages/agent/package.json
+COPY packages/server/package.json packages/server/package.json
 
 # Install all dependencies (including devDependencies for build)
 RUN pnpm install --frozen-lockfile

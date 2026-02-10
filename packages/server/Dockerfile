@@ -21,6 +21,8 @@ WORKDIR /app
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY packages/shared/package.json packages/shared/package.json
 COPY packages/server/package.json packages/server/package.json
+COPY packages/agent/package.json packages/agent/package.json
+COPY packages/dashboard/package.json packages/dashboard/package.json
 
 # Install production dependencies only
 RUN pnpm install --frozen-lockfile --prod
@@ -38,6 +40,8 @@ WORKDIR /app
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.json ./
 COPY packages/shared/package.json packages/shared/package.json
 COPY packages/server/package.json packages/server/package.json
+COPY packages/agent/package.json packages/agent/package.json
+COPY packages/dashboard/package.json packages/dashboard/package.json
 
 # Install all dependencies (including devDependencies for build)
 RUN pnpm install --frozen-lockfile

@@ -95,7 +95,8 @@ export class WebSocketClient {
     payload: Extract<Message, { type: T }>['payload'],
     requestId?: string,
   ): void {
-    const msg = createMessage(type, payload, requestId);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const msg = createMessage(type, payload as any, requestId);
     this.sendRaw(msg);
   }
 
@@ -123,7 +124,8 @@ export class WebSocketClient {
       }, timeoutMs);
 
       this.pendingRequests.set(requestId, { resolve, reject, timer });
-      this.send(type, payload, requestId);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      this.send(type, payload as any, requestId);
     });
   }
 

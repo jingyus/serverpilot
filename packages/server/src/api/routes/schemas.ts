@@ -86,8 +86,8 @@ export type RemoveNoteBody = z.infer<typeof RemoveNoteBodySchema>;
 
 /** Update server profile preferences */
 export const UpdatePreferencesBodySchema = z.object({
-  packageManager: z.string().max(50).optional(),
-  deploymentStyle: z.string().max(50).optional(),
+  packageManager: z.enum(['apt', 'yum', 'brew', 'apk']).optional(),
+  deploymentStyle: z.enum(['docker', 'bare-metal', 'pm2']).optional(),
   shell: z.string().max(50).optional(),
   timezone: z.string().max(100).optional(),
 });

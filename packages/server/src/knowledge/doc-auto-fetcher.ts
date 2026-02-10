@@ -66,7 +66,7 @@ export interface FetchRunSummary {
  * to track fetch history and status.
  */
 export class DocAutoFetcher {
-  private readonly config: Required<AutoFetcherConfig>;
+  private readonly config: Required<Omit<AutoFetcherConfig, 'githubToken'>> & { githubToken?: string };
   private readonly fetcher: DocFetcher;
   private readonly repository = getDocSourceRepository();
   private intervalId: NodeJS.Timeout | null = null;
@@ -369,7 +369,9 @@ export class DocAutoFetcher {
       software: source.software,
       label: source.name,
       github: source.githubConfig ?? undefined,
-      website: source.websiteConfig ?? undefined,
+      website: source.websiteConfig
+        ? { ...source.websiteConfig, software: source.software }
+        : undefined,
     };
   }
 

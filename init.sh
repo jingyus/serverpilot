@@ -254,8 +254,8 @@ setup_port() {
   current_port=$(grep -E '^DASHBOARD_PORT=' "$ENV_FILE" | cut -d'=' -f2- || true)
 
   echo ""
-  read -rp "Dashboard port [${current_port:-80}]: " port
-  port="${port:-${current_port:-80}}"
+  read -rp "Dashboard port [${current_port:-3001}]: " port
+  port="${port:-${current_port:-3001}}"
 
   if grep -q '^DASHBOARD_PORT=' "$ENV_FILE"; then
     if [[ "$(uname)" == "Darwin" ]]; then
@@ -330,8 +330,8 @@ wait_for_healthy() {
 # --------------------------------------------------------------------------
 print_summary() {
   local port
-  port=$(grep -E '^DASHBOARD_PORT=' "$ENV_FILE" 2>/dev/null | cut -d'=' -f2- || echo "80")
-  port="${port:-80}"
+  port=$(grep -E '^DASHBOARD_PORT=' "$ENV_FILE" 2>/dev/null | cut -d'=' -f2- || echo "3001")
+  port="${port:-3001}"
 
   echo ""
   echo -e "${GREEN}╔══════════════════════════════════════════════════════════════╗${NC}"
