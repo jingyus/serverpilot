@@ -158,15 +158,15 @@ describe('build process', () => {
 
 describe('security', () => {
   it('should create a non-root user', () => {
-    expect(dockerfileContent).toMatch(/adduser.*aiinstaller/);
+    expect(dockerfileContent).toMatch(/adduser.*serverpilot/);
   });
 
   it('should create a non-root group', () => {
-    expect(dockerfileContent).toMatch(/addgroup.*aiinstaller/);
+    expect(dockerfileContent).toMatch(/addgroup.*serverpilot/);
   });
 
   it('should switch to non-root user with USER directive', () => {
-    expect(dockerfileContent).toMatch(/^USER\s+aiinstaller/m);
+    expect(dockerfileContent).toMatch(/^USER\s+serverpilot/m);
   });
 
   it('should set NODE_ENV to production', () => {

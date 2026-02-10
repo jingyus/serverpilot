@@ -243,9 +243,9 @@ describe('buildHealthCheckConfig()', () => {
   it('should return valid config', () => {
     const config = buildHealthCheckConfig();
     expect(config.endpoint).toBe(HEALTH_CHECK_ENDPOINT);
-    expect(config.interval).toBe('30s');
+    expect(config.interval).toBe('10s');
     expect(config.timeout).toBe('5s');
-    expect(config.retries).toBe(3);
+    expect(config.retries).toBe(5);
   });
 
   it('timeout should be shorter than interval', () => {

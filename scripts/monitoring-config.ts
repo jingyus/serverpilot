@@ -222,9 +222,9 @@ export function buildLogConfig(
 export function buildHealthCheckConfig(): HealthCheckConfig {
   return {
     endpoint: HEALTH_CHECK_ENDPOINT,
-    interval: '30s',
+    interval: '10s',
     timeout: '5s',
-    retries: 3,
+    retries: 5,
   };
 }
 

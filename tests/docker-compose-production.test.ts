@@ -199,7 +199,7 @@ describe('Docker Compose Production Deployment', () => {
       const config = parseYaml(content);
 
       expect(config.networks).toBeDefined();
-      expect(config.networks['aiinstaller-network']).toBeDefined();
+      expect(config.networks['serverpilot-network']).toBeDefined();
     });
 
     it('should configure all services on the same network', () => {
@@ -207,15 +207,15 @@ describe('Docker Compose Production Deployment', () => {
       const config = parseYaml(content);
 
       // Check that server and dashboard are on the same network
-      expect(config.services.server.networks).toContain('aiinstaller-network');
-      expect(config.services.dashboard.networks).toContain('aiinstaller-network');
+      expect(config.services.server.networks).toContain('serverpilot-network');
+      expect(config.services.dashboard.networks).toContain('serverpilot-network');
     });
 
     it('should use bridge driver for network', () => {
       const content = readFileSync(dockerComposePath, 'utf-8');
       const config = parseYaml(content);
 
-      expect(config.networks['aiinstaller-network'].driver).toBe('bridge');
+      expect(config.networks['serverpilot-network'].driver).toBe('bridge');
     });
   });
 
@@ -261,21 +261,24 @@ describe('Docker Compose Production Deployment', () => {
   });
 
   describe('Port Configuration', () => {
-    it('should expose server port', () => {
+    it('should not expose server port externally (accessed via Nginx reverse proxy)', () => {
       const content = readFileSync(dockerComposePath, 'utf-8');
       const config = parseYaml(content);
 
-      expect(config.services.server.ports).toBeDefined();
-      expect(config.services.server.ports.length).toBeGreaterThan(0);
+      // Server port is NOT exposed externally; it's only accessible internally on port 3000
+      // Dashboard (Nginx) reverse proxies to the server
+      expect(config.services.server.ports).toBeUndefined();
     });
 
-    it('should configure server port with environment variable', () => {
+    it('should expose dashboard port with DASHBOARD_PORT environment variable', () => {
       const content = readFileSync(dockerComposePath, 'utf-8');
       const config = parseYaml(content);
 
-      const portMapping = config.services.server.ports[0];
-      expect(portMapping).toContain('SERVER_PORT');
-      expect(portMapping).toContain('3000');
+      expect(config.services.dashboard.ports).toBeDefined();
+      expect(config.services.dashboard.ports.length).toBeGreaterThan(0);
+      const portMapping = config.services.dashboard.ports[0];
+      expect(portMapping).toContain('DASHBOARD_PORT');
+      expect(portMapping).toContain('80');
     });
 
     it.skip('should expose MySQL (Legacy MySQL test) port for development', () => {
@@ -295,8 +298,8 @@ describe('Docker Compose Production Deployment', () => {
       const config = parseYaml(content);
 
       // Check server and dashboard container names
-      expect(config.services.server.container_name).toBe('aiinstaller-server');
-      expect(config.services.dashboard.container_name).toBe('aiinstaller-dashboard');
+      expect(config.services.server.container_name).toBe('serverpilot-server');
+      expect(config.services.dashboard.container_name).toBe('serverpilot-dashboard');
     });
 
     it.skip('should configure MySQL (Legacy MySQL test) with proper timezone', () => {
@@ -369,10 +372,11 @@ describe('Docker Compose Production Deployment', () => {
       expect(content).toContain('Usage:');
     });
 
-    it('should reference .env.example file', () => {
+    it('should use environment variable substitution syntax', () => {
       const content = readFileSync(dockerComposePath, 'utf-8');
 
-      expect(content).toContain('.env');
+      // Docker Compose auto-loads .env file; variables are referenced via ${VAR:-default} syntax
+      expect(content).toContain('${');
     });
   });
 

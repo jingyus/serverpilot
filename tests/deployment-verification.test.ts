@@ -272,7 +272,7 @@ describe('Deployment Verification', () => {
 
       const requiredVars = [
         'ANTHROPIC_API_KEY',
-        'SERVER_PORT',
+        'DASHBOARD_PORT', // Server port is hardcoded to 3000 internally; dashboard exposes via DASHBOARD_PORT
         'DATABASE_PATH', // SQLite database path (zero-config)
         'JWT_SECRET'
       ];

@@ -57,7 +57,7 @@ describe('server service', () => {
   });
 
   it('should set a container name', () => {
-    expect(composeContent).toMatch(/container_name:\s*aiinstaller-server/);
+    expect(composeContent).toMatch(/container_name:\s*serverpilot-server/);
   });
 });
 
@@ -80,13 +80,13 @@ describe('build configuration', () => {
 // ============================================================================
 
 describe('port mapping', () => {
-  it('should map port 3000', () => {
+  it('should expose dashboard port', () => {
     expect(composeContent).toMatch(/ports:/);
-    expect(composeContent).toMatch(/3000/);
+    expect(composeContent).toMatch(/DASHBOARD_PORT/);
   });
 
-  it('should allow configurable host port via SERVER_PORT variable', () => {
-    expect(composeContent).toMatch(/\$\{SERVER_PORT:-3000\}/);
+  it('should allow configurable dashboard host port', () => {
+    expect(composeContent).toMatch(/\$\{DASHBOARD_PORT:-80\}:80/);
   });
 });
 

@@ -36,7 +36,18 @@
 
 ## 快速开始
 
-**三步部署 ServerPilot**:
+**方法一: 引导式一键部署 (推荐)**
+
+```bash
+# 1. 克隆仓库
+git clone https://github.com/your-org/ServerPilot.git
+cd ServerPilot
+
+# 2. 运行初始化脚本 (自动引导配置并启动)
+./init.sh
+```
+
+**方法二: 手动配置部署**
 
 ```bash
 # 1. 克隆仓库
@@ -51,7 +62,7 @@ cp .env.example .env
 docker compose up -d
 ```
 
-访问 `http://localhost:3000` 即可使用 Dashboard!
+访问 `http://localhost` 即可使用 Dashboard!
 
 ---
 
@@ -188,7 +199,7 @@ cat .env.example
 
 | 变量 | 默认值 | 必填 | 说明 |
 |-----|-------|------|-----|
-| `DASHBOARD_PORT` | 3000 | 否 | Dashboard 外部访问端口 |
+| `DASHBOARD_PORT` | 80 | 否 | Dashboard 外部访问端口 |
 | `JWT_SECRET` | `default_jwt_secret...` | 是 | **生产环境必须修改** |
 | `ANTHROPIC_API_KEY` | (空) | 是 | Claude API Key |
 | `AI_MODEL` | `claude-sonnet-4-20250514` | 否 | AI 模型名称 |
@@ -213,8 +224,8 @@ docker compose up -d
 
 Docker Compose 会自动:
 1. 拉取 Node.js 和 Nginx 基础镜像
-2. 构建 `aiinstaller-server` 镜像 (Server + SQLite)
-3. 构建 `aiinstaller-dashboard` 镜像 (React SPA + Nginx)
+2. 构建 `serverpilot-server` 镜像 (Server + SQLite)
+3. 构建 `serverpilot-dashboard` 镜像 (React SPA + Nginx)
 4. 创建 Docker 网络和数据卷
 5. 启动所有容器
 
@@ -233,8 +244,8 @@ docker compose ps
 **预期输出**:
 ```
 NAME                    STATUS         PORTS
-aiinstaller-server      Up (healthy)   0.0.0.0:3000->3000/tcp
-aiinstaller-dashboard   Up             0.0.0.0:3000->80/tcp
+serverpilot-server      Up (healthy)   3000/tcp
+serverpilot-dashboard   Up             0.0.0.0:80->80/tcp
 ```
 
 确保 `STATUS` 列显示 `Up` 或 `Up (healthy)`。
@@ -270,9 +281,9 @@ docker compose logs -f dashboard
 
 ### 3. 健康检查
 
-**Server 健康检查**:
+**Server 健康检查** (通过 Nginx 反向代理):
 ```bash
-curl http://localhost:3000/health
+curl http://localhost/health
 ```
 
 **预期响应**:
@@ -291,7 +302,7 @@ curl http://localhost:3000/health
 
 打开浏览器访问:
 ```
-http://localhost:3000
+http://localhost
 ```
 
 **预期结果**:
@@ -304,14 +315,14 @@ http://localhost:3000
 
 **方法 1: 浏览器开发者工具**
 
-1. 打开 Dashboard (`http://localhost:3000`)
+1. 打开 Dashboard (`http://localhost`)
 2. 按 F12 打开开发者工具
 3. 切换到 "Network" (网络) 标签
 4. 过滤 "WS" (WebSocket)
 5. 刷新页面
 
 **预期结果**:
-- 看到 `ws://localhost:3000/ws` 连接
+- 看到 `ws://localhost/ws` 连接
 - 状态为 `101 Switching Protocols`
 
 **方法 2: 命令行测试 (需要 wscat)**
@@ -321,7 +332,7 @@ http://localhost:3000
 npm install -g wscat
 
 # 测试 WebSocket 连接
-wscat -c ws://localhost:3000/ws
+wscat -c ws://localhost/ws
 ```
 
 **预期结果**:
@@ -338,7 +349,7 @@ Connected (press CTRL+C to quit)
 
 ```bash
 # 通过 Dashboard 的 Nginx 反向代理访问 Server API
-curl http://localhost:3000/api/health
+curl http://localhost/api/health
 ```
 
 **预期响应**:
@@ -362,8 +373,8 @@ curl http://localhost:3000/api/health
 **解决方案**:
 
 ```bash
-# 检查占用 3000 端口的进程
-lsof -i :3000
+# 检查占用 80 端口的进程
+lsof -i :80
 
 # 杀死占用进程
 kill -9 <PID>
@@ -404,7 +415,7 @@ sudo docker compose up -d
 
 2. 检查健康检查端点:
    ```bash
-   docker exec aiinstaller-server curl http://localhost:3000/health
+   docker exec serverpilot-server curl http://localhost:3000/health
    ```
 
 3. 常见原因:
@@ -432,12 +443,12 @@ sudo docker compose up -d
 
 3. 测试容器间通信:
    ```bash
-   docker exec aiinstaller-dashboard curl http://server:3000/health
+   docker exec serverpilot-dashboard curl http://server:3000/health
    ```
 
 4. 检查 Nginx 配置:
    ```bash
-   docker exec aiinstaller-dashboard cat /etc/nginx/conf.d/default.conf
+   docker exec serverpilot-dashboard cat /etc/nginx/conf.d/default.conf
    ```
 
 ---
@@ -452,7 +463,7 @@ sudo docker compose up -d
 
 2. 验证 WebSocket 端点:
    ```bash
-   wscat -c ws://localhost:3000/ws
+   wscat -c ws://localhost/ws
    ```
 
 3. 检查 Nginx WebSocket 代理配置 (确保有 `Upgrade` 和 `Connection` 头)
@@ -571,7 +582,7 @@ docker run --rm \
 docker compose stop server
 
 # 复制数据库文件
-docker cp aiinstaller-server:/data/serverpilot.db ./backups/serverpilot-$(date +%Y%m%d).db
+docker cp serverpilot-server:/data/serverpilot.db ./backups/serverpilot-$(date +%Y%m%d).db
 
 # 启动 Server 容器
 docker compose start server
@@ -643,7 +654,7 @@ docker compose up -d
 
 ```bash
 # 查看容器资源占用
-docker stats aiinstaller-server aiinstaller-dashboard
+docker stats serverpilot-server serverpilot-dashboard
 
 # 查看数据卷大小
 docker system df -v | grep serverpilot
@@ -759,7 +770,7 @@ NODE_ENV=production node packages/server/dist/index.js
 
 ```bash
 npm install -g pm2
-pm2 start packages/server/dist/index.js --name aiinstaller-server
+pm2 start packages/server/dist/index.js --name serverpilot-server
 pm2 save
 pm2 startup
 ```
@@ -866,6 +877,13 @@ curl -fsSL https://get.aiinstaller.dev/install.sh | bash
 | `DATABASE_PATH` | `/data/serverpilot.db` | 否 | SQLite 数据库文件路径 (Docker 内部路径) |
 
 **注意**: ServerPilot 使用 SQLite 进行零配置部署，无需额外的数据库服务。数据通过 Docker volume `server-data` 持久化。
+
+### 管理员配置
+
+| 变量名 | 默认值 | 必填 | 说明 |
+|--------|-------|------|------|
+| `ADMIN_EMAIL` | `admin@serverpilot.local` | 否 | 管理员邮箱 (仅首次启动时使用) |
+| `ADMIN_PASSWORD` | (空) | 否 | 管理员密码 (最少 8 字符, 空则自动生成) |
 
 ### 客户端配置
 
@@ -1061,7 +1079,7 @@ docker compose up -d
 
 # 4. 验证
 docker compose ps
-curl http://localhost:3000
+curl http://localhost
 ```
 
 #### Fly.io 升级

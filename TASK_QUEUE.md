@@ -7,9 +7,9 @@
 ## 📊 统计信息
 
 - **总任务数**: 10
-- **待完成** (pending): 2
+- **待完成** (pending): 1
 - **进行中** (in_progress): 0
-- **已完成** (completed): 8
+- **已完成** (completed): 9
 - **失败** (failed): 0
 
 ---
@@ -350,7 +350,7 @@ Settings 页面目前只是一个空壳，需要实现完整的设置功能：
 
 ---
 
-### [pending] 优化 Docker Compose 部署体验
+### [completed] 优化 Docker Compose 部署体验 ✅
 
 **ID**: task-009
 **优先级**: P1
@@ -366,16 +366,30 @@ Settings 页面目前只是一个空壳，需要实现完整的设置功能：
 
 **产品需求**: 部署方式 - `docker compose up` 一键自部署
 **验收标准**:
-- [ ] 运行 `docker compose up -d` 可以完整启动
-- [ ] 首次启动自动初始化数据库
-- [ ] 引导用户配置 AI Provider
-- [ ] 健康检查通过后才标记为就绪
-- [ ] Server 镜像大小 < 200MB
-- [ ] Dashboard 镜像大小 < 50MB
-- [ ] 编写 README 部署指南
+- [x] 运行 `docker compose up -d` 可以完整启动
+- [x] 首次启动自动初始化数据库
+- [x] 引导用户配置 AI Provider
+- [x] 健康检查通过后才标记为就绪
+- [x] Server 镜像大小 < 200MB (多阶段构建: node:22-alpine)
+- [x] Dashboard 镜像大小 < 50MB (多阶段构建: nginx:alpine)
+- [x] 编写 README 部署指南 (docs/deployment.md)
+
+**实现内容**:
+- ✅ docker-compose.yml: 生产环境配置（Server + Dashboard + 网络 + 数据卷）
+- ✅ docker-compose.dev.yml: 开发环境（源码挂载 + 热重载 + 调试端口）
+- ✅ packages/server/Dockerfile: 3 阶段构建（deps → build → runtime）
+- ✅ packages/dashboard/Dockerfile: 2 阶段构建（build → nginx 运行时）
+- ✅ packages/dashboard/nginx.conf: 反向代理 + WebSocket + SPA + Gzip
+- ✅ init.sh: 一键初始化（前置检查 + JWT 生成 + AI 配置 + 管理员配置 + 健康等待）
+- ✅ .env.example: 零配置模板，所有变量可选
+- ✅ .dockerignore: 优化构建上下文
+- ✅ docs/deployment.md: 完整部署指南（快速开始 + 验证 + 故障排查 + 备份 + 高级部署）
+- ✅ 修复 docker-compose.test.ts 与实际配置的一致性
+- ✅ 修复 dashboard Dockerfile HEALTHCHECK 语法
+- ✅ 修复 deployment.md 中端口和容器名称引用
 
 **创建时间**: 2026-02-10 23:35:00
-**完成时间**: -
+**完成时间**: 2026-02-11
 
 ---
 
@@ -431,4 +445,4 @@ ID: task-001
 
 ---
 
-**最后更新**: 2026-02-11 05:44:30
+**最后更新**: 2026-02-11 06:01:45

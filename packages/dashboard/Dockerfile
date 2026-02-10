@@ -56,7 +56,7 @@ COPY --from=build /app/packages/dashboard/dist /usr/share/nginx/html
 EXPOSE 80
 
 # Health check for nginx itself
-HEALTHCHECK --interval=10s --timeout=3s --start_period=5s --retries=3 \
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
   CMD curl -f http://localhost/ || exit 1
 
 CMD ["nginx", "-g", "daemon off;"]

@@ -161,11 +161,11 @@ describe('parseEnvExample()', () => {
     expect(entry!.description.length).toBeGreaterThan(0);
   });
 
-  it('应解析出 SERVER_PORT 的默认值', () => {
+  it('应解析出 DASHBOARD_PORT 的默认值', () => {
     const result = parseEnvExample();
-    const entry = result.get('SERVER_PORT');
+    const entry = result.get('DASHBOARD_PORT');
     expect(entry).toBeDefined();
-    expect(entry!.defaultValue).toBe('3000');
+    expect(entry!.defaultValue).toBe('80');
   });
 
   it('应解析出 AI_MODEL 的默认值', () => {

@@ -33,9 +33,9 @@ describe('.env.example 环境变量模板', () => {
   });
 
   describe('服务端配置', () => {
-    it('应包含 SERVER_PORT', () => {
-      expect(envVars.has('SERVER_PORT')).toBe(true);
-      expect(Number(envVars.get('SERVER_PORT'))).toBeGreaterThan(0);
+    it('应包含 DASHBOARD_PORT (服务端口通过 Nginx 反向代理, SERVER_PORT 内部硬编码为 3000)', () => {
+      expect(envVars.has('DASHBOARD_PORT')).toBe(true);
+      expect(Number(envVars.get('DASHBOARD_PORT'))).toBeGreaterThan(0);
     });
 
     it('应包含 SERVER_HOST', () => {

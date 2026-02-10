@@ -281,8 +281,11 @@ describe('image size optimization', () => {
     const runtimeContent = runtimeStage![0];
     // Should copy dist directories
     expect(runtimeContent).toContain('/dist');
-    // Should NOT copy src directories in the runtime stage
-    expect(runtimeContent).not.toMatch(/COPY.*packages\/server\/src/);
+    // Should NOT copy full src directories in the runtime stage
+    // (db/migrations are an exception — Drizzle needs SQL migration files at runtime)
+    const srcCopies = runtimeContent.match(/COPY.*packages\/server\/src/g) || [];
+    const nonMigrationSrcCopies = srcCopies.filter((c) => !c.includes('migrations'));
+    expect(nonMigrationSrcCopies).toHaveLength(0);
     expect(runtimeContent).not.toMatch(/COPY.*packages\/shared\/src/);
   });
 
@@ -306,7 +309,7 @@ describe('security hardening', () => {
   });
 
   it('should set file ownership to non-root user', () => {
-    expect(dockerfile).toMatch(/chown.*aiinstaller/);
+    expect(dockerfile).toMatch(/chown.*serverpilot/);
   });
 
   it('should use specific user/group IDs', () => {
