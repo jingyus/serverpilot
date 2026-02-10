@@ -270,6 +270,8 @@ export const operations = sqliteTable(
       .notNull(),
     snapshotId: text('snapshot_id'),
     duration: integer('duration'),
+    inputTokens: integer('input_tokens').default(0).notNull(),
+    outputTokens: integer('output_tokens').default(0).notNull(),
     createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
     completedAt: integer('completed_at', { mode: 'timestamp' }),
   },

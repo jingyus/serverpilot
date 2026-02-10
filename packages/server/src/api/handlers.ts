@@ -307,10 +307,12 @@ export async function handleEnvReport(
           accumulated: '',
         }, requestId));
 
+        // Use actual token counts from AI agent response
+        const analysisUsage = analysisResult.usage ?? { inputTokens: 0, outputTokens: 0 };
         server.send(clientId, createMessage(MessageType.AI_STREAM_COMPLETE, {
           text: 'Analysis complete',
-          inputTokens: 0,
-          outputTokens: 0,
+          inputTokens: analysisUsage.inputTokens,
+          outputTokens: analysisUsage.outputTokens,
         }, requestId));
 
         // Update environment readiness
@@ -347,11 +349,12 @@ export async function handleEnvReport(
           accumulated: '',
         }, requestId));
       },
-      onEnd: () => {
+      onComplete: (fullText: string, usage: { inputTokens: number; outputTokens: number }) => {
+        // Use actual token counts from streaming response
         server.send(clientId, createMessage(MessageType.AI_STREAM_COMPLETE, {
           text: 'Analysis complete',
-          inputTokens: 0,
-          outputTokens: 0,
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
         }, requestId));
       },
       onError: (error: Error) => {
@@ -363,6 +366,7 @@ export async function handleEnvReport(
     };
 
     let plan;
+    let planUsage;
     if (aiAgent) {
       logAIOperation('call', { requestId, sessionId, clientId }, { operation: 'generateInstallPlan' });
 
@@ -371,7 +375,9 @@ export async function handleEnvReport(
       const endPlanTimer = tracker.startTimer('planGeneration');
 
       // Generate plan with AI and knowledge base
-      plan = await generateInstallPlan(aiAgent, environment, software, version, callbacks);
+      const planResult = await generateInstallPlan(aiAgent, environment, software, version, callbacks);
+      plan = planResult.plan;
+      planUsage = planResult.usage;
       endPlanTimer({ fromCache: !plan });
     }
 
@@ -380,15 +386,21 @@ export async function handleEnvReport(
       logAIOperation('fallback', { requestId, sessionId, clientId }, { operation: 'generateInstallPlan' });
       plan = generateFallbackPlan(environment, software, version);
     } else {
+      // Use actual token counts from AI response (safe fallback to 0 if not available)
+      const actualInputTokens = planUsage?.inputTokens ?? 0;
+      const actualOutputTokens = planUsage?.outputTokens ?? 0;
+
       logger.info({
         requestId,
         sessionId,
         clientId,
         operation: 'plan_generation',
-        stepsCount: plan.steps.length
+        stepsCount: plan.steps.length,
+        inputTokens: actualInputTokens,
+        outputTokens: actualOutputTokens,
       }, 'Install plan generated successfully');
 
-      // Increment AI call count and log the call
+      // Increment AI call count and log the call with actual token usage
       if (clientAuth) {
         await incrementAICall(clientAuth.deviceId, clientAuth.deviceToken, 'planGeneration');
 
@@ -397,8 +409,8 @@ export async function handleEnvReport(
           operation: 'planGeneration',
           provider: 'claude',
           model: 'claude-3-5-sonnet-20241022',
-          inputTokens: 0, // TODO: Get actual token counts from AI agent
-          outputTokens: 0,
+          inputTokens: actualInputTokens,
+          outputTokens: actualOutputTokens,
           success: true,
         });
       }
@@ -644,13 +656,14 @@ export async function handleErrorOccurred(
     );
     endDiagTimer({ fromCache: diagnosisResult.usedRuleLibrary ?? false });
 
-    // Send AI stream complete message
+    // Use actual token usage from diagnosis result
+    const diagnosisUsage = diagnosisResult.usage ?? { inputTokens: 0, outputTokens: 0 };
     const streamCompleteMsg = createMessage(
       MessageType.AI_STREAM_COMPLETE,
       {
         text: 'Error diagnosis complete',
-        inputTokens: 0,
-        outputTokens: 0,
+        inputTokens: diagnosisUsage.inputTokens,
+        outputTokens: diagnosisUsage.outputTokens,
       },
       requestId,
     );
@@ -678,13 +691,21 @@ export async function handleErrorOccurred(
       return { success: true };
     }
 
+    // Use actual token counts from diagnosis (safe fallback to 0)
+    const actualDiagInputTokens = diagnosisResult.usage?.inputTokens ?? 0;
+    const actualDiagOutputTokens = diagnosisResult.usage?.outputTokens ?? 0;
+
     logger.info({
       operation: 'error_diagnosis',
       strategiesCount: diagnosisResult.fixStrategies.length,
+      inputTokens: actualDiagInputTokens,
+      outputTokens: actualDiagOutputTokens,
+      usedRuleLibrary: diagnosisResult.usedRuleLibrary ?? false,
     }, 'Error diagnosis completed');
 
-    // Increment AI call count and log the call
-    if (clientAuth) {
+    // Increment AI call count and log the call with actual token usage
+    // Only log if AI was actually used (not rule library)
+    if (clientAuth && !diagnosisResult.usedRuleLibrary) {
       await incrementAICall(clientAuth.deviceId, clientAuth.deviceToken, 'errorDiagnosis');
 
       await logAICall(clientAuth.deviceId, clientAuth.deviceToken, {
@@ -692,8 +713,8 @@ export async function handleErrorOccurred(
         operation: 'errorDiagnosis',
         provider: 'claude',
         model: 'claude-3-5-sonnet-20241022',
-        inputTokens: 0, // TODO: Get actual token counts from AI agent
-        outputTokens: 0,
+        inputTokens: actualDiagInputTokens,
+        outputTokens: actualDiagOutputTokens,
         success: true,
       });
     }

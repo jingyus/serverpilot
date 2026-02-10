@@ -53,6 +53,12 @@ export interface AIAgentOptions {
   retryConfig?: RetryConfig;
 }
 
+/** Token usage from AI API response */
+export interface TokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+}
+
 /** Result of an AI analysis operation */
 export interface AIAnalysisResult<T> {
   /** Whether the operation succeeded */
@@ -63,6 +69,8 @@ export interface AIAnalysisResult<T> {
   error?: string;
   /** Type of error - used to determine if preset fallback should be used */
   errorType?: 'validation' | 'network' | 'auth' | 'other';
+  /** Token usage statistics from the AI API call */
+  usage?: TokenUsage;
 }
 
 /** Detected environment capabilities from AI analysis */
@@ -489,6 +497,7 @@ export class InstallAIAgent {
   ): Promise<AIAnalysisResult<T>> {
     // Track error type from shouldRetry callback — more reliable than post-hoc string matching
     let detectedErrorType: 'validation' | 'auth' | undefined;
+    let usage: TokenUsage | undefined;
 
     const result = await retryWithBackoff(
       async () => {
@@ -500,6 +509,12 @@ export class InstallAIAgent {
         }, {
           timeout: this.timeoutMs,
         });
+
+        // Extract token usage from response
+        usage = {
+          inputTokens: response.usage?.input_tokens ?? 0,
+          outputTokens: response.usage?.output_tokens ?? 0,
+        };
 
         const text = this.extractTextFromResponse(response);
         const parsed = this.parseJSON(text);
@@ -535,14 +550,14 @@ export class InstallAIAgent {
     );
 
     if (result.success && result.data) {
-      return { success: true, data: result.data };
+      return { success: true, data: result.data, usage };
     }
 
     // Use error type captured in shouldRetry when available (most reliable),
     // fall back to classifying from the error message string
     const errorType = detectedErrorType ?? this.classifyErrorMessage(result.error ?? '');
 
-    return { success: false, error: result.error, errorType };
+    return { success: false, error: result.error, errorType, usage };
   }
 
   /**
@@ -565,6 +580,7 @@ export class InstallAIAgent {
     let callbacksUsed = false;
     // Track error type from shouldRetry callback
     let detectedErrorType: 'validation' | 'auth' | undefined;
+    let usage: TokenUsage | undefined;
 
     const retryResult = await retryWithBackoff(
       async () => {
@@ -579,6 +595,12 @@ export class InstallAIAgent {
         });
 
         callbacksUsed = true;
+
+        // Extract token usage from streaming result
+        usage = {
+          inputTokens: result.usage?.inputTokens ?? 0,
+          outputTokens: result.usage?.outputTokens ?? 0,
+        };
 
         if (!result.success) {
           throw new Error(result.error ?? 'Streaming request failed');
@@ -610,14 +632,14 @@ export class InstallAIAgent {
     );
 
     if (retryResult.success && retryResult.data) {
-      return { success: true, data: retryResult.data };
+      return { success: true, data: retryResult.data, usage };
     }
 
     // Use error type captured in shouldRetry when available,
     // fall back to classifying from the error message string
     const errorType = detectedErrorType ?? this.classifyErrorMessage(retryResult.error ?? '');
 
-    return { success: false, error: retryResult.error, errorType };
+    return { success: false, error: retryResult.error, errorType, usage };
   }
 
   /**

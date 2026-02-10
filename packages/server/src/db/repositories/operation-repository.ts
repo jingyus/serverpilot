@@ -37,6 +37,8 @@ export interface OperationRecord {
   riskLevel: RiskLevel;
   snapshotId: string | null;
   duration: number | null;
+  inputTokens: number;
+  outputTokens: number;
   createdAt: string;
   completedAt: string | null;
 }
@@ -50,6 +52,8 @@ export interface CreateOperationInput {
   commands: string[];
   riskLevel: RiskLevel;
   snapshotId?: string;
+  inputTokens?: number;
+  outputTokens?: number;
 }
 
 export interface PaginationOptions {
@@ -127,6 +131,14 @@ export interface OperationRepository {
 
   /** Update operation output (for streaming output). */
   updateOutput(id: string, userId: string, output: string): Promise<boolean>;
+
+  /** Update operation token usage. */
+  updateTokenUsage(
+    id: string,
+    userId: string,
+    inputTokens: number,
+    outputTokens: number,
+  ): Promise<boolean>;
 }
 
 // ============================================================================
@@ -161,6 +173,8 @@ export class DrizzleOperationRepository implements OperationRepository {
       riskLevel: input.riskLevel,
       snapshotId: input.snapshotId ?? null,
       duration: null,
+      inputTokens: input.inputTokens ?? 0,
+      outputTokens: input.outputTokens ?? 0,
       createdAt: now,
       completedAt: null,
     }).run();
@@ -178,6 +192,8 @@ export class DrizzleOperationRepository implements OperationRepository {
       riskLevel: input.riskLevel,
       snapshotId: input.snapshotId ?? null,
       duration: null,
+      inputTokens: input.inputTokens ?? 0,
+      outputTokens: input.outputTokens ?? 0,
       createdAt: now.toISOString(),
       completedAt: null,
     };
@@ -424,6 +440,24 @@ export class DrizzleOperationRepository implements OperationRepository {
     return true;
   }
 
+  async updateTokenUsage(
+    id: string,
+    userId: string,
+    inputTokens: number,
+    outputTokens: number,
+  ): Promise<boolean> {
+    const existing = await this.getById(id, userId);
+    if (!existing) return false;
+
+    this.db
+      .update(operations)
+      .set({ inputTokens, outputTokens })
+      .where(and(eq(operations.id, id), eq(operations.userId, userId)))
+      .run();
+
+    return true;
+  }
+
   private buildFilterConditions(userId: string, filter: OperationFilter) {
     const conditions = [eq(operations.userId, userId)];
 
@@ -480,6 +514,8 @@ export class DrizzleOperationRepository implements OperationRepository {
       riskLevel: row.riskLevel as RiskLevel,
       snapshotId: row.snapshotId ?? null,
       duration: row.duration ?? null,
+      inputTokens: row.inputTokens ?? 0,
+      outputTokens: row.outputTokens ?? 0,
       createdAt: row.createdAt.toISOString(),
       completedAt: toISOString(row.completedAt),
     };

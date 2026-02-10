@@ -147,6 +147,8 @@ export function createTables(db?: DrizzleDB): void {
       risk_level TEXT NOT NULL DEFAULT 'green',
       snapshot_id TEXT,
       duration INTEGER,
+      input_tokens INTEGER NOT NULL DEFAULT 0,
+      output_tokens INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL,
       completed_at INTEGER
     );

@@ -8,7 +8,7 @@
  */
 
 import type { EnvironmentInfo, InstallPlan } from '@aiinstaller/shared';
-import type { InstallAIAgent } from './agent.js';
+import type { InstallAIAgent, TokenUsage } from './agent.js';
 import type { StreamCallbacks } from './streaming.js';
 import { KnowledgeBase } from '../knowledge/loader.js';
 import path from 'node:path';
@@ -19,6 +19,12 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.join(__dirname, '../../../../..');
 const KNOWLEDGE_BASE_DIR = path.join(PROJECT_ROOT, 'knowledge-base');
+
+/** Result of plan generation including token usage */
+export interface PlanGenerationResult {
+  plan: InstallPlan | null;
+  usage?: TokenUsage;
+}
 
 /**
  * Generate an installation plan using AI and knowledge base.
@@ -33,7 +39,7 @@ const KNOWLEDGE_BASE_DIR = path.join(PROJECT_ROOT, 'knowledge-base');
  * @param software - The software to install (e.g., 'openclaw')
  * @param version - Optional target version
  * @param callbacks - Optional streaming callbacks
- * @returns The generated installation plan or null if generation fails
+ * @returns The generated installation plan with token usage, or null if generation fails
  */
 export async function generateInstallPlan(
   agent: InstallAIAgent,
@@ -41,7 +47,7 @@ export async function generateInstallPlan(
   software: string,
   version?: string,
   callbacks?: StreamCallbacks,
-): Promise<InstallPlan | null> {
+): Promise<PlanGenerationResult> {
   try {
     // Load knowledge base for the software
     const kb = await loadKnowledgeBase(software);
@@ -60,13 +66,13 @@ export async function generateInstallPlan(
 
     if (!result.success || !result.data) {
       console.error(`Failed to generate install plan: ${result.error}`);
-      return null;
+      return { plan: null, usage: result.usage };
     }
 
-    return result.data;
+    return { plan: result.data, usage: result.usage };
   } catch (error) {
     console.error('Error in generateInstallPlan:', error);
-    return null;
+    return { plan: null };
   }
 }
 

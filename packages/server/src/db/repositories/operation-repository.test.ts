@@ -244,4 +244,97 @@ describe('DrizzleOperationRepository', () => {
     const result = await repo.updateOutput(op.id, 'user-2', 'hacked');
     expect(result).toBe(false);
   });
+
+  describe('Token Usage Tracking', () => {
+    it('should create operation with token usage', async () => {
+      const op = await repo.create({
+        serverId: 'srv-1',
+        userId: 'user-1',
+        type: 'install',
+        description: 'Install with AI',
+        commands: ['apt install nginx'],
+        riskLevel: 'yellow',
+        inputTokens: 1500,
+        outputTokens: 800,
+      });
+
+      expect(op.inputTokens).toBe(1500);
+      expect(op.outputTokens).toBe(800);
+    });
+
+    it('should default to 0 tokens when not provided', async () => {
+      const op = await repo.create({
+        serverId: 'srv-1',
+        userId: 'user-1',
+        type: 'install',
+        description: 'Install without AI',
+        commands: ['apt install nginx'],
+        riskLevel: 'green',
+      });
+
+      expect(op.inputTokens).toBe(0);
+      expect(op.outputTokens).toBe(0);
+    });
+
+    it('should update operation token usage', async () => {
+      const op = await repo.create({
+        serverId: 'srv-1',
+        userId: 'user-1',
+        type: 'install',
+        description: 'Install with AI',
+        commands: ['npm install express'],
+        riskLevel: 'yellow',
+      });
+
+      const updated = await repo.updateTokenUsage(op.id, 'user-1', 2500, 1200);
+      expect(updated).toBe(true);
+
+      const found = await repo.getById(op.id, 'user-1');
+      expect(found!.inputTokens).toBe(2500);
+      expect(found!.outputTokens).toBe(1200);
+    });
+
+    it('should NOT update token usage for wrong user', async () => {
+      const op = await repo.create({
+        serverId: 'srv-1',
+        userId: 'user-1',
+        type: 'install',
+        description: 'Private operation',
+        commands: ['secret-cmd'],
+        riskLevel: 'green',
+      });
+
+      const result = await repo.updateTokenUsage(op.id, 'user-2', 1000, 500);
+      expect(result).toBe(false);
+
+      const found = await repo.getById(op.id, 'user-1');
+      expect(found!.inputTokens).toBe(0);
+      expect(found!.outputTokens).toBe(0);
+    });
+
+    it('should retrieve correct token usage after multiple updates', async () => {
+      const op = await repo.create({
+        serverId: 'srv-1',
+        userId: 'user-1',
+        type: 'execute',
+        description: 'Multi-step AI operation',
+        commands: ['step1', 'step2', 'step3'],
+        riskLevel: 'yellow',
+        inputTokens: 500,
+        outputTokens: 300,
+      });
+
+      // First update
+      await repo.updateTokenUsage(op.id, 'user-1', 1000, 600);
+      let found = await repo.getById(op.id, 'user-1');
+      expect(found!.inputTokens).toBe(1000);
+      expect(found!.outputTokens).toBe(600);
+
+      // Second update
+      await repo.updateTokenUsage(op.id, 'user-1', 1500, 900);
+      found = await repo.getById(op.id, 'user-1');
+      expect(found!.inputTokens).toBe(1500);
+      expect(found!.outputTokens).toBe(900);
+    });
+  });
 });

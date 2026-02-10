@@ -10,7 +10,7 @@
  */
 
 import type { ErrorContext, FixStrategy } from '@aiinstaller/shared';
-import type { InstallAIAgent } from './agent.js';
+import type { InstallAIAgent, TokenUsage } from './agent.js';
 import type { ErrorDiagnosis } from './agent.js';
 import { getBestMatch, shouldSkipAI } from './common-errors.js';
 
@@ -759,6 +759,8 @@ export interface DiagnosisResult {
   error?: string;
   /** Whether the fix strategies came from the rule library (true) or AI (false) */
   usedRuleLibrary?: boolean;
+  /** Token usage from AI diagnosis (present if AI was called) */
+  usage?: TokenUsage;
 }
 
 /**
@@ -848,10 +850,12 @@ export async function diagnoseError(
         success: false,
         error: diagnosisResult.error ?? 'AI diagnosis failed',
         usedRuleLibrary: false,
+        usage: diagnosisResult.usage,
       };
     }
 
     const diagnosis = diagnosisResult.data;
+    let totalUsage = diagnosisResult.usage;
 
     // Get fix suggestions from AI
     const fixResult = streamCallback
@@ -862,6 +866,16 @@ export async function diagnoseError(
         })
       : await aiAgent.suggestFixes(errorContext, diagnosis);
 
+    // Accumulate token usage from both calls
+    if (fixResult.usage && totalUsage) {
+      totalUsage = {
+        inputTokens: totalUsage.inputTokens + fixResult.usage.inputTokens,
+        outputTokens: totalUsage.outputTokens + fixResult.usage.outputTokens,
+      };
+    } else if (fixResult.usage) {
+      totalUsage = fixResult.usage;
+    }
+
     if (!fixResult.success || !fixResult.data) {
       // Even if fix suggestions fail, return the diagnosis
       return {
@@ -869,6 +883,7 @@ export async function diagnoseError(
         diagnosis,
         fixStrategies: [],
         usedRuleLibrary: false,
+        usage: totalUsage,
       };
     }
 
@@ -883,6 +898,7 @@ export async function diagnoseError(
       diagnosis,
       fixStrategies: sortedFixStrategies,
       usedRuleLibrary: false,
+      usage: totalUsage,
     };
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
