@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0
+// Copyright (c) 2024-2026 ServerPilot Contributors
 /**
  * Tests for the in-memory vector database module (VectorDB).
  *

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0
+// Copyright (c) 2024-2026 ServerPilot Contributors
 import { useEffect, useState } from 'react';
 import { Save, Loader2, AlertCircle, CheckCircle2, Key, User, Bell, Shield, Book } from 'lucide-react';
 import { DocSourceSection } from '@/components/knowledge/DocSourceSection';

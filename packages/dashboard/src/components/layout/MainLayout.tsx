@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0
+// Copyright (c) 2024-2026 ServerPilot Contributors
 import { useEffect, useRef } from 'react';
 import { Outlet, Navigate, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0
+// Copyright (c) 2024-2026 ServerPilot Contributors
 import * as React from 'react';
 import * as SwitchPrimitives from '@radix-ui/react-switch';
 

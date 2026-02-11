@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0
+// Copyright (c) 2024-2026 ServerPilot Contributors
 /**
  * Password hashing utilities using Node.js built-in crypto.scrypt.
  *

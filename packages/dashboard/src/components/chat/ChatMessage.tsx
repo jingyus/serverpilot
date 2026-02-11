@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0
+// Copyright (c) 2024-2026 ServerPilot Contributors
 import { Bot, User, Info } from 'lucide-react';
 
 import { cn } from '@/lib/utils';

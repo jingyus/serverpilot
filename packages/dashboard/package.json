@@ -2,6 +2,7 @@
   "name": "@aiinstaller/dashboard",
   "version": "0.1.0",
   "private": true,
+  "license": "AGPL-3.0",
   "description": "ServerPilot Web Dashboard - AI-driven server management UI",
   "type": "module",
   "scripts": {

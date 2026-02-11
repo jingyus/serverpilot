@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2024-2026 ServerPilot Contributors
 /**
  * Centralized Zod schema registry for AI Installer protocol.
  *

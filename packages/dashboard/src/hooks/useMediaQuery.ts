@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0
+// Copyright (c) 2024-2026 ServerPilot Contributors
 import { useState, useEffect } from 'react';
 
 export function useMediaQuery(query: string): boolean {

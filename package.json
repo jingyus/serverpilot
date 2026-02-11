@@ -2,6 +2,7 @@
   "name": "aiinstaller",
   "version": "0.1.0",
   "private": true,
+  "license": "AGPL-3.0",
   "description": "AI-powered intelligent remote installation platform",
   "type": "module",
   "scripts": {

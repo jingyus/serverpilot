@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2024-2026 ServerPilot Contributors
 /**
  * Plain-language error message formatting for AI Installer.
  *

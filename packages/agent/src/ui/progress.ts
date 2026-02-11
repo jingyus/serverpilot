@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2024-2026 ServerPilot Contributors
 /**
  * Progress display module for AI Installer agent.
  *

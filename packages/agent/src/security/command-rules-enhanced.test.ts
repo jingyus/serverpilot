@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2024-2026 ServerPilot Contributors
 /**
  * Tests for enhanced command classification rules (task-007).
  * Covers new rules added for command-rules.ts enhancements.

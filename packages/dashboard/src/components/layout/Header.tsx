@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0
+// Copyright (c) 2024-2026 ServerPilot Contributors
 import { useLocation } from 'react-router-dom';
 import { Menu, Bell } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth';

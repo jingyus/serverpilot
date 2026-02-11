@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0
+// Copyright (c) 2024-2026 ServerPilot Contributors
 /**
  * Snapshot repository — data access layer for pre/post-operation backups.
  *

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2024-2026 ServerPilot Contributors
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import path from 'node:path';
 

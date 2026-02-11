@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2024-2026 ServerPilot Contributors
 /**
  * @aiinstaller/shared - Shared types, protocols, and utilities
  *

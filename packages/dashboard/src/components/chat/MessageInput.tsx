@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0
+// Copyright (c) 2024-2026 ServerPilot Contributors
 import { useState, useRef, useCallback } from 'react';
 import { Send, Square, Loader2 } from 'lucide-react';
 

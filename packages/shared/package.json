@@ -2,6 +2,7 @@
   "name": "@aiinstaller/shared",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "description": "Shared types, protocols, and utilities for AI Installer",
   "type": "module",
   "main": "dist/index.js",

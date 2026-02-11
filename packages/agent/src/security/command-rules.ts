@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (c) 2024-2026 ServerPilot Contributors
 /**
  * Command classification rule definitions for ServerPilot Agent.
  * Contains pattern rules for five-level command risk classification.

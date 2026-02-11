@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2024-2026 ServerPilot Contributors
 /**
  * WebSocket message protocol definitions for AI Installer.
  *
