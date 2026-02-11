@@ -778,7 +778,7 @@ More content.
         expect(hasInstallDoc).toBe(true);
       });
 
-      it('should have all 6 technology categories with 3+ docs each', () => {
+      it('should have all 11 technology categories with 3+ docs each', () => {
         if (!existsSync(realKBDir)) {
           return;
         }
@@ -786,7 +786,10 @@ More content.
         const loader = new DocumentLoader({ baseDir: realKBDir });
         const { documents } = loader.loadAll();
 
-        const expectedCategories = ['nginx', 'mysql', 'docker', 'nodejs', 'postgresql', 'redis'];
+        const expectedCategories = [
+          'nginx', 'mysql', 'docker', 'nodejs', 'postgresql', 'redis',
+          'python', 'php', 'mongodb', 'certbot', 'pm2',
+        ];
         for (const category of expectedCategories) {
           const categoryDocs = documents.filter((d) => d.category === category);
           expect(categoryDocs.length).toBeGreaterThanOrEqual(3);
@@ -801,7 +804,10 @@ More content.
         const loader = new DocumentLoader({ baseDir: realKBDir });
         const { documents } = loader.loadAll();
 
-        const expectedCategories = ['nginx', 'mysql', 'docker', 'nodejs', 'postgresql', 'redis'];
+        const expectedCategories = [
+          'nginx', 'mysql', 'docker', 'nodejs', 'postgresql', 'redis',
+          'python', 'php', 'mongodb', 'certbot', 'pm2',
+        ];
         const expectedFileTypes = ['installation', 'configuration', 'troubleshooting'];
 
         for (const category of expectedCategories) {
