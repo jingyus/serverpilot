@@ -14,6 +14,7 @@ jobs:
   lint:
     name: Lint & Type Check
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,9 +37,49 @@ jobs:
       - name: Type check
         run: pnpm typecheck
 
+  build:
+    name: Build Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build all packages
+        run: pnpm build
+
+      - name: Verify Dashboard build output
+        run: |
+          if [ ! -d "packages/dashboard/dist" ]; then
+            echo "ERROR: Dashboard build output not found"
+            exit 1
+          fi
+          echo "Dashboard build output OK: $(ls packages/dashboard/dist | wc -l) files"
+
+      - name: Verify Server build output
+        run: |
+          if [ ! -d "packages/server/dist" ]; then
+            echo "ERROR: Server build output not found"
+            exit 1
+          fi
+          echo "Server build output OK"
+
   test:
     name: Test (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 8
     strategy:
       fail-fast: false
       matrix:
@@ -82,13 +123,35 @@ jobs:
       - name: Run multi-platform tests
         run: pnpm vitest run tests/multi-env-macos.test.ts tests/multi-env-linux.test.ts
 
-      - name: Run coverage
-        if: matrix.os == 'ubuntu-latest'
+  coverage:
+    name: Coverage Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run tests with coverage
         run: pnpm test:coverage
 
-      - name: Upload coverage
-        if: matrix.os == 'ubuntu-latest'
+      - name: Run Dashboard tests
+        run: pnpm --filter @aiinstaller/dashboard test
+
+      - name: Upload coverage report
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: coverage-report
           path: coverage/

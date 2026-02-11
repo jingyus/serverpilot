@@ -208,7 +208,7 @@ export function extractLinks(html: string, baseUrl: string): string[] {
   const basePath = new URL(baseUrl).pathname;
 
   while ((match = regex.exec(html)) !== null) {
-    let href = match[1];
+    const href = match[1];
     if (!href || href.startsWith('#') || href.startsWith('mailto:') || href.startsWith('javascript:')) {
       continue;
     }

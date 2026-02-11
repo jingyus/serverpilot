@@ -270,11 +270,11 @@ describe('image size optimization', () => {
     }
   });
 
-  it('should use --prod flag for production deps in deps stage', () => {
-    // Only production deps should be installed in the deps stage
-    const depsStageMatch = dockerfile.match(/AS\s+deps[\s\S]*?(?=FROM|$)/);
-    expect(depsStageMatch).not.toBeNull();
-    expect(depsStageMatch![0]).toContain('--prod');
+  it('should prune devDependencies after build', () => {
+    // Build stage should prune devDependencies to keep only production deps
+    const buildStageMatch = dockerfile.match(/AS\s+build[\s\S]*?(?=FROM|$)/);
+    expect(buildStageMatch).not.toBeNull();
+    expect(buildStageMatch![0]).toContain('prune --prod');
   });
 
   it('should only copy dist output to runtime stage (not source)', () => {
@@ -294,8 +294,8 @@ describe('image size optimization', () => {
   it('should not copy devDependencies to runtime stage', () => {
     const runtimeStage = dockerfile.match(/AS\s+runtime[\s\S]*/);
     expect(runtimeStage).not.toBeNull();
-    // Should copy node_modules from deps stage (which uses --prod)
-    expect(runtimeStage![0]).toContain('--from=deps');
+    // Should copy node_modules from build stage (which pruned devDeps)
+    expect(runtimeStage![0]).toContain('--from=build');
   });
 });
 

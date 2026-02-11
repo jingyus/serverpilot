@@ -21,5 +21,5 @@
     }
   },
   "include": ["packages/*/src/**/*.ts"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts"]
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "packages/dashboard/**"]
 }

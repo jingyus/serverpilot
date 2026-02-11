@@ -53,17 +53,13 @@ describe('Dockerfile existence', () => {
 // ============================================================================
 
 describe('multi-stage build', () => {
-  it('should use multi-stage build with at least 3 stages', () => {
+  it('should use multi-stage build with at least 2 stages', () => {
     const fromStatements = dockerfileContent.match(/^FROM\s+/gm);
     expect(fromStatements).not.toBeNull();
-    expect(fromStatements!.length).toBeGreaterThanOrEqual(3);
+    expect(fromStatements!.length).toBeGreaterThanOrEqual(2);
   });
 
-  it('should have a deps stage for dependency installation', () => {
-    expect(dockerfileContent).toMatch(/FROM\s+node:22-alpine\s+AS\s+deps/);
-  });
-
-  it('should have a build stage for TypeScript compilation', () => {
+  it('should have a build stage for dependency installation and TypeScript compilation', () => {
     expect(dockerfileContent).toMatch(/FROM\s+node:22-alpine\s+AS\s+build/);
   });
 

@@ -20,7 +20,7 @@
     "lint": "eslint packages/*/src/**/*.ts",
     "lint:fix": "eslint packages/*/src/**/*.ts --fix",
     "format": "prettier --write \"packages/*/src/**/*.ts\"",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && pnpm --filter @aiinstaller/dashboard typecheck",
     "clean": "rm -rf packages/*/dist packages/*/node_modules/.cache",
     "build:binary": "bun scripts/build-binary.ts",
     "build:binary:all": "bun scripts/build-binary.ts --all",

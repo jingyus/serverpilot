@@ -185,14 +185,30 @@ describe('GitHub Actions CI 配置', () => {
         expect(content).toContain('coverage-report');
       });
 
-      it('仅在 ubuntu 上上传覆盖率', () => {
+      it('覆盖率在独立 job 中运行', () => {
         content = readFileSync(testYmlPath, 'utf-8');
-        expect(content).toContain("matrix.os == 'ubuntu-latest'");
+        config = parseYaml(content);
+        const jobs = config.jobs as Record<string, unknown>;
+        expect(jobs.coverage).toBeDefined();
+      });
+    });
+
+    describe('构建检查', () => {
+      it('包含 build job', () => {
+        content = readFileSync(testYmlPath, 'utf-8');
+        config = parseYaml(content);
+        const jobs = config.jobs as Record<string, unknown>;
+        expect(jobs.build).toBeDefined();
+      });
+
+      it('运行 pnpm build', () => {
+        content = readFileSync(testYmlPath, 'utf-8');
+        expect(content).toContain('pnpm build');
       });
     });
   });
 
-  describe('ci.yml - 构建工作流', () => {
+  describe('ci.yml - E2E 测试工作流', () => {
     let config: Record<string, unknown>;
     let content: string;
 
@@ -209,23 +225,23 @@ describe('GitHub Actions CI 配置', () => {
       expect(config.name).toBe('CI');
     });
 
-    it('PR 时触发构建', () => {
+    it('PR 时触发', () => {
       content = readFileSync(ciYmlPath, 'utf-8');
       config = parseYaml(content);
       const on = config.on as Record<string, unknown>;
       expect(on.pull_request).toBeDefined();
     });
 
-    it('包含 build job', () => {
+    it('包含 e2e job', () => {
       content = readFileSync(ciYmlPath, 'utf-8');
       config = parseYaml(content);
       const jobs = config.jobs as Record<string, unknown>;
-      expect(jobs.build).toBeDefined();
+      expect(jobs.e2e).toBeDefined();
     });
 
-    it('运行 pnpm build', () => {
+    it('E2E 使用 Playwright', () => {
       content = readFileSync(ciYmlPath, 'utf-8');
-      expect(content).toContain('pnpm build');
+      expect(content).toContain('playwright');
     });
 
     it('配置了并发控制', () => {
