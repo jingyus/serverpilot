@@ -23,6 +23,7 @@ import {
   _resetSettingsRepository,
 } from '../../db/repositories/settings-repository.js';
 import { hashPassword } from '../../utils/password.js';
+import { _resetProviderFactory } from '../../ai/providers/provider-factory.js';
 import type { ApiEnv } from './types.js';
 
 // ============================================================================
@@ -97,6 +98,7 @@ afterEach(() => {
   _resetJwtConfig();
   _resetUserRepository();
   _resetSettingsRepository();
+  _resetProviderFactory();
 });
 
 // ============================================================================
@@ -456,6 +458,159 @@ describe('PUT /settings/knowledge-base', () => {
 
     expect(body.knowledgeBase.autoLearning).toBe(false);
     expect(body.knowledgeBase.documentSources).toEqual([]);
+  });
+});
+
+// ============================================================================
+// PUT /settings/ai-provider — custom-openai
+// ============================================================================
+
+describe('PUT /settings/ai-provider (custom-openai)', () => {
+  it('should switch to custom-openai with full config', async () => {
+    const app = createTestApp();
+    const res = await jsonRequest(
+      app,
+      '/settings/ai-provider',
+      'PUT',
+      {
+        provider: 'custom-openai',
+        baseUrl: 'https://my-oneapi.example.com/v1',
+        apiKey: 'sk-custom-key-123',
+        model: 'gpt-4o',
+      },
+      accessToken,
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+
+    expect(body.aiProvider.provider).toBe('custom-openai');
+    expect(body.aiProvider.baseUrl).toBe('https://my-oneapi.example.com/v1');
+    expect(body.aiProvider.apiKey).toBe('sk-custom-key-123');
+    expect(body.aiProvider.model).toBe('gpt-4o');
+  });
+
+  it('should reject custom-openai without baseUrl', async () => {
+    const app = createTestApp();
+    const res = await jsonRequest(
+      app,
+      '/settings/ai-provider',
+      'PUT',
+      {
+        provider: 'custom-openai',
+        apiKey: 'sk-custom-key',
+        model: 'gpt-4o',
+      },
+      accessToken,
+    );
+
+    // setActiveProvider → createProvider → CustomOpenAIConfigSchema.parse
+    // fails because baseUrl defaults to '' which is not a valid URL
+    expect(res.status).toBe(400);
+  });
+
+  it('should reject custom-openai without apiKey', async () => {
+    const app = createTestApp();
+    const res = await jsonRequest(
+      app,
+      '/settings/ai-provider',
+      'PUT',
+      {
+        provider: 'custom-openai',
+        baseUrl: 'https://my-oneapi.example.com/v1',
+        model: 'gpt-4o',
+      },
+      accessToken,
+    );
+
+    expect(res.status).toBe(400);
+  });
+
+  it('should reject custom-openai without model', async () => {
+    const app = createTestApp();
+    const res = await jsonRequest(
+      app,
+      '/settings/ai-provider',
+      'PUT',
+      {
+        provider: 'custom-openai',
+        baseUrl: 'https://my-oneapi.example.com/v1',
+        apiKey: 'sk-custom-key',
+      },
+      accessToken,
+    );
+
+    expect(res.status).toBe(400);
+  });
+
+  it('should persist custom-openai in GET /settings', async () => {
+    const app = createTestApp();
+
+    // Switch to custom-openai
+    await jsonRequest(
+      app,
+      '/settings/ai-provider',
+      'PUT',
+      {
+        provider: 'custom-openai',
+        baseUrl: 'https://litellm.internal.corp/v1',
+        apiKey: 'sk-litellm-key',
+        model: 'deepseek-chat',
+      },
+      accessToken,
+    );
+
+    // Verify persistence via GET
+    const res = await app.request('/settings', {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+
+    expect(body.aiProvider.provider).toBe('custom-openai');
+    expect(body.aiProvider.baseUrl).toBe('https://litellm.internal.corp/v1');
+    expect(body.aiProvider.apiKey).toBe('sk-litellm-key');
+    expect(body.aiProvider.model).toBe('deepseek-chat');
+  });
+});
+
+// ============================================================================
+// GET /settings/ai-provider/health — custom-openai
+// ============================================================================
+
+describe('GET /settings/ai-provider/health (custom-openai)', () => {
+  it('should return health status for custom-openai provider', async () => {
+    const app = createTestApp();
+
+    // Switch to custom-openai first
+    await jsonRequest(
+      app,
+      '/settings/ai-provider',
+      'PUT',
+      {
+        provider: 'custom-openai',
+        baseUrl: 'https://my-oneapi.example.com/v1',
+        apiKey: 'sk-custom-key',
+        model: 'gpt-4o',
+      },
+      accessToken,
+    );
+
+    // Check health — will be unavailable since the URL doesn't exist,
+    // but the endpoint should respond with the correct structure
+    const res = await app.request('/settings/ai-provider/health', {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+
+    expect(body.provider).toBe('custom-openai');
+    expect(typeof body.available).toBe('boolean');
+    expect(body.tier).toBe(2);
   });
 });
 
