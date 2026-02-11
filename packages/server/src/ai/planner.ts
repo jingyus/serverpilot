@@ -10,8 +10,7 @@
  */
 
 import type { EnvironmentInfo, InstallPlan } from '@aiinstaller/shared';
-import type { InstallAIAgent, TokenUsage } from './agent.js';
-import type { StreamCallbacks } from './streaming.js';
+import type { InstallAIAgent, TokenUsage, StreamCallbacks } from './agent.js';
 import { KnowledgeBase } from '../knowledge/loader.js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';

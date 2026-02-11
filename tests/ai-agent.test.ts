@@ -27,8 +27,48 @@ import type {
   EnvironmentAnalysis,
   ErrorDiagnosis,
 } from '../packages/server/src/ai/agent.js';
+import type { AIProviderInterface, ChatResponse, StreamResponse } from '../packages/server/src/ai/providers/base.js';
 
 const AGENT_FILE = path.resolve('packages/server/src/ai/agent.ts');
+
+// ============================================================================
+// Mock Provider Factory
+// ============================================================================
+
+/** Create a mock AI provider for testing */
+function createMockProvider(overrides?: Partial<AIProviderInterface>): AIProviderInterface {
+  return {
+    name: 'mock',
+    tier: 1,
+    chat: vi.fn().mockResolvedValue({
+      content: '{}',
+      usage: { inputTokens: 10, outputTokens: 20 },
+    }),
+    stream: vi.fn().mockResolvedValue({
+      content: '{}',
+      usage: { inputTokens: 10, outputTokens: 20 },
+      success: true,
+    }),
+    isAvailable: vi.fn().mockResolvedValue(true),
+    ...overrides,
+  };
+}
+
+/** Create a ChatResponse returning the given data as JSON */
+function mockChatResponse(jsonData: unknown): ChatResponse {
+  return {
+    content: JSON.stringify(jsonData),
+    usage: { inputTokens: 10, outputTokens: 20 },
+  };
+}
+
+/** Create a ChatResponse returning the given data wrapped in markdown code fences */
+function mockChatMarkdownResponse(jsonData: unknown): ChatResponse {
+  return {
+    content: '```json\n' + JSON.stringify(jsonData, null, 2) + '\n```',
+    usage: { inputTokens: 10, outputTokens: 20 },
+  };
+}
 
 // ============================================================================
 // Test Fixtures
@@ -61,30 +101,6 @@ function createErrorContext(): ErrorContext {
         stdout: 'v22.0.0',
         stderr: '',
         duration: 150,
-      },
-    ],
-  };
-}
-
-/** Create a mock Anthropic message response */
-function createMockResponse(jsonData: unknown): { content: Array<{ type: string; text: string }> } {
-  return {
-    content: [
-      {
-        type: 'text',
-        text: JSON.stringify(jsonData),
-      },
-    ],
-  };
-}
-
-/** Create a mock Anthropic message response with markdown-wrapped JSON */
-function createMockMarkdownResponse(jsonData: unknown): { content: Array<{ type: string; text: string }> } {
-  return {
-    content: [
-      {
-        type: 'text',
-        text: '```json\n' + JSON.stringify(jsonData, null, 2) + '\n```',
       },
     ],
   };
@@ -205,15 +221,16 @@ describe('src/ai/agent.ts', () => {
   // --------------------------------------------------------------------------
 
   describe('Constructor', () => {
-    it('should create an instance with required options', () => {
-      const agent = new InstallAIAgent({ apiKey: 'test-key' });
+    it('should create an instance with a provider', () => {
+      const provider = createMockProvider();
+      const agent = new InstallAIAgent({ provider });
       expect(agent).toBeInstanceOf(InstallAIAgent);
     });
 
     it('should accept all optional configuration', () => {
+      const provider = createMockProvider();
       const agent = new InstallAIAgent({
-        apiKey: 'test-key',
-        model: 'claude-opus-4-20250514',
+        provider,
         timeoutMs: 30000,
         maxRetries: 5,
       });
@@ -227,16 +244,16 @@ describe('src/ai/agent.ts', () => {
 
   describe('analyzeEnvironment', () => {
     let agent: InstallAIAgent;
+    let mockProvider: AIProviderInterface;
 
     beforeEach(() => {
-      agent = new InstallAIAgent({ apiKey: 'test-key', maxRetries: 0 });
+      mockProvider = createMockProvider({
+        chat: vi.fn().mockResolvedValue(mockChatResponse(VALID_ENV_ANALYSIS)),
+      });
+      agent = new InstallAIAgent({ provider: mockProvider, maxRetries: 0 });
     });
 
     it('should return a successful analysis when AI responds correctly', async () => {
-      // Mock the Anthropic client
-      const mockCreate = vi.fn().mockResolvedValue(createMockResponse(VALID_ENV_ANALYSIS));
-      (agent as any).client = { messages: { create: mockCreate } };
-
       const result = await agent.analyzeEnvironment(createEnvInfo(), 'openclaw');
 
       expect(result.success).toBe(true);
@@ -249,14 +266,11 @@ describe('src/ai/agent.ts', () => {
     });
 
     it('should include environment details in the prompt', async () => {
-      const mockCreate = vi.fn().mockResolvedValue(createMockResponse(VALID_ENV_ANALYSIS));
-      (agent as any).client = { messages: { create: mockCreate } };
-
       await agent.analyzeEnvironment(createEnvInfo(), 'openclaw');
 
-      expect(mockCreate).toHaveBeenCalledTimes(1);
-      const callArgs = mockCreate.mock.calls[0][0];
-      const prompt = callArgs.messages[0].content;
+      const chatFn = mockProvider.chat as ReturnType<typeof vi.fn>;
+      expect(chatFn).toHaveBeenCalledTimes(1);
+      const prompt = chatFn.mock.calls[0][0].messages[0].content;
       expect(prompt).toContain('openclaw');
       expect(prompt).toContain('darwin');
       expect(prompt).toContain('arm64');
@@ -267,36 +281,35 @@ describe('src/ai/agent.ts', () => {
     });
 
     it('should handle environment with no package managers', async () => {
-      const mockCreate = vi.fn().mockResolvedValue(createMockResponse(VALID_ENV_ANALYSIS));
-      (agent as any).client = { messages: { create: mockCreate } };
-
       const env = createEnvInfo();
       env.packageManagers = {};
 
       await agent.analyzeEnvironment(env, 'openclaw');
 
-      const prompt = mockCreate.mock.calls[0][0].messages[0].content;
+      const chatFn = mockProvider.chat as ReturnType<typeof vi.fn>;
+      const prompt = chatFn.mock.calls[0][0].messages[0].content;
       expect(prompt).toContain('none detected');
     });
 
     it('should handle environment with no node installed', async () => {
-      const mockCreate = vi.fn().mockResolvedValue(createMockResponse(VALID_ENV_ANALYSIS));
-      (agent as any).client = { messages: { create: mockCreate } };
-
       const env = createEnvInfo();
       env.runtime = {};
 
       await agent.analyzeEnvironment(env, 'openclaw');
 
-      const prompt = mockCreate.mock.calls[0][0].messages[0].content;
+      const chatFn = mockProvider.chat as ReturnType<typeof vi.fn>;
+      const prompt = chatFn.mock.calls[0][0].messages[0].content;
       expect(prompt).toContain('not installed');
     });
 
     it('should return failure when AI response is invalid JSON', async () => {
-      const mockCreate = vi.fn().mockResolvedValue({
-        content: [{ type: 'text', text: 'This is not JSON' }],
+      mockProvider = createMockProvider({
+        chat: vi.fn().mockResolvedValue({
+          content: 'This is not JSON',
+          usage: { inputTokens: 10, outputTokens: 20 },
+        }),
       });
-      (agent as any).client = { messages: { create: mockCreate } };
+      agent = new InstallAIAgent({ provider: mockProvider, maxRetries: 0 });
 
       const result = await agent.analyzeEnvironment(createEnvInfo(), 'openclaw');
 
@@ -305,10 +318,10 @@ describe('src/ai/agent.ts', () => {
     });
 
     it('should return failure when AI response does not match schema', async () => {
-      const mockCreate = vi.fn().mockResolvedValue(
-        createMockResponse({ invalid: 'response' }),
-      );
-      (agent as any).client = { messages: { create: mockCreate } };
+      mockProvider = createMockProvider({
+        chat: vi.fn().mockResolvedValue(mockChatResponse({ invalid: 'response' })),
+      });
+      agent = new InstallAIAgent({ provider: mockProvider, maxRetries: 0 });
 
       const result = await agent.analyzeEnvironment(createEnvInfo(), 'openclaw');
 
@@ -317,10 +330,10 @@ describe('src/ai/agent.ts', () => {
     });
 
     it('should handle markdown-wrapped JSON responses', async () => {
-      const mockCreate = vi.fn().mockResolvedValue(
-        createMockMarkdownResponse(VALID_ENV_ANALYSIS),
-      );
-      (agent as any).client = { messages: { create: mockCreate } };
+      mockProvider = createMockProvider({
+        chat: vi.fn().mockResolvedValue(mockChatMarkdownResponse(VALID_ENV_ANALYSIS)),
+      });
+      agent = new InstallAIAgent({ provider: mockProvider, maxRetries: 0 });
 
       const result = await agent.analyzeEnvironment(createEnvInfo(), 'openclaw');
 
@@ -329,29 +342,11 @@ describe('src/ai/agent.ts', () => {
     });
 
     it('should set system prompt for JSON-only responses', async () => {
-      const mockCreate = vi.fn().mockResolvedValue(createMockResponse(VALID_ENV_ANALYSIS));
-      (agent as any).client = { messages: { create: mockCreate } };
-
       await agent.analyzeEnvironment(createEnvInfo(), 'openclaw');
 
-      const callArgs = mockCreate.mock.calls[0][0];
+      const chatFn = mockProvider.chat as ReturnType<typeof vi.fn>;
+      const callArgs = chatFn.mock.calls[0][0];
       expect(callArgs.system).toContain('JSON');
-    });
-
-    it('should use configured model', async () => {
-      const customAgent = new InstallAIAgent({
-        apiKey: 'test-key',
-        model: 'claude-opus-4-20250514',
-        maxRetries: 0,
-      });
-
-      const mockCreate = vi.fn().mockResolvedValue(createMockResponse(VALID_ENV_ANALYSIS));
-      (customAgent as any).client = { messages: { create: mockCreate } };
-
-      await customAgent.analyzeEnvironment(createEnvInfo(), 'openclaw');
-
-      const callArgs = mockCreate.mock.calls[0][0];
-      expect(callArgs.model).toBe('claude-opus-4-20250514');
     });
   });
 
@@ -361,15 +356,16 @@ describe('src/ai/agent.ts', () => {
 
   describe('generateInstallPlan', () => {
     let agent: InstallAIAgent;
+    let mockProvider: AIProviderInterface;
 
     beforeEach(() => {
-      agent = new InstallAIAgent({ apiKey: 'test-key', maxRetries: 0 });
+      mockProvider = createMockProvider({
+        chat: vi.fn().mockResolvedValue(mockChatResponse(VALID_INSTALL_PLAN)),
+      });
+      agent = new InstallAIAgent({ provider: mockProvider, maxRetries: 0 });
     });
 
     it('should return a valid install plan', async () => {
-      const mockCreate = vi.fn().mockResolvedValue(createMockResponse(VALID_INSTALL_PLAN));
-      (agent as any).client = { messages: { create: mockCreate } };
-
       const result = await agent.generateInstallPlan(createEnvInfo(), 'openclaw');
 
       expect(result.success).toBe(true);
@@ -382,22 +378,18 @@ describe('src/ai/agent.ts', () => {
     });
 
     it('should include version in prompt when specified', async () => {
-      const mockCreate = vi.fn().mockResolvedValue(createMockResponse(VALID_INSTALL_PLAN));
-      (agent as any).client = { messages: { create: mockCreate } };
-
       await agent.generateInstallPlan(createEnvInfo(), 'openclaw', '2.0.0');
 
-      const prompt = mockCreate.mock.calls[0][0].messages[0].content;
+      const chatFn = mockProvider.chat as ReturnType<typeof vi.fn>;
+      const prompt = chatFn.mock.calls[0][0].messages[0].content;
       expect(prompt).toContain('version 2.0.0');
     });
 
     it('should not include version in prompt when not specified', async () => {
-      const mockCreate = vi.fn().mockResolvedValue(createMockResponse(VALID_INSTALL_PLAN));
-      (agent as any).client = { messages: { create: mockCreate } };
-
       await agent.generateInstallPlan(createEnvInfo(), 'openclaw');
 
-      const prompt = mockCreate.mock.calls[0][0].messages[0].content;
+      const chatFn = mockProvider.chat as ReturnType<typeof vi.fn>;
+      const prompt = chatFn.mock.calls[0][0].messages[0].content;
       expect(prompt).not.toContain('version undefined');
     });
 
@@ -408,8 +400,10 @@ describe('src/ai/agent.ts', () => {
         estimatedTime: 1000,
         risks: [],
       };
-      const mockCreate = vi.fn().mockResolvedValue(createMockResponse(invalidPlan));
-      (agent as any).client = { messages: { create: mockCreate } };
+      mockProvider = createMockProvider({
+        chat: vi.fn().mockResolvedValue(mockChatResponse(invalidPlan)),
+      });
+      agent = new InstallAIAgent({ provider: mockProvider, maxRetries: 0 });
 
       const result = await agent.generateInstallPlan(createEnvInfo(), 'openclaw');
 
@@ -418,12 +412,10 @@ describe('src/ai/agent.ts', () => {
     });
 
     it('should include environment details in the prompt', async () => {
-      const mockCreate = vi.fn().mockResolvedValue(createMockResponse(VALID_INSTALL_PLAN));
-      (agent as any).client = { messages: { create: mockCreate } };
-
       await agent.generateInstallPlan(createEnvInfo(), 'openclaw');
 
-      const prompt = mockCreate.mock.calls[0][0].messages[0].content;
+      const chatFn = mockProvider.chat as ReturnType<typeof vi.fn>;
+      const prompt = chatFn.mock.calls[0][0].messages[0].content;
       expect(prompt).toContain('darwin');
       expect(prompt).toContain('pnpm@9.0.0');
       expect(prompt).toContain('/usr/local');
@@ -436,15 +428,16 @@ describe('src/ai/agent.ts', () => {
 
   describe('diagnoseError', () => {
     let agent: InstallAIAgent;
+    let mockProvider: AIProviderInterface;
 
     beforeEach(() => {
-      agent = new InstallAIAgent({ apiKey: 'test-key', maxRetries: 0 });
+      mockProvider = createMockProvider({
+        chat: vi.fn().mockResolvedValue(mockChatResponse(VALID_DIAGNOSIS)),
+      });
+      agent = new InstallAIAgent({ provider: mockProvider, maxRetries: 0 });
     });
 
     it('should return a valid error diagnosis', async () => {
-      const mockCreate = vi.fn().mockResolvedValue(createMockResponse(VALID_DIAGNOSIS));
-      (agent as any).client = { messages: { create: mockCreate } };
-
       const result = await agent.diagnoseError(createErrorContext());
 
       expect(result.success).toBe(true);
@@ -455,12 +448,10 @@ describe('src/ai/agent.ts', () => {
     });
 
     it('should include error context in the prompt', async () => {
-      const mockCreate = vi.fn().mockResolvedValue(createMockResponse(VALID_DIAGNOSIS));
-      (agent as any).client = { messages: { create: mockCreate } };
-
       await agent.diagnoseError(createErrorContext());
 
-      const prompt = mockCreate.mock.calls[0][0].messages[0].content;
+      const chatFn = mockProvider.chat as ReturnType<typeof vi.fn>;
+      const prompt = chatFn.mock.calls[0][0].messages[0].content;
       expect(prompt).toContain('pnpm install -g openclaw');
       expect(prompt).toContain('EACCES');
       expect(prompt).toContain('permission denied');
@@ -468,26 +459,22 @@ describe('src/ai/agent.ts', () => {
     });
 
     it('should include previous steps in the prompt', async () => {
-      const mockCreate = vi.fn().mockResolvedValue(createMockResponse(VALID_DIAGNOSIS));
-      (agent as any).client = { messages: { create: mockCreate } };
-
       await agent.diagnoseError(createErrorContext());
 
-      const prompt = mockCreate.mock.calls[0][0].messages[0].content;
+      const chatFn = mockProvider.chat as ReturnType<typeof vi.fn>;
+      const prompt = chatFn.mock.calls[0][0].messages[0].content;
       expect(prompt).toContain('check-node');
       expect(prompt).toContain('OK');
     });
 
     it('should handle error context with no previous steps', async () => {
-      const mockCreate = vi.fn().mockResolvedValue(createMockResponse(VALID_DIAGNOSIS));
-      (agent as any).client = { messages: { create: mockCreate } };
-
       const ctx = createErrorContext();
       ctx.previousSteps = [];
 
       await agent.diagnoseError(ctx);
 
-      const prompt = mockCreate.mock.calls[0][0].messages[0].content;
+      const chatFn = mockProvider.chat as ReturnType<typeof vi.fn>;
+      const prompt = chatFn.mock.calls[0][0].messages[0].content;
       expect(prompt).toContain('(none)');
     });
 
@@ -497,8 +484,10 @@ describe('src/ai/agent.ts', () => {
         category: 'invalid-category',
         explanation: 'test',
       };
-      const mockCreate = vi.fn().mockResolvedValue(createMockResponse(invalidDiagnosis));
-      (agent as any).client = { messages: { create: mockCreate } };
+      mockProvider = createMockProvider({
+        chat: vi.fn().mockResolvedValue(mockChatResponse(invalidDiagnosis)),
+      });
+      agent = new InstallAIAgent({ provider: mockProvider, maxRetries: 0 });
 
       const result = await agent.diagnoseError(createErrorContext());
 
@@ -513,15 +502,16 @@ describe('src/ai/agent.ts', () => {
 
   describe('suggestFixes', () => {
     let agent: InstallAIAgent;
+    let mockProvider: AIProviderInterface;
 
     beforeEach(() => {
-      agent = new InstallAIAgent({ apiKey: 'test-key', maxRetries: 0 });
+      mockProvider = createMockProvider({
+        chat: vi.fn().mockResolvedValue(mockChatResponse(VALID_FIX_STRATEGIES)),
+      });
+      agent = new InstallAIAgent({ provider: mockProvider, maxRetries: 0 });
     });
 
     it('should return valid fix strategies', async () => {
-      const mockCreate = vi.fn().mockResolvedValue(createMockResponse(VALID_FIX_STRATEGIES));
-      (agent as any).client = { messages: { create: mockCreate } };
-
       const result = await agent.suggestFixes(createErrorContext());
 
       expect(result.success).toBe(true);
@@ -534,36 +524,30 @@ describe('src/ai/agent.ts', () => {
     });
 
     it('should include diagnosis in prompt when provided', async () => {
-      const mockCreate = vi.fn().mockResolvedValue(createMockResponse(VALID_FIX_STRATEGIES));
-      (agent as any).client = { messages: { create: mockCreate } };
-
       await agent.suggestFixes(createErrorContext(), VALID_DIAGNOSIS);
 
-      const prompt = mockCreate.mock.calls[0][0].messages[0].content;
+      const chatFn = mockProvider.chat as ReturnType<typeof vi.fn>;
+      const prompt = chatFn.mock.calls[0][0].messages[0].content;
       expect(prompt).toContain('Root Cause');
       expect(prompt).toContain(VALID_DIAGNOSIS.rootCause);
       expect(prompt).toContain('permission');
     });
 
     it('should work without diagnosis', async () => {
-      const mockCreate = vi.fn().mockResolvedValue(createMockResponse(VALID_FIX_STRATEGIES));
-      (agent as any).client = { messages: { create: mockCreate } };
-
       const result = await agent.suggestFixes(createErrorContext());
 
       expect(result.success).toBe(true);
 
-      const prompt = mockCreate.mock.calls[0][0].messages[0].content;
+      const chatFn = mockProvider.chat as ReturnType<typeof vi.fn>;
+      const prompt = chatFn.mock.calls[0][0].messages[0].content;
       expect(prompt).not.toContain('Root Cause');
     });
 
     it('should include full environment details in the prompt', async () => {
-      const mockCreate = vi.fn().mockResolvedValue(createMockResponse(VALID_FIX_STRATEGIES));
-      (agent as any).client = { messages: { create: mockCreate } };
-
       await agent.suggestFixes(createErrorContext());
 
-      const prompt = mockCreate.mock.calls[0][0].messages[0].content;
+      const chatFn = mockProvider.chat as ReturnType<typeof vi.fn>;
+      const prompt = chatFn.mock.calls[0][0].messages[0].content;
       expect(prompt).toContain('darwin');
       expect(prompt).toContain('arm64');
       expect(prompt).toContain('zsh');
@@ -576,19 +560,14 @@ describe('src/ai/agent.ts', () => {
     });
 
     it('should mention recovery specialist role in prompt', async () => {
-      const mockCreate = vi.fn().mockResolvedValue(createMockResponse(VALID_FIX_STRATEGIES));
-      (agent as any).client = { messages: { create: mockCreate } };
-
       await agent.suggestFixes(createErrorContext());
 
-      const prompt = mockCreate.mock.calls[0][0].messages[0].content;
+      const chatFn = mockProvider.chat as ReturnType<typeof vi.fn>;
+      const prompt = chatFn.mock.calls[0][0].messages[0].content;
       expect(prompt).toContain('software installation recovery specialist');
     });
 
     it('should return risk and requiresSudo fields when present', async () => {
-      const mockCreate = vi.fn().mockResolvedValue(createMockResponse(VALID_FIX_STRATEGIES));
-      (agent as any).client = { messages: { create: mockCreate } };
-
       const result = await agent.suggestFixes(createErrorContext());
 
       expect(result.success).toBe(true);
@@ -607,8 +586,10 @@ describe('src/ai/agent.ts', () => {
           confidence: 0.8,
         },
       ];
-      const mockCreate = vi.fn().mockResolvedValue(createMockResponse(strategiesWithoutOptional));
-      (agent as any).client = { messages: { create: mockCreate } };
+      mockProvider = createMockProvider({
+        chat: vi.fn().mockResolvedValue(mockChatResponse(strategiesWithoutOptional)),
+      });
+      agent = new InstallAIAgent({ provider: mockProvider, maxRetries: 0 });
 
       const result = await agent.suggestFixes(createErrorContext());
 
@@ -626,8 +607,10 @@ describe('src/ai/agent.ts', () => {
           confidence: 1.5, // Out of range 0-1
         },
       ];
-      const mockCreate = vi.fn().mockResolvedValue(createMockResponse(invalidStrategies));
-      (agent as any).client = { messages: { create: mockCreate } };
+      mockProvider = createMockProvider({
+        chat: vi.fn().mockResolvedValue(mockChatResponse(invalidStrategies)),
+      });
+      agent = new InstallAIAgent({ provider: mockProvider, maxRetries: 0 });
 
       const result = await agent.suggestFixes(createErrorContext());
 
@@ -642,25 +625,14 @@ describe('src/ai/agent.ts', () => {
 
   describe('Error handling', () => {
     it('should return failure on authentication error without retrying', async () => {
-      const agent = new InstallAIAgent({ apiKey: 'invalid-key', maxRetries: 3 });
-
-      const AuthError = class extends Error {
-        constructor(message: string) {
-          super(message);
-          this.name = 'AuthenticationError';
-        }
-      };
-
-      // Simulate Anthropic.AuthenticationError by using the SDK's error class
-      const mockCreate = vi.fn().mockRejectedValue(
-        Object.assign(new Error('Invalid API key'), {
-          constructor: { name: 'AuthenticationError' },
-        }),
-      );
-
-      // Replace the prototype check to work with our mock
-      const originalClient = (agent as any).client;
-      (agent as any).client = { messages: { create: mockCreate } };
+      const mockProvider = createMockProvider({
+        chat: vi.fn().mockRejectedValue(
+          Object.assign(new Error('Invalid API key'), {
+            constructor: { name: 'AuthenticationError' },
+          }),
+        ),
+      });
+      const agent = new InstallAIAgent({ provider: mockProvider, maxRetries: 3 });
 
       const result = await agent.analyzeEnvironment(createEnvInfo(), 'openclaw');
 
@@ -671,75 +643,61 @@ describe('src/ai/agent.ts', () => {
     });
 
     it('should retry on network errors up to maxRetries', async () => {
-      const agent = new InstallAIAgent({ apiKey: 'test-key', maxRetries: 2 });
-
-      const mockCreate = vi.fn()
+      const chatFn = vi.fn()
         .mockRejectedValueOnce(new Error('Connection timeout'))
         .mockRejectedValueOnce(new Error('Connection timeout'))
-        .mockResolvedValueOnce(createMockResponse(VALID_ENV_ANALYSIS));
+        .mockResolvedValueOnce(mockChatResponse(VALID_ENV_ANALYSIS));
 
-      (agent as any).client = { messages: { create: mockCreate } };
+      const mockProvider = createMockProvider({ chat: chatFn });
+      const agent = new InstallAIAgent({ provider: mockProvider, maxRetries: 2 });
 
       const result = await agent.analyzeEnvironment(createEnvInfo(), 'openclaw');
 
       expect(result.success).toBe(true);
-      expect(mockCreate).toHaveBeenCalledTimes(3); // 1 initial + 2 retries
+      expect(chatFn).toHaveBeenCalledTimes(3); // 1 initial + 2 retries
     });
 
     it('should return failure after exhausting all retries', async () => {
-      const agent = new InstallAIAgent({ apiKey: 'test-key', maxRetries: 1, enablePresetFallback: false });
+      const chatFn = vi.fn().mockRejectedValue(new Error('Network error'));
 
-      const mockCreate = vi.fn()
-        .mockRejectedValue(new Error('Network error'));
-
-      (agent as any).client = { messages: { create: mockCreate } };
+      const mockProvider = createMockProvider({ chat: chatFn });
+      const agent = new InstallAIAgent({ provider: mockProvider, maxRetries: 1, enablePresetFallback: false });
 
       const result = await agent.analyzeEnvironment(createEnvInfo(), 'openclaw');
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('2 attempts'); // 1 initial + 1 retry = 2
       expect(result.error).toContain('Network error');
-      expect(mockCreate).toHaveBeenCalledTimes(2);
+      expect(chatFn).toHaveBeenCalledTimes(2);
     });
 
     it('should not retry on Zod validation errors', async () => {
-      const agent = new InstallAIAgent({ apiKey: 'test-key', maxRetries: 3, enablePresetFallback: false });
-
-      const mockCreate = vi.fn().mockResolvedValue(
-        createMockResponse({ invalid: 'schema' }),
+      const chatFn = vi.fn().mockResolvedValue(
+        mockChatResponse({ invalid: 'schema' }),
       );
-      (agent as any).client = { messages: { create: mockCreate } };
+
+      const mockProvider = createMockProvider({ chat: chatFn });
+      const agent = new InstallAIAgent({ provider: mockProvider, maxRetries: 3, enablePresetFallback: false });
 
       const result = await agent.analyzeEnvironment(createEnvInfo(), 'openclaw');
 
       expect(result.success).toBe(false);
-      expect(mockCreate).toHaveBeenCalledTimes(1); // No retries
+      expect(chatFn).toHaveBeenCalledTimes(1); // No retries
     });
 
     it('should handle empty response content', async () => {
-      const agent = new InstallAIAgent({ apiKey: 'test-key', maxRetries: 0 });
-
-      const mockCreate = vi.fn().mockResolvedValue({ content: [] });
-      (agent as any).client = { messages: { create: mockCreate } };
+      const mockProvider = createMockProvider({
+        chat: vi.fn().mockResolvedValue({
+          content: '',
+          usage: { inputTokens: 0, outputTokens: 0 },
+        }),
+      });
+      const agent = new InstallAIAgent({ provider: mockProvider, maxRetries: 0 });
 
       const result = await agent.analyzeEnvironment(createEnvInfo(), 'openclaw');
 
       expect(result.success).toBe(false);
       expect(result.error).toBeDefined();
-    });
-
-    it('should handle non-text response blocks', async () => {
-      const agent = new InstallAIAgent({ apiKey: 'test-key', maxRetries: 0 });
-
-      const mockCreate = vi.fn().mockResolvedValue({
-        content: [{ type: 'tool_use', id: 'test', name: 'test', input: {} }],
-      });
-      (agent as any).client = { messages: { create: mockCreate } };
-
-      const result = await agent.analyzeEnvironment(createEnvInfo(), 'openclaw');
-
-      expect(result.success).toBe(false);
-      expect(result.error).toContain('No text content');
     });
   });
 
@@ -893,9 +851,10 @@ describe('src/ai/agent.ts', () => {
       expect(content).toContain("from '@aiinstaller/shared'");
     });
 
-    it('should import from @anthropic-ai/sdk', () => {
+    it('should use AIProviderInterface instead of direct Anthropic SDK', () => {
       const content = readFileSync(AGENT_FILE, 'utf-8');
-      expect(content).toContain("from '@anthropic-ai/sdk'");
+      expect(content).toContain("from './providers/base.js'");
+      expect(content).not.toContain("from '@anthropic-ai/sdk'");
     });
 
     it('should have JSDoc on all public methods', () => {

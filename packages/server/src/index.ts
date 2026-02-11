@@ -78,18 +78,14 @@ export interface ServerConfig {
   databasePath: string;
   /** JWT secret key (min 32 chars) */
   jwtSecret: string;
-  /** AI configuration */
-  ai?: {
-    /** Anthropic API key */
-    apiKey: string;
-    /** Model to use */
-    model?: string;
+  /** AI agent configuration (timeout, retries — provider comes from ProviderFactory) */
+  aiAgent?: {
     /** Request timeout in ms */
     timeoutMs?: number;
     /** Maximum retry attempts */
     maxRetries?: number;
   };
-  /** AI provider type (claude, openai, ollama, deepseek) */
+  /** AI provider type (claude, openai, ollama, deepseek, custom-openai) */
   aiProvider?: string;
   /** Knowledge base configuration */
   knowledgeBase?: {
@@ -140,15 +136,11 @@ export function loadConfig(): ServerConfig {
   // Load AI provider type
   serverConfig.aiProvider = process.env.AI_PROVIDER ?? 'claude';
 
-  // Load AI configuration if API key is present (for InstallAIAgent / Claude)
-  if (process.env.ANTHROPIC_API_KEY) {
-    serverConfig.ai = {
-      apiKey: process.env.ANTHROPIC_API_KEY,
-      model: process.env.AI_MODEL,
-      timeoutMs: process.env.AI_TIMEOUT_MS ? parseInt(process.env.AI_TIMEOUT_MS, 10) : undefined,
-      maxRetries: process.env.AI_MAX_RETRIES ? parseInt(process.env.AI_MAX_RETRIES, 10) : undefined,
-    };
-  }
+  // Load AI agent configuration (provider is resolved via ProviderFactory)
+  serverConfig.aiAgent = {
+    timeoutMs: process.env.AI_TIMEOUT_MS ? parseInt(process.env.AI_TIMEOUT_MS, 10) : undefined,
+    maxRetries: process.env.AI_MAX_RETRIES ? parseInt(process.env.AI_MAX_RETRIES, 10) : undefined,
+  };
 
   // Load knowledge base configuration
   serverConfig.knowledgeBase = {
@@ -187,21 +179,7 @@ export function createServer(serverConfig: ServerConfig): InstallServer {
 
   const server = new InstallServer(options);
 
-  // Create AI agent if configuration is provided (for WebSocket install flows)
-  let aiAgent: InstallAIAgent | undefined;
-  if (serverConfig.ai) {
-    aiAgent = new InstallAIAgent(serverConfig.ai);
-    logger.info({
-      operation: 'initialization',
-      model: serverConfig.ai.model ?? 'claude-sonnet-4-20250514',
-    }, 'AI agent initialized');
-  } else {
-    logger.warn({
-      operation: 'initialization',
-    }, 'AI agent not initialized - ANTHROPIC_API_KEY not configured');
-  }
-
-  // Initialize the generic AI provider (for chat and other routes)
+  // Initialize the AI provider (used by both chat routes and InstallAIAgent)
   const providerConfig = resolveProviderFromEnv();
   if (providerConfig) {
     try {
@@ -217,6 +195,26 @@ export function createServer(serverConfig: ServerConfig): InstallServer {
     logger.warn({
       operation: 'initialization',
     }, 'No AI provider configured - set AI_PROVIDER and corresponding API key');
+  }
+
+  // Create InstallAIAgent using the active provider (for WebSocket install flows)
+  let aiAgent: InstallAIAgent | undefined;
+  const activeProvider = getActiveProvider();
+  if (activeProvider) {
+    aiAgent = new InstallAIAgent({
+      provider: activeProvider,
+      timeoutMs: serverConfig.aiAgent?.timeoutMs,
+      maxRetries: serverConfig.aiAgent?.maxRetries,
+    });
+    logger.info({
+      operation: 'initialization',
+      provider: activeProvider.name,
+      tier: activeProvider.tier,
+    }, `InstallAIAgent initialized with provider: ${activeProvider.name}`);
+  } else {
+    logger.warn({
+      operation: 'initialization',
+    }, 'InstallAIAgent not initialized - no AI provider available');
   }
 
   // Initialize services that depend on the server instance

@@ -3,14 +3,15 @@
 /**
  * AI Agent for intelligent installation management.
  *
- * Uses the Anthropic Claude API to analyze environments, generate install plans,
- * diagnose errors, and suggest fixes. Provides structured JSON responses
- * parsed and validated with Zod schemas from @aiinstaller/shared.
+ * Uses the AIProviderInterface abstraction to analyze environments, generate
+ * install plans, diagnose errors, and suggest fixes. Supports all configured
+ * providers (Claude, OpenAI, DeepSeek, Ollama, custom-openai) via the
+ * ProviderFactory. Provides structured JSON responses parsed and validated
+ * with Zod schemas from @aiinstaller/shared.
  *
  * @module ai/agent
  */
 
-import Anthropic from '@anthropic-ai/sdk';
 import type {
   EnvironmentInfo,
   InstallPlan,
@@ -22,11 +23,10 @@ import {
   FixStrategySchema,
 } from '@aiinstaller/shared';
 import { z } from 'zod';
-import { streamAIResponse } from './streaming.js';
-import type { StreamCallbacks, StreamResult } from './streaming.js';
+import type { AIProviderInterface, ProviderStreamCallbacks } from './providers/base.js';
+import { getActiveProvider } from './providers/provider-factory.js';
 import {
   retryWithBackoff,
-  fallbackChain,
   getPresetEnvironmentAnalysis,
   getPresetInstallPlan,
   getPresetErrorDiagnosis,
@@ -39,12 +39,13 @@ import type { RetryConfig } from './fault-tolerance.js';
 // Types
 // ============================================================================
 
+/** Streaming callbacks re-exported from provider base for API compatibility */
+export type StreamCallbacks = ProviderStreamCallbacks;
+
 /** Configuration options for the InstallAIAgent */
 export interface AIAgentOptions {
-  /** Anthropic API key */
-  apiKey: string;
-  /** Model to use (default: 'claude-sonnet-4-20250514') */
-  model?: string;
+  /** AI provider instance (preferred — uses ProviderFactory abstraction) */
+  provider?: AIProviderInterface;
   /** Request timeout in milliseconds (default: 60000) */
   timeoutMs?: number;
   /** Maximum retry attempts on failure (default: 2) */
@@ -138,12 +139,14 @@ export type ErrorDiagnosis = z.infer<typeof ErrorDiagnosisSchema>;
 /**
  * AI-powered agent for intelligent installation assistance.
  *
- * Wraps the Anthropic Claude API to provide structured analysis and
- * recommendations for software installation workflows.
+ * Uses the AIProviderInterface abstraction to provide structured analysis
+ * and recommendations for software installation workflows. Supports any
+ * configured provider (Claude, OpenAI, DeepSeek, Ollama, custom-openai).
  *
  * @example
  * ```ts
- * const agent = new InstallAIAgent({ apiKey: 'sk-...' });
+ * const provider = getActiveProvider();
+ * const agent = new InstallAIAgent({ provider });
  * const analysis = await agent.analyzeEnvironment(envInfo, 'openclaw');
  * if (analysis.success && analysis.data?.ready) {
  *   const plan = await agent.generateInstallPlan(envInfo, 'openclaw');
@@ -151,16 +154,21 @@ export type ErrorDiagnosis = z.infer<typeof ErrorDiagnosisSchema>;
  * ```
  */
 export class InstallAIAgent {
-  private readonly client: Anthropic;
-  private readonly model: string;
+  private readonly provider: AIProviderInterface;
   private readonly timeoutMs: number;
   private readonly maxRetries: number;
   private readonly enablePresetFallback: boolean;
   private readonly retryConfig: RetryConfig;
 
-  constructor(options: AIAgentOptions) {
-    this.client = new Anthropic({ apiKey: options.apiKey });
-    this.model = options.model ?? 'claude-sonnet-4-20250514';
+  constructor(options: AIAgentOptions = {}) {
+    const provider = options.provider ?? getActiveProvider();
+    if (!provider) {
+      throw new Error(
+        'No AI provider available. Set AI_PROVIDER and the corresponding API key, ' +
+        'or pass a provider instance via AIAgentOptions.provider.',
+      );
+    }
+    this.provider = provider;
     this.timeoutMs = options.timeoutMs ?? 60000;
     this.maxRetries = options.maxRetries ?? 2;
     this.enablePresetFallback = options.enablePresetFallback ?? true;
@@ -488,6 +496,7 @@ export class InstallAIAgent {
    * Send a prompt to the AI and parse the JSON response.
    *
    * Uses exponential backoff retry for transient errors.
+   * Delegates to the configured AIProviderInterface.chat().
    *
    * @param prompt - The user prompt to send
    * @param schema - Zod schema to validate the response
@@ -497,37 +506,30 @@ export class InstallAIAgent {
     prompt: string,
     schema: z.ZodType<T>,
   ): Promise<AIAnalysisResult<T>> {
-    // Track error type from shouldRetry callback — more reliable than post-hoc string matching
     let detectedErrorType: 'validation' | 'auth' | undefined;
     let usage: TokenUsage | undefined;
 
     const result = await retryWithBackoff(
       async () => {
-        const response = await this.client.messages.create({
-          model: this.model,
-          max_tokens: 4096,
+        const response = await this.provider.chat({
           messages: [{ role: 'user', content: prompt }],
           system: 'You are a software installation expert. Always respond with valid JSON only. No markdown, no code fences, no extra text.',
-        }, {
-          timeout: this.timeoutMs,
+          maxTokens: 4096,
+          timeoutMs: this.timeoutMs,
         });
 
-        // Extract token usage from response
         usage = {
-          inputTokens: response.usage?.input_tokens ?? 0,
-          outputTokens: response.usage?.output_tokens ?? 0,
+          inputTokens: response.usage.inputTokens,
+          outputTokens: response.usage.outputTokens,
         };
 
-        const text = this.extractTextFromResponse(response);
-        const parsed = this.parseJSON(text);
+        const parsed = this.parseJSON(response.content);
         const validated = schema.parse(parsed);
 
         return validated;
       },
       this.retryConfig,
       (error) => {
-        // Don't retry on validation errors (response format won't change)
-        // Check for Zod errors by checking for 'issues' property which is Zod-specific
         const isZodError = error.constructor.name === 'ZodError' ||
                           (error && typeof error === 'object' && 'issues' in error);
         const isSyntaxError = error.constructor.name === 'SyntaxError' ||
@@ -541,12 +543,10 @@ export class InstallAIAgent {
           detectedErrorType = 'validation';
           return false;
         }
-        // Don't retry on auth errors
         if (error.message.includes('authentication') || error.message.includes('401')) {
           detectedErrorType = 'auth';
           return false;
         }
-        // Retry on other errors (network, rate limit, timeout, etc.)
         return true;
       },
     );
@@ -555,8 +555,6 @@ export class InstallAIAgent {
       return { success: true, data: result.data, usage };
     }
 
-    // Use error type captured in shouldRetry when available (most reliable),
-    // fall back to classifying from the error message string
     const errorType = detectedErrorType ?? this.classifyErrorMessage(result.error ?? '');
 
     return { success: false, error: result.error, errorType, usage };
@@ -565,8 +563,9 @@ export class InstallAIAgent {
   /**
    * Send a prompt to the AI with streaming and parse the JSON response.
    *
-   * Uses the streaming API for real-time token delivery while still
-   * parsing and validating the final response as JSON.
+   * Uses the provider's stream() method for real-time token delivery while
+   * still parsing and validating the final response as JSON. Falls back
+   * to non-streaming chat() if streaming fails with a non-transient error.
    * Uses exponential backoff retry for transient errors.
    *
    * @param prompt - The user prompt to send
@@ -580,42 +579,39 @@ export class InstallAIAgent {
     callbacks?: StreamCallbacks,
   ): Promise<AIAnalysisResult<T>> {
     let callbacksUsed = false;
-    // Track error type from shouldRetry callback
     let detectedErrorType: 'validation' | 'auth' | undefined;
     let usage: TokenUsage | undefined;
 
     const retryResult = await retryWithBackoff(
       async () => {
-        const result = await streamAIResponse({
-          client: this.client,
-          model: this.model,
-          maxTokens: 4096,
-          prompt,
-          system: 'You are a software installation expert. Always respond with valid JSON only. No markdown, no code fences, no extra text.',
-          timeoutMs: this.timeoutMs,
-          callbacks: !callbacksUsed ? callbacks : undefined, // Only stream on first attempt
-        });
+        const streamResult = await this.provider.stream(
+          {
+            messages: [{ role: 'user', content: prompt }],
+            system: 'You are a software installation expert. Always respond with valid JSON only. No markdown, no code fences, no extra text.',
+            maxTokens: 4096,
+            timeoutMs: this.timeoutMs,
+          },
+          !callbacksUsed ? callbacks : undefined,
+        );
 
         callbacksUsed = true;
 
-        // Extract token usage from streaming result
         usage = {
-          inputTokens: result.usage?.inputTokens ?? 0,
-          outputTokens: result.usage?.outputTokens ?? 0,
+          inputTokens: streamResult.usage.inputTokens,
+          outputTokens: streamResult.usage.outputTokens,
         };
 
-        if (!result.success) {
-          throw new Error(result.error ?? 'Streaming request failed');
+        if (!streamResult.success) {
+          throw new Error(streamResult.error ?? 'Streaming request failed');
         }
 
-        const parsed = this.parseJSON(result.text);
+        const parsed = this.parseJSON(streamResult.content);
         const validated = schema.parse(parsed);
 
         return validated;
       },
       this.retryConfig,
       (error) => {
-        // Don't retry on validation errors
         if (error.constructor.name === 'ZodError' ||
             error.constructor.name === 'SyntaxError' ||
             error.message.includes('validation') ||
@@ -623,12 +619,10 @@ export class InstallAIAgent {
           detectedErrorType = 'validation';
           return false;
         }
-        // Don't retry on auth errors
         if (error.message.includes('authentication') || error.message.includes('401')) {
           detectedErrorType = 'auth';
           return false;
         }
-        // Retry on other errors
         return true;
       },
     );
@@ -637,23 +631,9 @@ export class InstallAIAgent {
       return { success: true, data: retryResult.data, usage };
     }
 
-    // Use error type captured in shouldRetry when available,
-    // fall back to classifying from the error message string
     const errorType = detectedErrorType ?? this.classifyErrorMessage(retryResult.error ?? '');
 
     return { success: false, error: retryResult.error, errorType, usage };
-  }
-
-  /**
-   * Extract text content from an Anthropic API response.
-   */
-  private extractTextFromResponse(response: Anthropic.Message): string {
-    for (const block of response.content) {
-      if (block.type === 'text') {
-        return block.text;
-      }
-    }
-    throw new Error('No text content in AI response');
   }
 
   /**

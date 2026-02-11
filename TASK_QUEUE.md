@@ -7,9 +7,9 @@
 ## 📊 统计信息
 
 - **总任务数**: 50
-- **待完成** (pending): 6
+- **待完成** (pending): 5
 - **进行中** (in_progress): 0
-- **已完成** (completed): 42
+- **已完成** (completed): 43
 - **失败** (failed): 2
 
 ---
@@ -84,7 +84,7 @@
 
 ---
 
-### [pending] InstallAIAgent 支持多 Provider（解耦 Anthropic SDK 硬编码）
+### [completed] InstallAIAgent 支持多 Provider（解耦 Anthropic SDK 硬编码） ✅
 
 **ID**: task-029
 **优先级**: P1
@@ -97,7 +97,7 @@
 - 所有现有 AI agent 测试通过
 - 新增测试验证 custom-openai Provider 下的安装流程
 **创建时间**: 2026-02-11 16:10:07
-**完成时间**: -
+**完成时间**: 2026-02-11 16:50:03
 
 ---
 
@@ -1239,4 +1239,4 @@ ID: task-001
 
 ---
 
-**最后更新**: 2026-02-11 16:32:59
+**最后更新**: 2026-02-11 16:50:03

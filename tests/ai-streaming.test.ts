@@ -17,7 +17,41 @@ import {
   createMessage,
 } from '@aiinstaller/shared';
 import { InstallAIAgent } from '../packages/server/src/ai/agent.js';
-import type { StreamCallbacks } from '../packages/server/src/ai/streaming.js';
+import type { StreamCallbacks } from '../packages/server/src/ai/agent.js';
+import type { AIProviderInterface, StreamResponse } from '../packages/server/src/ai/providers/base.js';
+
+// ============================================================================
+// Mock Provider Factory
+// ============================================================================
+
+/** Create a mock AI provider for testing */
+function createMockProvider(overrides?: Partial<AIProviderInterface>): AIProviderInterface {
+  return {
+    name: 'mock',
+    tier: 1,
+    chat: vi.fn().mockResolvedValue({
+      content: '{}',
+      usage: { inputTokens: 10, outputTokens: 20 },
+    }),
+    stream: vi.fn().mockResolvedValue({
+      content: '{}',
+      usage: { inputTokens: 10, outputTokens: 20 },
+      success: true,
+    }),
+    isAvailable: vi.fn().mockResolvedValue(true),
+    ...overrides,
+  };
+}
+
+/** Create a mock StreamResponse returning the given data as JSON */
+function mockStreamResponse(jsonData: unknown, opts?: { success?: boolean; error?: string }): StreamResponse {
+  return {
+    content: JSON.stringify(jsonData),
+    usage: { inputTokens: 10, outputTokens: 20 },
+    success: opts?.success ?? true,
+    error: opts?.error,
+  };
+}
 
 // ============================================================================
 // Test Fixtures
@@ -91,31 +125,6 @@ const VALID_FIX_STRATEGIES = [
     confidence: 0.9,
   },
 ];
-
-/** Create a mock stream object for testing agent streaming methods */
-function createMockStream(jsonData: unknown) {
-  const textContent = JSON.stringify(jsonData);
-  const listeners: Record<string, ((...args: any[]) => void)[]> = {};
-
-  return {
-    on(event: string, listener: (...args: any[]) => void) {
-      if (!listeners[event]) listeners[event] = [];
-      listeners[event].push(listener);
-      return this;
-    },
-    finalMessage: vi.fn().mockImplementation(async () => {
-      // Emit the full text as a single token
-      for (const listener of listeners['text'] ?? []) {
-        listener(textContent);
-      }
-
-      return {
-        content: [{ type: 'text', text: textContent }],
-        usage: { input_tokens: 10, output_tokens: 20 },
-      };
-    }),
-  };
-}
 
 // ============================================================================
 // Protocol Message Tests
@@ -320,16 +329,17 @@ describe('AI Streaming Protocol Messages', () => {
 
 describe('InstallAIAgent streaming methods', () => {
   let agent: InstallAIAgent;
+  let mockProvider: AIProviderInterface;
 
   beforeEach(() => {
-    agent = new InstallAIAgent({ apiKey: 'test-key', maxRetries: 0, enablePresetFallback: false });
+    mockProvider = createMockProvider({
+      stream: vi.fn().mockResolvedValue(mockStreamResponse(VALID_ENV_ANALYSIS)),
+    });
+    agent = new InstallAIAgent({ provider: mockProvider, maxRetries: 0, enablePresetFallback: false });
   });
 
   describe('analyzeEnvironmentStreaming', () => {
     it('should return valid analysis result', async () => {
-      const mockStream = createMockStream(VALID_ENV_ANALYSIS);
-      (agent as any).client = { messages: { stream: vi.fn().mockReturnValue(mockStream) } };
-
       const result = await agent.analyzeEnvironmentStreaming(createEnvInfo(), 'openclaw');
 
       expect(result.success).toBe(true);
@@ -338,20 +348,29 @@ describe('InstallAIAgent streaming methods', () => {
       expect(result.data!.summary).toBe('Ready');
     });
 
-    it('should invoke onToken callback', async () => {
-      const mockStream = createMockStream(VALID_ENV_ANALYSIS);
-      (agent as any).client = { messages: { stream: vi.fn().mockReturnValue(mockStream) } };
+    it('should pass callbacks to provider.stream', async () => {
       const onToken = vi.fn();
+      const streamFn = vi.fn().mockImplementation((_opts, callbacks) => {
+        // Simulate calling onToken
+        callbacks?.onToken?.('token', 'token');
+        return Promise.resolve(mockStreamResponse(VALID_ENV_ANALYSIS));
+      });
+      mockProvider = createMockProvider({ stream: streamFn });
+      agent = new InstallAIAgent({ provider: mockProvider, maxRetries: 0, enablePresetFallback: false });
 
       await agent.analyzeEnvironmentStreaming(createEnvInfo(), 'openclaw', { onToken });
 
       expect(onToken).toHaveBeenCalled();
     });
 
-    it('should invoke onStart callback', async () => {
-      const mockStream = createMockStream(VALID_ENV_ANALYSIS);
-      (agent as any).client = { messages: { stream: vi.fn().mockReturnValue(mockStream) } };
+    it('should pass onStart callback to provider.stream', async () => {
       const onStart = vi.fn();
+      const streamFn = vi.fn().mockImplementation((_opts, callbacks) => {
+        callbacks?.onStart?.();
+        return Promise.resolve(mockStreamResponse(VALID_ENV_ANALYSIS));
+      });
+      mockProvider = createMockProvider({ stream: streamFn });
+      agent = new InstallAIAgent({ provider: mockProvider, maxRetries: 0, enablePresetFallback: false });
 
       await agent.analyzeEnvironmentStreaming(createEnvInfo(), 'openclaw', { onStart });
 
@@ -359,8 +378,10 @@ describe('InstallAIAgent streaming methods', () => {
     });
 
     it('should return failure on invalid response', async () => {
-      const mockStream = createMockStream({ invalid: true });
-      (agent as any).client = { messages: { stream: vi.fn().mockReturnValue(mockStream) } };
+      mockProvider = createMockProvider({
+        stream: vi.fn().mockResolvedValue(mockStreamResponse({ invalid: true })),
+      });
+      agent = new InstallAIAgent({ provider: mockProvider, maxRetries: 0, enablePresetFallback: false });
 
       const result = await agent.analyzeEnvironmentStreaming(createEnvInfo(), 'openclaw');
 
@@ -371,8 +392,10 @@ describe('InstallAIAgent streaming methods', () => {
 
   describe('generateInstallPlanStreaming', () => {
     it('should return valid install plan', async () => {
-      const mockStream = createMockStream(VALID_INSTALL_PLAN);
-      (agent as any).client = { messages: { stream: vi.fn().mockReturnValue(mockStream) } };
+      mockProvider = createMockProvider({
+        stream: vi.fn().mockResolvedValue(mockStreamResponse(VALID_INSTALL_PLAN)),
+      });
+      agent = new InstallAIAgent({ provider: mockProvider, maxRetries: 0, enablePresetFallback: false });
 
       const result = await agent.generateInstallPlanStreaming(createEnvInfo(), 'openclaw');
 
@@ -382,8 +405,10 @@ describe('InstallAIAgent streaming methods', () => {
     });
 
     it('should accept optional version parameter', async () => {
-      const mockStream = createMockStream(VALID_INSTALL_PLAN);
-      (agent as any).client = { messages: { stream: vi.fn().mockReturnValue(mockStream) } };
+      mockProvider = createMockProvider({
+        stream: vi.fn().mockResolvedValue(mockStreamResponse(VALID_INSTALL_PLAN)),
+      });
+      agent = new InstallAIAgent({ provider: mockProvider, maxRetries: 0, enablePresetFallback: false });
 
       const result = await agent.generateInstallPlanStreaming(
         createEnvInfo(),
@@ -397,8 +422,10 @@ describe('InstallAIAgent streaming methods', () => {
 
   describe('diagnoseErrorStreaming', () => {
     it('should return valid diagnosis', async () => {
-      const mockStream = createMockStream(VALID_DIAGNOSIS);
-      (agent as any).client = { messages: { stream: vi.fn().mockReturnValue(mockStream) } };
+      mockProvider = createMockProvider({
+        stream: vi.fn().mockResolvedValue(mockStreamResponse(VALID_DIAGNOSIS)),
+      });
+      agent = new InstallAIAgent({ provider: mockProvider, maxRetries: 0, enablePresetFallback: false });
 
       const result = await agent.diagnoseErrorStreaming(createErrorContext());
 
@@ -407,10 +434,15 @@ describe('InstallAIAgent streaming methods', () => {
       expect(result.data!.rootCause).toBe('Permission denied');
     });
 
-    it('should invoke onComplete callback', async () => {
-      const mockStream = createMockStream(VALID_DIAGNOSIS);
-      (agent as any).client = { messages: { stream: vi.fn().mockReturnValue(mockStream) } };
+    it('should pass onComplete callback to provider.stream', async () => {
       const onComplete = vi.fn();
+      const streamFn = vi.fn().mockImplementation((_opts, callbacks) => {
+        const resp = mockStreamResponse(VALID_DIAGNOSIS);
+        callbacks?.onComplete?.(resp.content, resp.usage);
+        return Promise.resolve(resp);
+      });
+      mockProvider = createMockProvider({ stream: streamFn });
+      agent = new InstallAIAgent({ provider: mockProvider, maxRetries: 0, enablePresetFallback: false });
 
       await agent.diagnoseErrorStreaming(createErrorContext(), { onComplete });
 
@@ -420,8 +452,10 @@ describe('InstallAIAgent streaming methods', () => {
 
   describe('suggestFixesStreaming', () => {
     it('should return valid fix strategies', async () => {
-      const mockStream = createMockStream(VALID_FIX_STRATEGIES);
-      (agent as any).client = { messages: { stream: vi.fn().mockReturnValue(mockStream) } };
+      mockProvider = createMockProvider({
+        stream: vi.fn().mockResolvedValue(mockStreamResponse(VALID_FIX_STRATEGIES)),
+      });
+      agent = new InstallAIAgent({ provider: mockProvider, maxRetries: 0, enablePresetFallback: false });
 
       const result = await agent.suggestFixesStreaming(createErrorContext());
 
@@ -431,8 +465,10 @@ describe('InstallAIAgent streaming methods', () => {
     });
 
     it('should accept optional diagnosis parameter', async () => {
-      const mockStream = createMockStream(VALID_FIX_STRATEGIES);
-      (agent as any).client = { messages: { stream: vi.fn().mockReturnValue(mockStream) } };
+      mockProvider = createMockProvider({
+        stream: vi.fn().mockResolvedValue(mockStreamResponse(VALID_FIX_STRATEGIES)),
+      });
+      agent = new InstallAIAgent({ provider: mockProvider, maxRetries: 0, enablePresetFallback: false });
 
       const result = await agent.suggestFixesStreaming(
         createErrorContext(),
@@ -445,16 +481,12 @@ describe('InstallAIAgent streaming methods', () => {
 
   describe('Streaming error handling', () => {
     it('should return failure when stream errors', async () => {
-      const listeners: Record<string, ((...args: any[]) => void)[]> = {};
-      const mockStream = {
-        on(event: string, listener: (...args: any[]) => void) {
-          if (!listeners[event]) listeners[event] = [];
-          listeners[event].push(listener);
-          return mockStream;
-        },
-        finalMessage: vi.fn().mockRejectedValue(new Error('Connection timeout')),
-      };
-      (agent as any).client = { messages: { stream: vi.fn().mockReturnValue(mockStream) } };
+      mockProvider = createMockProvider({
+        stream: vi.fn().mockResolvedValue(
+          mockStreamResponse({}, { success: false, error: 'Connection timeout' }),
+        ),
+      });
+      agent = new InstallAIAgent({ provider: mockProvider, maxRetries: 0, enablePresetFallback: false });
 
       const result = await agent.analyzeEnvironmentStreaming(createEnvInfo(), 'openclaw');
 
@@ -463,17 +495,16 @@ describe('InstallAIAgent streaming methods', () => {
     });
 
     it('should call onError callback on stream failure', async () => {
-      const listeners: Record<string, ((...args: any[]) => void)[]> = {};
-      const mockStream = {
-        on(event: string, listener: (...args: any[]) => void) {
-          if (!listeners[event]) listeners[event] = [];
-          listeners[event].push(listener);
-          return mockStream;
-        },
-        finalMessage: vi.fn().mockRejectedValue(new Error('API error')),
-      };
-      (agent as any).client = { messages: { stream: vi.fn().mockReturnValue(mockStream) } };
       const onError = vi.fn();
+      const streamFn = vi.fn().mockImplementation((_opts, callbacks) => {
+        const error = new Error('API error');
+        callbacks?.onError?.(error);
+        return Promise.resolve(
+          mockStreamResponse({}, { success: false, error: 'API error' }),
+        );
+      });
+      mockProvider = createMockProvider({ stream: streamFn });
+      agent = new InstallAIAgent({ provider: mockProvider, maxRetries: 0, enablePresetFallback: false });
 
       await agent.analyzeEnvironmentStreaming(createEnvInfo(), 'openclaw', { onError });
 
@@ -481,28 +512,24 @@ describe('InstallAIAgent streaming methods', () => {
     });
 
     it('should retry on network error up to maxRetries', async () => {
-      const retryAgent = new InstallAIAgent({ apiKey: 'test-key', maxRetries: 1 });
-
       let callCount = 0;
-      const mockStreamFn = vi.fn().mockImplementation(() => {
+      const streamFn = vi.fn().mockImplementation(() => {
         callCount++;
         if (callCount === 1) {
-          // First call fails
-          return {
-            on: vi.fn().mockReturnThis(),
-            finalMessage: vi.fn().mockRejectedValue(new Error('Network error')),
-          };
+          return Promise.resolve(
+            mockStreamResponse({}, { success: false, error: 'Network error' }),
+          );
         }
-        // Second call succeeds
-        return createMockStream(VALID_ENV_ANALYSIS);
+        return Promise.resolve(mockStreamResponse(VALID_ENV_ANALYSIS));
       });
 
-      (retryAgent as any).client = { messages: { stream: mockStreamFn } };
+      mockProvider = createMockProvider({ stream: streamFn });
+      const retryAgent = new InstallAIAgent({ provider: mockProvider, maxRetries: 1, enablePresetFallback: false });
 
       const result = await retryAgent.analyzeEnvironmentStreaming(createEnvInfo(), 'openclaw');
 
       expect(result.success).toBe(true);
-      expect(mockStreamFn).toHaveBeenCalledTimes(2);
+      expect(streamFn).toHaveBeenCalledTimes(2);
     });
   });
 });
