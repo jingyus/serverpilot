@@ -10,6 +10,7 @@
  */
 
 import { Hono } from 'hono';
+import { streamSSE } from 'hono/streaming';
 import {
   CreateServerBodySchema,
   UpdateServerBodySchema,
@@ -31,6 +32,7 @@ import { getServerRepository } from '../../db/repositories/server-repository.js'
 import { getProfileRepository } from '../../db/repositories/profile-repository.js';
 import { getMetricsRepository } from '../../db/repositories/metrics-repository.js';
 import { getOperationHistoryService } from '../../core/operation/operation-history-service.js';
+import { getServerStatusBus } from '../../core/server-status-bus.js';
 import { snapshots as snapshotsRouter } from './snapshots.js';
 import { logger } from '../../utils/logger.js';
 import type {
@@ -118,6 +120,43 @@ servers.get('/groups', requirePermission('server:read'), async (c) => {
 
   const groups = await repo.getDistinctGroups(userId);
   return c.json({ groups });
+});
+
+// ============================================================================
+// GET /servers/status/stream — SSE for real-time server status changes
+// ============================================================================
+
+servers.get('/status/stream', requirePermission('server:read'), async (c) => {
+  return streamSSE(c, async (stream) => {
+    let unsubscribe: (() => void) | null = null;
+
+    stream.onAbort(() => {
+      unsubscribe?.();
+    });
+
+    const bus = getServerStatusBus();
+    unsubscribe = bus.subscribe(async (event) => {
+      try {
+        await stream.writeSSE({
+          event: 'status',
+          data: JSON.stringify(event),
+        });
+      } catch {
+        // Client disconnected — cleanup handled by onAbort
+      }
+    });
+
+    // Send initial ping so client knows connection is live
+    await stream.writeSSE({
+      event: 'connected',
+      data: JSON.stringify({ timestamp: new Date().toISOString() }),
+    });
+
+    // Keep connection open until client disconnects
+    await new Promise<void>((resolve) => {
+      stream.onAbort(() => resolve());
+    });
+  });
 });
 
 // ============================================================================

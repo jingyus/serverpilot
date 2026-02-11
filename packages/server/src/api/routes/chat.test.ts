@@ -73,6 +73,7 @@ const { _setMockAgent } = await import('./chat-ai.js') as unknown as {
 
 vi.mock('../../core/agent/agent-connector.js', () => ({
   findConnectedAgent: vi.fn((serverId: string) => `mock-agent-${serverId}`),
+  isAgentConnected: vi.fn(() => true),
 }));
 
 vi.mock('../../core/task/executor.js', () => ({

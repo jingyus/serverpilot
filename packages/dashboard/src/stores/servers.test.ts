@@ -40,6 +40,17 @@ vi.mock('@/api/client', () => ({
   },
 }));
 
+// Track captured SSE callbacks
+let capturedStatusCallbacks: { onStatus?: (data: string) => void; onError?: (error: Error) => void } | null = null;
+const mockAbort = vi.fn();
+
+vi.mock('@/api/sse', () => ({
+  createServerStatusSSE: vi.fn((callbacks: unknown) => {
+    capturedStatusCallbacks = callbacks as typeof capturedStatusCallbacks;
+    return { abort: mockAbort };
+  }),
+}));
+
 import { apiRequest, ApiError } from '@/api/client';
 const mockApiRequest = vi.mocked(apiRequest);
 
@@ -319,6 +330,81 @@ describe('useServersStore', () => {
       useServersStore.setState({ viewMode: 'grouped' });
       useServersStore.getState().setViewMode('list');
       expect(useServersStore.getState().viewMode).toBe('list');
+    });
+  });
+
+  describe('statusStream', () => {
+    beforeEach(() => {
+      // Stop any active stream from previous test
+      useServersStore.getState().stopStatusStream();
+      capturedStatusCallbacks = null;
+      mockAbort.mockClear();
+    });
+
+    it('startStatusStream subscribes to SSE and updates server status on event', () => {
+      useServersStore.setState({ servers: [...mockServers] });
+
+      useServersStore.getState().startStatusStream();
+
+      expect(capturedStatusCallbacks).not.toBeNull();
+
+      // Simulate an SSE status event: srv-2 comes online
+      capturedStatusCallbacks!.onStatus!(
+        JSON.stringify({ serverId: 'srv-2', status: 'online', timestamp: '2026-02-12T13:00:00Z' }),
+      );
+
+      const servers = useServersStore.getState().servers;
+      expect(servers.find((s) => s.id === 'srv-2')!.status).toBe('online');
+    });
+
+    it('startStatusStream sets server to offline on disconnect event', () => {
+      useServersStore.setState({
+        servers: [{ ...mockServers[0], status: 'online' }, mockServers[1]],
+      });
+
+      useServersStore.getState().startStatusStream();
+
+      // Simulate srv-1 going offline
+      capturedStatusCallbacks!.onStatus!(
+        JSON.stringify({ serverId: 'srv-1', status: 'offline', timestamp: '2026-02-12T14:00:00Z' }),
+      );
+
+      const servers = useServersStore.getState().servers;
+      expect(servers.find((s) => s.id === 'srv-1')!.status).toBe('offline');
+    });
+
+    it('stopStatusStream calls abort on SSE handle', () => {
+      useServersStore.getState().startStatusStream();
+      useServersStore.getState().stopStatusStream();
+
+      expect(mockAbort).toHaveBeenCalledTimes(1);
+    });
+
+    it('startStatusStream prevents duplicate streams', async () => {
+      const { createServerStatusSSE } = await import('@/api/sse');
+      const mockCreateSSE = vi.mocked(createServerStatusSSE);
+      mockCreateSSE.mockClear();
+
+      useServersStore.getState().startStatusStream();
+      useServersStore.getState().startStatusStream();
+
+      // Should only have been called once (not twice)
+      expect(mockCreateSSE).toHaveBeenCalledTimes(1);
+
+      // Cleanup
+      useServersStore.getState().stopStatusStream();
+    });
+
+    it('ignores malformed status events without crashing', () => {
+      useServersStore.setState({ servers: [...mockServers] });
+
+      useServersStore.getState().startStatusStream();
+
+      // Send invalid JSON — should not throw
+      capturedStatusCallbacks!.onStatus!('not-json');
+
+      // State should remain unchanged
+      expect(useServersStore.getState().servers).toEqual(mockServers);
     });
   });
 });

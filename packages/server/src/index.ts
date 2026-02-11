@@ -43,6 +43,8 @@ import { createDocAutoFetcher, type DocAutoFetcher } from './knowledge/doc-auto-
 import { initRagPipeline } from './knowledge/rag-pipeline.js';
 import { startMetricsCleanupScheduler, stopMetricsCleanupScheduler } from './core/metrics-cleanup-scheduler.js';
 import { getWebhookDispatcher } from './core/webhook/dispatcher.js';
+import { getServerRepository } from './db/repositories/server-repository.js';
+import { getServerStatusBus } from './core/server-status-bus.js';
 
 // ============================================================================
 // Constants
@@ -277,19 +279,31 @@ export function createServer(serverConfig: ServerConfig): InstallServer {
   server.on('disconnect', (clientId) => {
     logConnectionEvent('disconnect', { clientId });
 
-    // Dispatch webhook events for agent disconnect / server offline
-    // Note: getClientAuth may return undefined after disconnect cleanup,
-    // so we capture auth info before it's removed
+    // Capture auth info before client is removed from the map
+    // (disconnect is now emitted before deletion)
     try {
       const auth = server.getClientAuth(clientId);
       if (auth?.deviceId) {
         const serverId = auth.deviceId;
+
+        // Update server status to 'offline' and publish event
+        getServerRepository().updateStatus(serverId, 'offline').then(() => {
+          getServerStatusBus().publish({
+            serverId,
+            status: 'offline',
+            timestamp: new Date().toISOString(),
+          });
+        }).catch((err) => {
+          logError(err as Error, { clientId, serverId }, 'Failed to update server status to offline');
+        });
+
+        // Dispatch webhook events for agent disconnect / server offline
         dispatchDisconnectWebhooks(serverId, clientId).catch((err) => {
           logError(err as Error, { clientId, serverId }, 'Failed to dispatch disconnect webhooks');
         });
       }
     } catch {
-      // Client already removed — no webhook needed
+      // Client already removed — no status update or webhook needed
     }
   });
 

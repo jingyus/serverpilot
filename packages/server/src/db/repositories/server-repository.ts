@@ -117,6 +117,7 @@ export interface ServerRepository {
   findById(id: string, userId: string): Promise<Server | null>;
   create(input: CreateServerInput): Promise<Server>;
   update(id: string, userId: string, input: UpdateServerInput): Promise<Server | null>;
+  updateStatus(serverId: string, status: ServerStatus): Promise<boolean>;
   delete(id: string, userId: string): Promise<boolean>;
   getProfile(serverId: string, userId: string): Promise<ServerProfile | null>;
   getOperations(
@@ -251,6 +252,15 @@ export class DrizzleServerRepository implements ServerRepository {
       .run();
 
     return this.findById(id, userId);
+  }
+
+  async updateStatus(serverId: string, status: ServerStatus): Promise<boolean> {
+    const result = this.db
+      .update(servers)
+      .set({ status, updatedAt: new Date() })
+      .where(eq(servers.id, serverId))
+      .run();
+    return result.changes > 0;
   }
 
   async delete(id: string, userId: string): Promise<boolean> {
@@ -441,6 +451,14 @@ export class InMemoryServerRepository implements ServerRepository {
 
     this.servers.set(id, server);
     return server;
+  }
+
+  async updateStatus(serverId: string, status: ServerStatus): Promise<boolean> {
+    const server = this.servers.get(serverId);
+    if (!server) return false;
+    server.status = status;
+    server.updatedAt = nowISO();
+    return true;
   }
 
   async delete(id: string, userId: string): Promise<boolean> {

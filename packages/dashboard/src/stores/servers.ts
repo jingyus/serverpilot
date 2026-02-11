@@ -3,12 +3,19 @@
 import { create } from 'zustand';
 
 import { apiRequest, ApiError } from '@/api/client';
-import type { Server, ServerListResponse, AddServerResponse } from '@/types/server';
+import { createServerStatusSSE } from '@/api/sse';
+import type { Server, ServerListResponse, AddServerResponse, ServerStatus } from '@/types/server';
 
 interface UpdateServerInput {
   name?: string;
   tags?: string[];
   group?: string | null;
+}
+
+interface ServerStatusEvent {
+  serverId: string;
+  status: ServerStatus;
+  timestamp: string;
 }
 
 interface ServersState {
@@ -26,6 +33,8 @@ interface ServersState {
   addServer: (name: string, tags?: string[], group?: string) => Promise<AddServerResponse>;
   updateServer: (id: string, input: UpdateServerInput) => Promise<Server>;
   deleteServer: (id: string) => Promise<void>;
+  startStatusStream: () => void;
+  stopStatusStream: () => void;
   setStatusFilter: (status: string) => void;
   setSearchQuery: (query: string) => void;
   setGroupFilter: (group: string) => void;
@@ -33,6 +42,8 @@ interface ServersState {
   setViewMode: (mode: 'list' | 'grouped') => void;
   clearError: () => void;
 }
+
+let statusStreamHandle: { abort: () => void } | null = null;
 
 export const useServersStore = create<ServersState>((set, get) => ({
   servers: [],
@@ -122,6 +133,36 @@ export const useServersStore = create<ServersState>((set, get) => ({
           : 'Failed to delete server';
       set({ error: message });
       throw err;
+    }
+  },
+
+  startStatusStream: () => {
+    // Prevent duplicate streams
+    if (statusStreamHandle) return;
+
+    statusStreamHandle = createServerStatusSSE({
+      onStatus: (data) => {
+        try {
+          const event = JSON.parse(data) as ServerStatusEvent;
+          set({
+            servers: get().servers.map((s) =>
+              s.id === event.serverId ? { ...s, status: event.status } : s,
+            ),
+          });
+        } catch {
+          // Ignore malformed status events
+        }
+      },
+      onError: () => {
+        // SSE has built-in reconnect; no action needed here
+      },
+    });
+  },
+
+  stopStatusStream: () => {
+    if (statusStreamHandle) {
+      statusStreamHandle.abort();
+      statusStreamHandle = null;
     }
   },
 

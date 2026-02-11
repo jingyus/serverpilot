@@ -28,7 +28,7 @@ import { buildProfileContext, buildProfileCaveats } from '../../ai/profile-conte
 import { getChatAIAgent } from './chat-ai.js';
 import { getRagPipeline } from '../../knowledge/rag-pipeline.js';
 import { logger } from '../../utils/logger.js';
-import { findConnectedAgent } from '../../core/agent/agent-connector.js';
+import { findConnectedAgent, isAgentConnected } from '../../core/agent/agent-connector.js';
 import { getTaskExecutor } from '../../core/task/executor.js';
 import { validateCommand, validatePlan } from '../../core/security/command-validator.js';
 import { getAuditLogger } from '../../core/security/audit-logger.js';
@@ -83,12 +83,26 @@ chat.post('/:serverId', requirePermission('chat:use'), validateBody(ChatMessageB
   const profileCtx = buildProfileContext(fullProfile, server.name);
   const caveats = buildProfileCaveats(fullProfile);
 
+  // Check agent connectivity before starting stream
+  const agentOnline = isAgentConnected(serverId);
+
   return streamSSE(c, async (stream) => {
     // Send sessionId to client so it can track the conversation
     await stream.writeSSE({
       event: 'message',
       data: JSON.stringify({ sessionId: session.id }),
     });
+
+    // Warn user if agent is offline
+    if (!agentOnline) {
+      await stream.writeSSE({
+        event: 'message',
+        data: JSON.stringify({
+          content: `⚠️ 服务器 "${server.name}" 当前处于离线状态。AI 仍可回答问题和生成计划，但无法执行命令。请确认 Agent 已启动并连接。`,
+          type: 'warning',
+        }),
+      });
+    }
 
     const agent = getChatAIAgent();
     if (!agent) {

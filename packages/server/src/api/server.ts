@@ -473,9 +473,9 @@ export class InstallServer {
       const authTimeout = setTimeout(() => {
         const c = this.clients.get(clientId);
         if (c && !c.authenticated) {
-          c.ws.close(4401, 'Authentication timeout');
-          this.clients.delete(clientId);
           this.emit('disconnect', clientId);
+          this.clients.delete(clientId);
+          c.ws.close(4401, 'Authentication timeout');
         }
       }, this.authTimeoutMs);
 
@@ -497,8 +497,12 @@ export class InstallServer {
     });
 
     ws.on('close', () => {
-      this.clients.delete(clientId);
-      this.emit('disconnect', clientId);
+      // Guard: only emit if client still tracked (heartbeat may have already cleaned up)
+      if (this.clients.has(clientId)) {
+        // Emit disconnect BEFORE deleting so listeners can access client auth info
+        this.emit('disconnect', clientId);
+        this.clients.delete(clientId);
+      }
     });
 
     ws.on('error', (error) => {
@@ -531,9 +535,10 @@ export class InstallServer {
       for (const [clientId, client] of this.clients.entries()) {
         if (!client.isAlive) {
           // Client did not respond to last ping, terminate
-          client.ws.terminate();
-          this.clients.delete(clientId);
+          // Emit disconnect BEFORE deleting so listeners can access client auth info
           this.emit('disconnect', clientId);
+          this.clients.delete(clientId);
+          client.ws.terminate();
           continue;
         }
 

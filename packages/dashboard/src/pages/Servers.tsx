@@ -196,6 +196,8 @@ export function Servers() {
     fetchGroups,
     addServer,
     deleteServer,
+    startStatusStream,
+    stopStatusStream,
     setStatusFilter,
     setSearchQuery,
     setGroupFilter,
@@ -210,7 +212,11 @@ export function Servers() {
   useEffect(() => {
     fetchServers();
     fetchGroups();
-  }, [fetchServers, fetchGroups]);
+    startStatusStream();
+    return () => {
+      stopStatusStream();
+    };
+  }, [fetchServers, fetchGroups, startStatusStream, stopStatusStream]);
 
   // Extract unique groups and tags for filter dropdowns
   const { groups, allTags } = useMemo(() => {

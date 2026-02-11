@@ -259,6 +259,137 @@ export function createMetricsSSE(
   return { abort: cleanup };
 }
 
+// ============================================================================
+// GET-based SSE for server status streaming
+// ============================================================================
+
+export interface ServerStatusSSECallbacks {
+  onStatus?: (data: string) => void;
+  onConnected?: (data: string) => void;
+  onError?: (error: Error) => void;
+}
+
+/**
+ * Create a GET-based SSE connection for real-time server status updates.
+ *
+ * Subscribes to /servers/status/stream to receive online/offline events
+ * for all servers. Supports automatic reconnection with exponential backoff.
+ *
+ * @returns Object with abort() to close connection
+ */
+export function createServerStatusSSE(
+  callbacks: ServerStatusSSECallbacks,
+): { abort: () => void } {
+  const controller = new AbortController();
+  let reconnectAttempt = 0;
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let stopped = false;
+
+  function cleanup() {
+    stopped = true;
+    if (reconnectTimer !== null) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+    controller.abort();
+  }
+
+  async function connect() {
+    if (stopped) return;
+
+    const token = localStorage.getItem('auth_token');
+    const headers: Record<string, string> = {
+      Accept: 'text/event-stream',
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    try {
+      let response = await fetch(`${API_BASE_URL}/servers/status/stream`, {
+        method: 'GET',
+        headers,
+        signal: controller.signal,
+      });
+
+      // On 401, attempt token refresh and retry once
+      if (response.status === 401) {
+        const newToken = await tryRefreshToken();
+        if (newToken) {
+          headers['Authorization'] = `Bearer ${newToken}`;
+          response = await fetch(`${API_BASE_URL}/servers/status/stream`, {
+            method: 'GET',
+            headers,
+            signal: controller.signal,
+          });
+        }
+      }
+
+      if (!response.ok) {
+        throw new Error(`Status stream failed: ${response.status}`);
+      }
+
+      reconnectAttempt = 0;
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('No response body');
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        let currentEvent = 'status';
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            currentEvent = line.slice(7).trim();
+          } else if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (currentEvent === 'status') {
+              callbacks.onStatus?.(data);
+            } else if (currentEvent === 'connected') {
+              callbacks.onConnected?.(data);
+            }
+          } else if (line === '') {
+            currentEvent = 'status';
+          }
+        }
+      }
+
+      if (!stopped) scheduleReconnect();
+    } catch (err: unknown) {
+      if (stopped || controller.signal.aborted) return;
+      const error = err instanceof Error ? err : new Error('SSE connection failed');
+      callbacks.onError?.(error);
+      scheduleReconnect();
+    }
+  }
+
+  function scheduleReconnect() {
+    if (stopped) return;
+    const delay = Math.min(1000 * Math.pow(2, reconnectAttempt), 30_000);
+    reconnectAttempt++;
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      connect();
+    }, delay);
+  }
+
+  connect();
+
+  return { abort: cleanup };
+}
+
+// ============================================================================
+// SSE Event Dispatch
+// ============================================================================
+
 function dispatchSSEEvent(
   event: string,
   data: string,

@@ -100,6 +100,23 @@ export async function handleAuthRequest(
         authResult.deviceToken
       );
 
+      // Update server status to 'online' and publish event
+      const serverId = message.payload.deviceId;
+      try {
+        const { getServerRepository } = await import('../db/repositories/server-repository.js');
+        const { getServerStatusBus } = await import('../core/server-status-bus.js');
+        const repo = getServerRepository();
+        await repo.updateStatus(serverId, 'online');
+        getServerStatusBus().publish({
+          serverId,
+          status: 'online',
+          timestamp: new Date().toISOString(),
+        });
+      } catch (statusErr) {
+        // Non-blocking: status update failure should not break auth
+        logError(statusErr as Error, { clientId, serverId }, 'Failed to update server status to online');
+      }
+
       logger.info({
         plan: authResult.plan,
         quotaRemaining: authResult.quota?.remaining,

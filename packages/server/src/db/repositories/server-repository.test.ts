@@ -338,6 +338,37 @@ function sharedTests(
       const result = await repo.findAllByUserId('user-1', { tag: 'production' });
       expect(result).toHaveLength(1);
     });
+
+    // ================================================================
+    // updateStatus
+    // ================================================================
+
+    it('should update server status to online', async () => {
+      const created = await repo.create({ name: 'status-test', userId: 'user-1' });
+      expect(created.status).toBe('offline');
+
+      const updated = await repo.updateStatus(created.id, 'online');
+      expect(updated).toBe(true);
+
+      const found = await repo.findById(created.id, 'user-1');
+      expect(found!.status).toBe('online');
+    });
+
+    it('should update server status to offline', async () => {
+      const created = await repo.create({ name: 'status-test', userId: 'user-1' });
+      await repo.updateStatus(created.id, 'online');
+
+      const updated = await repo.updateStatus(created.id, 'offline');
+      expect(updated).toBe(true);
+
+      const found = await repo.findById(created.id, 'user-1');
+      expect(found!.status).toBe('offline');
+    });
+
+    it('should return false when updating status for non-existent server', async () => {
+      const updated = await repo.updateStatus('non-existent', 'online');
+      expect(updated).toBe(false);
+    });
   });
 }
 
