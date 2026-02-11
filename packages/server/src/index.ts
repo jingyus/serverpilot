@@ -34,6 +34,7 @@ import { initAgentConnector } from './core/agent/agent-connector.js';
 import { InstallAIAgent } from './ai/agent.js';
 import { getActiveProvider, resolveProviderFromEnv, setActiveProvider } from './ai/providers/provider-factory.js';
 import { initLogger, logger, logConnectionEvent, logError } from './utils/logger.js';
+import { initGitHubOAuth } from './utils/github-oauth.js';
 import { getMemoryMonitor } from './utils/memory-monitor.js';
 import { getAlertEvaluator } from './core/alert/alert-evaluator.js';
 import { createEmailNotifier } from './core/alert/email-notifier.js';
@@ -328,6 +329,16 @@ export async function startServer(): Promise<InstallServer> {
   // 2. Initialize JWT
   initJwtConfig({ secret: serverConfig.jwtSecret });
   logger.info({ operation: 'startup' }, 'JWT configuration initialized');
+
+  // 2b. Initialize GitHub OAuth (optional — only if env vars are set)
+  const ghClientId = process.env.GITHUB_OAUTH_CLIENT_ID;
+  const ghClientSecret = process.env.GITHUB_OAUTH_CLIENT_SECRET;
+  if (ghClientId && ghClientSecret) {
+    const ghRedirectUri = process.env.GITHUB_OAUTH_REDIRECT_URI
+      ?? `http://localhost:${serverConfig.port}/api/v1/auth/github/callback`;
+    initGitHubOAuth({ clientId: ghClientId, clientSecret: ghClientSecret, redirectUri: ghRedirectUri });
+    logger.info({ operation: 'startup' }, 'GitHub OAuth configured');
+  }
 
   // 3. Create Hono REST API
   const apiApp = createApiApp();

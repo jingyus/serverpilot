@@ -63,6 +63,30 @@ export const users = sqliteTable(
 );
 
 // ============================================================================
+// OAuth Accounts (linked external identity providers)
+// ============================================================================
+
+export const oauthAccounts = sqliteTable(
+  'oauth_accounts',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+    provider: text('provider', { enum: ['github'] }).notNull(),
+    providerAccountId: text('provider_account_id').notNull(),
+    providerUsername: text('provider_username'),
+    providerAvatarUrl: text('provider_avatar_url'),
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+  },
+  (table) => [
+    uniqueIndex('oauth_accounts_provider_account_idx').on(table.provider, table.providerAccountId),
+    index('oauth_accounts_user_id_idx').on(table.userId),
+  ],
+);
+
+// ============================================================================
 // User Settings (AI Provider, Notifications, Knowledge Base)
 // ============================================================================
 

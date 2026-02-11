@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { z } from 'zod';
-import { Server, Loader2, AlertCircle } from 'lucide-react';
+import { Server, Loader2, AlertCircle, Github } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -17,6 +17,8 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { useAuthStore } from '@/stores/auth';
+import { setToken } from '@/api/client';
+import { API_BASE_URL } from '@/utils/constants';
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -33,6 +35,35 @@ const registerSchema = loginSchema.extend({
 
 type FieldErrors = Partial<Record<string, string>>;
 
+/** Parse OAuth callback data from URL hash fragment. */
+function parseOAuthHash(): { accessToken: string; refreshToken: string; user: { id: string; email: string; name?: string } } | null {
+  const hash = window.location.hash;
+  if (!hash.startsWith('#oauth_callback?')) return null;
+
+  const params = new URLSearchParams(hash.slice('#oauth_callback?'.length));
+  const accessToken = params.get('accessToken');
+  const refreshToken = params.get('refreshToken');
+  const userJson = params.get('user');
+
+  if (!accessToken || !refreshToken || !userJson) return null;
+
+  try {
+    const user = JSON.parse(userJson) as { id: string; email: string; name?: string };
+    return { accessToken, refreshToken, user };
+  } catch {
+    return null;
+  }
+}
+
+/** Parse OAuth error from URL hash fragment. */
+function parseOAuthError(): string | null {
+  const hash = window.location.hash;
+  if (!hash.startsWith('#oauth_error?')) return null;
+
+  const params = new URLSearchParams(hash.slice('#oauth_error?'.length));
+  return params.get('error');
+}
+
 export function Login() {
   const navigate = useNavigate();
   const { login, register, isLoading, error, clearError } = useAuthStore();
@@ -43,10 +74,32 @@ export function Login() {
   const [name, setName] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [oauthError, setOauthError] = useState<string | null>(null);
+
+  // Handle OAuth callback on mount
+  useEffect(() => {
+    const oauthData = parseOAuthHash();
+    if (oauthData) {
+      setToken(oauthData.accessToken);
+      localStorage.setItem('refresh_token', oauthData.refreshToken);
+      localStorage.setItem('auth_user', JSON.stringify(oauthData.user));
+      useAuthStore.setState({ user: oauthData.user, isAuthenticated: true });
+      window.location.hash = '';
+      navigate('/dashboard', { replace: true });
+      return;
+    }
+
+    const errorMsg = parseOAuthError();
+    if (errorMsg) {
+      setOauthError(errorMsg);
+      window.location.hash = '';
+    }
+  }, [navigate]);
 
   function toggleMode() {
     setIsRegisterMode((prev) => !prev);
     setFieldErrors({});
+    setOauthError(null);
     clearError();
   }
 
@@ -90,6 +143,12 @@ export function Login() {
     }
   }
 
+  function handleGitHubLogin() {
+    window.location.href = `${API_BASE_URL}/auth/github`;
+  }
+
+  const displayError = oauthError ?? error;
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
       <Card className="w-full max-w-md">
@@ -107,13 +166,13 @@ export function Login() {
 
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">
-            {error && (
+            {displayError && (
               <div
                 role="alert"
                 className="flex items-center gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive"
               >
                 <AlertCircle className="h-4 w-4 shrink-0" />
-                <span>{error}</span>
+                <span>{displayError}</span>
               </div>
             )}
 
@@ -190,6 +249,26 @@ export function Login() {
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {isRegisterMode ? 'Create Account' : 'Sign In'}
+            </Button>
+
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-card px-2 text-muted-foreground">or</span>
+              </div>
+            </div>
+
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              onClick={handleGitHubLogin}
+              disabled={isLoading}
+            >
+              <Github className="mr-2 h-4 w-4" />
+              Continue with GitHub
             </Button>
           </CardContent>
         </form>

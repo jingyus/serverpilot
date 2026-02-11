@@ -391,6 +391,19 @@ export function createTables(db?: DrizzleDB): void {
     CREATE INDEX IF NOT EXISTS doc_sources_enabled_idx ON doc_sources(enabled);
     CREATE INDEX IF NOT EXISTS doc_sources_auto_update_idx ON doc_sources(auto_update);
 
+    CREATE TABLE IF NOT EXISTS oauth_accounts (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      provider TEXT NOT NULL,
+      provider_account_id TEXT NOT NULL,
+      provider_username TEXT,
+      provider_avatar_url TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS oauth_accounts_provider_account_idx ON oauth_accounts(provider, provider_account_id);
+    CREATE INDEX IF NOT EXISTS oauth_accounts_user_id_idx ON oauth_accounts(user_id);
+
     CREATE TABLE IF NOT EXISTS doc_source_history (
       id TEXT PRIMARY KEY,
       source_id TEXT NOT NULL REFERENCES doc_sources(id) ON DELETE CASCADE,

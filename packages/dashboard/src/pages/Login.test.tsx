@@ -229,4 +229,34 @@ describe('Login Page', () => {
       expect(screen.getByText('Invalid email or password')).toBeInTheDocument();
     });
   });
+
+  describe('GitHub OAuth', () => {
+    it('renders Continue with GitHub button', () => {
+      renderLogin();
+      expect(screen.getByRole('button', { name: /Continue with GitHub/i })).toBeInTheDocument();
+    });
+
+    it('renders GitHub button in both login and register mode', async () => {
+      const user = userEvent.setup();
+      renderLogin();
+
+      expect(screen.getByRole('button', { name: /Continue with GitHub/i })).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: /Don't have an account/i }));
+      expect(screen.getByRole('button', { name: /Continue with GitHub/i })).toBeInTheDocument();
+    });
+
+    it('disables GitHub button when loading', () => {
+      useAuthStore.setState({ isLoading: true });
+      renderLogin();
+
+      const ghButton = screen.getByRole('button', { name: /Continue with GitHub/i });
+      expect(ghButton).toBeDisabled();
+    });
+
+    it('shows or divider between email form and GitHub button', () => {
+      renderLogin();
+      expect(screen.getByText('or')).toBeInTheDocument();
+    });
+  });
 });

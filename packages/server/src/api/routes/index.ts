@@ -14,6 +14,7 @@ import { cors } from 'hono/cors';
 import { requestId } from 'hono/request-id';
 
 import { auth } from './auth.js';
+import { authGitHub } from './auth-github.js';
 import { servers } from './servers.js';
 import { chat } from './chat.js';
 import { tasks } from './tasks.js';
@@ -80,6 +81,7 @@ export function createApiApp(): Hono<ApiEnv> {
   const v1 = new Hono();
 
   v1.route('/auth', auth);
+  v1.route('/auth/github', authGitHub);
   v1.route('/servers', servers);
   v1.route('/chat', chat);
   v1.route('/tasks', tasks);
@@ -105,5 +107,5 @@ export function createApiApp(): Hono<ApiEnv> {
   return app;
 }
 
-export { auth, servers, chat, tasks, alerts, alertRules, operations, agent, knowledge, settings, metricsRoutes, auditLog };
+export { auth, authGitHub, servers, chat, tasks, alerts, alertRules, operations, agent, knowledge, settings, metricsRoutes, auditLog };
 export { docSources };
