@@ -60,8 +60,21 @@ vi.mock('../../core/task/executor.js', () => ({
       stderr: '',
       exitCode: 0,
       success: true,
+      operationId: 'mock-op-id',
     })),
     setProgressCallback: vi.fn(),
+  })),
+}));
+
+vi.mock('../../core/security/audit-logger.js', () => ({
+  getAuditLogger: vi.fn(() => ({
+    log: vi.fn(async (input: unknown) => ({
+      id: 'audit-' + Math.random().toString(36).slice(2, 8),
+      ...(input as Record<string, unknown>),
+      createdAt: new Date().toISOString(),
+    })),
+    updateExecutionResult: vi.fn(async () => true),
+    query: vi.fn(async () => ({ logs: [], total: 0 })),
   })),
 }));
 

@@ -25,6 +25,8 @@ import { getChatAIAgent } from './chat-ai.js';
 import { logger } from '../../utils/logger.js';
 import { findConnectedAgent } from '../../core/agent/agent-connector.js';
 import { getTaskExecutor } from '../../core/task/executor.js';
+import { validateCommand, validatePlan } from '../../core/security/command-validator.js';
+import { getAuditLogger } from '../../core/security/audit-logger.js';
 import type { InstallStep } from '@aiinstaller/shared';
 import type { ChatMessageBody, ExecutePlanBody } from './schemas.js';
 import type { ApiEnv } from './types.js';
@@ -110,23 +112,42 @@ chat.post('/:serverId', validateBody(ChatMessageBodySchema), async (c) => {
         },
       );
 
-      // If AI generated a plan, send it as a plan event
+      // If AI generated a plan, validate and send it as a plan event
       if (result.plan) {
         const planId = randomUUID();
+        const planSteps = result.plan.steps.map((step: InstallStep, i: number) => ({
+          id: step.id ?? `step-${i + 1}`,
+          description: step.description,
+          command: step.command,
+          timeout: step.timeout ?? 30000,
+          canRollback: step.canRollback ?? false,
+        }));
+
+        // Validate the entire plan using the shared security engine
+        const planValidation = validatePlan(planSteps);
+
         const storedPlan = {
           planId,
           description: result.plan.description ?? 'Execution plan',
-          steps: result.plan.steps.map((step: InstallStep, i: number) => ({
-            id: step.id ?? `step-${i + 1}`,
-            description: step.description,
-            command: step.command,
-            riskLevel: classifyRisk(step.command),
-            rollbackCommand: step.canRollback ? undefined : undefined,
-            timeout: step.timeout ?? 30000,
-            canRollback: step.canRollback ?? false,
+          steps: planValidation.steps.map((sv) => ({
+            id: sv.stepId,
+            description: sv.description,
+            command: sv.command,
+            riskLevel: sv.validation.classification.riskLevel,
+            rollbackCommand: undefined,
+            timeout: planSteps.find((s) => s.id === sv.stepId)?.timeout ?? 30000,
+            canRollback: planSteps.find((s) => s.id === sv.stepId)?.canRollback ?? false,
+            validationAction: sv.validation.action,
+            validationReasons: sv.validation.reasons,
           })),
-          totalRisk: 'yellow' as const,
-          requiresConfirmation: true,
+          totalRisk: planValidation.maxRiskLevel,
+          requiresConfirmation: planValidation.action !== 'allowed',
+          blocked: planValidation.action === 'blocked',
+          blockedSteps: planValidation.blockedSteps.map((s) => ({
+            stepId: s.stepId,
+            command: s.command,
+            reason: s.validation.classification.reason,
+          })),
           estimatedTime: result.plan.estimatedTime,
         };
 
@@ -136,6 +157,19 @@ chat.post('/:serverId', validateBody(ChatMessageBodySchema), async (c) => {
           event: 'plan',
           data: JSON.stringify(storedPlan),
         });
+
+        // If plan is blocked, send a warning
+        if (planValidation.action === 'blocked') {
+          const blockedCmds = planValidation.blockedSteps.map(
+            (s) => `  - ${s.command}: ${s.validation.classification.reason}`,
+          ).join('\n');
+          await stream.writeSSE({
+            event: 'message',
+            data: JSON.stringify({
+              content: `\n⚠️ Plan contains blocked commands:\n${blockedCmds}\nThese steps will not be executed.`,
+            }),
+          });
+        }
       }
 
       // Store assistant response
@@ -235,9 +269,69 @@ chat.post('/:serverId/execute', validateBody(ExecutePlanBodySchema), async (c) =
       }
     });
 
+    const auditLogger = getAuditLogger();
+
     // Execute each step sequentially
     for (const step of plan.steps) {
       const startTime = Date.now();
+
+      // Re-validate command before execution (defense-in-depth)
+      const validation = validateCommand(step.command);
+
+      // Log the validation to audit trail
+      const auditEntry = await auditLogger.log({
+        serverId,
+        userId,
+        sessionId: body.sessionId,
+        command: step.command,
+        validation,
+      });
+
+      // Block FORBIDDEN commands
+      if (validation.action === 'blocked') {
+        logger.warn(
+          {
+            operation: 'plan_execute',
+            serverId,
+            stepId: step.id,
+            riskLevel: validation.classification.riskLevel,
+            reason: validation.classification.reason,
+          },
+          `Step blocked by security validator: ${step.command}`,
+        );
+
+        await stream.writeSSE({
+          event: 'step_start',
+          data: JSON.stringify({
+            stepId: step.id,
+            command: step.command,
+            description: step.description,
+          }),
+        });
+
+        await stream.writeSSE({
+          event: 'output',
+          data: JSON.stringify({
+            stepId: step.id,
+            content: `[BLOCKED] Command rejected by security validator: ${validation.classification.reason}\n`,
+          }),
+        });
+
+        await stream.writeSSE({
+          event: 'step_complete',
+          data: JSON.stringify({
+            stepId: step.id,
+            exitCode: -1,
+            duration: Date.now() - startTime,
+            success: false,
+            blocked: true,
+          }),
+        });
+
+        allSucceeded = false;
+        firstFailedStep = step.id;
+        break;
+      }
 
       // Notify step start
       await stream.writeSSE({
@@ -259,6 +353,9 @@ chat.post('/:serverId/execute', validateBody(ExecutePlanBodySchema), async (c) =
       });
 
       try {
+        // Use the validated risk level from the shared security engine
+        const validatedRiskLevel = validation.classification.riskLevel as 'green' | 'yellow' | 'red' | 'critical';
+
         // Execute command through WebSocket
         const result = await executor.executeCommand({
           serverId,
@@ -266,7 +363,7 @@ chat.post('/:serverId/execute', validateBody(ExecutePlanBodySchema), async (c) =
           clientId,
           command: step.command,
           description: step.description,
-          riskLevel: step.riskLevel as 'green' | 'yellow' | 'red' | 'critical',
+          riskLevel: validatedRiskLevel,
           type: 'execute',
           sessionId: body.sessionId,
           timeoutMs: step.timeout || 300000, // Default 5 minutes
@@ -305,6 +402,13 @@ chat.post('/:serverId/execute', validateBody(ExecutePlanBodySchema), async (c) =
             success: result.success,
           }),
         });
+
+        // Update audit log with execution result
+        await auditLogger.updateExecutionResult(
+          auditEntry.id,
+          result.success ? 'success' : 'failed',
+          result.operationId,
+        );
 
         if (!result.success) {
           allSucceeded = false;
@@ -351,6 +455,9 @@ chat.post('/:serverId/execute', validateBody(ExecutePlanBodySchema), async (c) =
             success: false,
           }),
         });
+
+        // Update audit log with failure
+        await auditLogger.updateExecutionResult(auditEntry.id, 'failed');
 
         allSucceeded = false;
         firstFailedStep = step.id;
@@ -453,32 +560,5 @@ chat.delete('/:serverId/sessions/:sessionId', async (c) => {
 
   return c.json({ success: true });
 });
-
-// ============================================================================
-// Helpers
-// ============================================================================
-
-/** Classify command risk level based on command content */
-function classifyRisk(command: string): string {
-  const cmd = command.toLowerCase().trim();
-
-  // Forbidden patterns
-  if (/rm\s+-rf\s+\/[^\/]*/i.test(cmd) || /mkfs|dd\s+if=/.test(cmd)) {
-    return 'critical';
-  }
-
-  // Destructive patterns
-  if (/rm\s+-rf|drop\s+database|systemctl\s+stop|service\s+.*\s+stop/i.test(cmd)) {
-    return 'red';
-  }
-
-  // Modification patterns (install, config changes)
-  if (/install|apt\s+update|yum|brew|pip|npm\s+i/i.test(cmd)) {
-    return 'yellow';
-  }
-
-  // Read-only patterns
-  return 'green';
-}
 
 export { chat };

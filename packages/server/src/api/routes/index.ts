@@ -25,6 +25,7 @@ import { knowledge } from './knowledge.js';
 import docSources from './doc-sources.js';
 import { settings } from './settings.js';
 import { metricsRoutes } from './metrics.js';
+import { auditLog } from './audit-log.js';
 import { openapi } from './openapi.js';
 import { onError, onNotFound } from '../middleware/error-handler.js';
 import type { ApiEnv } from './types.js';
@@ -90,6 +91,7 @@ export function createApiApp(): Hono<ApiEnv> {
   v1.route('/doc-sources', docSources);
   v1.route('/settings', settings);
   v1.route('/metrics', metricsRoutes);
+  v1.route('/audit-log', auditLog);
 
   app.route('/api/v1', v1);
 
@@ -103,5 +105,5 @@ export function createApiApp(): Hono<ApiEnv> {
   return app;
 }
 
-export { auth, servers, chat, tasks, alerts, alertRules, operations, agent, knowledge, settings, metricsRoutes };
+export { auth, servers, chat, tasks, alerts, alertRules, operations, agent, knowledge, settings, metricsRoutes, auditLog };
 export { docSources };

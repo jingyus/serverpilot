@@ -302,6 +302,28 @@ export function createTables(db?: DrizzleDB): void {
     CREATE INDEX IF NOT EXISTS metrics_daily_server_id_idx ON metrics_daily(server_id);
     CREATE INDEX IF NOT EXISTS metrics_daily_server_bucket_idx ON metrics_daily(server_id, bucket_time);
 
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      id TEXT PRIMARY KEY,
+      server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      session_id TEXT,
+      command TEXT NOT NULL,
+      risk_level TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      matched_pattern TEXT,
+      action TEXT NOT NULL,
+      audit_warnings TEXT DEFAULT '[]',
+      audit_blockers TEXT DEFAULT '[]',
+      execution_result TEXT,
+      operation_id TEXT,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS audit_logs_server_id_idx ON audit_logs(server_id);
+    CREATE INDEX IF NOT EXISTS audit_logs_user_id_idx ON audit_logs(user_id);
+    CREATE INDEX IF NOT EXISTS audit_logs_risk_level_idx ON audit_logs(risk_level);
+    CREATE INDEX IF NOT EXISTS audit_logs_action_idx ON audit_logs(action);
+    CREATE INDEX IF NOT EXISTS audit_logs_created_at_idx ON audit_logs(created_at);
+
     CREATE TABLE IF NOT EXISTS knowledge_cache (
       id TEXT PRIMARY KEY,
       software TEXT NOT NULL,

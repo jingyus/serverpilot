@@ -563,6 +563,47 @@ export const knowledgeCache = sqliteTable(
 );
 
 // ============================================================================
+// Audit Logs (security audit trail)
+// ============================================================================
+
+export const auditLogs = sqliteTable(
+  'audit_logs',
+  {
+    id: text('id').primaryKey(),
+    serverId: text('server_id')
+      .references(() => servers.id, { onDelete: 'cascade' })
+      .notNull(),
+    userId: text('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+    sessionId: text('session_id'),
+    command: text('command').notNull(),
+    riskLevel: text('risk_level', {
+      enum: ['green', 'yellow', 'red', 'critical', 'forbidden'],
+    }).notNull(),
+    reason: text('reason').notNull(),
+    matchedPattern: text('matched_pattern'),
+    action: text('action', {
+      enum: ['allowed', 'blocked', 'requires_confirmation'],
+    }).notNull(),
+    auditWarnings: text('audit_warnings', { mode: 'json' }).$type<string[]>().default([]),
+    auditBlockers: text('audit_blockers', { mode: 'json' }).$type<string[]>().default([]),
+    executionResult: text('execution_result', {
+      enum: ['success', 'failed', 'timeout', 'pending', 'skipped'],
+    }),
+    operationId: text('operation_id'),
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  },
+  (table) => [
+    index('audit_logs_server_id_idx').on(table.serverId),
+    index('audit_logs_user_id_idx').on(table.userId),
+    index('audit_logs_risk_level_idx').on(table.riskLevel),
+    index('audit_logs_action_idx').on(table.action),
+    index('audit_logs_created_at_idx').on(table.createdAt),
+  ],
+);
+
+// ============================================================================
 // Document Sources (for auto-scraping external documentation)
 // ============================================================================
 
