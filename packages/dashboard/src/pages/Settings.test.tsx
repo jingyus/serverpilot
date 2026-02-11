@@ -440,4 +440,176 @@ describe('Settings', () => {
     const saveButton = screen.getAllByRole('button', { name: /Saving/i })[0];
     expect(saveButton).toBeDisabled();
   });
+
+  describe('custom-openai provider', () => {
+    it('should show API key, model, and base URL fields when custom-openai is selected', async () => {
+      const user = userEvent.setup();
+      render(<Settings />);
+
+      const providerSelect = screen.getByLabelText('Provider');
+      await user.selectOptions(providerSelect, 'custom-openai');
+
+      expect(screen.getByLabelText('API Key')).toBeInTheDocument();
+      expect(screen.getByLabelText('Model')).toBeInTheDocument();
+      expect(screen.getByLabelText('Base URL')).toBeInTheDocument();
+    });
+
+    it('should show model as required (no "optional" label) for custom-openai', async () => {
+      const user = userEvent.setup();
+      render(<Settings />);
+
+      const providerSelect = screen.getByLabelText('Provider');
+      await user.selectOptions(providerSelect, 'custom-openai');
+
+      // Model label should be "Model" without "(optional)"
+      expect(screen.getByLabelText('Model')).toBeInTheDocument();
+      expect(screen.queryByLabelText('Model (optional)')).not.toBeInTheDocument();
+    });
+
+    it('should show base URL as required (no "optional" label) for custom-openai', async () => {
+      const user = userEvent.setup();
+      render(<Settings />);
+
+      const providerSelect = screen.getByLabelText('Provider');
+      await user.selectOptions(providerSelect, 'custom-openai');
+
+      // Base URL label should be "Base URL" without "(optional)"
+      expect(screen.getByLabelText('Base URL')).toBeInTheDocument();
+      expect(screen.queryByLabelText('Base URL (optional)')).not.toBeInTheDocument();
+    });
+
+    it('should validate base URL is required for custom-openai', async () => {
+      const user = userEvent.setup();
+      const updateAIProvider = vi.fn().mockResolvedValue(undefined);
+
+      mockUseSettingsStore.mockReturnValue({
+        ...defaultStoreValue,
+        settings: {
+          ...mockSettings,
+          aiProvider: { provider: 'custom-openai' as const, apiKey: 'sk-test', model: 'gpt-4o' },
+        },
+        updateAIProvider,
+      });
+
+      render(<Settings />);
+
+      // Base URL is empty, model and apiKey are set
+      const saveButton = screen.getAllByRole('button', { name: /Save AI Provider/i })[0];
+      await user.click(saveButton);
+
+      // Should NOT have called updateAIProvider since baseUrl is empty
+      expect(updateAIProvider).not.toHaveBeenCalled();
+    });
+
+    it('should validate model is required for custom-openai', async () => {
+      const user = userEvent.setup();
+      const updateAIProvider = vi.fn().mockResolvedValue(undefined);
+
+      mockUseSettingsStore.mockReturnValue({
+        ...defaultStoreValue,
+        settings: {
+          ...mockSettings,
+          aiProvider: {
+            provider: 'custom-openai' as const,
+            apiKey: 'sk-test',
+            baseUrl: 'https://api.example.com/v1',
+          },
+        },
+        updateAIProvider,
+      });
+
+      render(<Settings />);
+
+      // model is empty, baseUrl and apiKey are set
+      const saveButton = screen.getAllByRole('button', { name: /Save AI Provider/i })[0];
+      await user.click(saveButton);
+
+      // Should NOT have called updateAIProvider since model is empty
+      expect(updateAIProvider).not.toHaveBeenCalled();
+    });
+
+    it('should save custom-openai with all required fields', async () => {
+      const user = userEvent.setup();
+      const updateAIProvider = vi.fn().mockResolvedValue(undefined);
+
+      mockUseSettingsStore.mockReturnValue({
+        ...defaultStoreValue,
+        settings: {
+          ...mockSettings,
+          aiProvider: {
+            provider: 'custom-openai' as const,
+            apiKey: 'sk-custom',
+            model: 'gpt-4o',
+            baseUrl: 'https://api.example.com/v1',
+          },
+        },
+        updateAIProvider,
+      });
+
+      render(<Settings />);
+
+      const saveButton = screen.getAllByRole('button', { name: /Save AI Provider/i })[0];
+      await user.click(saveButton);
+
+      await waitFor(() => {
+        expect(updateAIProvider).toHaveBeenCalledWith({
+          provider: 'custom-openai',
+          apiKey: 'sk-custom',
+          model: 'gpt-4o',
+          baseUrl: 'https://api.example.com/v1',
+        });
+      });
+    });
+
+    it('should display correct placeholders for custom-openai', async () => {
+      const user = userEvent.setup();
+
+      mockUseSettingsStore.mockReturnValue({
+        ...defaultStoreValue,
+        settings: {
+          ...mockSettings,
+          aiProvider: { provider: 'custom-openai' as const },
+        },
+      });
+
+      render(<Settings />);
+
+      const providerSelect = screen.getByLabelText('Provider');
+      await user.selectOptions(providerSelect, 'custom-openai');
+
+      const modelInput = screen.getByLabelText('Model') as HTMLInputElement;
+      expect(modelInput.placeholder).toBe('gpt-4o / deepseek-chat / ...');
+
+      const baseUrlInput = screen.getByLabelText('Base URL') as HTMLInputElement;
+      expect(baseUrlInput.placeholder).toBe('https://your-api.example.com/v1');
+    });
+
+    it('should display health status for custom-openai provider', () => {
+      mockUseSettingsStore.mockReturnValue({
+        ...defaultStoreValue,
+        healthStatus: { provider: 'custom-openai' as const, available: true, tier: 2 },
+      });
+
+      render(<Settings />);
+
+      const healthStatus = screen.getByTestId('health-status');
+      expect(healthStatus).toHaveTextContent('custom-openai is connected');
+    });
+
+    it('should display health error for custom-openai provider', () => {
+      mockUseSettingsStore.mockReturnValue({
+        ...defaultStoreValue,
+        healthStatus: {
+          provider: 'custom-openai' as const,
+          available: false,
+          error: 'Connection refused',
+        },
+      });
+
+      render(<Settings />);
+
+      const healthStatus = screen.getByTestId('health-status');
+      expect(healthStatus).toHaveTextContent('Connection refused');
+    });
+  });
 });

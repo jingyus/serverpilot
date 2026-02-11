@@ -325,6 +325,61 @@ describe('useSettingsStore', () => {
     });
   });
 
+  describe('updateAIProvider with custom-openai', () => {
+    it('should update to custom-openai with baseUrl, apiKey, and model', async () => {
+      const mockSettings = {
+        aiProvider: {
+          provider: 'custom-openai' as const,
+          apiKey: 'sk-custom-key',
+          model: 'gpt-4o',
+          baseUrl: 'https://api.example.com/v1',
+        },
+        userProfile: { name: 'Test', email: 'test@test.com', timezone: 'UTC' },
+        notifications: {
+          emailNotifications: true,
+          taskCompletion: true,
+          systemAlerts: true,
+          operationReports: false,
+        },
+        knowledgeBase: { autoLearning: false, documentSources: [] },
+      };
+
+      const mockHealth = {
+        provider: 'custom-openai' as const,
+        available: true,
+        tier: 2 as const,
+      };
+
+      mockApiRequest
+        .mockResolvedValueOnce(mockSettings)
+        .mockResolvedValueOnce(mockHealth);
+
+      const { updateAIProvider } = useSettingsStore.getState();
+      await updateAIProvider({
+        provider: 'custom-openai',
+        apiKey: 'sk-custom-key',
+        model: 'gpt-4o',
+        baseUrl: 'https://api.example.com/v1',
+      });
+
+      const state = useSettingsStore.getState();
+      expect(state.settings?.aiProvider.provider).toBe('custom-openai');
+      expect(state.settings?.aiProvider.baseUrl).toBe('https://api.example.com/v1');
+      expect(state.settings?.aiProvider.model).toBe('gpt-4o');
+      expect(state.isSaving).toBe(false);
+
+      expect(mockApiRequest).toHaveBeenCalledWith('/settings/ai-provider', {
+        method: 'PUT',
+        body: JSON.stringify({
+          provider: 'custom-openai',
+          apiKey: 'sk-custom-key',
+          model: 'gpt-4o',
+          baseUrl: 'https://api.example.com/v1',
+        }),
+      });
+    });
+  });
+
   describe('clearError', () => {
     it('should clear error message', () => {
       useSettingsStore.setState({ error: 'Test error' });

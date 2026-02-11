@@ -6,10 +6,10 @@
 
 ## 📊 统计信息
 
-- **总任务数**: 40
-- **待完成** (pending): 0
+- **总任务数**: 50
+- **待完成** (pending): 9
 - **进行中** (in_progress): 0
-- **已完成** (completed): 39
+- **已完成** (completed): 40
 - **失败** (failed): 1
 
 ---
@@ -17,6 +17,170 @@
 ## 📋 任务列表
 
 <!-- 任务将由 AI 自动生成和更新 -->
+### [completed] Dashboard AI Provider 选择器支持 custom-openai ✅
+
+**ID**: task-025
+**优先级**: P0
+**模块路径**: packages/dashboard/src/pages/Settings.tsx, packages/dashboard/src/stores/settings.ts
+**任务描述**: Dashboard 设置页面的 AI Provider 选择器目前可能未包含 custom-openai 选项。需要：1) 在 Settings 页面添加 "自定义 OpenAI 兼容" Provider 选项；2) 选中时显示 baseUrl、apiKey、model 三个配置字段；3) 调用 PUT /settings/ai-provider 时传入 custom-openai 参数；4) 健康检查支持 custom-openai 状态展示。
+**产品需求**: MVP 第一优先级 — AI Provider 适配器 (Claude/OpenAI/Ollama + 自定义兼容接口)
+**验收标准**: 
+- Settings 页面可选择 "自定义 OpenAI 兼容" Provider
+- 可配置 baseUrl / apiKey / model 并保存
+- 健康检查按钮可验证 custom-openai 连通性
+- 对应的 Dashboard 测试通过
+**创建时间**: 2026-02-11 16:10:07
+**完成时间**: 2026-02-11 16:14:22
+
+---
+
+### [pending] 创建 CHANGELOG.md 并建立版本记录
+
+**ID**: task-026
+**优先级**: P0
+**模块路径**: /CHANGELOG.md
+**任务描述**: 项目缺少 CHANGELOG.md，这是开源发布的关键文件。需要：1) 创建根目录 CHANGELOG.md，遵循 Keep a Changelog 格式；2) 回溯 git 历史，记录 v0.1.0 ~ v0.3.0 各阶段的主要功能、修复和变更；3) 标注当前版本为 v0.3.0-beta（Phase 3 进行中）；4) 确保 release.yml CI 流程能自动更新 CHANGELOG。
+**产品需求**: Phase 3 开源发布 — 文档完善
+**验收标准**: 
+- CHANGELOG.md 存在于项目根目录
+- 包含 v0.1.0 (MVP)、v0.2.0 (安全与体验)、v0.3.0 (开源发布) 三个版本的变更记录
+- 格式符合 Keep a Changelog 规范
+**创建时间**: 2026-02-11 16:10:07
+**完成时间**: -
+
+---
+
+### [pending] 创建 CODE_OF_CONDUCT.md
+
+**ID**: task-027
+**优先级**: P0
+**模块路径**: /CODE_OF_CONDUCT.md
+**任务描述**: CONTRIBUTING.md 中引用了 CODE_OF_CONDUCT.md，但该文件不存在。需要：1) 基于 Contributor Covenant v2.1 创建 CODE_OF_CONDUCT.md；2) 填入项目联系邮箱（参考 SECURITY.md 中的 security@serverpilot.dev）；3) 确保 CONTRIBUTING.md 中的链接正确指向该文件。
+**产品需求**: Phase 3 开源发布 — 贡献指南
+**验收标准**: 
+- CODE_OF_CONDUCT.md 存在且内容完整
+- CONTRIBUTING.md 中的引用链接有效
+- documentation-completion.test.ts 测试通过（如有相关检查）
+**创建时间**: 2026-02-11 16:10:07
+**完成时间**: -
+
+---
+
+### [pending] 修复 README 占位符 URL 并添加 CI 徽章
+
+**ID**: task-028
+**优先级**: P0
+**模块路径**: /README.md
+**任务描述**: README.md 中存在多处 `your-org/ServerPilot` 占位符 URL 需要替换为实际的 GitHub 组织/用户名。同时需要：1) 替换所有占位符 URL；2) 添加 CI 状态徽章（build、test、coverage）；3) 确认快速开始文档中的 Docker 命令可正常工作；4) 补充 custom-openai Provider 的说明。
+**产品需求**: Phase 3 开源发布 — README 完善
+**验收标准**: 
+- README 中无 `your-org` 占位符
+- CI 徽章指向正确的 workflow
+- 所有外部链接可访问
+**创建时间**: 2026-02-11 16:10:07
+**完成时间**: -
+
+---
+
+### [pending] InstallAIAgent 支持多 Provider（解耦 Anthropic SDK 硬编码）
+
+**ID**: task-029
+**优先级**: P1
+**模块路径**: packages/server/src/ai/agent.ts
+**任务描述**: InstallAIAgent 当前直接使用 Anthropic SDK，未接入 Provider Factory 抽象层。需要：1) 重构 InstallAIAgent 使用 AIProviderInterface；2) 通过 ProviderFactory 获取当前活跃 Provider；3) 保持 WebSocket 安装流程中的流式输出能力；4) 确保回退逻辑（当自定义 Provider 不支持流式时降级为非流式）。
+**产品需求**: AI Provider 动态选择 — WebSocket 安装流程也应支持用户选择的 Provider
+**验收标准**: 
+- InstallAIAgent 不再直接导入 @anthropic-ai/sdk
+- 使用 ProviderFactory.getActiveProvider() 获取 Provider
+- 所有现有 AI agent 测试通过
+- 新增测试验证 custom-openai Provider 下的安装流程
+**创建时间**: 2026-02-11 16:10:07
+**完成时间**: -
+
+---
+
+### [pending] Settings 路由集成测试覆盖 custom-openai
+
+**ID**: task-030
+**优先级**: P1
+**模块路径**: packages/server/src/api/routes/settings.test.ts
+**任务描述**: settings.test.ts 当前测试了 claude、openai、ollama Provider 的切换，但缺少 custom-openai 的集成测试。需要：1) 添加 PUT /settings/ai-provider 切换到 custom-openai 的测试；2) 验证 baseUrl + apiKey + model 组合配置；3) 测试缺少 baseUrl 时的错误响应；4) 测试健康检查端点对 custom-openai 的支持。
+**产品需求**: 测试覆盖标准 — AI 质量防线 ≥ 90%
+**验收标准**: 
+- settings.test.ts 包含 custom-openai 相关测试用例
+- 覆盖正常切换、缺少参数、健康检查三种场景
+- pnpm test 全部通过
+**创建时间**: 2026-02-11 16:10:07
+**完成时间**: -
+
+---
+
+### [pending] .env.example 补充 custom-openai 配置说明
+
+**ID**: task-031
+**优先级**: P1
+**模块路径**: /.env.example
+**任务描述**: .env.example 当前文档了 Claude/OpenAI/DeepSeek/Ollama 的环境变量，但缺少 CUSTOM_OPENAI_* 系列变量的说明。需要：1) 在 AI Provider 区块添加 custom-openai 配置段；2) 文档 CUSTOM_OPENAI_BASE_URL、CUSTOM_OPENAI_API_KEY 变量；3) 补充 AI_MODEL 和 AI_TIMEOUT_MS 的说明；4) 提供 OneAPI / LiteLLM / Azure 的示例配置。
+**产品需求**: Phase 3 开源发布 — 安装指南
+**验收标准**: 
+- .env.example 包含 CUSTOM_OPENAI_* 变量段
+- 每个变量有默认值和用途说明
+- 包含至少一个 OneAPI/LiteLLM 示例 URL
+**创建时间**: 2026-02-11 16:10:07
+**完成时间**: -
+
+---
+
+### [pending] 多租户数据隔离架构设计
+
+**ID**: task-032
+**优先级**: P1
+**模块路径**: packages/server/src/db/, packages/server/src/api/middleware/
+**任务描述**: Phase 4 云版核心基础。需要：1) 设计多租户数据隔离方案（行级隔离 vs Schema 隔离）；2) 在 DB Schema 中为核心表（servers、tasks、operations、profiles）添加 tenantId 字段；3) 创建租户中间件，自动注入 tenantId 到所有查询；4) 迁移脚本兼容现有单租户数据；5) 编写架构设计文档。
+**产品需求**: Phase 4 云版发布 — 多租户架构（P0）
+**验收标准**: 
+- 架构设计文档完成（docs/multi-tenant-design.md）
+- DB Schema 迁移脚本就绪
+- 租户中间件实现并通过测试
+- 现有单租户测试不受影响
+**创建时间**: 2026-02-11 16:10:07
+**完成时间**: -
+
+---
+
+### [pending] GitHub OAuth 登录集成
+
+**ID**: task-033
+**优先级**: P1
+**模块路径**: packages/server/src/api/routes/auth.ts, packages/dashboard/src/pages/Login.tsx
+**任务描述**: Phase 4 云版用户系统需要支持 GitHub OAuth 登录。需要：1) Server 端实现 OAuth 2.0 授权码流程（/auth/github/callback）；2) 处理 GitHub 用户信息获取和本地账户关联；3) Dashboard Login 页面添加 "使用 GitHub 登录" 按钮；4) 支持首次 OAuth 登录自动创建账户；5) 已有本地账户可绑定 GitHub。
+**产品需求**: Phase 4 云版发布 — 用户系统（邮箱 + GitHub OAuth）
+**验收标准**: 
+- GET /auth/github 重定向到 GitHub 授权页
+- GET /auth/github/callback 处理回调并签发 JWT
+- Dashboard 可通过 GitHub 一键登录
+- 新增集成测试覆盖 OAuth 流程
+**创建时间**: 2026-02-11 16:10:07
+**完成时间**: -
+
+---
+
+### [pending] Webhook 通知系统
+
+**ID**: task-034
+**优先级**: P2
+**模块路径**: packages/server/src/core/webhook/, packages/server/src/api/routes/webhooks.ts
+**任务描述**: 支持外部系统集成的 Webhook 通知。需要：1) 设计 Webhook 数据模型（URL、事件类型、密钥、重试策略）；2) DB Schema 添加 webhooks 表；3) 实现 Webhook 管理 API（CRUD）；4) 在关键事件（任务完成、告警触发、服务器离线）时触发 Webhook 调用；5) 实现签名验证（HMAC-SHA256）和重试机制（指数退避，最多 3 次）；6) Dashboard 添加 Webhook 管理页面。
+**产品需求**: Phase 4 云版发布 — Webhook 通知（P1）
+**验收标准**: 
+- Webhook CRUD API 可用
+- 支持至少 5 种事件类型（task.completed, alert.triggered, server.offline, operation.failed, agent.disconnected）
+- HMAC-SHA256 签名验证
+- 重试机制测试通过
+- Dashboard 可管理 Webhook 配置
+**创建时间**: 2026-02-11 16:10:07
+**完成时间**: -
+
 ### [completed] 共享安全规则提取到 @aiinstaller/shared 包 ✅
 
 **ID**: task-024
@@ -1073,4 +1237,4 @@ ID: task-001
 
 ---
 
-**最后更新**: 2026-02-11 16:02:47
+**最后更新**: 2026-02-11 16:14:22
