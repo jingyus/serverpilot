@@ -32,6 +32,7 @@ import {
 } from '../../db/repositories/task-repository.js';
 import type { SnapshotService } from '../snapshot/snapshot-service.js';
 import { createContextLogger, logError } from '../../utils/logger.js';
+import { getWebhookDispatcher } from '../webhook/dispatcher.js';
 
 // ============================================================================
 // Constants
@@ -352,6 +353,41 @@ export class TaskExecutor {
         result.success ? 'success' : 'failed',
         null,
       );
+    }
+
+    // 7. Dispatch webhook events
+    try {
+      const dispatcher = getWebhookDispatcher();
+      if (input.taskId) {
+        await dispatcher.dispatch({
+          type: 'task.completed',
+          userId: input.userId,
+          data: {
+            taskId: input.taskId,
+            operationId: operation.id,
+            serverId: input.serverId,
+            success: result.success,
+            exitCode: result.exitCode,
+            duration: result.duration,
+          },
+        });
+      }
+      if (!result.success) {
+        await dispatcher.dispatch({
+          type: 'operation.failed',
+          userId: input.userId,
+          data: {
+            operationId: operation.id,
+            serverId: input.serverId,
+            type: input.type,
+            description: input.description,
+            exitCode: result.exitCode,
+            duration: result.duration,
+          },
+        });
+      }
+    } catch (webhookErr) {
+      logError(webhookErr as Error, { executionId }, 'Failed to dispatch webhook event');
     }
 
     logger.info({

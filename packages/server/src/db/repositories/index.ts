@@ -144,3 +144,17 @@ export {
   setTenantRepository,
   _resetTenantRepository,
 } from './tenant-repository.js';
+
+export {
+  type WebhookRepository,
+  type Webhook,
+  type WebhookDelivery,
+  type DeliveryStatus,
+  type CreateWebhookInput,
+  type UpdateWebhookInput,
+  type CreateDeliveryInput,
+  DrizzleWebhookRepository,
+  getWebhookRepository,
+  setWebhookRepository,
+  _resetWebhookRepository,
+} from './webhook-repository.js';

@@ -13,6 +13,7 @@ import { Settings } from './pages/Settings';
 import { Search } from './pages/Search';
 import { Alerts } from './pages/Alerts';
 import { AuditLog } from './pages/AuditLog';
+import { Webhooks } from './pages/Webhooks';
 
 export function App() {
   return (
@@ -30,6 +31,7 @@ export function App() {
         <Route path="search" element={<Search />} />
         <Route path="alerts" element={<Alerts />} />
         <Route path="audit-log" element={<AuditLog />} />
+        <Route path="webhooks" element={<Webhooks />} />
         <Route path="settings" element={<Settings />} />
       </Route>
     </Routes>

@@ -743,6 +743,78 @@ export interface DocSourceHistoryEntry {
   currentVersion?: string;
 }
 
+// ============================================================================
+// Webhooks (external notification endpoints)
+// ============================================================================
+
+export type WebhookEventType =
+  | 'task.completed'
+  | 'alert.triggered'
+  | 'server.offline'
+  | 'operation.failed'
+  | 'agent.disconnected';
+
+export const webhooks = sqliteTable(
+  'webhooks',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+    tenantId: text('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    url: text('url').notNull(),
+    secret: text('secret').notNull(),
+    events: text('events', { mode: 'json' }).$type<WebhookEventType[]>().notNull(),
+    enabled: integer('enabled', { mode: 'boolean' }).default(true).notNull(),
+    maxRetries: integer('max_retries').default(3).notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+  },
+  (table) => [
+    index('webhooks_user_id_idx').on(table.userId),
+    index('webhooks_tenant_id_idx').on(table.tenantId),
+    index('webhooks_enabled_idx').on(table.enabled),
+  ],
+);
+
+// ============================================================================
+// Webhook Deliveries (delivery attempt log)
+// ============================================================================
+
+export const webhookDeliveries = sqliteTable(
+  'webhook_deliveries',
+  {
+    id: text('id').primaryKey(),
+    webhookId: text('webhook_id')
+      .references(() => webhooks.id, { onDelete: 'cascade' })
+      .notNull(),
+    eventType: text('event_type').notNull(),
+    payload: text('payload', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
+    status: text('status', {
+      enum: ['pending', 'success', 'failed'],
+    })
+      .default('pending')
+      .notNull(),
+    httpStatus: integer('http_status'),
+    responseBody: text('response_body'),
+    attempts: integer('attempts').default(0).notNull(),
+    lastAttemptAt: integer('last_attempt_at', { mode: 'timestamp' }),
+    nextRetryAt: integer('next_retry_at', { mode: 'timestamp' }),
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  },
+  (table) => [
+    index('webhook_deliveries_webhook_id_idx').on(table.webhookId),
+    index('webhook_deliveries_status_idx').on(table.status),
+    index('webhook_deliveries_next_retry_idx').on(table.nextRetryAt),
+    index('webhook_deliveries_created_at_idx').on(table.createdAt),
+  ],
+);
+
+// ============================================================================
+// Document Source History (update tracking)
+// ============================================================================
+
 export const docSourceHistory = sqliteTable(
   'doc_source_history',
   {

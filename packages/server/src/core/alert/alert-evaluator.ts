@@ -19,6 +19,7 @@ import { getAlertRepository } from '../../db/repositories/alert-repository.js';
 import type { MetricsRepository, MetricPoint } from '../../db/repositories/metrics-repository.js';
 import { getMetricsRepository } from '../../db/repositories/metrics-repository.js';
 import type { EmailNotifier } from './email-notifier.js';
+import { getWebhookDispatcher } from '../webhook/dispatcher.js';
 
 // ============================================================================
 // Constants
@@ -200,6 +201,30 @@ export class AlertEvaluator {
           operator: rule.operator,
           severity: rule.severity,
         });
+      }
+
+      // Dispatch webhook notification
+      try {
+        const dispatcher = getWebhookDispatcher();
+        await dispatcher.dispatch({
+          type: 'alert.triggered',
+          userId: rule.userId,
+          data: {
+            ruleId: rule.id,
+            ruleName: rule.name,
+            serverId: rule.serverId,
+            metricType: rule.metricType,
+            currentValue,
+            threshold: rule.threshold,
+            severity: rule.severity,
+            message: alertMessage,
+          },
+        });
+      } catch (webhookErr) {
+        this.logger.error(
+          { ruleId: rule.id, error: webhookErr instanceof Error ? webhookErr.message : String(webhookErr) },
+          'Failed to dispatch alert webhook',
+        );
       }
     } catch (err) {
       this.logger.error(

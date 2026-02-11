@@ -404,6 +404,41 @@ export function createTables(db?: DrizzleDB): void {
     CREATE UNIQUE INDEX IF NOT EXISTS oauth_accounts_provider_account_idx ON oauth_accounts(provider, provider_account_id);
     CREATE INDEX IF NOT EXISTS oauth_accounts_user_id_idx ON oauth_accounts(user_id);
 
+    CREATE TABLE IF NOT EXISTS webhooks (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      tenant_id TEXT REFERENCES tenants(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      url TEXT NOT NULL,
+      secret TEXT NOT NULL,
+      events TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      max_retries INTEGER NOT NULL DEFAULT 3,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS webhooks_user_id_idx ON webhooks(user_id);
+    CREATE INDEX IF NOT EXISTS webhooks_tenant_id_idx ON webhooks(tenant_id);
+    CREATE INDEX IF NOT EXISTS webhooks_enabled_idx ON webhooks(enabled);
+
+    CREATE TABLE IF NOT EXISTS webhook_deliveries (
+      id TEXT PRIMARY KEY,
+      webhook_id TEXT NOT NULL REFERENCES webhooks(id) ON DELETE CASCADE,
+      event_type TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      http_status INTEGER,
+      response_body TEXT,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      last_attempt_at INTEGER,
+      next_retry_at INTEGER,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS webhook_deliveries_webhook_id_idx ON webhook_deliveries(webhook_id);
+    CREATE INDEX IF NOT EXISTS webhook_deliveries_status_idx ON webhook_deliveries(status);
+    CREATE INDEX IF NOT EXISTS webhook_deliveries_next_retry_idx ON webhook_deliveries(next_retry_at);
+    CREATE INDEX IF NOT EXISTS webhook_deliveries_created_at_idx ON webhook_deliveries(created_at);
+
     CREATE TABLE IF NOT EXISTS doc_source_history (
       id TEXT PRIMARY KEY,
       source_id TEXT NOT NULL REFERENCES doc_sources(id) ON DELETE CASCADE,

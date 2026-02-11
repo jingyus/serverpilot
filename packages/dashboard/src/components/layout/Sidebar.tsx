@@ -15,6 +15,7 @@ import {
   ChevronRight,
   X,
   BookOpen,
+  Webhook,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth';
@@ -38,6 +39,7 @@ const navItems: NavItem[] = [
   { to: '/operations', label: 'Operations', icon: History },
   { to: '/alerts', label: 'Alerts', icon: Bell },
   { to: '/audit-log', label: 'Audit Log', icon: Shield },
+  { to: '/webhooks', label: 'Webhooks', icon: Webhook },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
 

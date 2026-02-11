@@ -40,6 +40,7 @@ import { getAlertEvaluator } from './core/alert/alert-evaluator.js';
 import { createEmailNotifier } from './core/alert/email-notifier.js';
 import { createDocAutoFetcher, type DocAutoFetcher } from './knowledge/doc-auto-fetcher.js';
 import { startMetricsCleanupScheduler, stopMetricsCleanupScheduler } from './core/metrics-cleanup-scheduler.js';
+import { getWebhookDispatcher } from './core/webhook/dispatcher.js';
 
 // ============================================================================
 // Constants
@@ -159,6 +160,33 @@ export function loadConfig(): ServerConfig {
 }
 
 // ============================================================================
+// Webhook Helpers
+// ============================================================================
+
+/**
+ * Dispatch disconnect webhooks by looking up the server owner from the DB.
+ * Runs async / fire-and-forget so it doesn't block the disconnect handler.
+ */
+async function dispatchDisconnectWebhooks(serverId: string, clientId: string): Promise<void> {
+  const { getDatabase } = await import('./db/connection.js');
+  const { servers } = await import('./db/schema.js');
+  const { eq } = await import('drizzle-orm');
+
+  const db = getDatabase();
+  const rows = db.select({ userId: servers.userId }).from(servers).where(eq(servers.id, serverId)).limit(1).all();
+  if (rows.length === 0) return;
+
+  const userId = rows[0].userId;
+  const dispatcher = getWebhookDispatcher();
+  const data = { serverId, clientId, disconnectTime: new Date().toISOString() };
+
+  await Promise.allSettled([
+    dispatcher.dispatch({ type: 'agent.disconnected', userId, data }),
+    dispatcher.dispatch({ type: 'server.offline', userId, data }),
+  ]);
+}
+
+// ============================================================================
 // Server Bootstrap
 // ============================================================================
 
@@ -243,6 +271,21 @@ export function createServer(serverConfig: ServerConfig): InstallServer {
 
   server.on('disconnect', (clientId) => {
     logConnectionEvent('disconnect', { clientId });
+
+    // Dispatch webhook events for agent disconnect / server offline
+    // Note: getClientAuth may return undefined after disconnect cleanup,
+    // so we capture auth info before it's removed
+    try {
+      const auth = server.getClientAuth(clientId);
+      if (auth?.deviceId) {
+        const serverId = auth.deviceId;
+        dispatchDisconnectWebhooks(serverId, clientId).catch((err) => {
+          logError(err as Error, { clientId, serverId }, 'Failed to dispatch disconnect webhooks');
+        });
+      }
+    } catch {
+      // Client already removed — no webhook needed
+    }
   });
 
   server.on('error', (clientId, error) => {
@@ -273,6 +316,7 @@ export function registerShutdownHandlers(server: InstallServer, httpServer?: Htt
     try {
       getAlertEvaluator().stop();
       getTaskScheduler().stop();
+      getWebhookDispatcher().stop();
       stopMetricsCleanupScheduler();
       if (_docAutoFetcher) {
         _docAutoFetcher.stop();
@@ -384,6 +428,11 @@ export async function startServer(): Promise<InstallServer> {
     { operation: 'startup', emailEnabled: emailNotifier !== null },
     'Alert evaluator started',
   );
+
+  // Start the webhook dispatcher for retry processing
+  const webhookDispatcher = getWebhookDispatcher();
+  webhookDispatcher.start();
+  logger.info({ operation: 'startup' }, 'Webhook dispatcher started');
 
   // Start the documentation auto-fetcher for knowledge base updates
   if (serverConfig.knowledgeBase) {

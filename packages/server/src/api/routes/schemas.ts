@@ -363,3 +363,45 @@ export const UpdateKnowledgeBaseBodySchema = z.object({
   documentSources: z.array(z.string().max(500)).max(50),
 });
 export type UpdateKnowledgeBaseBody = z.infer<typeof UpdateKnowledgeBaseBodySchema>;
+
+// ============================================================================
+// Webhook Schemas
+// ============================================================================
+
+const webhookEventType = z.enum([
+  'task.completed',
+  'alert.triggered',
+  'server.offline',
+  'operation.failed',
+  'agent.disconnected',
+]);
+
+export const CreateWebhookBodySchema = z.object({
+  name: z.string().min(1, 'Webhook name is required').max(200),
+  url: z.string().url('Invalid URL').max(2048),
+  events: z.array(webhookEventType).min(1, 'At least one event type required').max(10),
+  secret: z.string().min(16, 'Secret must be at least 16 characters').max(256).optional(),
+  maxRetries: z.number().int().min(0).max(10).optional(),
+});
+export type CreateWebhookBody = z.infer<typeof CreateWebhookBodySchema>;
+
+export const UpdateWebhookBodySchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  url: z.string().url('Invalid URL').max(2048).optional(),
+  events: z.array(webhookEventType).min(1).max(10).optional(),
+  secret: z.string().min(16).max(256).optional(),
+  enabled: z.boolean().optional(),
+  maxRetries: z.number().int().min(0).max(10).optional(),
+});
+export type UpdateWebhookBody = z.infer<typeof UpdateWebhookBodySchema>;
+
+export const WebhookQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+export type WebhookQuery = z.infer<typeof WebhookQuerySchema>;
+
+export const WebhookTestBodySchema = z.object({
+  eventType: webhookEventType.default('task.completed'),
+});
+export type WebhookTestBody = z.infer<typeof WebhookTestBodySchema>;
