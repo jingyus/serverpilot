@@ -377,12 +377,49 @@ describe('GitHub Actions CI 配置', () => {
       });
     });
 
+    describe('Pre-publish Test Job', () => {
+      it('包含 test job', () => {
+        content = readFileSync(dockerPublishYmlPath, 'utf-8');
+        config = parseYaml(content);
+        const jobs = config.jobs as Record<string, unknown>;
+        expect(jobs.test).toBeDefined();
+      });
+
+      it('test job 配置了超时时间', () => {
+        content = readFileSync(dockerPublishYmlPath, 'utf-8');
+        config = parseYaml(content);
+        const jobs = config.jobs as Record<string, unknown>;
+        const test = jobs.test as Record<string, unknown>;
+        expect(test['timeout-minutes']).toBeDefined();
+      });
+
+      it('test job 运行 lint、typecheck 和 test', () => {
+        content = readFileSync(dockerPublishYmlPath, 'utf-8');
+        expect(content).toContain('pnpm lint');
+        expect(content).toContain('pnpm typecheck');
+        expect(content).toContain('pnpm test');
+      });
+
+      it('test job 使用 pnpm install --frozen-lockfile', () => {
+        content = readFileSync(dockerPublishYmlPath, 'utf-8');
+        expect(content).toContain('pnpm install --frozen-lockfile');
+      });
+    });
+
     describe('Server 镜像构建 Job', () => {
       it('包含 build-server job', () => {
         content = readFileSync(dockerPublishYmlPath, 'utf-8');
         config = parseYaml(content);
         const jobs = config.jobs as Record<string, unknown>;
         expect(jobs['build-server']).toBeDefined();
+      });
+
+      it('依赖 test job', () => {
+        content = readFileSync(dockerPublishYmlPath, 'utf-8');
+        config = parseYaml(content);
+        const jobs = config.jobs as Record<string, unknown>;
+        const job = jobs['build-server'] as Record<string, unknown>;
+        expect(job.needs).toBe('test');
       });
 
       it('配置了超时时间', () => {
@@ -409,6 +446,14 @@ describe('GitHub Actions CI 配置', () => {
         config = parseYaml(content);
         const jobs = config.jobs as Record<string, unknown>;
         expect(jobs['build-dashboard']).toBeDefined();
+      });
+
+      it('依赖 test job', () => {
+        content = readFileSync(dockerPublishYmlPath, 'utf-8');
+        config = parseYaml(content);
+        const jobs = config.jobs as Record<string, unknown>;
+        const job = jobs['build-dashboard'] as Record<string, unknown>;
+        expect(job.needs).toBe('test');
       });
     });
 

@@ -27,8 +27,39 @@ env:
   GHCR_DASHBOARD_IMAGE: ghcr.io/${{ github.repository }}/dashboard
 
 jobs:
+  test:
+    name: Pre-publish Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Type check
+        run: pnpm typecheck
+
+      - name: Run tests
+        run: pnpm test
+
   build-server:
     name: Build & Push Server Image
+    needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -87,6 +118,7 @@ jobs:
 
   build-dashboard:
     name: Build & Push Dashboard Image
+    needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

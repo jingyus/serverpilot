@@ -9,6 +9,16 @@
 # ==============================================================================
 # Zero-configuration deployment using SQLite. No database setup required!
 # Dashboard accessible at http://localhost:${DASHBOARD_PORT:-3001}
+# Server API/WebSocket at http://localhost:${SERVER_PORT:-3000}
+# ==============================================================================
+# Pre-built images (skip local build):
+#   docker pull serverpilot/server:latest
+#   docker pull serverpilot/dashboard:latest
+# Or use GHCR:
+#   docker pull ghcr.io/<owner>/serverpilot/server:latest
+#   docker pull ghcr.io/<owner>/serverpilot/dashboard:latest
+# Pinned versions (recommended for production):
+#   serverpilot/server:0.3.0   serverpilot/dashboard:0.3.0
 # ==============================================================================
 
 services:
@@ -43,6 +53,8 @@ services:
       - KNOWLEDGE_BASE_DIR=/app/knowledge-base
       - ADMIN_EMAIL=${ADMIN_EMAIL:-}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+    ports:
+      - "${SERVER_PORT:-3000}:3000"
     volumes:
       - server-data:/data
     healthcheck:
