@@ -6,10 +6,10 @@
 
 ## 📊 统计信息
 
-- **总任务数**: 30
-- **待完成** (pending): 0
+- **总任务数**: 40
+- **待完成** (pending): 9
 - **进行中** (in_progress): 0
-- **已完成** (completed): 29
+- **已完成** (completed): 30
 - **失败** (failed): 1
 
 ---
@@ -17,6 +17,134 @@
 ## 📋 任务列表
 
 <!-- 任务将由 AI 自动生成和更新 -->
+### [completed] 共享安全规则提取到 @aiinstaller/shared 包 ✅
+
+**ID**: task-024
+**优先级**: P0
+**模块路径**: packages/shared/src/security/, packages/agent/src/security/
+**任务描述**: 当前命令分级规则（532+ 条规则、43+ 危险参数、55+ 保护路径）仅在 Agent 端实现（`command-classifier.ts` + `command-rules.ts`），Server 端完全没有安全校验。需要将安全规则提取为共享模块：1) 在 shared 包创建 `security/` 目录，包含 risk-levels.ts（枚举+类型）、command-rules.ts（规则数据）、param-rules.ts（危险参数+保护路径）、classify.ts（纯函数分级逻辑）；2) 修改 Agent 从 shared 导入规则，保留自定义规则加载逻辑；3) 确保不引入 Zod 等重量级依赖（Agent 使用 protocol-lite）；4) 所有 899 个安全测试零回归
+**产品需求**: 开发标准 - "shared 模块提供共享类型和规则"；安全架构 - 五层纵深防御需要 Server+Agent 双端一致
+**验收标准**: 1) `packages/shared/src/security/` 目录存在；2) 规则为 single source of truth（Agent+Server 共用）；3) Agent 899 个安全测试全部通过；4) TypeScript 编译通过（NodeNext + Bundler 两种 moduleResolution）
+**创建时间**: 2026-02-11 13:49:31
+**完成时间**: 2026-02-11 14:06:58
+
+---
+
+### [pending] Server 端命令安全校验层 — 双端防御闭环
+
+**ID**: task-020
+**优先级**: P0
+**模块路径**: packages/server/src/core/security/
+**任务描述**: 当前 Server 在下发命令前没有任何安全检查，`TaskExecutor` 直接接受 riskLevel 参数但不校验。需要：1) 创建 `command-validator.ts` — 使用 shared 包分级函数对 AI 生成的命令做风险评估，FORBIDDEN 级直接拒绝；2) 创建 `audit-logger.ts` — 集中式安全审计日志，记录分级结果、确认状态、执行结果；3) 在 `routes/chat.ts` 的 execute 端点集成校验：AI 生成命令 → Server 校验 → 标记确认需求 → 下发 Agent；4) 添加 `GET /api/v1/audit-log` API 和 audit_logs 数据库表
+**产品需求**: 安全架构 - "五层纵深防御"第一层需要 Server 端实现
+**验收标准**: 1) FORBIDDEN 级命令在 Server 端直接拒绝不下发；2) YELLOW+ 命令标记需要确认；3) 审计日志记录每次命令；4) API 支持按服务器/时间/风险等级筛选；5) 安全模块测试覆盖率 ≥ 95%
+**创建时间**: 2026-02-11 13:49:31
+**完成时间**: -
+
+---
+
+### [pending] Dashboard 告警管理页面与实时通知
+
+**ID**: task-021
+**优先级**: P0
+**模块路径**: packages/dashboard/src/pages/Alerts.tsx, packages/dashboard/src/stores/alert-rules.ts
+**任务描述**: Server 端已有完整告警引擎（`alert-evaluator.ts`、`alert-rules.ts` 路由），但 Dashboard 缺少告警规则 CRUD 管理界面。需要：1) 创建 `Alerts.tsx` 页面 — 告警规则列表（CPU/内存/磁盘阈值）、创建/编辑/删除表单、告警历史记录表、触发/恢复状态标记；2) 创建 `stores/alert-rules.ts` — Zustand store 管理 CRUD + 历史查询；3) Sidebar 添加 Alerts 导航（Bell 图标）；4) Header 右上角告警角标 — WebSocket 推送未处理告警计数；5) 组件测试和 store 测试
+**产品需求**: Phase 2 - "告警规则（阈值配置 + 邮件通知）"的前端入口
+**验收标准**: 1) `/alerts` 页面可查看/创建/编辑/删除告警规则；2) 可查看告警触发历史；3) Header 显示未处理告警计数；4) 组件测试覆盖率 ≥ 70%
+**创建时间**: 2026-02-11 13:49:31
+**完成时间**: -
+
+---
+
+### [pending] Dashboard 对话增强 — 执行进度实时展示与紧急制动
+
+**ID**: task-023
+**优先级**: P0
+**模块路径**: packages/dashboard/src/pages/Chat.tsx, packages/dashboard/src/components/chat/
+**任务描述**: Chat.tsx 已有 PlanPreview（确认/拒绝）和 ExecutionLog 组件，但需验证和增强执行体验：1) 验证 `/execute` SSE 处理 — 步骤高亮、stdout/stderr 实时滚动；2) 验证多步骤进度展示（Step 1/N 完成 → Step 2/N 执行中）；3) 添加"紧急停止"按钮 — 执行过程中调用 Server kill switch API 中断 Agent；4) 优化长输出自动滚动 + 手动回看；5) 添加执行完成总结区域（成功/失败步骤数、总耗时、下一步建议）；6) 交互集成测试
+**产品需求**: 安全架构 - "紧急制动 Kill Switch" Dashboard 入口；AI 对话引擎 - "实时执行反馈"
+**验收标准**: 1) stdout/stderr 实时显示；2) 步骤进度指示器正确；3) "紧急停止"按钮可用并中断执行；4) 长输出自动滚动；5) 执行总结信息完整
+**创建时间**: 2026-02-11 13:49:31
+**完成时间**: -
+
+---
+
+### [pending] 本地开发 `pnpm dev` 一键启动验证与开发环境脚本
+
+**ID**: task-022
+**优先级**: P1
+**模块路径**: scripts/dev-setup.sh, packages/dashboard/vite.config.ts
+**任务描述**: CONTRIBUTING.md 引导新开发者 `pnpm install && pnpm dev`，需端到端验证：1) `pnpm dev:server` 启动正常（tsx watch + SQLite 初始化 + 端口 3000）；2) Vite proxy 正确代理 `/api/*` → :3000 和 `/ws` → ws://:3000；3) 三端并行启动无时序问题（Server 需先于 Dashboard）；4) 创建 `scripts/dev-setup.sh` — 首次环境搭建脚本：检查 Node ≥ 22、pnpm ≥ 9、创建 .env.local、提示配置 AI Provider；5) shared 包修改后热更新正常
+**产品需求**: 开发标准 4.2 - 开发命令；CONTRIBUTING.md 开发环境搭建
+**验收标准**: 1) 全新 clone 后 `pnpm install && pnpm dev` 成功启动；2) API/WS 代理无 CORS 问题；3) dev-setup.sh 可在 macOS/Ubuntu 运行；4) 版本过低时有友好提示
+**创建时间**: 2026-02-11 13:49:31
+**完成时间**: -
+
+---
+
+### [pending] Dashboard 监控图表实时刷新与空状态处理
+
+**ID**: task-025
+**优先级**: P1
+**模块路径**: packages/dashboard/src/components/monitor/, packages/dashboard/src/stores/server-detail.ts
+**任务描述**: 监控组件（MonitoringSection + MetricsChart）使用 Recharts 实现四类图表，但当前无自动刷新。需要：1) 验证 server-detail store 的 fetchMetrics() 是否正确调用 Metrics API；2) 添加自动刷新 — 每 60 秒轮询（页面可见时），可配置间隔；3) 验证时间范围选择器（1h/24h/7d）切换后请求正确粒度数据；4) Agent 离线时显示"暂无数据"提示；5) 新服务器显示"等待首次数据上报"；6) 大量数据点时考虑采样防止卡顿
+**产品需求**: MVP Dashboard - "基本监控"；Phase 2 - "基本监控图表"
+**验收标准**: 1) 四类图表正确显示；2) 每 60 秒自动刷新；3) 时间范围切换正确；4) 离线/空状态有友好提示；5) 测试覆盖数据加载和空状态
+**创建时间**: 2026-02-11 13:49:31
+**完成时间**: -
+
+---
+
+### [pending] TODO.md 状态同步 — Phase 1/2/3 进度更新
+
+**ID**: task-026
+**优先级**: P1
+**模块路径**: docs/TODO.md
+**任务描述**: `docs/TODO.md` 严重过时：Phase 1 进度显示 0% 实际 100%，Phase 2 显示 0% 实际 100%，Phase 3 全部 ⬜ 实际 7/10 完成。需要：1) Phase 1 进度条 → 100%；2) Phase 2 进度条 → 100%；3) Phase 3 已完成 7 项标记 ✅（README、安装指南、贡献指南、安全白皮书、CI/CD、Docker 发布、安装脚本、知识库贡献指南）；4) Phase 3 进度条 → 80%；5) 最后更新时间 → 当前日期
+**产品需求**: 开发标准 10.1 - "TODO.md 任务清单"需要保持准确
+**验收标准**: 1) Phase 1 = 100%，Phase 2 = 100%，Phase 3 ≥ 80%；2) 已完成任务标记 ✅；3) 最后更新时间正确
+**创建时间**: 2026-02-11 13:49:31
+**完成时间**: -
+
+---
+
+### [pending] 自定义 OpenAI 兼容接口支持（OneAPI / LiteLLM / Azure）
+
+**ID**: task-027
+**优先级**: P1
+**模块路径**: packages/server/src/ai/providers/custom-openai.ts, packages/dashboard/src/pages/Settings.tsx
+**任务描述**: 当前 OpenAI Provider 已支持自定义 baseURL，但 Dashboard 无法方便配置。国内用户常用 OneAPI/LiteLLM/Azure 等兼容中转。需要：1) 创建 `custom-openai.ts` — 明确接受 baseURL+API Key+模型名称三个配置项；2) provider-factory 注册 `custom-openai` 类型；3) Settings 页面添加"自定义 OpenAI 兼容"选项卡（Base URL/API Key/模型名称输入框）；4) 数据库 provider 枚举添加 `custom-openai`，增加 baseUrl/modelName 字段；5) "测试连接"按钮验证配置；6) 单元测试
+**产品需求**: Phase 3 - "更多 AI Provider - 自定义 OpenAI 兼容接口"
+**验收标准**: 1) Settings 可选择"自定义 OpenAI 兼容"；2) 可配置 Base URL/Key/模型；3) 测试连接功能可用；4) 保存后 Chat 正常对话
+**创建时间**: 2026-02-11 13:49:31
+**完成时间**: -
+
+---
+
+### [pending] Dashboard 审计日志页面 — 操作可追溯
+
+**ID**: task-028
+**优先级**: P1
+**模块路径**: packages/dashboard/src/pages/AuditLog.tsx, packages/dashboard/src/stores/audit.ts
+**任务描述**: task-020 在 Server 实现审计日志后，需要 Dashboard 可视化查询界面（五层防御第五层 UI 入口）。需要：1) `AuditLog.tsx` — 时间线视图按时间倒序展示操作记录；筛选器（服务器/时间/风险等级/结果）；每条记录显示时间、命令、风险颜色、确认状态、结果、耗时；详情展开显示 stdout/stderr；2) `stores/audit.ts` 调用 `GET /api/v1/audit-log`；3) Sidebar 添加 Audit Log 导航（Shield 图标）；4) 支持 CSV/JSON 导出（合规需求）；5) 组件测试
+**产品需求**: 安全架构 - "第五层：审计与可追溯"；Phase 2 - "操作历史记录 — 全量日志可追溯"
+**验收标准**: 1) `/audit-log` 页面存在；2) 时间线展示命令记录含风险颜色；3) 多维度筛选；4) CSV 导出；5) 测试覆盖率 ≥ 70%
+**创建时间**: 2026-02-11 13:49:31
+**完成时间**: -
+
+---
+
+### [pending] 端到端部署冒烟测试 — Docker Compose 全链路验证
+
+**ID**: task-029
+**优先级**: P2
+**模块路径**: tests/smoke/, scripts/smoke-test.sh
+**任务描述**: 当前有静态 Docker 配置测试和验证脚本，但缺少真正启动容器后的全链路冒烟测试。需要：1) 增强 `smoke-test.sh` — 容器启动后执行：健康检查、注册登录获取 Token、创建服务器获取安装命令、Nginx 代理 API 验证、WebSocket 连接、AI Provider 健康检查；2) CI/CD E2E 流水线添加 Docker 冒烟步骤；3) `tests/smoke/docker-smoke.test.ts` — 程序化冒烟测试
+**产品需求**: 测试标准 - "确保核心功能闭环可用"；部署方式 - "docker compose up 一键自部署"
+**验收标准**: 1) 脚本在 `docker compose up -d` 后自动验证核心功能；2) PASS/FAIL 输出清晰；3) CI 中测试通过；4) 执行时间 < 2 分钟
+**创建时间**: 2026-02-11 13:49:31
+**完成时间**: -
+
 ### [completed] AI Provider 动态选择与工厂模式 ✅
 
 **ID**: task-010
@@ -145,9 +273,9 @@
 **产品需求**: Phase 3 "贡献指南 CONTRIBUTING.md" + "知识库贡献指南"
 **验收标准**: 1) 新开发者按 CONTRIBUTING.md 可搭建开发环境；2) Issue/PR 模板可用；3) 知识库贡献流程清晰；4) 包含行为准则 (Code of Conduct)
 **创建时间**: 2026-02-11 00:00:00
-**失败时间**: 2026-02-11 12:33:57
+**失败时间**: 2026-02-11 13:33:53
 
-**失败次数**: 1
+**失败次数**: 3
 **失败原因**: 执行阶段尝试 3 次
 ---
 
@@ -945,4 +1073,4 @@ ID: task-001
 
 ---
 
-**最后更新**: 2026-02-11 13:17:48
+**最后更新**: 2026-02-11 14:06:58
