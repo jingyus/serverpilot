@@ -124,6 +124,7 @@ export interface ServerRepository {
     userId: string,
     pagination: PaginationOptions,
   ): Promise<{ operations: Operation[]; total: number }>;
+  getDistinctGroups(userId: string): Promise<string[]>;
 }
 
 // ============================================================================
@@ -334,6 +335,20 @@ export class DrizzleServerRepository implements ServerRepository {
     };
   }
 
+  async getDistinctGroups(userId: string): Promise<string[]> {
+    const rows = this.db
+      .select({ group: servers.group })
+      .from(servers)
+      .where(eq(servers.userId, userId))
+      .all();
+
+    const groups = new Set<string>();
+    for (const row of rows) {
+      if (row.group) groups.add(row.group);
+    }
+    return [...groups].sort();
+  }
+
   private toServer(row: typeof servers.$inferSelect): Server {
     return {
       id: row.id,
@@ -464,6 +479,16 @@ export class InMemoryServerRepository implements ServerRepository {
       pagination.offset + pagination.limit,
     );
     return { operations: ops, total };
+  }
+
+  async getDistinctGroups(userId: string): Promise<string[]> {
+    const groups = new Set<string>();
+    for (const server of this.servers.values()) {
+      if (server.userId === userId && server.group) {
+        groups.add(server.group);
+      }
+    }
+    return [...groups].sort();
   }
 
   /** Clear all data (for testing). */

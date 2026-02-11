@@ -12,6 +12,8 @@ import {
   AlertCircle,
   Loader2,
   Monitor,
+  LayoutGrid,
+  List,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -182,19 +184,23 @@ export function Servers() {
   const navigate = useNavigate();
   const {
     servers,
+    availableGroups,
     isLoading,
     error,
     statusFilter,
     searchQuery,
     groupFilter,
     tagFilter,
+    viewMode,
     fetchServers,
+    fetchGroups,
     addServer,
     deleteServer,
     setStatusFilter,
     setSearchQuery,
     setGroupFilter,
     setTagFilter,
+    setViewMode,
     clearError,
   } = useServersStore();
 
@@ -203,11 +209,12 @@ export function Servers() {
 
   useEffect(() => {
     fetchServers();
-  }, [fetchServers]);
+    fetchGroups();
+  }, [fetchServers, fetchGroups]);
 
   // Extract unique groups and tags for filter dropdowns
   const { groups, allTags } = useMemo(() => {
-    const groupSet = new Set<string>();
+    const groupSet = new Set<string>(availableGroups);
     const tagSet = new Set<string>();
     for (const s of servers) {
       if (s.group) groupSet.add(s.group);
@@ -217,7 +224,7 @@ export function Servers() {
       groups: [...groupSet].sort(),
       allTags: [...tagSet].sort(),
     };
-  }, [servers]);
+  }, [servers, availableGroups]);
 
   const filteredServers = useMemo(() => {
     return servers.filter((s) => {
@@ -243,6 +250,25 @@ export function Servers() {
       return true;
     });
   }, [servers, statusFilter, searchQuery, groupFilter, tagFilter]);
+
+  const groupedServers = useMemo(() => {
+    const grouped = new Map<string, ServerType[]>();
+    const ungrouped: ServerType[] = [];
+    for (const s of filteredServers) {
+      if (s.group) {
+        const list = grouped.get(s.group) ?? [];
+        list.push(s);
+        grouped.set(s.group, list);
+      } else {
+        ungrouped.push(s);
+      }
+    }
+    const entries = [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b));
+    if (ungrouped.length > 0) {
+      entries.push([t('servers.ungrouped'), ungrouped]);
+    }
+    return entries;
+  }, [filteredServers, t]);
 
   const stats = useMemo(() => {
     const counts = { total: servers.length, online: 0, offline: 0, error: 0 };
@@ -357,9 +383,9 @@ export function Servers() {
         </div>
       </div>
 
-      {/* Group and Tag filters */}
+      {/* Group and Tag filters + view mode toggle */}
       {(groups.length > 0 || allTags.length > 0) && (
-        <div className="flex flex-wrap gap-2" data-testid="advanced-filters">
+        <div className="flex flex-wrap items-center gap-2" data-testid="advanced-filters">
           {groups.length > 0 && (
             <select
               value={groupFilter}
@@ -387,6 +413,26 @@ export function Servers() {
               ))}
             </select>
           )}
+          <div className="ml-auto flex gap-1" role="group" aria-label="View mode">
+            <Button
+              variant={viewMode === 'list' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setViewMode('list')}
+              aria-pressed={viewMode === 'list'}
+              aria-label="List view"
+            >
+              <List className="h-4 w-4" />
+            </Button>
+            <Button
+              variant={viewMode === 'grouped' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setViewMode('grouped')}
+              aria-pressed={viewMode === 'grouped'}
+              aria-label="Grouped view"
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       )}
 
@@ -413,6 +459,30 @@ export function Servers() {
             </Button>
           )}
         </div>
+      ) : viewMode === 'grouped' && groupedServers.length > 0 ? (
+        <div className="space-y-6" data-testid="grouped-view">
+          {groupedServers.map(([groupName, groupServers]) => (
+            <div key={groupName}>
+              <h2 className="mb-3 text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+                {groupName} ({groupServers.length})
+              </h2>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {groupServers.map((server) => (
+                  <ServerCard
+                    key={server.id}
+                    server={server}
+                    onChat={handleChat}
+                    onDelete={(id) => {
+                      const s = servers.find((sv) => sv.id === id);
+                      if (s) setDeleteTarget(s);
+                    }}
+                    onDetail={handleDetail}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" data-testid="server-grid">
           {filteredServers.map((server) => (
@@ -435,6 +505,7 @@ export function Servers() {
         open={showAddDialog}
         onOpenChange={setShowAddDialog}
         onAdd={addServer}
+        availableGroups={groups}
       />
       <DeleteServerDialog
         open={!!deleteTarget}

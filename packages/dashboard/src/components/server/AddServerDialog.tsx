@@ -31,14 +31,16 @@ const tagSchema = z.string().min(1).max(50);
 interface AddServerDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onAdd: (name: string, tags?: string[]) => Promise<{ token: string; installCommand: string }>;
+  onAdd: (name: string, tags?: string[], group?: string) => Promise<{ token: string; installCommand: string }>;
+  availableGroups?: string[];
 }
 
-export function AddServerDialog({ open, onOpenChange, onAdd }: AddServerDialogProps) {
+export function AddServerDialog({ open, onOpenChange, onAdd, availableGroups = [] }: AddServerDialogProps) {
   const [name, setName] = useState('');
   const [nameError, setNameError] = useState('');
   const [tagInput, setTagInput] = useState('');
   const [tags, setTags] = useState<string[]>([]);
+  const [group, setGroup] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [result, setResult] = useState<{ token: string; installCommand: string } | null>(null);
 
@@ -47,6 +49,7 @@ export function AddServerDialog({ open, onOpenChange, onAdd }: AddServerDialogPr
     setNameError('');
     setTagInput('');
     setTags([]);
+    setGroup('');
     setResult(null);
     setIsSubmitting(false);
   }
@@ -83,7 +86,8 @@ export function AddServerDialog({ open, onOpenChange, onAdd }: AddServerDialogPr
     setNameError('');
     setIsSubmitting(true);
     try {
-      const data = await onAdd(parsed.data, tags.length > 0 ? tags : undefined);
+      const trimmedGroup = group.trim() || undefined;
+      const data = await onAdd(parsed.data, tags.length > 0 ? tags : undefined, trimmedGroup);
       setResult({ token: data.token, installCommand: data.installCommand });
     } catch {
       // error handled by store
@@ -175,6 +179,25 @@ export function AddServerDialog({ open, onOpenChange, onAdd }: AddServerDialogPr
                     </span>
                   ))}
                 </div>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="server-group">Group (optional)</Label>
+              <Input
+                id="server-group"
+                list="group-suggestions"
+                placeholder="e.g. production"
+                value={group}
+                onChange={(e) => setGroup(e.target.value)}
+                maxLength={100}
+              />
+              {availableGroups.length > 0 && (
+                <datalist id="group-suggestions">
+                  {availableGroups.map((g) => (
+                    <option key={g} value={g} />
+                  ))}
+                </datalist>
               )}
             </div>
           </div>

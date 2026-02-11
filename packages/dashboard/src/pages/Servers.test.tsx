@@ -70,13 +70,16 @@ describe('Servers Page', () => {
     vi.clearAllMocks();
     useServersStore.setState({
       servers: mockServers,
+      availableGroups: [],
       isLoading: false,
       error: null,
       statusFilter: 'all',
       searchQuery: '',
       groupFilter: 'all',
       tagFilter: 'all',
+      viewMode: 'list',
       fetchServers: vi.fn().mockResolvedValue(undefined),
+      fetchGroups: vi.fn().mockResolvedValue(undefined),
       addServer: vi.fn(),
       deleteServer: vi.fn().mockResolvedValue(undefined),
       setStatusFilter: vi.fn((status: string) => {
@@ -90,6 +93,9 @@ describe('Servers Page', () => {
       }),
       setTagFilter: vi.fn((tag: string) => {
         useServersStore.setState({ tagFilter: tag });
+      }),
+      setViewMode: vi.fn((mode: 'list' | 'grouped') => {
+        useServersStore.setState({ viewMode: mode });
       }),
       clearError: vi.fn(() => {
         useServersStore.setState({ error: null });
@@ -369,7 +375,7 @@ describe('Servers Page', () => {
       const allAddBtns = screen.getAllByRole('button', { name: /Add Server/i });
       await user.click(allAddBtns[allAddBtns.length - 1]);
 
-      expect(addMock).toHaveBeenCalledWith('my-server', undefined);
+      expect(addMock).toHaveBeenCalledWith('my-server', undefined, undefined);
       expect(screen.getByTestId('install-command')).toBeInTheDocument();
       expect(
         screen.getByText(/curl -sSL/)
@@ -506,6 +512,98 @@ describe('Servers Page', () => {
       useServersStore.setState({ fetchServers: fetchMock });
       renderServers();
       expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('calls fetchGroups on mount', () => {
+      const fetchGroupsMock = vi.fn().mockResolvedValue(undefined);
+      useServersStore.setState({ fetchGroups: fetchGroupsMock });
+      renderServers();
+      expect(fetchGroupsMock).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('grouped view', () => {
+    it('renders view mode toggle buttons when groups exist', () => {
+      renderServers();
+      expect(screen.getByLabelText('List view')).toBeInTheDocument();
+      expect(screen.getByLabelText('Grouped view')).toBeInTheDocument();
+    });
+
+    it('switches to grouped view on toggle click', async () => {
+      const user = userEvent.setup();
+      renderServers();
+
+      await user.click(screen.getByLabelText('Grouped view'));
+      expect(useServersStore.getState().viewMode).toBe('grouped');
+    });
+
+    it('renders grouped view with group headings', async () => {
+      const user = userEvent.setup();
+      renderServers();
+
+      await user.click(screen.getByLabelText('Grouped view'));
+
+      const groupedView = screen.getByTestId('grouped-view');
+      expect(groupedView).toBeInTheDocument();
+      // Group headings include count like "prod (2)" and "staging (1)"
+      expect(within(groupedView).getByText(/prod \(2\)/)).toBeInTheDocument();
+      expect(within(groupedView).getByText(/staging \(1\)/)).toBeInTheDocument();
+    });
+
+    it('shows server cards within their groups in grouped view', async () => {
+      const user = userEvent.setup();
+      renderServers();
+
+      await user.click(screen.getByLabelText('Grouped view'));
+
+      expect(screen.getByTestId('server-card-srv-1')).toBeInTheDocument();
+      expect(screen.getByTestId('server-card-srv-2')).toBeInTheDocument();
+      expect(screen.getByTestId('server-card-srv-3')).toBeInTheDocument();
+    });
+
+    it('does not show view mode toggle when no groups exist', () => {
+      const noGroupServers = mockServers.map((s) => ({
+        ...s,
+        tags: [],
+        group: null as string | null,
+      }));
+      useServersStore.setState({ servers: noGroupServers });
+      renderServers();
+      expect(screen.queryByLabelText('List view')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('add server with group', () => {
+    it('shows group input in add server dialog', async () => {
+      const user = userEvent.setup();
+      renderServers();
+
+      const addButtons = screen.getAllByRole('button', { name: /Add Server/i });
+      await user.click(addButtons[0]);
+
+      expect(screen.getByLabelText('Group (optional)')).toBeInTheDocument();
+    });
+
+    it('submits server with group', async () => {
+      const user = userEvent.setup();
+      const addMock = vi.fn().mockResolvedValue({
+        server: mockServers[0],
+        token: 'tok-abc123',
+        installCommand: 'curl -sSL https://install.serverpilot.dev | bash -s tok-abc123',
+      });
+      useServersStore.setState({ addServer: addMock });
+      renderServers();
+
+      const addButtons = screen.getAllByRole('button', { name: /Add Server/i });
+      await user.click(addButtons[0]);
+
+      await user.type(screen.getByLabelText('Server Name'), 'my-server');
+      await user.type(screen.getByLabelText('Group (optional)'), 'production');
+
+      const allAddBtns = screen.getAllByRole('button', { name: /Add Server/i });
+      await user.click(allAddBtns[allAddBtns.length - 1]);
+
+      expect(addMock).toHaveBeenCalledWith('my-server', undefined, 'production');
     });
   });
 });

@@ -109,6 +109,18 @@ servers.post('/', requirePermission('server:create'), validateBody(CreateServerB
 });
 
 // ============================================================================
+// GET /servers/groups — Get distinct group names for the authenticated user
+// ============================================================================
+
+servers.get('/groups', requirePermission('server:read'), async (c) => {
+  const userId = c.get('userId');
+  const repo = getServerRepository();
+
+  const groups = await repo.getDistinctGroups(userId);
+  return c.json({ groups });
+});
+
+// ============================================================================
 // GET /servers/:id — Get server details
 // ============================================================================
 

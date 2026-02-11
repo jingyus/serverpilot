@@ -13,13 +13,16 @@ interface UpdateServerInput {
 
 interface ServersState {
   servers: Server[];
+  availableGroups: string[];
   isLoading: boolean;
   error: string | null;
   statusFilter: string;
   searchQuery: string;
   groupFilter: string;
   tagFilter: string;
+  viewMode: 'list' | 'grouped';
   fetchServers: () => Promise<void>;
+  fetchGroups: () => Promise<void>;
   addServer: (name: string, tags?: string[], group?: string) => Promise<AddServerResponse>;
   updateServer: (id: string, input: UpdateServerInput) => Promise<Server>;
   deleteServer: (id: string) => Promise<void>;
@@ -27,17 +30,20 @@ interface ServersState {
   setSearchQuery: (query: string) => void;
   setGroupFilter: (group: string) => void;
   setTagFilter: (tag: string) => void;
+  setViewMode: (mode: 'list' | 'grouped') => void;
   clearError: () => void;
 }
 
 export const useServersStore = create<ServersState>((set, get) => ({
   servers: [],
+  availableGroups: [],
   isLoading: false,
   error: null,
   statusFilter: 'all',
   searchQuery: '',
   groupFilter: 'all',
   tagFilter: 'all',
+  viewMode: 'list',
 
   fetchServers: async () => {
     set({ isLoading: true, error: null });
@@ -50,6 +56,15 @@ export const useServersStore = create<ServersState>((set, get) => ({
           ? err.message
           : 'Failed to load servers';
       set({ error: message, isLoading: false });
+    }
+  },
+
+  fetchGroups: async () => {
+    try {
+      const data = await apiRequest<{ groups: string[] }>('/servers/groups');
+      set({ availableGroups: data.groups });
+    } catch {
+      // Non-critical — groups dropdown just won't show server-side groups
     }
   },
 
@@ -114,5 +129,6 @@ export const useServersStore = create<ServersState>((set, get) => ({
   setSearchQuery: (query) => set({ searchQuery: query }),
   setGroupFilter: (group) => set({ groupFilter: group }),
   setTagFilter: (tag) => set({ tagFilter: tag }),
+  setViewMode: (mode) => set({ viewMode: mode }),
   clearError: () => set({ error: null }),
 }));

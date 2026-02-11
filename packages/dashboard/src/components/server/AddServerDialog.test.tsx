@@ -174,7 +174,7 @@ describe('AddServerDialog', () => {
       await user.type(screen.getByLabelText('Server Name'), 'my-server');
       await user.click(screen.getByRole('button', { name: /Add Server/i }));
 
-      expect(mockOnAdd).toHaveBeenCalledWith('my-server', undefined);
+      expect(mockOnAdd).toHaveBeenCalledWith('my-server', undefined, undefined);
     });
 
     it('calls onAdd with name and tags', async () => {
@@ -189,7 +189,7 @@ describe('AddServerDialog', () => {
       await user.type(screen.getByLabelText('Tags (optional)'), 'production{Enter}');
       await user.click(screen.getByRole('button', { name: /Add Server/i }));
 
-      expect(mockOnAdd).toHaveBeenCalledWith('my-server', ['production']);
+      expect(mockOnAdd).toHaveBeenCalledWith('my-server', ['production'], undefined);
     });
 
     it('submits on Enter key in name field', async () => {
@@ -202,7 +202,23 @@ describe('AddServerDialog', () => {
 
       await user.type(screen.getByLabelText('Server Name'), 'my-server{Enter}');
 
-      expect(mockOnAdd).toHaveBeenCalledWith('my-server', undefined);
+      expect(mockOnAdd).toHaveBeenCalledWith('my-server', undefined, undefined);
+    });
+
+    it('calls onAdd with name, tags, and group', async () => {
+      const user = userEvent.setup();
+      mockOnAdd.mockResolvedValue({
+        token: 'tok-123',
+        installCommand: 'curl ...',
+      });
+      renderDialog({ availableGroups: ['production', 'staging'] });
+
+      await user.type(screen.getByLabelText('Server Name'), 'my-server');
+      await user.type(screen.getByLabelText('Tags (optional)'), 'web{Enter}');
+      await user.type(screen.getByLabelText('Group (optional)'), 'production');
+      await user.click(screen.getByRole('button', { name: /Add Server/i }));
+
+      expect(mockOnAdd).toHaveBeenCalledWith('my-server', ['web'], 'production');
     });
   });
 

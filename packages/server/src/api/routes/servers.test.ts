@@ -318,6 +318,136 @@ describe('GET /api/v1/servers', () => {
 });
 
 // ============================================================================
+// GET /servers/groups — Distinct groups
+// ============================================================================
+
+describe('GET /api/v1/servers/groups', () => {
+  it('should return empty groups when no servers exist', async () => {
+    const res = await req('/api/v1/servers/groups', tokenA);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.groups).toEqual([]);
+  });
+
+  it('should return distinct groups sorted alphabetically', async () => {
+    const s1 = await createServer('web-01', tokenA);
+    const s2 = await createServer('db-01', tokenA);
+    const s3 = await createServer('cache-01', tokenA);
+    await jsonPatch(`/api/v1/servers/${s1.id}`, { group: 'production' }, tokenA);
+    await jsonPatch(`/api/v1/servers/${s2.id}`, { group: 'staging' }, tokenA);
+    await jsonPatch(`/api/v1/servers/${s3.id}`, { group: 'production' }, tokenA);
+
+    const res = await req('/api/v1/servers/groups', tokenA);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.groups).toEqual(['production', 'staging']);
+  });
+
+  it('should not include null groups', async () => {
+    await createServer('web-01', tokenA); // no group
+    const s2 = await createServer('db-01', tokenA);
+    await jsonPatch(`/api/v1/servers/${s2.id}`, { group: 'prod' }, tokenA);
+
+    const res = await req('/api/v1/servers/groups', tokenA);
+    const body = await res.json();
+    expect(body.groups).toEqual(['prod']);
+  });
+
+  it('should only return groups for the authenticated user', async () => {
+    const s1 = await createServer('web-01', tokenA);
+    const s2 = await createServer('db-01', tokenB);
+    await jsonPatch(`/api/v1/servers/${s1.id}`, { group: 'team-a' }, tokenA);
+    await jsonPatch(`/api/v1/servers/${s2.id}`, { group: 'team-b' }, tokenB);
+
+    const resA = await req('/api/v1/servers/groups', tokenA);
+    const bodyA = await resA.json();
+    expect(bodyA.groups).toEqual(['team-a']);
+
+    const resB = await req('/api/v1/servers/groups', tokenB);
+    const bodyB = await resB.json();
+    expect(bodyB.groups).toEqual(['team-b']);
+  });
+
+  it('should support Chinese group names', async () => {
+    const s1 = await createServer('web-01', tokenA);
+    await jsonPatch(`/api/v1/servers/${s1.id}`, { group: '生产环境' }, tokenA);
+
+    const res = await req('/api/v1/servers/groups', tokenA);
+    const body = await res.json();
+    expect(body.groups).toEqual(['生产环境']);
+  });
+});
+
+// ============================================================================
+// POST /servers — Create with group
+// ============================================================================
+
+describe('POST /api/v1/servers — group support', () => {
+  it('should create server with group', async () => {
+    const res = await jsonPost(
+      '/api/v1/servers',
+      { name: 'web-01', group: 'production' },
+      tokenA,
+    );
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.server.group).toBe('production');
+  });
+
+  it('should create server without group (null)', async () => {
+    const res = await jsonPost(
+      '/api/v1/servers',
+      { name: 'web-02' },
+      tokenA,
+    );
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.server.group).toBeNull();
+  });
+});
+
+// ============================================================================
+// PATCH /servers/:id — Update group
+// ============================================================================
+
+describe('PATCH /api/v1/servers/:id — group update', () => {
+  it('should update server group', async () => {
+    const created = await createServer('web-01', tokenA);
+    const res = await jsonPatch(
+      `/api/v1/servers/${created.id}`,
+      { group: 'production' },
+      tokenA,
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.server.group).toBe('production');
+  });
+
+  it('should clear group by setting to null', async () => {
+    const created = await createServer('web-01', tokenA);
+    await jsonPatch(`/api/v1/servers/${created.id}`, { group: 'prod' }, tokenA);
+    const res = await jsonPatch(
+      `/api/v1/servers/${created.id}`,
+      { group: null },
+      tokenA,
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.server.group).toBeNull();
+  });
+
+  it('should validate group max length', async () => {
+    const created = await createServer('web-01', tokenA);
+    const res = await jsonPatch(
+      `/api/v1/servers/${created.id}`,
+      { group: 'x'.repeat(101) },
+      tokenA,
+    );
+    expect(res.status).toBe(400);
+  });
+});
+
+// ============================================================================
 // GET /servers/:id — Get by ID
 // ============================================================================
 

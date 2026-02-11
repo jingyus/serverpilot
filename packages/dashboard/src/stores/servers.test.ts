@@ -48,12 +48,14 @@ describe('useServersStore', () => {
     vi.clearAllMocks();
     useServersStore.setState({
       servers: [],
+      availableGroups: [],
       isLoading: false,
       error: null,
       statusFilter: 'all',
       searchQuery: '',
       groupFilter: 'all',
       tagFilter: 'all',
+      viewMode: 'list',
     });
   });
 
@@ -262,6 +264,61 @@ describe('useServersStore', () => {
       useServersStore.setState({ error: 'Some error' });
       useServersStore.getState().clearError();
       expect(useServersStore.getState().error).toBeNull();
+    });
+  });
+
+  describe('fetchGroups', () => {
+    it('fetches and stores groups', async () => {
+      mockApiRequest.mockResolvedValueOnce({ groups: ['production', 'staging'] });
+
+      await useServersStore.getState().fetchGroups();
+
+      expect(mockApiRequest).toHaveBeenCalledWith('/servers/groups');
+      expect(useServersStore.getState().availableGroups).toEqual(['production', 'staging']);
+    });
+
+    it('silently handles fetch error', async () => {
+      mockApiRequest.mockRejectedValueOnce(new Error('Network error'));
+
+      await useServersStore.getState().fetchGroups();
+
+      expect(useServersStore.getState().availableGroups).toEqual([]);
+      expect(useServersStore.getState().error).toBeNull();
+    });
+  });
+
+  describe('addServer with group', () => {
+    it('sends group in request body', async () => {
+      const response = {
+        server: mockServers[0],
+        token: 'tok-abc123',
+        installCommand: 'curl ...',
+      };
+      mockApiRequest.mockResolvedValueOnce(response);
+
+      await useServersStore.getState().addServer('web-01', ['prod'], 'production');
+
+      expect(mockApiRequest).toHaveBeenCalledWith('/servers', {
+        method: 'POST',
+        body: JSON.stringify({ name: 'web-01', tags: ['prod'], group: 'production' }),
+      });
+    });
+  });
+
+  describe('viewMode', () => {
+    it('defaults to list view', () => {
+      expect(useServersStore.getState().viewMode).toBe('list');
+    });
+
+    it('sets view mode to grouped', () => {
+      useServersStore.getState().setViewMode('grouped');
+      expect(useServersStore.getState().viewMode).toBe('grouped');
+    });
+
+    it('sets view mode back to list', () => {
+      useServersStore.setState({ viewMode: 'grouped' });
+      useServersStore.getState().setViewMode('list');
+      expect(useServersStore.getState().viewMode).toBe('list');
     });
   });
 });
