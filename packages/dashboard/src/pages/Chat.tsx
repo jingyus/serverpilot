@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
 import { useEffect, useRef, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Bot,
@@ -23,6 +24,7 @@ import { cn } from '@/lib/utils';
 import { formatDate } from '@/utils/format';
 
 export function Chat() {
+  const { t } = useTranslation();
   const { serverId } = useParams<{ serverId: string }>();
   const navigate = useNavigate();
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -116,7 +118,7 @@ export function Chat() {
               onClick={clearError}
               data-testid="dismiss-error"
             >
-              Dismiss
+              {t('common.dismiss')}
             </Button>
           </div>
         </div>
@@ -165,7 +167,7 @@ export function Chat() {
                 {isStreaming && !streamingContent && (
                   <div className="flex items-center gap-2 px-4 py-3 text-sm text-muted-foreground" data-testid="thinking-indicator">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    AI is thinking...
+                    {t('chat.aiThinking')}
                   </div>
                 )}
 
@@ -223,6 +225,8 @@ function ChatHeader({
   sessionId: string | null;
   onNewSession: () => void;
 }) {
+  const { t } = useTranslation();
+
   return (
     <div
       className="flex items-center justify-between border-b px-2 py-2 sm:px-4 sm:py-3"
@@ -233,12 +237,12 @@ function ChatHeader({
           <Bot className="h-4 w-4 sm:h-5 sm:w-5" />
         </div>
         <div className="min-w-0">
-          <h1 className="text-base font-semibold sm:text-lg">AI Assistant</h1>
+          <h1 className="text-base font-semibold sm:text-lg">{t('chat.title')}</h1>
           <p className="truncate text-xs text-muted-foreground">
-            Server: {serverName}
+            {t('chat.server', { name: serverName })}
             {sessionId && (
               <span className="ml-2">
-                Session: {sessionId.slice(0, 8)}...
+                {t('chat.session', { id: `${sessionId.slice(0, 8)}...` })}
               </span>
             )}
           </p>
@@ -252,13 +256,15 @@ function ChatHeader({
         className="shrink-0"
       >
         <MessageSquarePlus className="h-4 w-4 sm:mr-2" />
-        <span className="hidden sm:inline">New Chat</span>
+        <span className="hidden sm:inline">{t('chat.newChat')}</span>
       </Button>
     </div>
   );
 }
 
 function EmptyState({ serverName }: { serverName: string }) {
+  const { t } = useTranslation();
+
   return (
     <div
       className="flex h-full flex-col items-center justify-center gap-3 p-4 sm:gap-4 sm:p-8"
@@ -268,18 +274,17 @@ function EmptyState({ serverName }: { serverName: string }) {
         <Bot className="h-6 w-6 sm:h-8 sm:w-8" />
       </div>
       <div className="text-center">
-        <h2 className="text-base font-semibold sm:text-lg">Start a conversation</h2>
+        <h2 className="text-base font-semibold sm:text-lg">{t('chat.startConversation')}</h2>
         <p className="mt-1 max-w-md text-xs text-muted-foreground sm:text-sm">
-          Ask the AI to help manage <strong>{serverName}</strong>. You can
-          install software, configure services, check logs, and more.
+          {t('chat.startConversationDesc', { name: serverName })}
         </p>
       </div>
       <div className="flex flex-wrap justify-center gap-2">
         {[
-          'Install nginx and configure it',
-          'Check disk usage and clean up',
-          'Show all running services',
-          'Set up a firewall',
+          t('chat.suggestion1'),
+          t('chat.suggestion2'),
+          t('chat.suggestion3'),
+          t('chat.suggestion4'),
         ].map((suggestion) => (
           <Card
             key={suggestion}
@@ -302,18 +307,20 @@ function ServerSelector({
   servers: Array<{ id: string; name: string; status: string }>;
   navigate: (path: string) => void;
 }) {
+  const { t } = useTranslation();
+
   return (
     <div className="space-y-4 sm:space-y-6" data-testid="server-selector">
       <div>
-        <h1 className="text-xl font-bold sm:text-2xl">AI Chat</h1>
+        <h1 className="text-xl font-bold sm:text-2xl">{t('nav.aiChat')}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Select a server to start a conversation with the AI assistant.
+          {t('chat.selectServer')}
         </p>
       </div>
 
       {servers.length === 0 ? (
         <div className="py-12 text-center text-sm text-muted-foreground">
-          No servers available. Add a server first.
+          {t('chat.noServers')}
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -363,6 +370,8 @@ function SessionSidebar({
   onDelete: (id: string) => void;
   isLoading: boolean;
 }) {
+  const { t } = useTranslation();
+
   if (sessions.length === 0 && !isLoading) return null;
 
   return (
@@ -372,7 +381,7 @@ function SessionSidebar({
     >
       <div className="border-b px-3 py-2">
         <h3 className="text-xs font-semibold uppercase text-muted-foreground">
-          Sessions
+          {t('chat.sessions')}
         </h3>
       </div>
 
@@ -395,7 +404,7 @@ function SessionSidebar({
             >
               <div className="min-w-0 flex-1">
                 <p className="truncate text-xs font-medium">
-                  {session.lastMessage ?? 'New session'}
+                  {session.lastMessage ?? t('chat.newSession')}
                 </p>
                 <p className="text-[10px] text-muted-foreground">
                   {formatDate(session.createdAt)} &middot;{' '}

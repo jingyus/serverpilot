@@ -2,6 +2,7 @@
 // Copyright (c) 2024-2026 ServerPilot Contributors
 import { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft,
   Cpu,
@@ -37,28 +38,29 @@ import type { Service, Software, Metrics } from '@/types/server';
 
 const STATUS_CONFIG: Record<
   string,
-  { label: string; variant: 'default' | 'secondary' | 'destructive'; dot: string }
+  { tKey: string; variant: 'default' | 'secondary' | 'destructive'; dot: string }
 > = {
-  online: { label: 'Online', variant: 'default', dot: 'bg-green-500' },
-  offline: { label: 'Offline', variant: 'secondary', dot: 'bg-gray-400' },
-  error: { label: 'Error', variant: 'destructive', dot: 'bg-red-500' },
+  online: { tKey: 'status.online', variant: 'default', dot: 'bg-green-500' },
+  offline: { tKey: 'status.offline', variant: 'secondary', dot: 'bg-gray-400' },
+  error: { tKey: 'status.error', variant: 'destructive', dot: 'bg-red-500' },
 };
 
 const SERVICE_STATUS_CONFIG: Record<
   string,
-  { icon: typeof Play; color: string; label: string }
+  { icon: typeof Play; color: string; tKey: string }
 > = {
-  running: { icon: Play, color: 'text-green-600', label: 'Running' },
-  stopped: { icon: Square, color: 'text-gray-500', label: 'Stopped' },
-  failed: { icon: AlertTriangle, color: 'text-red-600', label: 'Failed' },
+  running: { icon: Play, color: 'text-green-600', tKey: 'status.running' },
+  stopped: { icon: Square, color: 'text-gray-500', tKey: 'status.stopped' },
+  failed: { icon: AlertTriangle, color: 'text-red-600', tKey: 'status.failed' },
 };
 
 function StatusBadge({ status }: { status: string }) {
+  const { t } = useTranslation();
   const config = STATUS_CONFIG[status] ?? STATUS_CONFIG.offline;
   return (
     <Badge variant={config.variant} className="gap-1.5">
       <span className={cn('h-2 w-2 rounded-full', config.dot)} />
-      {config.label}
+      {t(config.tKey)}
     </Badge>
   );
 }
@@ -99,10 +101,12 @@ function MetricCard({
 }
 
 function MetricsSection({ metrics }: { metrics: Metrics | null }) {
+  const { t } = useTranslation();
+
   if (!metrics) {
     return (
       <div className="py-8 text-center text-sm text-muted-foreground" data-testid="no-metrics">
-        No metrics data available. Server may be offline.
+        {t('serverDetail.noMetrics')}
       </div>
     );
   }
@@ -119,14 +123,14 @@ function MetricsSection({ metrics }: { metrics: Metrics | null }) {
     <div className="grid grid-cols-2 gap-2 sm:gap-4 lg:grid-cols-4" data-testid="metrics-grid">
       <MetricCard
         icon={Cpu}
-        label="CPU Usage"
+        label={t('serverDetail.cpuUsage')}
         value={cpuPercent}
         color="bg-blue-100 text-blue-600"
         testId="metric-cpu"
       />
       <MetricCard
         icon={MemoryStick}
-        label="Memory"
+        label={t('serverDetail.memory')}
         value={memPercent}
         subValue={memDetail}
         color="bg-purple-100 text-purple-600"
@@ -134,7 +138,7 @@ function MetricsSection({ metrics }: { metrics: Metrics | null }) {
       />
       <MetricCard
         icon={HardDrive}
-        label="Disk"
+        label={t('serverDetail.disk')}
         value={diskPercent}
         subValue={diskDetail}
         color="bg-amber-100 text-amber-600"
@@ -142,7 +146,7 @@ function MetricsSection({ metrics }: { metrics: Metrics | null }) {
       />
       <MetricCard
         icon={Network}
-        label="Network"
+        label={t('serverDetail.network')}
         value={`${netIn}/s`}
         subValue={`Out: ${netOut}/s`}
         color="bg-green-100 text-green-600"
@@ -153,6 +157,7 @@ function MetricsSection({ metrics }: { metrics: Metrics | null }) {
 }
 
 function ServiceRow({ service }: { service: Service }) {
+  const { t } = useTranslation();
   const config = SERVICE_STATUS_CONFIG[service.status] ?? SERVICE_STATUS_CONFIG.stopped;
   const Icon = config.icon;
 
@@ -186,7 +191,7 @@ function ServiceRow({ service }: { service: Service }) {
           variant={service.status === 'running' ? 'default' : service.status === 'failed' ? 'destructive' : 'secondary'}
           className="text-xs"
         >
-          {config.label}
+          {t(config.tKey)}
         </Badge>
       </div>
     </div>
@@ -194,10 +199,12 @@ function ServiceRow({ service }: { service: Service }) {
 }
 
 function ServicesSection({ services }: { services: Service[] }) {
+  const { t } = useTranslation();
+
   if (services.length === 0) {
     return (
       <div className="py-8 text-center text-sm text-muted-foreground" data-testid="no-services">
-        No services detected.
+        {t('serverDetail.noServices')}
       </div>
     );
   }
@@ -209,9 +216,9 @@ function ServicesSection({ services }: { services: Service[] }) {
   return (
     <div>
       <div className="mb-4 flex gap-4 text-sm" data-testid="services-summary">
-        <span className="text-green-600">{running} running</span>
-        <span className="text-gray-500">{stopped} stopped</span>
-        {failed > 0 && <span className="text-red-600">{failed} failed</span>}
+        <span className="text-green-600">{t('serverDetail.running', { count: running })}</span>
+        <span className="text-gray-500">{t('serverDetail.stopped', { count: stopped })}</span>
+        {failed > 0 && <span className="text-red-600">{t('serverDetail.failed', { count: failed })}</span>}
       </div>
       <div className="divide-y" data-testid="services-list">
         {services.map((service) => (
@@ -250,10 +257,12 @@ function SoftwareRow({ software }: { software: Software }) {
 }
 
 function SoftwareSection({ software }: { software: Software[] }) {
+  const { t } = useTranslation();
+
   if (software.length === 0) {
     return (
       <div className="py-8 text-center text-sm text-muted-foreground" data-testid="no-software">
-        No software inventory available.
+        {t('serverDetail.noSoftware')}
       </div>
     );
   }
@@ -268,6 +277,7 @@ function SoftwareSection({ software }: { software: Software[] }) {
 }
 
 export function ServerDetail() {
+  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const {
@@ -327,7 +337,7 @@ export function ServerDetail() {
         </div>
         <Button variant="outline" onClick={() => navigate('/servers')}>
           <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Servers
+          {t('serverDetail.backToServers')}
         </Button>
       </div>
     );
@@ -374,7 +384,7 @@ export function ServerDetail() {
         )}
         <Button onClick={() => navigate(`/chat/${server.id}`)} className="w-full sm:w-auto">
           <MessageCircle className="mr-2 h-4 w-4" />
-          Chat with AI
+          {t('serverDetail.chatWithAi')}
         </Button>
       </div>
 
@@ -400,7 +410,7 @@ export function ServerDetail() {
           <AlertCircle className="h-4 w-4 shrink-0" />
           <span>{error}</span>
           <Button variant="ghost" size="sm" className="ml-auto" onClick={clearError}>
-            Dismiss
+            {t('common.dismiss')}
           </Button>
         </div>
       )}
@@ -410,7 +420,7 @@ export function ServerDetail() {
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-lg">
             <Activity className="h-5 w-5" />
-            Monitoring
+            {t('serverDetail.monitoring')}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -441,7 +451,7 @@ export function ServerDetail() {
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-lg">
             <Settings className="h-5 w-5" />
-            Services
+            {t('serverDetail.services')}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -460,7 +470,7 @@ export function ServerDetail() {
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-lg">
             <Package className="h-5 w-5" />
-            Software Inventory
+            {t('serverDetail.softwareInventory')}
           </CardTitle>
         </CardHeader>
         <CardContent>

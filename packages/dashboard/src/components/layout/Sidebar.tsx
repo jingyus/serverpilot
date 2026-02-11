@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
 import { NavLink, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   LayoutDashboard,
   Server,
@@ -27,25 +28,26 @@ import { useIsMobile } from '@/hooks/useMediaQuery';
 
 interface NavItem {
   to: string;
-  label: string;
+  labelKey: string;
   icon: LucideIcon;
 }
 
 const navItems: NavItem[] = [
-  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/servers', label: 'Servers', icon: Server },
-  { to: '/chat', label: 'AI Chat', icon: MessageCircle },
-  { to: '/search', label: 'Knowledge', icon: BookOpen },
-  { to: '/tasks', label: 'Tasks', icon: ListChecks },
-  { to: '/operations', label: 'Operations', icon: History },
-  { to: '/alerts', label: 'Alerts', icon: Bell },
-  { to: '/audit-log', label: 'Audit Log', icon: Shield },
-  { to: '/webhooks', label: 'Webhooks', icon: Webhook },
-  { to: '/team', label: 'Team', icon: Users },
-  { to: '/settings', label: 'Settings', icon: Settings },
+  { to: '/dashboard', labelKey: 'nav.dashboard', icon: LayoutDashboard },
+  { to: '/servers', labelKey: 'nav.servers', icon: Server },
+  { to: '/chat', labelKey: 'nav.aiChat', icon: MessageCircle },
+  { to: '/search', labelKey: 'nav.knowledge', icon: BookOpen },
+  { to: '/tasks', labelKey: 'nav.tasks', icon: ListChecks },
+  { to: '/operations', labelKey: 'nav.operations', icon: History },
+  { to: '/alerts', labelKey: 'nav.alerts', icon: Bell },
+  { to: '/audit-log', labelKey: 'nav.auditLog', icon: Shield },
+  { to: '/webhooks', labelKey: 'nav.webhooks', icon: Webhook },
+  { to: '/team', labelKey: 'nav.team', icon: Users },
+  { to: '/settings', labelKey: 'nav.settings', icon: Settings },
 ];
 
 export function Sidebar() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const logout = useAuthStore((s) => s.logout);
   const collapsed = useUiStore((s) => s.sidebarCollapsed);
@@ -78,7 +80,7 @@ export function Sidebar() {
           <button
             type="button"
             onClick={() => setMobileSidebarOpen(false)}
-            aria-label="Close sidebar"
+            aria-label={t('header.closeSidebar')}
             className="ml-auto flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
           >
             <X className="h-4 w-4" />
@@ -87,7 +89,7 @@ export function Sidebar() {
           <button
             type="button"
             onClick={toggleSidebar}
-            aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-label={isCollapsed ? t('header.expandSidebar') : t('header.collapseSidebar')}
             className={cn(
               'flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors',
               isCollapsed ? 'mx-auto' : 'ml-auto',
@@ -108,7 +110,7 @@ export function Sidebar() {
           <NavLink
             key={item.to}
             to={item.to}
-            title={isCollapsed ? item.label : undefined}
+            title={isCollapsed ? t(item.labelKey) : undefined}
             className={({ isActive }) =>
               cn(
                 'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
@@ -120,7 +122,7 @@ export function Sidebar() {
             }
           >
             <item.icon className="h-5 w-5 shrink-0" />
-            {!isCollapsed && <span>{item.label}</span>}
+            {!isCollapsed && <span>{t(item.labelKey)}</span>}
           </NavLink>
         ))}
       </nav>
@@ -130,14 +132,14 @@ export function Sidebar() {
         <button
           type="button"
           onClick={handleLogout}
-          title={isCollapsed ? 'Logout' : undefined}
+          title={isCollapsed ? t('nav.logout') : undefined}
           className={cn(
             'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors',
             isCollapsed && 'justify-center px-2',
           )}
         >
           <LogOut className="h-5 w-5 shrink-0" />
-          {!isCollapsed && <span>Logout</span>}
+          {!isCollapsed && <span>{t('nav.logout')}</span>}
         </button>
       </div>
     </aside>

@@ -2,6 +2,7 @@
 // Copyright (c) 2024-2026 ServerPilot Contributors
 import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   Server,
   Plus,
@@ -31,26 +32,27 @@ import type { Server as ServerType } from '@/types/server';
 
 const STATUS_CONFIG: Record<
   string,
-  { label: string; variant: 'default' | 'secondary' | 'destructive'; dot: string }
+  { tKey: string; variant: 'default' | 'secondary' | 'destructive'; dot: string }
 > = {
-  online: { label: 'Online', variant: 'default', dot: 'bg-green-500' },
-  offline: { label: 'Offline', variant: 'secondary', dot: 'bg-gray-400' },
-  error: { label: 'Error', variant: 'destructive', dot: 'bg-red-500' },
+  online: { tKey: 'status.online', variant: 'default', dot: 'bg-green-500' },
+  offline: { tKey: 'status.offline', variant: 'secondary', dot: 'bg-gray-400' },
+  error: { tKey: 'status.error', variant: 'destructive', dot: 'bg-red-500' },
 };
 
 const STATUS_FILTERS = [
-  { value: 'all', label: 'All' },
-  { value: 'online', label: 'Online' },
-  { value: 'offline', label: 'Offline' },
-  { value: 'error', label: 'Error' },
+  { value: 'all', tKey: 'servers.all' },
+  { value: 'online', tKey: 'status.online' },
+  { value: 'offline', tKey: 'status.offline' },
+  { value: 'error', tKey: 'status.error' },
 ];
 
 function StatusBadge({ status }: { status: string }) {
+  const { t } = useTranslation();
   const config = STATUS_CONFIG[status] ?? STATUS_CONFIG.offline;
   return (
     <Badge variant={config.variant} className="gap-1.5">
       <span className={cn('h-2 w-2 rounded-full', config.dot)} />
-      {config.label}
+      {t(config.tKey)}
     </Badge>
   );
 }
@@ -66,6 +68,7 @@ function ServerCard({
   onDelete: (id: string) => void;
   onDetail: (id: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <Card
       data-testid={`server-card-${server.id}`}
@@ -119,7 +122,7 @@ function ServerCard({
               aria-label={`Chat with ${server.name}`}
             >
               <MessageCircle className="mr-1 h-3.5 w-3.5" />
-              Chat
+              {t('servers.chat')}
             </Button>
             <Button
               variant="outline"
@@ -132,7 +135,7 @@ function ServerCard({
               aria-label={`Delete ${server.name}`}
             >
               <Trash2 className="mr-1 h-3.5 w-3.5" />
-              Delete
+              {t('common.delete')}
             </Button>
           </div>
         </div>
@@ -142,6 +145,7 @@ function ServerCard({
 }
 
 export function Servers() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const {
     servers,
@@ -211,14 +215,14 @@ export function Servers() {
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-bold text-foreground sm:text-2xl">Servers</h1>
+          <h1 className="text-xl font-bold text-foreground sm:text-2xl">{t('servers.title')}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Manage your servers and view their status.
+            {t('servers.description')}
           </p>
         </div>
         <Button onClick={() => setShowAddDialog(true)} className="w-full sm:w-auto">
           <Plus className="mr-2 h-4 w-4" />
-          Add Server
+          {t('servers.addServer')}
         </Button>
       </div>
 
@@ -227,25 +231,25 @@ export function Servers() {
         <Card>
           <CardContent className="p-3 sm:p-4">
             <div className="text-xl font-bold sm:text-2xl">{stats.total}</div>
-            <p className="text-xs text-muted-foreground">Total Servers</p>
+            <p className="text-xs text-muted-foreground">{t('servers.totalServers')}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-3 sm:p-4">
             <div className="text-xl font-bold text-green-600 sm:text-2xl">{stats.online}</div>
-            <p className="text-xs text-muted-foreground">Online</p>
+            <p className="text-xs text-muted-foreground">{t('status.online')}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-3 sm:p-4">
             <div className="text-xl font-bold text-gray-500 sm:text-2xl">{stats.offline}</div>
-            <p className="text-xs text-muted-foreground">Offline</p>
+            <p className="text-xs text-muted-foreground">{t('status.offline')}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-3 sm:p-4">
             <div className="text-xl font-bold text-red-600 sm:text-2xl">{stats.error}</div>
-            <p className="text-xs text-muted-foreground">Error</p>
+            <p className="text-xs text-muted-foreground">{t('status.error')}</p>
           </CardContent>
         </Card>
       </div>
@@ -259,7 +263,7 @@ export function Servers() {
           <AlertCircle className="h-4 w-4 shrink-0" />
           <span>{error}</span>
           <Button variant="ghost" size="sm" className="ml-auto" onClick={clearError}>
-            Dismiss
+            {t('common.dismiss')}
           </Button>
         </div>
       )}
@@ -269,7 +273,7 @@ export function Servers() {
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="Search servers..."
+            placeholder={t('servers.searchPlaceholder')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-9"
@@ -285,7 +289,7 @@ export function Servers() {
               onClick={() => setStatusFilter(f.value)}
               aria-pressed={statusFilter === f.value}
             >
-              {f.label}
+              {t(f.tKey)}
             </Button>
           ))}
         </div>
@@ -300,17 +304,17 @@ export function Servers() {
         <div className="flex flex-col items-center justify-center py-12 text-center" data-testid="empty-state">
           <Server className="h-12 w-12 text-muted-foreground/50" />
           <h3 className="mt-4 text-lg font-medium text-foreground">
-            {servers.length === 0 ? 'No servers yet' : 'No servers match'}
+            {servers.length === 0 ? t('servers.noServers') : t('servers.noMatch')}
           </h3>
           <p className="mt-1 text-sm text-muted-foreground">
             {servers.length === 0
-              ? 'Add your first server to get started.'
-              : 'Try adjusting your search or filter.'}
+              ? t('servers.noServersDesc')
+              : t('servers.noMatchDesc')}
           </p>
           {servers.length === 0 && (
             <Button className="mt-4" onClick={() => setShowAddDialog(true)}>
               <Plus className="mr-2 h-4 w-4" />
-              Add Server
+              {t('servers.addServer')}
             </Button>
           )}
         </div>

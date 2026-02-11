@@ -2,37 +2,44 @@
 // Copyright (c) 2024-2026 ServerPilot Contributors
 import { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Menu, Bell } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth';
 import { useUiStore } from '@/stores/ui';
 import { useAlertsStore } from '@/stores/alerts';
 import { ConnectionStatus } from '@/components/common/ConnectionStatus';
 
-const pageTitles: Record<string, string> = {
-  '/dashboard': 'Dashboard',
-  '/servers': 'Servers',
-  '/chat': 'AI Chat',
-  '/tasks': 'Tasks',
-  '/operations': 'Operations',
-  '/alerts': 'Alerts',
-  '/settings': 'Settings',
+const pageTitleKeys: Record<string, string> = {
+  '/dashboard': 'nav.dashboard',
+  '/servers': 'nav.servers',
+  '/chat': 'nav.aiChat',
+  '/tasks': 'nav.tasks',
+  '/operations': 'nav.operations',
+  '/alerts': 'nav.alerts',
+  '/settings': 'nav.settings',
+  '/search': 'nav.knowledge',
+  '/audit-log': 'nav.auditLog',
+  '/webhooks': 'nav.webhooks',
+  '/team': 'nav.team',
 };
 
-function getPageTitle(pathname: string): string {
-  if (pageTitles[pathname]) return pageTitles[pathname];
-  if (pathname.startsWith('/servers/')) return 'Server Detail';
-  if (pathname.startsWith('/chat/')) return 'AI Chat';
-  return 'ServerPilot';
+function getPageTitleKey(pathname: string): string {
+  if (pageTitleKeys[pathname]) return pageTitleKeys[pathname];
+  if (pathname.startsWith('/servers/')) return 'header.serverDetail';
+  if (pathname.startsWith('/chat/')) return 'nav.aiChat';
+  return '';
 }
 
 export function Header() {
+  const { t } = useTranslation();
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const toggleMobileSidebar = useUiStore((s) => s.toggleMobileSidebar);
   const unresolvedCount = useAlertsStore((s) => s.unresolvedCount);
   const fetchUnresolvedCount = useAlertsStore((s) => s.fetchUnresolvedCount);
-  const title = getPageTitle(pathname);
+  const titleKey = getPageTitleKey(pathname);
+  const title = titleKey ? t(titleKey) : 'ServerPilot';
 
   useEffect(() => {
     fetchUnresolvedCount();
@@ -49,7 +56,7 @@ export function Header() {
         <button
           type="button"
           onClick={toggleMobileSidebar}
-          aria-label="Toggle sidebar"
+          aria-label={t('header.toggleSidebar')}
           className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors lg:hidden"
         >
           <Menu className="h-5 w-5" />
@@ -62,7 +69,7 @@ export function Header() {
 
         <button
           type="button"
-          aria-label="Notifications"
+          aria-label={t('header.notifications')}
           onClick={() => navigate('/alerts')}
           className="relative flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
           data-testid="alert-badge-btn"

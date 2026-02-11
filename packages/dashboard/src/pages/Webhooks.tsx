@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
 import { useEffect, useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Plus,
   Trash2,
@@ -36,6 +37,7 @@ import type { Webhook, WebhookEventType } from '@/types/webhook';
 // ============================================================================
 
 export function Webhooks() {
+  const { t } = useTranslation();
   const {
     webhooks,
     isLoading,
@@ -76,14 +78,14 @@ export function Webhooks() {
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-bold text-foreground sm:text-2xl">Webhooks</h1>
+          <h1 className="text-xl font-bold text-foreground sm:text-2xl">{t('webhooks.title')}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Configure webhook endpoints for event notifications.
+            {t('webhooks.description')}
           </p>
         </div>
         <Button onClick={() => setShowAddDialog(true)} className="w-full sm:w-auto">
           <Plus className="mr-2 h-4 w-4" />
-          Add Webhook
+          {t('webhooks.addWebhook')}
         </Button>
       </div>
 
@@ -93,7 +95,7 @@ export function Webhooks() {
           <AlertCircle className="h-4 w-4 shrink-0" />
           <span>{error}</span>
           <Button variant="ghost" size="sm" className="ml-auto" onClick={clearError}>
-            Dismiss
+            {t('common.dismiss')}
           </Button>
         </div>
       )}
@@ -106,13 +108,13 @@ export function Webhooks() {
       ) : webhooks.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-12 text-center">
           <Link className="h-12 w-12 text-muted-foreground/50" />
-          <h3 className="mt-4 text-lg font-medium text-foreground">No webhooks configured</h3>
+          <h3 className="mt-4 text-lg font-medium text-foreground">{t('webhooks.noWebhooks')}</h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            Add a webhook to receive notifications for server events.
+            {t('webhooks.noWebhooksDesc')}
           </p>
           <Button className="mt-4" onClick={() => setShowAddDialog(true)}>
             <Plus className="mr-2 h-4 w-4" />
-            Add Your First Webhook
+            {t('webhooks.addFirstWebhook')}
           </Button>
         </div>
       ) : (
@@ -186,6 +188,7 @@ function WebhookCard({
   onToggle: () => void;
   onTest: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <Card>
       <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
@@ -193,7 +196,7 @@ function WebhookCard({
           <div className="flex items-center gap-2">
             <h3 className="font-medium text-foreground">{webhook.name}</h3>
             <Badge variant={webhook.enabled ? 'default' : 'secondary'} className="text-xs">
-              {webhook.enabled ? 'Active' : 'Disabled'}
+              {webhook.enabled ? t('status.active') : t('status.disabled')}
             </Badge>
           </div>
           <p className="text-xs text-muted-foreground break-all">{webhook.url}</p>
@@ -240,6 +243,7 @@ function WebhookFormDialog({
   webhook?: Webhook;
   onSubmit: (name: string, url: string, events: WebhookEventType[]) => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const [name, setName] = useState(webhook?.name ?? '');
   const [url, setUrl] = useState(webhook?.url ?? '');
   const [events, setEvents] = useState<WebhookEventType[]>(webhook?.events ?? []);
@@ -267,36 +271,36 @@ function WebhookFormDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{isEdit ? 'Edit Webhook' : 'Add Webhook'}</DialogTitle>
+          <DialogTitle>{isEdit ? t('webhooks.editWebhook') : t('webhooks.addWebhook')}</DialogTitle>
           <DialogDescription>
-            {isEdit ? 'Update webhook configuration.' : 'Configure a new webhook endpoint for event notifications.'}
+            {isEdit ? t('webhooks.editWebhookDesc') : t('webhooks.addWebhookDesc')}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="webhook-name">Name</Label>
+            <Label htmlFor="webhook-name">{t('webhooks.webhookName')}</Label>
             <Input
               id="webhook-name"
-              placeholder="My Webhook"
+              placeholder={t('webhooks.webhookNamePlaceholder')}
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="webhook-url">URL</Label>
+            <Label htmlFor="webhook-url">{t('webhooks.url')}</Label>
             <Input
               id="webhook-url"
               type="url"
-              placeholder="https://example.com/webhook"
+              placeholder={t('webhooks.urlPlaceholder')}
               value={url}
               onChange={(e) => setUrl(e.target.value)}
             />
           </div>
 
           <div className="space-y-2">
-            <Label>Events</Label>
+            <Label>{t('webhooks.events')}</Label>
             <div className="flex flex-wrap gap-2">
               {WEBHOOK_EVENT_TYPES.map((evt) => (
                 <Button
@@ -320,11 +324,11 @@ function WebhookFormDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button onClick={handleSubmit} disabled={isSubmitting || !name.trim() || !url.trim() || events.length === 0}>
             {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {isEdit ? 'Save Changes' : 'Create Webhook'}
+            {isEdit ? t('webhooks.saveChanges') : t('webhooks.createWebhook')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -347,18 +351,19 @@ function DeleteDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onCancel()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Delete Webhook</DialogTitle>
+          <DialogTitle>{t('webhooks.deleteWebhook')}</DialogTitle>
           <DialogDescription>
-            Are you sure you want to delete &quot;{name}&quot;? This action cannot be undone.
+            {t('webhooks.deleteWebhookConfirm', { name })}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <Button variant="outline" onClick={onCancel}>Cancel</Button>
-          <Button variant="destructive" onClick={onConfirm}>Delete</Button>
+          <Button variant="outline" onClick={onCancel}>{t('common.cancel')}</Button>
+          <Button variant="destructive" onClick={onConfirm}>{t('common.delete')}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -380,6 +385,7 @@ function TestDialog({
   onClose: () => void;
   onTest: (id: string, eventType: WebhookEventType) => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const [selectedEvent, setSelectedEvent] = useState<WebhookEventType>('task.completed');
   const [isSending, setIsSending] = useState(false);
   const [sent, setSent] = useState(false);
@@ -400,14 +406,14 @@ function TestDialog({
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Send Test Event</DialogTitle>
+          <DialogTitle>{t('webhooks.sendTestEvent')}</DialogTitle>
           <DialogDescription>
-            Send a test webhook event to &quot;{webhook?.name}&quot;.
+            {t('webhooks.sendTestDesc', { name: webhook?.name })}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3">
-          <Label>Event Type</Label>
+          <Label>{t('webhooks.eventType')}</Label>
           <div className="flex flex-wrap gap-2">
             {WEBHOOK_EVENT_TYPES.map((evt) => (
               <Button
@@ -423,7 +429,7 @@ function TestDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button variant="outline" onClick={onClose}>{t('common.cancel')}</Button>
           <Button onClick={handleSend} disabled={isSending || sent}>
             {isSending ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -432,7 +438,7 @@ function TestDialog({
             ) : (
               <Send className="mr-2 h-4 w-4" />
             )}
-            {sent ? 'Sent!' : 'Send Test'}
+            {sent ? t('webhooks.sent') : t('webhooks.sendTest')}
           </Button>
         </DialogFooter>
       </DialogContent>

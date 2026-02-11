@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
 import { useEffect, useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Plus,
   Loader2,
@@ -27,7 +28,6 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { useTeamStore } from '@/stores/team';
-import { ROLE_LABELS } from '@/types/team';
 import type { TeamMember, Invitation } from '@/types/team';
 
 // ============================================================================
@@ -35,6 +35,7 @@ import type { TeamMember, Invitation } from '@/types/team';
 // ============================================================================
 
 export function Team() {
+  const { t } = useTranslation();
   const {
     members,
     invitations,
@@ -86,14 +87,14 @@ export function Team() {
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-bold text-foreground sm:text-2xl">Team</h1>
+          <h1 className="text-xl font-bold text-foreground sm:text-2xl">{t('team.title')}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Manage team members and send invitations.
+            {t('team.description')}
           </p>
         </div>
         <Button onClick={() => setShowInviteDialog(true)} className="w-full sm:w-auto">
           <Plus className="mr-2 h-4 w-4" />
-          Invite Member
+          {t('team.inviteMember')}
         </Button>
       </div>
 
@@ -103,7 +104,7 @@ export function Team() {
           <AlertCircle className="h-4 w-4 shrink-0" />
           <span>{error}</span>
           <Button variant="ghost" size="sm" className="ml-auto" onClick={clearError}>
-            Dismiss
+            {t('common.dismiss')}
           </Button>
         </div>
       )}
@@ -118,12 +119,12 @@ export function Team() {
           {/* Members Section */}
           <div>
             <h2 className="mb-3 text-lg font-semibold text-foreground">
-              Members ({members.length})
+              {t('team.membersCount', { count: members.length })}
             </h2>
             {members.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 text-center">
                 <Users className="h-12 w-12 text-muted-foreground/50" />
-                <p className="mt-2 text-sm text-muted-foreground">No members yet.</p>
+                <p className="mt-2 text-sm text-muted-foreground">{t('team.noMembers')}</p>
               </div>
             ) : (
               <div className="space-y-2">
@@ -143,7 +144,7 @@ export function Team() {
           {pendingInvitations.length > 0 && (
             <div>
               <h2 className="mb-3 text-lg font-semibold text-foreground">
-                Pending Invitations ({pendingInvitations.length})
+                {t('team.pendingInvitations', { count: pendingInvitations.length })}
               </h2>
               <div className="space-y-2">
                 {pendingInvitations.map((inv) => (
@@ -209,6 +210,7 @@ function MemberCard({
   onChangeRole: () => void;
   onRemove: () => void;
 }) {
+  const { t } = useTranslation();
   const isOwner = member.role === 'owner';
 
   return (
@@ -224,7 +226,7 @@ function MemberCard({
               className="text-xs"
             >
               <RoleIcon role={member.role} />
-              <span className="ml-1">{ROLE_LABELS[member.role]}</span>
+              <span className="ml-1">{t(`role.${member.role}`)}</span>
             </Badge>
           </div>
           <p className="text-xs text-muted-foreground">{member.email}</p>
@@ -232,14 +234,14 @@ function MemberCard({
 
         {!isOwner && (
           <div className="flex items-center gap-1 shrink-0">
-            <Button variant="ghost" size="sm" onClick={onChangeRole} title="Change role">
+            <Button variant="ghost" size="sm" onClick={onChangeRole} title={t('team.changeRole')}>
               <Shield className="h-4 w-4" />
             </Button>
             <Button
               variant="ghost"
               size="sm"
               onClick={onRemove}
-              title="Remove member"
+              title={t('team.removeMember')}
               className="text-destructive hover:text-destructive"
             >
               <Trash2 className="h-4 w-4" />
@@ -262,6 +264,7 @@ function InvitationCard({
   invitation: Invitation;
   onCancel: () => void;
 }) {
+  const { t } = useTranslation();
   const expiresAt = new Date(invitation.expiresAt);
   const daysLeft = Math.max(0, Math.ceil((expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
 
@@ -273,11 +276,11 @@ function InvitationCard({
             <Mail className="h-4 w-4 text-muted-foreground" />
             <span className="font-medium text-foreground">{invitation.email}</span>
             <Badge variant="outline" className="text-xs">
-              {ROLE_LABELS[invitation.role]}
+              {t(`role.${invitation.role}`)}
             </Badge>
           </div>
           <p className="text-xs text-muted-foreground">
-            Expires in {daysLeft} day{daysLeft !== 1 ? 's' : ''}
+            {t('team.expiresInDays', { count: daysLeft })}
           </p>
         </div>
         <Button
@@ -288,7 +291,7 @@ function InvitationCard({
           title="Cancel invitation"
         >
           <XCircle className="mr-1.5 h-4 w-4" />
-          Cancel
+          {t('common.cancel')}
         </Button>
       </CardContent>
     </Card>
@@ -308,6 +311,7 @@ function InviteDialog({
   onOpenChange: (open: boolean) => void;
   onSubmit: (email: string, role: 'admin' | 'member') => Promise<void>;
 }) {
+  const { t } = useTranslation();
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<'admin' | 'member'>('member');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -328,27 +332,26 @@ function InviteDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Invite Team Member</DialogTitle>
+          <DialogTitle>{t('team.inviteTeamMember')}</DialogTitle>
           <DialogDescription>
-            Send an invitation link to add a new member to your team.
-            The invitation is valid for 7 days.
+            {t('team.inviteDesc')}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="invite-email">Email</Label>
+            <Label htmlFor="invite-email">{t('login.email')}</Label>
             <Input
               id="invite-email"
               type="email"
-              placeholder="colleague@example.com"
+              placeholder={t('team.emailPlaceholder')}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
             />
           </div>
 
           <div className="space-y-2">
-            <Label>Role</Label>
+            <Label>{t('team.role')}</Label>
             <div className="flex gap-2">
               <Button
                 variant={role === 'member' ? 'default' : 'outline'}
@@ -357,7 +360,7 @@ function InviteDialog({
                 type="button"
               >
                 <User className="mr-1.5 h-3.5 w-3.5" />
-                Member
+                {t('role.member')}
               </Button>
               <Button
                 variant={role === 'admin' ? 'default' : 'outline'}
@@ -366,7 +369,7 @@ function InviteDialog({
                 type="button"
               >
                 <Shield className="mr-1.5 h-3.5 w-3.5" />
-                Admin
+                {t('role.admin')}
               </Button>
             </div>
           </div>
@@ -374,11 +377,11 @@ function InviteDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button onClick={handleSubmit} disabled={isSubmitting || !email.trim()}>
             {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Send Invitation
+            {t('team.sendInvitation')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -401,19 +404,19 @@ function RemoveDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onCancel()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Remove Member</DialogTitle>
+          <DialogTitle>{t('team.removeMemberTitle')}</DialogTitle>
           <DialogDescription>
-            Are you sure you want to remove &quot;{name}&quot; from the team?
-            They will lose access to all team resources.
+            {t('team.removeMemberConfirm', { name })}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <Button variant="outline" onClick={onCancel}>Cancel</Button>
-          <Button variant="destructive" onClick={onConfirm}>Remove</Button>
+          <Button variant="outline" onClick={onCancel}>{t('common.cancel')}</Button>
+          <Button variant="destructive" onClick={onConfirm}>{t('team.remove')}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -435,22 +438,25 @@ function RoleDialog({
   onConfirm: (member: TeamMember, role: 'admin' | 'member') => void;
   onCancel: () => void;
 }) {
+  const { t } = useTranslation();
   const newRole = member.role === 'admin' ? 'member' : 'admin';
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onCancel()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Change Role</DialogTitle>
+          <DialogTitle>{t('team.changeRoleTitle')}</DialogTitle>
           <DialogDescription>
-            Change {member.name ?? member.email}&apos;s role from{' '}
-            <strong>{ROLE_LABELS[member.role]}</strong> to{' '}
-            <strong>{ROLE_LABELS[newRole]}</strong>?
+            {t('team.changeRoleConfirm', {
+              name: member.name ?? member.email,
+              from: t(`role.${member.role}`),
+              to: t(`role.${newRole}`),
+            })}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <Button variant="outline" onClick={onCancel}>Cancel</Button>
-          <Button onClick={() => onConfirm(member, newRole)}>Confirm</Button>
+          <Button variant="outline" onClick={onCancel}>{t('common.cancel')}</Button>
+          <Button onClick={() => onConfirm(member, newRole)}>{t('common.confirm')}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

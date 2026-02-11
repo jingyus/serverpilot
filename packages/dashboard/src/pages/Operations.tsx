@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
 import { useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Activity,
   CheckCircle2,
@@ -38,59 +39,62 @@ import type { Operation, OperationStatus, OperationType, RiskLevel } from '@/typ
 
 const OPERATION_STATUS_CONFIG: Record<
   OperationStatus,
-  { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon: typeof CheckCircle2 }
+  { labelKey: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon: typeof CheckCircle2 }
 > = {
-  success: { label: 'Success', variant: 'default', icon: CheckCircle2 },
-  failed: { label: 'Failed', variant: 'destructive', icon: XCircle },
-  running: { label: 'Running', variant: 'secondary', icon: Loader2 },
-  pending: { label: 'Pending', variant: 'outline', icon: Clock },
-  rolled_back: { label: 'Rolled Back', variant: 'outline', icon: RotateCcw },
+  success: { labelKey: 'status.success', variant: 'default', icon: CheckCircle2 },
+  failed: { labelKey: 'status.failed', variant: 'destructive', icon: XCircle },
+  running: { labelKey: 'status.running', variant: 'secondary', icon: Loader2 },
+  pending: { labelKey: 'status.pending', variant: 'outline', icon: Clock },
+  rolled_back: { labelKey: 'status.rolledBack', variant: 'outline', icon: RotateCcw },
 };
 
 const RISK_LEVEL_CONFIG: Record<
   RiskLevel,
-  { label: string; className: string }
+  { labelKey: string; className: string }
 > = {
-  green: { label: 'Safe', className: 'bg-green-100 text-green-700 border-green-200' },
-  yellow: { label: 'Medium', className: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
-  red: { label: 'High', className: 'bg-orange-100 text-orange-700 border-orange-200' },
-  critical: { label: 'Dangerous', className: 'bg-red-100 text-red-700 border-red-200' },
+  green: { labelKey: 'risk.safe', className: 'bg-green-100 text-green-700 border-green-200' },
+  yellow: { labelKey: 'risk.medium', className: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
+  red: { labelKey: 'risk.high', className: 'bg-orange-100 text-orange-700 border-orange-200' },
+  critical: { labelKey: 'risk.dangerous', className: 'bg-red-100 text-red-700 border-red-200' },
 };
 
-const OPERATION_TYPE_LABELS: Record<OperationType, string> = {
-  install: 'Install',
-  config: 'Config',
-  restart: 'Restart',
-  execute: 'Execute',
-  backup: 'Backup',
+const OPERATION_TYPE_CONFIG: Record<OperationType, { labelKey: string }> = {
+  install: { labelKey: 'operations.opType.install' },
+  config: { labelKey: 'operations.opType.config' },
+  restart: { labelKey: 'operations.opType.restart' },
+  execute: { labelKey: 'operations.opType.execute' },
+  backup: { labelKey: 'operations.opType.backup' },
 };
 
 // ── Sub-components ──
 
 function StatusBadge({ status }: { status: OperationStatus }) {
+  const { t } = useTranslation();
   const config = OPERATION_STATUS_CONFIG[status] ?? OPERATION_STATUS_CONFIG.pending;
   const Icon = config.icon;
   return (
     <Badge variant={config.variant} className="gap-1" data-testid={`status-badge-${status}`}>
       <Icon className={cn('h-3 w-3', status === 'running' && 'animate-spin')} />
-      {config.label}
+      {t(config.labelKey)}
     </Badge>
   );
 }
 
 function RiskBadge({ level }: { level: RiskLevel }) {
+  const { t } = useTranslation();
   const config = RISK_LEVEL_CONFIG[level] ?? RISK_LEVEL_CONFIG.green;
   return (
     <span
       className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium', config.className)}
       data-testid={`risk-badge-${level}`}
     >
-      {config.label}
+      {t(config.labelKey)}
     </span>
   );
 }
 
 function StatsCards() {
+  const { t } = useTranslation();
   const { stats, isLoadingStats } = useOperationsStore();
 
   if (isLoadingStats) {
@@ -122,7 +126,7 @@ function StatsCards() {
             </div>
             <div>
               <div className="text-xl font-bold sm:text-2xl">{stats.total}</div>
-              <p className="text-xs text-muted-foreground">Total Operations</p>
+              <p className="text-xs text-muted-foreground">{t('operations.totalOperations')}</p>
             </div>
           </div>
         </CardContent>
@@ -137,7 +141,7 @@ function StatsCards() {
               <div className="text-xl font-bold text-green-600 sm:text-2xl">
                 {stats.successRate.toFixed(1)}%
               </div>
-              <p className="text-xs text-muted-foreground">Success Rate</p>
+              <p className="text-xs text-muted-foreground">{t('operations.successRate')}</p>
             </div>
           </div>
         </CardContent>
@@ -152,7 +156,7 @@ function StatsCards() {
               <div className="text-xl font-bold text-blue-600 sm:text-2xl">
                 {stats.avgDuration != null ? formatDuration(stats.avgDuration) : '-'}
               </div>
-              <p className="text-xs text-muted-foreground">Avg Duration</p>
+              <p className="text-xs text-muted-foreground">{t('operations.avgDuration')}</p>
             </div>
           </div>
         </CardContent>
@@ -173,7 +177,7 @@ function StatsCards() {
                 <span className="text-muted-foreground">/</span>
                 <span className="text-red-600">{stats.byRiskLevel.critical ?? 0}</span>
               </div>
-              <p className="text-xs text-muted-foreground">Risk Distribution</p>
+              <p className="text-xs text-muted-foreground">{t('operations.riskDistribution')}</p>
             </div>
           </div>
         </CardContent>
@@ -183,6 +187,7 @@ function StatsCards() {
 }
 
 function FilterBar() {
+  const { t } = useTranslation();
   const { filters, setFilters, resetFilters } = useOperationsStore();
 
   const hasActiveFilters = Object.values(filters).some((v) => v !== '');
@@ -200,9 +205,9 @@ function FilterBar() {
             aria-label="Filter by type"
             data-testid="filter-type"
           >
-            <option value="">All Types</option>
-            {(['install', 'config', 'restart', 'execute', 'backup'] as const).map((t) => (
-              <option key={t} value={t}>{OPERATION_TYPE_LABELS[t]}</option>
+            <option value="">{t('operations.allTypes')}</option>
+            {(['install', 'config', 'restart', 'execute', 'backup'] as const).map((tp) => (
+              <option key={tp} value={tp}>{t(OPERATION_TYPE_CONFIG[tp].labelKey)}</option>
             ))}
           </select>
 
@@ -213,9 +218,9 @@ function FilterBar() {
             aria-label="Filter by status"
             data-testid="filter-status"
           >
-            <option value="">All Status</option>
+            <option value="">{t('operations.allStatus')}</option>
             {(['pending', 'running', 'success', 'failed', 'rolled_back'] as const).map((s) => (
-              <option key={s} value={s}>{OPERATION_STATUS_CONFIG[s].label}</option>
+              <option key={s} value={s}>{t(OPERATION_STATUS_CONFIG[s].labelKey)}</option>
             ))}
           </select>
 
@@ -226,9 +231,9 @@ function FilterBar() {
             aria-label="Filter by risk level"
             data-testid="filter-risk"
           >
-            <option value="">All Risk</option>
+            <option value="">{t('operations.allRisk')}</option>
             {(['green', 'yellow', 'red', 'critical'] as const).map((r) => (
-              <option key={r} value={r}>{RISK_LEVEL_CONFIG[r].label}</option>
+              <option key={r} value={r}>{t(RISK_LEVEL_CONFIG[r].labelKey)}</option>
             ))}
           </select>
 
@@ -258,7 +263,7 @@ function FilterBar() {
               data-testid="reset-filters"
             >
               <X className="h-3 w-3" />
-              Reset
+              {t('common.reset')}
             </Button>
           )}
         </div>
@@ -274,6 +279,7 @@ function OperationCard({
   operation: Operation;
   onSelect: (op: Operation) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <Card
       className="cursor-pointer transition-colors hover:bg-muted/50"
@@ -289,7 +295,7 @@ function OperationCard({
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-muted-foreground">{operation.serverName ?? operation.serverId}</span>
             <Badge variant="outline" className="text-xs">
-              {OPERATION_TYPE_LABELS[operation.type] ?? operation.type}
+              {t(OPERATION_TYPE_CONFIG[operation.type]?.labelKey ?? operation.type)}
             </Badge>
             <RiskBadge level={operation.riskLevel} />
           </div>
@@ -310,6 +316,7 @@ function OperationRow({
   operation: Operation;
   onSelect: (op: Operation) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <tr
       className="cursor-pointer border-b border-border/50 transition-colors hover:bg-muted/50"
@@ -324,7 +331,7 @@ function OperationRow({
       </td>
       <td className="hidden px-3 py-3 text-sm sm:table-cell sm:px-4">
         <Badge variant="outline" className="text-xs">
-          {OPERATION_TYPE_LABELS[operation.type] ?? operation.type}
+          {t(OPERATION_TYPE_CONFIG[operation.type]?.labelKey ?? operation.type)}
         </Badge>
       </td>
       <td className="hidden px-3 py-3 text-sm md:table-cell md:px-4">
@@ -344,6 +351,7 @@ function OperationRow({
 }
 
 function OperationsTable() {
+  const { t } = useTranslation();
   const { operations, isLoading, error, setSelectedOperation } = useOperationsStore();
 
   if (isLoading) {
@@ -371,9 +379,9 @@ function OperationsTable() {
     return (
       <div className="py-12 text-center" data-testid="table-empty">
         <Activity className="mx-auto h-8 w-8 text-muted-foreground/50" />
-        <p className="mt-2 text-sm text-muted-foreground">No operations found</p>
+        <p className="mt-2 text-sm text-muted-foreground">{t('operations.noOperations')}</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          Try adjusting your filters or check back later.
+          {t('operations.noOperationsDesc')}
         </p>
       </div>
     );
@@ -393,13 +401,13 @@ function OperationsTable() {
         <table className="w-full text-left">
           <thead>
             <tr className="border-b border-border text-xs font-medium uppercase text-muted-foreground">
-              <th className="px-3 py-2 sm:px-4">Time</th>
-              <th className="px-3 py-2 sm:px-4">Server</th>
-              <th className="hidden px-3 py-2 sm:table-cell sm:px-4">Type</th>
-              <th className="hidden px-3 py-2 md:table-cell md:px-4">Description</th>
-              <th className="px-3 py-2 sm:px-4">Risk</th>
-              <th className="px-3 py-2 sm:px-4">Status</th>
-              <th className="hidden px-3 py-2 lg:table-cell lg:px-4">Duration</th>
+              <th className="px-3 py-2 sm:px-4">{t('operations.tableHeaders.time')}</th>
+              <th className="px-3 py-2 sm:px-4">{t('operations.tableHeaders.server')}</th>
+              <th className="hidden px-3 py-2 sm:table-cell sm:px-4">{t('operations.tableHeaders.type')}</th>
+              <th className="hidden px-3 py-2 md:table-cell md:px-4">{t('operations.tableHeaders.description')}</th>
+              <th className="px-3 py-2 sm:px-4">{t('operations.tableHeaders.risk')}</th>
+              <th className="px-3 py-2 sm:px-4">{t('operations.tableHeaders.status')}</th>
+              <th className="hidden px-3 py-2 lg:table-cell lg:px-4">{t('operations.tableHeaders.duration')}</th>
             </tr>
           </thead>
           <tbody>
@@ -414,6 +422,7 @@ function OperationsTable() {
 }
 
 function Pagination() {
+  const { t } = useTranslation();
   const { page, total, setPage } = useOperationsStore();
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -432,7 +441,7 @@ function Pagination() {
       data-testid="pagination"
     >
       <span className="text-xs text-muted-foreground">
-        Showing {(page - 1) * PAGE_SIZE + 1}-{Math.min(page * PAGE_SIZE, total)} of {total}
+        {t('common.showingRange', { start: (page - 1) * PAGE_SIZE + 1, end: Math.min(page * PAGE_SIZE, total), total })}
       </span>
       <div className="flex items-center gap-1">
         <Button
@@ -466,6 +475,7 @@ function Pagination() {
 }
 
 function OperationDetailDialog() {
+  const { t } = useTranslation();
   const { selectedOperation, setSelectedOperation } = useOperationsStore();
   const op = selectedOperation;
 
@@ -480,7 +490,7 @@ function OperationDetailDialog() {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Terminal className="h-5 w-5" />
-                Operation Detail
+                {t('operations.operationDetail')}
               </DialogTitle>
               <DialogDescription>{op.description}</DialogDescription>
             </DialogHeader>
@@ -489,31 +499,31 @@ function OperationDetailDialog() {
               {/* Meta */}
               <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
                 <div>
-                  <span className="text-xs text-muted-foreground">Server</span>
+                  <span className="text-xs text-muted-foreground">{t('operations.server')}</span>
                   <p className="font-medium">{op.serverName ?? op.serverId}</p>
                 </div>
                 <div>
-                  <span className="text-xs text-muted-foreground">Type</span>
-                  <p className="font-medium">{OPERATION_TYPE_LABELS[op.type] ?? op.type}</p>
+                  <span className="text-xs text-muted-foreground">{t('operations.type')}</span>
+                  <p className="font-medium">{t(OPERATION_TYPE_CONFIG[op.type]?.labelKey ?? op.type)}</p>
                 </div>
                 <div>
-                  <span className="text-xs text-muted-foreground">Status</span>
+                  <span className="text-xs text-muted-foreground">{t('operations.tableHeaders.status')}</span>
                   <div className="mt-0.5">
                     <StatusBadge status={op.status} />
                   </div>
                 </div>
                 <div>
-                  <span className="text-xs text-muted-foreground">Risk Level</span>
+                  <span className="text-xs text-muted-foreground">{t('operations.riskLevel')}</span>
                   <div className="mt-0.5">
                     <RiskBadge level={op.riskLevel} />
                   </div>
                 </div>
                 <div>
-                  <span className="text-xs text-muted-foreground">Created</span>
+                  <span className="text-xs text-muted-foreground">{t('operations.created')}</span>
                   <p className="font-medium">{formatDate(op.createdAt)}</p>
                 </div>
                 <div>
-                  <span className="text-xs text-muted-foreground">Duration</span>
+                  <span className="text-xs text-muted-foreground">{t('operations.duration')}</span>
                   <p className="font-medium">
                     {op.duration != null ? formatDuration(op.duration) : '-'}
                   </p>
@@ -523,7 +533,7 @@ function OperationDetailDialog() {
               {/* Commands */}
               {op.commands && op.commands.length > 0 && (
                 <div>
-                  <h4 className="mb-1 text-xs font-medium text-muted-foreground">Commands</h4>
+                  <h4 className="mb-1 text-xs font-medium text-muted-foreground">{t('operations.commands')}</h4>
                   <pre
                     className="overflow-x-auto rounded-md bg-muted p-3 text-xs"
                     data-testid="detail-commands"
@@ -536,7 +546,7 @@ function OperationDetailDialog() {
               {/* Output */}
               {op.output && (
                 <div>
-                  <h4 className="mb-1 text-xs font-medium text-muted-foreground">Output</h4>
+                  <h4 className="mb-1 text-xs font-medium text-muted-foreground">{t('operations.output')}</h4>
                   <pre
                     className="max-h-60 overflow-auto rounded-md bg-muted p-3 text-xs"
                     data-testid="detail-output"
@@ -556,6 +566,7 @@ function OperationDetailDialog() {
 // ── Main Page ──
 
 export function Operations() {
+  const { t } = useTranslation();
   const { fetchOperations, fetchStats, page, filters } = useOperationsStore();
 
   useEffect(() => {
@@ -577,9 +588,9 @@ export function Operations() {
     <div className="space-y-4 sm:space-y-6" data-testid="operations-page">
       {/* Header */}
       <div>
-        <h1 className="text-xl font-bold text-foreground sm:text-2xl">Operations</h1>
+        <h1 className="text-xl font-bold text-foreground sm:text-2xl">{t('operations.title')}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Operation history and audit logs.
+          {t('operations.description')}
         </p>
       </div>
 

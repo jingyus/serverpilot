@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Bell,
   Plus,
@@ -27,10 +28,10 @@ import type { AlertRule, AlertSeverity, MetricType, ComparisonOperator } from '@
 
 // ── Config ──
 
-const SEVERITY_CONFIG: Record<AlertSeverity, { label: string; className: string }> = {
-  info: { label: 'Info', className: 'bg-blue-100 text-blue-700 border-blue-200' },
-  warning: { label: 'Warning', className: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
-  critical: { label: 'Critical', className: 'bg-red-100 text-red-700 border-red-200' },
+const SEVERITY_CONFIG: Record<AlertSeverity, { labelKey: string; className: string }> = {
+  info: { labelKey: 'severity.info', className: 'bg-blue-100 text-blue-700 border-blue-200' },
+  warning: { labelKey: 'severity.warning', className: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
+  critical: { labelKey: 'severity.critical', className: 'bg-red-100 text-red-700 border-red-200' },
 };
 
 const METRIC_LABELS: Record<MetricType, string> = {
@@ -49,18 +50,20 @@ const OPERATOR_LABELS: Record<ComparisonOperator, string> = {
 // ── Sub-components ──
 
 function SeverityBadge({ severity }: { severity: AlertSeverity }) {
+  const { t } = useTranslation();
   const config = SEVERITY_CONFIG[severity];
   return (
     <span
       className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium', config.className)}
       data-testid={`severity-${severity}`}
     >
-      {config.label}
+      {t(config.labelKey)}
     </span>
   );
 }
 
 function StatsCards() {
+  const { t } = useTranslation();
   const { rules, unresolvedCount } = useAlertsStore();
   const enabledCount = rules.filter((r) => r.enabled).length;
 
@@ -74,7 +77,7 @@ function StatsCards() {
             </div>
             <div>
               <div className="text-xl font-bold sm:text-2xl">{rules.length}</div>
-              <p className="text-xs text-muted-foreground">Total Rules</p>
+              <p className="text-xs text-muted-foreground">{t('alerts.totalRules')}</p>
             </div>
           </div>
         </CardContent>
@@ -87,7 +90,7 @@ function StatsCards() {
             </div>
             <div>
               <div className="text-xl font-bold text-green-600 sm:text-2xl">{enabledCount}</div>
-              <p className="text-xs text-muted-foreground">Active Rules</p>
+              <p className="text-xs text-muted-foreground">{t('alerts.activeRules')}</p>
             </div>
           </div>
         </CardContent>
@@ -100,7 +103,7 @@ function StatsCards() {
             </div>
             <div>
               <div className="text-xl font-bold text-red-600 sm:text-2xl">{unresolvedCount}</div>
-              <p className="text-xs text-muted-foreground">Unresolved Alerts</p>
+              <p className="text-xs text-muted-foreground">{t('alerts.unresolvedAlerts')}</p>
             </div>
           </div>
         </CardContent>
@@ -110,6 +113,7 @@ function StatsCards() {
 }
 
 function TabBar() {
+  const { t } = useTranslation();
   const { activeTab, setActiveTab } = useAlertsStore();
   return (
     <div className="flex gap-1 rounded-lg bg-muted p-1" data-testid="tab-bar">
@@ -121,7 +125,7 @@ function TabBar() {
           activeTab === 'rules' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
         )}
       >
-        Alert Rules
+        {t('alerts.alertRules')}
       </button>
       <button
         type="button"
@@ -131,7 +135,7 @@ function TabBar() {
           activeTab === 'history' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
         )}
       >
-        Alert History
+        {t('alerts.alertHistory')}
       </button>
     </div>
   );
@@ -140,6 +144,7 @@ function TabBar() {
 // ── Rules Tab ──
 
 function RulesTab() {
+  const { t } = useTranslation();
   const { rules, isLoadingRules, rulesError, updateRule } = useAlertsStore();
   const [formOpen, setFormOpen] = useState(false);
   const [editRule, setEditRule] = useState<AlertRule | null>(null);
@@ -176,15 +181,15 @@ function RulesTab() {
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium text-muted-foreground">{rules.length} rules configured</h3>
         <Button size="sm" onClick={() => { setEditRule(null); setFormOpen(true); }} data-testid="create-rule-btn">
-          <Plus className="mr-1 h-4 w-4" /> New Rule
+          <Plus className="mr-1 h-4 w-4" /> {t('alerts.newRule')}
         </Button>
       </div>
 
       {rules.length === 0 ? (
         <div className="py-12 text-center" data-testid="rules-empty">
           <Bell className="mx-auto h-8 w-8 text-muted-foreground/50" />
-          <p className="mt-2 text-sm text-muted-foreground">No alert rules configured</p>
-          <p className="mt-1 text-xs text-muted-foreground">Create your first rule to start monitoring.</p>
+          <p className="mt-2 text-sm text-muted-foreground">{t('alerts.noRules')}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{t('alerts.noRulesDesc')}</p>
         </div>
       ) : (
         <div className="space-y-3" data-testid="rules-list">
@@ -197,7 +202,7 @@ function RulesTab() {
                       {rule.name}
                     </span>
                     <SeverityBadge severity={rule.severity} />
-                    {!rule.enabled && <Badge variant="outline" className="text-xs">Disabled</Badge>}
+                    {!rule.enabled && <Badge variant="outline" className="text-xs">{t('status.disabled')}</Badge>}
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">
                     {METRIC_LABELS[rule.metricType]} {OPERATOR_LABELS[rule.operator]} {rule.threshold}%
@@ -208,10 +213,10 @@ function RulesTab() {
                   <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleToggle(rule)} title={rule.enabled ? 'Disable' : 'Enable'}>
                     {rule.enabled ? <ShieldCheck className="h-4 w-4 text-green-600" /> : <ShieldAlert className="h-4 w-4 text-muted-foreground" />}
                   </Button>
-                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(rule)} title="Edit">
+                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEdit(rule)} title={t('common.edit')}>
                     <Pencil className="h-4 w-4" />
                   </Button>
-                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setDeleteTarget(rule)} title="Delete">
+                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setDeleteTarget(rule)} title={t('common.delete')}>
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
                 </div>
@@ -230,6 +235,7 @@ function RulesTab() {
 // ── History Tab ──
 
 function HistoryTab() {
+  const { t } = useTranslation();
   const { alerts, alertsTotal, alertsPage, isLoadingAlerts, alertsError, resolveAlert, setAlertsPage, fetchAlerts } = useAlertsStore();
   const totalPages = Math.max(1, Math.ceil(alertsTotal / PAGE_SIZE));
 
@@ -258,8 +264,8 @@ function HistoryTab() {
     return (
       <div className="py-12 text-center" data-testid="history-empty">
         <CheckCircle2 className="mx-auto h-8 w-8 text-green-500/50" />
-        <p className="mt-2 text-sm text-muted-foreground">No alerts triggered</p>
-        <p className="mt-1 text-xs text-muted-foreground">All systems are operating normally.</p>
+        <p className="mt-2 text-sm text-muted-foreground">{t('alerts.noAlerts')}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{t('alerts.noAlertsDesc')}</p>
       </div>
     );
   }
@@ -279,11 +285,11 @@ function HistoryTab() {
                   </div>
                   {alert.resolved ? (
                     <Badge variant="default" className="gap-1 text-xs">
-                      <CheckCircle2 className="h-3 w-3" /> Resolved
+                      <CheckCircle2 className="h-3 w-3" /> {t('status.resolved')}
                     </Badge>
                   ) : (
                     <Badge variant="destructive" className="gap-1 text-xs">
-                      <AlertCircle className="h-3 w-3" /> Active
+                      <AlertCircle className="h-3 w-3" /> {t('status.active')}
                     </Badge>
                   )}
                 </div>
@@ -292,7 +298,7 @@ function HistoryTab() {
                   <span className="text-xs text-muted-foreground">{formatDate(alert.createdAt)}</span>
                   {!alert.resolved && (
                     <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => resolveAlert(alert.id)} data-testid={`m-resolve-btn-${alert.id}`}>
-                      Resolve
+                      {t('alerts.resolve')}
                     </Button>
                   )}
                 </div>
@@ -307,12 +313,12 @@ function HistoryTab() {
         <table className="w-full text-left">
           <thead>
             <tr className="border-b border-border text-xs font-medium uppercase text-muted-foreground">
-              <th className="px-3 py-2 sm:px-4">Time</th>
-              <th className="px-3 py-2 sm:px-4">Type</th>
-              <th className="px-3 py-2 sm:px-4">Severity</th>
-              <th className="hidden px-3 py-2 sm:table-cell sm:px-4">Message</th>
-              <th className="px-3 py-2 sm:px-4">Status</th>
-              <th className="px-3 py-2 sm:px-4">Action</th>
+              <th className="px-3 py-2 sm:px-4">{t('alerts.tableHeaders.time')}</th>
+              <th className="px-3 py-2 sm:px-4">{t('alerts.tableHeaders.type')}</th>
+              <th className="px-3 py-2 sm:px-4">{t('alerts.tableHeaders.severity')}</th>
+              <th className="hidden px-3 py-2 sm:table-cell sm:px-4">{t('alerts.tableHeaders.message')}</th>
+              <th className="px-3 py-2 sm:px-4">{t('alerts.tableHeaders.status')}</th>
+              <th className="px-3 py-2 sm:px-4">{t('alerts.tableHeaders.action')}</th>
             </tr>
           </thead>
           <tbody>
@@ -333,11 +339,11 @@ function HistoryTab() {
                 <td className="px-3 py-3 sm:px-4">
                   {alert.resolved ? (
                     <Badge variant="default" className="gap-1 text-xs">
-                      <CheckCircle2 className="h-3 w-3" /> Resolved
+                      <CheckCircle2 className="h-3 w-3" /> {t('status.resolved')}
                     </Badge>
                   ) : (
                     <Badge variant="destructive" className="gap-1 text-xs">
-                      <AlertCircle className="h-3 w-3" /> Active
+                      <AlertCircle className="h-3 w-3" /> {t('status.active')}
                     </Badge>
                   )}
                 </td>
@@ -350,7 +356,7 @@ function HistoryTab() {
                       onClick={() => resolveAlert(alert.id)}
                       data-testid={`resolve-btn-${alert.id}`}
                     >
-                      Resolve
+                      {t('alerts.resolve')}
                     </Button>
                   )}
                 </td>
@@ -363,7 +369,7 @@ function HistoryTab() {
       {alertsTotal > PAGE_SIZE && (
         <div className="flex items-center justify-between border-t border-border px-2 pt-3" data-testid="alert-pagination">
           <span className="text-xs text-muted-foreground">
-            Showing {(alertsPage - 1) * PAGE_SIZE + 1}-{Math.min(alertsPage * PAGE_SIZE, alertsTotal)} of {alertsTotal}
+            {t('common.showingRange', { start: (alertsPage - 1) * PAGE_SIZE + 1, end: Math.min(alertsPage * PAGE_SIZE, alertsTotal), total: alertsTotal })}
           </span>
           <div className="flex items-center gap-1">
             <Button variant="outline" size="icon" className="h-7 w-7" disabled={alertsPage <= 1} onClick={() => setAlertsPage(alertsPage - 1)} aria-label="Previous page">
@@ -383,6 +389,7 @@ function HistoryTab() {
 // ── Main Page ──
 
 export function Alerts() {
+  const { t } = useTranslation();
   const {
     activeTab,
     fetchRules,
@@ -410,9 +417,9 @@ export function Alerts() {
     <div className="space-y-4 sm:space-y-6" data-testid="alerts-page">
       {/* Header */}
       <div>
-        <h1 className="text-xl font-bold text-foreground sm:text-2xl">Alerts</h1>
+        <h1 className="text-xl font-bold text-foreground sm:text-2xl">{t('alerts.title')}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Manage alert rules and view alert history.
+          {t('alerts.description')}
         </p>
       </div>
 

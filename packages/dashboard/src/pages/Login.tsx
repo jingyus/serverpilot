@@ -2,6 +2,7 @@
 // Copyright (c) 2024-2026 ServerPilot Contributors
 import { useState, useEffect } from 'react';
 import type { FormEvent } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { z } from 'zod';
 import { Server, Loader2, AlertCircle, Github } from 'lucide-react';
@@ -21,15 +22,15 @@ import { setToken } from '@/api/client';
 import { API_BASE_URL } from '@/utils/constants';
 
 const loginSchema = z.object({
-  email: z.string().email('Please enter a valid email address'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  email: z.string().email('login.invalidEmail'),
+  password: z.string().min(6, 'login.passwordTooShort'),
 });
 
 const registerSchema = loginSchema.extend({
-  name: z.string().min(1, 'Name is required'),
+  name: z.string().min(1, 'login.nameRequired'),
   confirmPassword: z.string(),
 }).refine((data) => data.password === data.confirmPassword, {
-  message: 'Passwords do not match',
+  message: 'login.passwordMismatch',
   path: ['confirmPassword'],
 });
 
@@ -65,6 +66,7 @@ function parseOAuthError(): string | null {
 }
 
 export function Login() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { login, register, isLoading, error, clearError } = useAuthStore();
 
@@ -156,11 +158,11 @@ export function Login() {
           <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <Server className="h-6 w-6" />
           </div>
-          <CardTitle className="text-2xl">ServerPilot</CardTitle>
+          <CardTitle className="text-2xl">{t('login.appName')}</CardTitle>
           <CardDescription>
             {isRegisterMode
-              ? 'Create a new account'
-              : 'Sign in to your account'}
+              ? t('login.createAccount')
+              : t('login.signIn')}
           </CardDescription>
         </CardHeader>
 
@@ -178,40 +180,40 @@ export function Login() {
 
             {isRegisterMode && (
               <div className="space-y-2">
-                <Label htmlFor="name">Name</Label>
+                <Label htmlFor="name">{t('login.name')}</Label>
                 <Input
                   id="name"
                   type="text"
-                  placeholder="Your name"
+                  placeholder={t('login.namePlaceholder')}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   aria-invalid={!!fieldErrors.name}
                 />
                 {fieldErrors.name && (
-                  <p className="text-sm text-destructive">{fieldErrors.name}</p>
+                  <p className="text-sm text-destructive">{t(fieldErrors.name)}</p>
                 )}
               </div>
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">{t('login.email')}</Label>
               <Input
                 id="email"
                 type="email"
-                placeholder="admin@example.com"
+                placeholder={t('login.emailPlaceholder')}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 aria-invalid={!!fieldErrors.email}
               />
               {fieldErrors.email && (
                 <p className="text-sm text-destructive">
-                  {fieldErrors.email}
+                  {t(fieldErrors.email)}
                 </p>
               )}
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">{t('login.password')}</Label>
               <Input
                 id="password"
                 type="password"
@@ -222,14 +224,14 @@ export function Login() {
               />
               {fieldErrors.password && (
                 <p className="text-sm text-destructive">
-                  {fieldErrors.password}
+                  {t(fieldErrors.password)}
                 </p>
               )}
             </div>
 
             {isRegisterMode && (
               <div className="space-y-2">
-                <Label htmlFor="confirmPassword">Confirm Password</Label>
+                <Label htmlFor="confirmPassword">{t('login.confirmPassword')}</Label>
                 <Input
                   id="confirmPassword"
                   type="password"
@@ -240,7 +242,7 @@ export function Login() {
                 />
                 {fieldErrors.confirmPassword && (
                   <p className="text-sm text-destructive">
-                    {fieldErrors.confirmPassword}
+                    {t(fieldErrors.confirmPassword)}
                   </p>
                 )}
               </div>
@@ -248,7 +250,7 @@ export function Login() {
 
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {isRegisterMode ? 'Create Account' : 'Sign In'}
+              {isRegisterMode ? t('login.createAccountBtn') : t('login.signInBtn')}
             </Button>
 
             <div className="relative">
@@ -256,7 +258,7 @@ export function Login() {
                 <span className="w-full border-t" />
               </div>
               <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-card px-2 text-muted-foreground">or</span>
+                <span className="bg-card px-2 text-muted-foreground">{t('common.or')}</span>
               </div>
             </div>
 
@@ -268,7 +270,7 @@ export function Login() {
               disabled={isLoading}
             >
               <Github className="mr-2 h-4 w-4" />
-              Continue with GitHub
+              {t('login.continueWithGithub')}
             </Button>
           </CardContent>
         </form>
@@ -276,8 +278,8 @@ export function Login() {
         <CardFooter className="justify-center">
           <Button variant="link" onClick={toggleMode} type="button">
             {isRegisterMode
-              ? 'Already have an account? Sign in'
-              : "Don't have an account? Register"}
+              ? t('login.alreadyHaveAccount')
+              : t('login.noAccount')}
           </Button>
         </CardFooter>
       </Card>

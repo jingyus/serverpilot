@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
 import { useEffect, useState } from 'react';
-import { Save, Loader2, AlertCircle, CheckCircle2, Key, User, Bell, Shield, Book, RefreshCw } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { Save, Loader2, AlertCircle, CheckCircle2, Key, User, Bell, Shield, Book, RefreshCw, Globe } from 'lucide-react';
+import { supportedLanguages, setStoredLanguage } from '@/i18n';
 import { DocSourceSection } from '@/components/knowledge/DocSourceSection';
 
 import { Button } from '@/components/ui/button';
@@ -24,12 +26,12 @@ const TIMEZONES = [
   'Asia/Tokyo',
 ];
 
-const AI_PROVIDERS: { value: AIProvider; label: string; description: string }[] = [
-  { value: 'claude', label: 'Claude (Anthropic)', description: 'Powerful AI with strong reasoning' },
-  { value: 'openai', label: 'OpenAI (GPT)', description: 'Versatile and widely supported' },
-  { value: 'deepseek', label: 'DeepSeek', description: 'Cost-effective with strong coding ability' },
-  { value: 'ollama', label: 'Ollama (Local)', description: 'Run models locally for privacy' },
-  { value: 'custom-openai', label: 'Custom OpenAI Compatible', description: 'OneAPI / LiteLLM / Azure' },
+const AI_PROVIDERS: { value: AIProvider; labelKey: string }[] = [
+  { value: 'claude', labelKey: 'settings.providerClaude' },
+  { value: 'openai', labelKey: 'settings.providerOpenai' },
+  { value: 'deepseek', labelKey: 'settings.providerDeepseek' },
+  { value: 'ollama', labelKey: 'settings.providerOllama' },
+  { value: 'custom-openai', labelKey: 'settings.providerCustom' },
 ];
 
 /** Providers that require an API key */
@@ -58,6 +60,7 @@ function getBaseUrlPlaceholder(provider: AIProvider): string {
 }
 
 export function Settings() {
+  const { t, i18n } = useTranslation();
   const { user } = useAuthStore();
   const {
     settings,
@@ -139,17 +142,17 @@ export function Settings() {
   const handleSaveAIProvider = async () => {
     // Basic validation: providers requiring a key must have one
     if (PROVIDERS_REQUIRING_KEY.includes(aiProvider) && !apiKey.trim()) {
-      useSettingsStore.setState({ error: `API key is required for ${aiProvider}` });
+      useSettingsStore.setState({ error: t('settings.apiKeyRequired', { provider: aiProvider }) });
       return;
     }
     // custom-openai requires Base URL and Model
     if (aiProvider === 'custom-openai') {
       if (!baseUrl.trim()) {
-        useSettingsStore.setState({ error: 'Base URL is required for Custom OpenAI Compatible provider' });
+        useSettingsStore.setState({ error: t('settings.baseUrlRequired') });
         return;
       }
       if (!model.trim()) {
-        useSettingsStore.setState({ error: 'Model name is required for Custom OpenAI Compatible provider' });
+        useSettingsStore.setState({ error: t('settings.modelRequired') });
         return;
       }
     }
@@ -160,7 +163,7 @@ export function Settings() {
         model: model || undefined,
         baseUrl: baseUrl || undefined,
       });
-      showSuccess('AI Provider settings saved successfully');
+      showSuccess(t('settings.aiProviderSaved'));
     } catch {
       // Error is handled by store
     }
@@ -169,7 +172,7 @@ export function Settings() {
   const handleSaveProfile = async () => {
     try {
       await updateUserProfile({ name, email, timezone });
-      showSuccess('Profile updated successfully');
+      showSuccess(t('settings.profileSaved'));
     } catch {
       // Error is handled by store
     }
@@ -183,7 +186,7 @@ export function Settings() {
         systemAlerts,
         operationReports,
       });
-      showSuccess('Notification preferences saved');
+      showSuccess(t('settings.preferencesSaved'));
     } catch {
       // Error is handled by store
     }
@@ -195,7 +198,7 @@ export function Settings() {
         autoLearning,
         documentSources: [],
       });
-      showSuccess('Knowledge base settings saved');
+      showSuccess(t('settings.knowledgeBaseSaved'));
     } catch {
       // Error is handled by store
     }
@@ -213,9 +216,9 @@ export function Settings() {
     <div className="space-y-6" data-testid="settings-page">
       {/* Header */}
       <div>
-        <h1 className="text-xl font-bold text-foreground sm:text-2xl">Settings</h1>
+        <h1 className="text-xl font-bold text-foreground sm:text-2xl">{t('settings.title')}</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Platform configuration and preferences.
+          {t('settings.description')}
         </p>
       </div>
 
@@ -233,7 +236,7 @@ export function Settings() {
             onClick={clearError}
             className="ml-auto h-auto p-1"
           >
-            Dismiss
+            {t('common.dismiss')}
           </Button>
         </div>
       )}
@@ -254,10 +257,10 @@ export function Settings() {
         <CardHeader>
           <div className="flex items-center gap-2">
             <Key className="h-5 w-5 text-muted-foreground" />
-            <CardTitle>AI Provider</CardTitle>
+            <CardTitle>{t('settings.aiProvider')}</CardTitle>
           </div>
           <CardDescription>
-            Configure which AI model provider to use for server operations
+            {t('settings.aiProviderDesc')}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -279,8 +282,8 @@ export function Settings() {
               )}
               <span>
                 {healthStatus.available
-                  ? `${healthStatus.provider ?? 'Provider'} is connected`
-                  : healthStatus.error ?? 'Provider unavailable'}
+                  ? `${healthStatus.provider ?? t('settings.provider')} ${t('settings.isConnected')}`
+                  : healthStatus.error ?? t('settings.providerUnavailable')}
               </span>
               <Button
                 variant="ghost"
@@ -296,7 +299,7 @@ export function Settings() {
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="ai-provider">Provider</Label>
+            <Label htmlFor="ai-provider">{t('settings.provider')}</Label>
             <select
               id="ai-provider"
               value={aiProvider}
@@ -305,7 +308,7 @@ export function Settings() {
             >
               {AI_PROVIDERS.map((p) => (
                 <option key={p.value} value={p.value}>
-                  {p.label} - {p.description}
+                  {t(p.labelKey)}
                 </option>
               ))}
             </select>
@@ -313,7 +316,7 @@ export function Settings() {
 
           {PROVIDERS_REQUIRING_KEY.includes(aiProvider) && (
             <div className="space-y-2">
-              <Label htmlFor="api-key">API Key</Label>
+              <Label htmlFor="api-key">{t('settings.apiKey')}</Label>
               <Input
                 id="api-key"
                 type="password"
@@ -322,14 +325,14 @@ export function Settings() {
                 placeholder="sk-..."
               />
               <p className="text-xs text-muted-foreground">
-                Your API key is stored securely and never exposed in logs
+                {t('settings.apiKeyHint')}
               </p>
             </div>
           )}
 
           <div className="space-y-2">
             <Label htmlFor="model">
-              Model{aiProvider === 'custom-openai' ? '' : ' (optional)'}
+              {aiProvider === 'custom-openai' ? t('settings.model') : `${t('settings.model')} ${t('settings.optional')}`}
             </Label>
             <Input
               id="model"
@@ -342,7 +345,9 @@ export function Settings() {
           {PROVIDERS_WITH_BASE_URL.includes(aiProvider) && (
             <div className="space-y-2">
               <Label htmlFor="base-url">
-                Base URL{(aiProvider === 'ollama' || aiProvider === 'custom-openai') ? '' : ' (optional)'}
+                {(aiProvider === 'ollama' || aiProvider === 'custom-openai')
+                  ? t('settings.baseUrl')
+                  : `${t('settings.baseUrl')} ${t('settings.optional')}`}
               </Label>
               <Input
                 id="base-url"
@@ -361,12 +366,12 @@ export function Settings() {
             {isSaving ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Saving...
+                {t('common.saving')}
               </>
             ) : (
               <>
                 <Save className="mr-2 h-4 w-4" />
-                Save AI Provider
+                {t('settings.saveAiProvider')}
               </>
             )}
           </Button>
@@ -378,34 +383,34 @@ export function Settings() {
         <CardHeader>
           <div className="flex items-center gap-2">
             <User className="h-5 w-5 text-muted-foreground" />
-            <CardTitle>User Profile</CardTitle>
+            <CardTitle>{t('settings.userProfile')}</CardTitle>
           </div>
-          <CardDescription>Manage your personal information</CardDescription>
+          <CardDescription>{t('settings.userProfileDesc')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="name">Name</Label>
+            <Label htmlFor="name">{t('settings.name')}</Label>
             <Input
               id="name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Your name"
+              placeholder={t('settings.namePlaceholder')}
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email">{t('settings.email')}</Label>
             <Input
               id="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="your@email.com"
+              placeholder={t('settings.emailPlaceholder')}
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="timezone">Timezone</Label>
+            <Label htmlFor="timezone">{t('settings.timezone')}</Label>
             <select
               id="timezone"
               value={timezone}
@@ -428,12 +433,12 @@ export function Settings() {
             {isSaving ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Saving...
+                {t('common.saving')}
               </>
             ) : (
               <>
                 <Save className="mr-2 h-4 w-4" />
-                Save Profile
+                {t('settings.saveProfile')}
               </>
             )}
           </Button>
@@ -445,16 +450,16 @@ export function Settings() {
         <CardHeader>
           <div className="flex items-center gap-2">
             <Bell className="h-5 w-5 text-muted-foreground" />
-            <CardTitle>Notifications</CardTitle>
+            <CardTitle>{t('settings.notifications')}</CardTitle>
           </div>
-          <CardDescription>Configure notification preferences</CardDescription>
+          <CardDescription>{t('settings.notificationsDesc')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
-              <Label htmlFor="email-notifications">Email Notifications</Label>
+              <Label htmlFor="email-notifications">{t('settings.emailNotifications')}</Label>
               <p className="text-xs text-muted-foreground">
-                Receive notifications via email
+                {t('settings.emailNotificationsDesc')}
               </p>
             </div>
             <Switch
@@ -468,9 +473,9 @@ export function Settings() {
 
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
-              <Label htmlFor="task-completion">Task Completion</Label>
+              <Label htmlFor="task-completion">{t('settings.taskCompletion')}</Label>
               <p className="text-xs text-muted-foreground">
-                Notify when operations complete
+                {t('settings.taskCompletionDesc')}
               </p>
             </div>
             <Switch
@@ -484,9 +489,9 @@ export function Settings() {
 
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
-              <Label htmlFor="system-alerts">System Alerts</Label>
+              <Label htmlFor="system-alerts">{t('settings.systemAlerts')}</Label>
               <p className="text-xs text-muted-foreground">
-                Critical system and security alerts
+                {t('settings.systemAlertsDesc')}
               </p>
             </div>
             <Switch
@@ -500,9 +505,9 @@ export function Settings() {
 
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
-              <Label htmlFor="operation-reports">Operation Reports</Label>
+              <Label htmlFor="operation-reports">{t('settings.operationReports')}</Label>
               <p className="text-xs text-muted-foreground">
-                Daily summary of operations
+                {t('settings.operationReportsDesc')}
               </p>
             </div>
             <Switch
@@ -520,12 +525,12 @@ export function Settings() {
             {isSaving ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Saving...
+                {t('common.saving')}
               </>
             ) : (
               <>
                 <Save className="mr-2 h-4 w-4" />
-                Save Preferences
+                {t('settings.savePreferences')}
               </>
             )}
           </Button>
@@ -537,15 +542,49 @@ export function Settings() {
         <CardHeader>
           <div className="flex items-center gap-2">
             <Shield className="h-5 w-5 text-muted-foreground" />
-            <CardTitle>Security</CardTitle>
+            <CardTitle>{t('settings.security')}</CardTitle>
           </div>
-          <CardDescription>Password and session management</CardDescription>
+          <CardDescription>{t('settings.securityDesc')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <p className="text-sm text-muted-foreground">
-              Password management coming soon. Use the authentication system to change your password.
+              {t('settings.securityComingSoon')}
             </p>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Language */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Globe className="h-5 w-5 text-muted-foreground" />
+            <CardTitle>{t('settings.language')}</CardTitle>
+          </div>
+          <CardDescription>{t('settings.languageDesc')}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="language">{t('settings.language')}</Label>
+            <select
+              id="language"
+              value={i18n.language}
+              onChange={(e) => {
+                const lng = e.target.value;
+                i18n.changeLanguage(lng);
+                setStoredLanguage(lng);
+                showSuccess(t('settings.languageSaved'));
+              }}
+              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              data-testid="language-select"
+            >
+              {supportedLanguages.map((lang) => (
+                <option key={lang.code} value={lang.code}>
+                  {lang.label}
+                </option>
+              ))}
+            </select>
           </div>
         </CardContent>
       </Card>
@@ -555,16 +594,16 @@ export function Settings() {
         <CardHeader>
           <div className="flex items-center gap-2">
             <Book className="h-5 w-5 text-muted-foreground" />
-            <CardTitle>Knowledge Base</CardTitle>
+            <CardTitle>{t('settings.knowledgeBase')}</CardTitle>
           </div>
-          <CardDescription>Configure automatic learning and documentation</CardDescription>
+          <CardDescription>{t('settings.knowledgeBaseDesc')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
-              <Label htmlFor="auto-learning">Automatic Learning</Label>
+              <Label htmlFor="auto-learning">{t('settings.autoLearning')}</Label>
               <p className="text-xs text-muted-foreground">
-                Automatically learn from operations and improve suggestions
+                {t('settings.autoLearningDesc')}
               </p>
             </div>
             <Switch
@@ -588,12 +627,12 @@ export function Settings() {
             {isSaving ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Saving...
+                {t('common.saving')}
               </>
             ) : (
               <>
                 <Save className="mr-2 h-4 w-4" />
-                Save Settings
+                {t('settings.saveSettings')}
               </>
             )}
           </Button>

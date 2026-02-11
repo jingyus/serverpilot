@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   CalendarClock,
   CheckCircle2,
@@ -36,19 +37,19 @@ import type { Task, TaskStatus, TaskLastStatus, CreateTaskInput, UpdateTaskInput
 
 const TASK_STATUS_CONFIG: Record<
   TaskStatus,
-  { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon: typeof CheckCircle2 }
+  { labelKey: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon: typeof CheckCircle2 }
 > = {
-  active: { label: 'Active', variant: 'default', icon: Play },
-  paused: { label: 'Paused', variant: 'secondary', icon: Pause },
-  deleted: { label: 'Deleted', variant: 'destructive', icon: XCircle },
+  active: { labelKey: 'status.active', variant: 'default', icon: Play },
+  paused: { labelKey: 'status.paused', variant: 'secondary', icon: Pause },
+  deleted: { labelKey: 'status.deleted', variant: 'destructive', icon: XCircle },
 };
 
 const LAST_STATUS_CONFIG: Record<
   TaskLastStatus,
-  { label: string; variant: 'default' | 'destructive'; icon: typeof CheckCircle2 }
+  { labelKey: string; variant: 'default' | 'destructive'; icon: typeof CheckCircle2 }
 > = {
-  success: { label: 'Success', variant: 'default', icon: CheckCircle2 },
-  failed: { label: 'Failed', variant: 'destructive', icon: XCircle },
+  success: { labelKey: 'status.success', variant: 'default', icon: CheckCircle2 },
+  failed: { labelKey: 'status.failed', variant: 'destructive', icon: XCircle },
 };
 
 function describeCron(cron: string): string {
@@ -75,21 +76,23 @@ function describeCron(cron: string): string {
 }
 
 function TaskStatusBadge({ status }: { status: TaskStatus }) {
+  const { t } = useTranslation();
   const config = TASK_STATUS_CONFIG[status] ?? TASK_STATUS_CONFIG.active;
   const Icon = config.icon;
   return (
     <Badge variant={config.variant} className="gap-1" data-testid={`task-status-${status}`}>
       <Icon className="h-3 w-3" />
-      {config.label}
+      {t(config.labelKey)}
     </Badge>
   );
 }
 
 function LastRunBadge({ lastStatus }: { lastStatus: TaskLastStatus | null | undefined }) {
+  const { t } = useTranslation();
   if (!lastStatus) {
     return (
       <span className="text-xs text-muted-foreground" data-testid="last-status-none">
-        Never run
+        {t('status.neverRun')}
       </span>
     );
   }
@@ -98,12 +101,13 @@ function LastRunBadge({ lastStatus }: { lastStatus: TaskLastStatus | null | unde
   return (
     <Badge variant={config.variant} className="gap-1" data-testid={`last-status-${lastStatus}`}>
       <Icon className="h-3 w-3" />
-      {config.label}
+      {t(config.labelKey)}
     </Badge>
   );
 }
 
 function StatsCards() {
+  const { t } = useTranslation();
   const { tasks } = useTasksStore();
   const active = tasks.filter((t) => t.status === 'active').length;
   const paused = tasks.filter((t) => t.status === 'paused').length;
@@ -119,7 +123,7 @@ function StatsCards() {
             </div>
             <div>
               <div className="text-xl font-bold sm:text-2xl">{tasks.length}</div>
-              <p className="text-xs text-muted-foreground">Total Tasks</p>
+              <p className="text-xs text-muted-foreground">{t('tasks.totalTasks')}</p>
             </div>
           </div>
         </CardContent>
@@ -132,7 +136,7 @@ function StatsCards() {
             </div>
             <div>
               <div className="text-xl font-bold text-green-600 sm:text-2xl">{active}</div>
-              <p className="text-xs text-muted-foreground">Active</p>
+              <p className="text-xs text-muted-foreground">{t('tasks.active')}</p>
             </div>
           </div>
         </CardContent>
@@ -145,7 +149,7 @@ function StatsCards() {
             </div>
             <div>
               <div className="text-xl font-bold text-yellow-600 sm:text-2xl">{paused}</div>
-              <p className="text-xs text-muted-foreground">Paused</p>
+              <p className="text-xs text-muted-foreground">{t('tasks.paused')}</p>
             </div>
           </div>
         </CardContent>
@@ -162,7 +166,7 @@ function StatsCards() {
                 <span className="text-muted-foreground">/</span>
                 <span className="text-red-600">{failedCount}</span>
               </div>
-              <p className="text-xs text-muted-foreground">Last Run S/F</p>
+              <p className="text-xs text-muted-foreground">{t('tasks.lastRunSF')}</p>
             </div>
           </div>
         </CardContent>
@@ -172,6 +176,7 @@ function StatsCards() {
 }
 
 function FilterBar() {
+  const { t } = useTranslation();
   const { filters, setFilters, resetFilters } = useTasksStore();
   const { servers } = useServersStore();
 
@@ -190,7 +195,7 @@ function FilterBar() {
             aria-label="Filter by server"
             data-testid="filter-server"
           >
-            <option value="">All Servers</option>
+            <option value="">{t('tasks.allServers')}</option>
             {servers.map((s) => (
               <option key={s.id} value={s.id}>{s.name}</option>
             ))}
@@ -203,9 +208,9 @@ function FilterBar() {
             aria-label="Filter by status"
             data-testid="filter-task-status"
           >
-            <option value="">All Status</option>
+            <option value="">{t('tasks.allStatus')}</option>
             {(['active', 'paused'] as const).map((s) => (
-              <option key={s} value={s}>{TASK_STATUS_CONFIG[s].label}</option>
+              <option key={s} value={s}>{t(TASK_STATUS_CONFIG[s].labelKey)}</option>
             ))}
           </select>
 
@@ -218,7 +223,7 @@ function FilterBar() {
               data-testid="reset-task-filters"
             >
               <X className="h-3 w-3" />
-              Reset
+              {t('common.reset')}
             </Button>
           )}
         </div>
@@ -236,19 +241,20 @@ interface TaskItemProps {
 }
 
 function TaskActions({ task, onRun, onToggleStatus, onEdit, onDelete, idPrefix = '' }: TaskItemProps & { idPrefix?: string }) {
+  const { t } = useTranslation();
   const p = idPrefix;
   return (
     <div className="flex items-center gap-1 shrink-0">
-      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onRun(task)} disabled={task.status !== 'active'} aria-label="Run task" data-testid={`${p}run-task-${task.id}`}>
+      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onRun(task)} disabled={task.status !== 'active'} aria-label={t('tasks.runTask')} data-testid={`${p}run-task-${task.id}`}>
         <Play className="h-3.5 w-3.5" />
       </Button>
-      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onToggleStatus(task)} aria-label={task.status === 'active' ? 'Pause task' : 'Resume task'} data-testid={`${p}toggle-task-${task.id}`}>
+      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onToggleStatus(task)} aria-label={task.status === 'active' ? t('tasks.pauseTask') : t('tasks.resumeTask')} data-testid={`${p}toggle-task-${task.id}`}>
         {task.status === 'active' ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5 text-green-600" />}
       </Button>
-      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onEdit(task)} aria-label="Edit task" data-testid={`${p}edit-task-${task.id}`}>
+      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onEdit(task)} aria-label={t('tasks.editTaskBtn')} data-testid={`${p}edit-task-${task.id}`}>
         <Pencil className="h-3.5 w-3.5" />
       </Button>
-      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => onDelete(task)} aria-label="Delete task" data-testid={`${p}delete-task-${task.id}`}>
+      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => onDelete(task)} aria-label={t('tasks.deleteTaskBtn')} data-testid={`${p}delete-task-${task.id}`}>
         <Trash2 className="h-3.5 w-3.5" />
       </Button>
     </div>
@@ -307,6 +313,7 @@ function TaskRow(props: TaskItemProps) {
 }
 
 function TasksTable() {
+  const { t } = useTranslation();
   const { tasks, isLoading, error, updateTask, deleteTask, runTask } = useTasksStore();
   const [editTask, setEditTask] = useState<Task | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<Task | null>(null);
@@ -363,9 +370,9 @@ function TasksTable() {
     return (
       <div className="py-12 text-center" data-testid="tasks-empty">
         <CalendarClock className="mx-auto h-8 w-8 text-muted-foreground/50" />
-        <p className="mt-2 text-sm text-muted-foreground">No scheduled tasks</p>
+        <p className="mt-2 text-sm text-muted-foreground">{t('tasks.noTasks')}</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          Create a task to automate recurring operations.
+          {t('tasks.noTasksDesc')}
         </p>
       </div>
     );
@@ -392,13 +399,13 @@ function TasksTable() {
         <table className="w-full text-left">
           <thead>
             <tr className="border-b border-border text-xs font-medium uppercase text-muted-foreground">
-              <th className="px-3 py-2 sm:px-4">Name</th>
-              <th className="px-3 py-2 sm:px-4">Server</th>
-              <th className="hidden px-3 py-2 sm:table-cell sm:px-4">Schedule</th>
-              <th className="px-3 py-2 sm:px-4">Status</th>
-              <th className="hidden px-3 py-2 sm:table-cell sm:px-4">Last Run</th>
-              <th className="hidden px-3 py-2 md:table-cell md:px-4">Next Run</th>
-              <th className="px-3 py-2 sm:px-4">Actions</th>
+              <th className="px-3 py-2 sm:px-4">{t('tasks.tableHeaders.name')}</th>
+              <th className="px-3 py-2 sm:px-4">{t('tasks.tableHeaders.server')}</th>
+              <th className="hidden px-3 py-2 sm:table-cell sm:px-4">{t('tasks.tableHeaders.schedule')}</th>
+              <th className="px-3 py-2 sm:px-4">{t('tasks.tableHeaders.status')}</th>
+              <th className="hidden px-3 py-2 sm:table-cell sm:px-4">{t('tasks.tableHeaders.lastRun')}</th>
+              <th className="hidden px-3 py-2 md:table-cell md:px-4">{t('tasks.tableHeaders.nextRun')}</th>
+              <th className="px-3 py-2 sm:px-4">{t('tasks.tableHeaders.actions')}</th>
             </tr>
           </thead>
           <tbody>
@@ -426,17 +433,17 @@ function TasksTable() {
       <Dialog open={deleteConfirm != null} onOpenChange={(open) => { if (!open) setDeleteConfirm(null); }}>
         <DialogContent className="sm:max-w-md" data-testid="delete-task-dialog">
           <DialogHeader>
-            <DialogTitle>Delete Task</DialogTitle>
+            <DialogTitle>{t('tasks.deleteTask')}</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete &quot;{deleteConfirm?.name}&quot;? This action cannot be undone.
+              {t('tasks.deleteTaskConfirm', { name: deleteConfirm?.name })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteConfirm(null)}>
-              Cancel
+              {t('common.cancel')}
             </Button>
             <Button variant="destructive" onClick={handleDelete} data-testid="confirm-delete">
-              Delete
+              {t('common.delete')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -452,6 +459,7 @@ function CreateTaskDialog({
   open: boolean;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const { createTask, isSubmitting } = useTasksStore();
   const { servers } = useServersStore();
 
@@ -508,18 +516,18 @@ function CreateTaskDialog({
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-lg" data-testid="create-task-dialog">
         <DialogHeader>
-          <DialogTitle>Create Scheduled Task</DialogTitle>
+          <DialogTitle>{t('tasks.createScheduledTask')}</DialogTitle>
           <DialogDescription>
-            Set up a new recurring task to run on a server.
+            {t('tasks.createTaskDesc')}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="task-name">Task Name</Label>
+            <Label htmlFor="task-name">{t('tasks.taskName')}</Label>
             <Input
               id="task-name"
-              placeholder="e.g. MySQL Daily Backup"
+              placeholder={t('tasks.taskNamePlaceholder')}
               value={name}
               onChange={(e) => setName(e.target.value)}
               aria-invalid={!!errors.name}
@@ -529,7 +537,7 @@ function CreateTaskDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="task-server">Target Server</Label>
+            <Label htmlFor="task-server">{t('tasks.targetServer')}</Label>
             <select
               id="task-server"
               value={serverId}
@@ -538,7 +546,7 @@ function CreateTaskDialog({
               aria-invalid={!!errors.serverId}
               data-testid="input-task-server"
             >
-              <option value="">Select a server...</option>
+              <option value="">{t('tasks.selectServer')}</option>
               {servers.map((s) => (
                 <option key={s.id} value={s.id}>{s.name}</option>
               ))}
@@ -547,10 +555,10 @@ function CreateTaskDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="task-cron">Cron Expression</Label>
+            <Label htmlFor="task-cron">{t('tasks.cronExpression')}</Label>
             <Input
               id="task-cron"
-              placeholder="e.g. 0 2 * * *"
+              placeholder={t('tasks.cronPlaceholder')}
               value={cron}
               onChange={(e) => setCron(e.target.value)}
               aria-invalid={!!errors.cron}
@@ -565,10 +573,10 @@ function CreateTaskDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="task-command">Command</Label>
+            <Label htmlFor="task-command">{t('tasks.command')}</Label>
             <Input
               id="task-command"
-              placeholder="e.g. mysqldump -u root mydb > /backup/db.sql"
+              placeholder={t('tasks.commandPlaceholder')}
               value={command}
               onChange={(e) => setCommand(e.target.value)}
               aria-invalid={!!errors.command}
@@ -578,10 +586,10 @@ function CreateTaskDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="task-description">Description (optional)</Label>
+            <Label htmlFor="task-description">{t('tasks.descriptionOptional')}</Label>
             <Input
               id="task-description"
-              placeholder="Brief description of what this task does"
+              placeholder={t('tasks.descriptionPlaceholder')}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               data-testid="input-task-description"
@@ -591,11 +599,11 @@ function CreateTaskDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={handleClose}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button onClick={handleSubmit} disabled={isSubmitting} data-testid="submit-create-task">
             {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Create Task
+            {t('tasks.createTask')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -610,6 +618,7 @@ function EditTaskDialog({
   task: Task | null;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const { updateTask, isSubmitting } = useTasksStore();
 
   const [name, setName] = useState('');
@@ -663,15 +672,15 @@ function EditTaskDialog({
     <Dialog open={task != null} onOpenChange={(open) => { if (!open) handleClose(); }}>
       <DialogContent className="sm:max-w-lg" data-testid="edit-task-dialog">
         <DialogHeader>
-          <DialogTitle>Edit Task</DialogTitle>
+          <DialogTitle>{t('tasks.editTask')}</DialogTitle>
           <DialogDescription>
-            Update the scheduled task configuration.
+            {t('tasks.editTaskDesc')}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="edit-task-name">Task Name</Label>
+            <Label htmlFor="edit-task-name">{t('tasks.taskName')}</Label>
             <Input
               id="edit-task-name"
               value={name}
@@ -683,7 +692,7 @@ function EditTaskDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="edit-task-cron">Cron Expression</Label>
+            <Label htmlFor="edit-task-cron">{t('tasks.cronExpression')}</Label>
             <Input
               id="edit-task-cron"
               value={cron}
@@ -698,7 +707,7 @@ function EditTaskDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="edit-task-command">Command</Label>
+            <Label htmlFor="edit-task-command">{t('tasks.command')}</Label>
             <Input
               id="edit-task-command"
               value={command}
@@ -710,7 +719,7 @@ function EditTaskDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="edit-task-description">Description (optional)</Label>
+            <Label htmlFor="edit-task-description">{t('tasks.descriptionOptional')}</Label>
             <Input
               id="edit-task-description"
               value={description}
@@ -722,11 +731,11 @@ function EditTaskDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={handleClose}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button onClick={handleSubmit} disabled={isSubmitting} data-testid="submit-edit-task">
             {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Save Changes
+            {t('tasks.saveChanges')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -735,6 +744,7 @@ function EditTaskDialog({
 }
 
 export function Tasks() {
+  const { t } = useTranslation();
   const { fetchTasks, filters, error, clearError } = useTasksStore();
   const { fetchServers } = useServersStore();
   const [createOpen, setCreateOpen] = useState(false);
@@ -753,14 +763,14 @@ export function Tasks() {
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-bold text-foreground sm:text-2xl">Scheduled Tasks</h1>
+          <h1 className="text-xl font-bold text-foreground sm:text-2xl">{t('tasks.title')}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Manage recurring scheduled tasks across your servers.
+            {t('tasks.description')}
           </p>
         </div>
         <Button onClick={() => setCreateOpen(true)} className="w-full sm:w-auto" data-testid="create-task-btn">
           <Plus className="mr-2 h-4 w-4" />
-          Create Task
+          {t('tasks.createTask')}
         </Button>
       </div>
 

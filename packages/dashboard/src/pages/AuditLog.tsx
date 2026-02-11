@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
 import { useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Shield,
   ShieldAlert,
@@ -38,33 +39,33 @@ import type { AuditLogEntry, AuditRiskLevel, ValidationAction, ExecutionResult }
 
 const RISK_LEVEL_CONFIG: Record<
   AuditRiskLevel,
-  { label: string; className: string }
+  { labelKey: string; className: string }
 > = {
-  green: { label: 'Safe', className: 'bg-green-100 text-green-700 border-green-200' },
-  yellow: { label: 'Medium', className: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
-  red: { label: 'High', className: 'bg-orange-100 text-orange-700 border-orange-200' },
-  critical: { label: 'Critical', className: 'bg-red-100 text-red-700 border-red-200' },
-  forbidden: { label: 'Forbidden', className: 'bg-red-200 text-red-900 border-red-300' },
+  green: { labelKey: 'risk.safe', className: 'bg-green-100 text-green-700 border-green-200' },
+  yellow: { labelKey: 'risk.medium', className: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
+  red: { labelKey: 'risk.high', className: 'bg-orange-100 text-orange-700 border-orange-200' },
+  critical: { labelKey: 'risk.critical', className: 'bg-red-100 text-red-700 border-red-200' },
+  forbidden: { labelKey: 'risk.forbidden', className: 'bg-red-200 text-red-900 border-red-300' },
 };
 
 const ACTION_CONFIG: Record<
   ValidationAction,
-  { label: string; variant: 'default' | 'secondary' | 'destructive'; icon: typeof CheckCircle2 }
+  { labelKey: string; variant: 'default' | 'secondary' | 'destructive'; icon: typeof CheckCircle2 }
 > = {
-  allowed: { label: 'Allowed', variant: 'default', icon: CheckCircle2 },
-  requires_confirmation: { label: 'Confirmed', variant: 'secondary', icon: AlertCircle },
-  blocked: { label: 'Blocked', variant: 'destructive', icon: XCircle },
+  allowed: { labelKey: 'action.allowed', variant: 'default', icon: CheckCircle2 },
+  requires_confirmation: { labelKey: 'action.confirmed', variant: 'secondary', icon: AlertCircle },
+  blocked: { labelKey: 'action.blocked', variant: 'destructive', icon: XCircle },
 };
 
 const EXECUTION_RESULT_CONFIG: Record<
   ExecutionResult,
-  { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }
+  { labelKey: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }
 > = {
-  success: { label: 'Success', variant: 'default' },
-  failed: { label: 'Failed', variant: 'destructive' },
-  timeout: { label: 'Timeout', variant: 'destructive' },
-  pending: { label: 'Pending', variant: 'outline' },
-  skipped: { label: 'Skipped', variant: 'secondary' },
+  success: { labelKey: 'status.success', variant: 'default' },
+  failed: { labelKey: 'status.failed', variant: 'destructive' },
+  timeout: { labelKey: 'status.timeout', variant: 'destructive' },
+  pending: { labelKey: 'status.pending', variant: 'outline' },
+  skipped: { labelKey: 'status.skipped', variant: 'secondary' },
 };
 
 // ── Export Utilities ──
@@ -83,39 +84,43 @@ function exportToJSON(logs: AuditLogEntry[]) {
 // ── Sub-components ──
 
 function RiskBadge({ level }: { level: AuditRiskLevel }) {
+  const { t } = useTranslation();
   const config = RISK_LEVEL_CONFIG[level] ?? RISK_LEVEL_CONFIG.green;
   return (
     <span
       className={cn('inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium', config.className)}
       data-testid={`risk-badge-${level}`}
     >
-      {config.label}
+      {t(config.labelKey)}
     </span>
   );
 }
 
 function ActionBadge({ action }: { action: ValidationAction }) {
+  const { t } = useTranslation();
   const config = ACTION_CONFIG[action] ?? ACTION_CONFIG.allowed;
   const Icon = config.icon;
   return (
     <Badge variant={config.variant} className="gap-1" data-testid={`action-badge-${action}`}>
       <Icon className="h-3 w-3" />
-      {config.label}
+      {t(config.labelKey)}
     </Badge>
   );
 }
 
 function ResultBadge({ result }: { result: ExecutionResult | null }) {
+  const { t } = useTranslation();
   if (!result) return <span className="text-xs text-muted-foreground">-</span>;
   const config = EXECUTION_RESULT_CONFIG[result] ?? EXECUTION_RESULT_CONFIG.pending;
   return (
     <Badge variant={config.variant} className="text-xs" data-testid={`result-badge-${result}`}>
-      {config.label}
+      {t(config.labelKey)}
     </Badge>
   );
 }
 
 function StatsCards() {
+  const { t } = useTranslation();
   const { logs, total } = useAuditLogStore();
 
   const blocked = logs.filter((l) => l.action === 'blocked').length;
@@ -134,7 +139,7 @@ function StatsCards() {
             </div>
             <div>
               <div className="text-xl font-bold sm:text-2xl">{total}</div>
-              <p className="text-xs text-muted-foreground">Total Records</p>
+              <p className="text-xs text-muted-foreground">{t('auditLog.totalRecords')}</p>
             </div>
           </div>
         </CardContent>
@@ -147,7 +152,7 @@ function StatsCards() {
             </div>
             <div>
               <div className="text-xl font-bold text-green-600 sm:text-2xl">{allowed}</div>
-              <p className="text-xs text-muted-foreground">Allowed</p>
+              <p className="text-xs text-muted-foreground">{t('auditLog.allowed')}</p>
             </div>
           </div>
         </CardContent>
@@ -160,7 +165,7 @@ function StatsCards() {
             </div>
             <div>
               <div className="text-xl font-bold text-red-600 sm:text-2xl">{blocked}</div>
-              <p className="text-xs text-muted-foreground">Blocked</p>
+              <p className="text-xs text-muted-foreground">{t('auditLog.blocked')}</p>
             </div>
           </div>
         </CardContent>
@@ -173,7 +178,7 @@ function StatsCards() {
             </div>
             <div>
               <div className="text-xl font-bold text-orange-600 sm:text-2xl">{highRisk}</div>
-              <p className="text-xs text-muted-foreground">High Risk</p>
+              <p className="text-xs text-muted-foreground">{t('auditLog.highRisk')}</p>
             </div>
           </div>
         </CardContent>
@@ -183,6 +188,7 @@ function StatsCards() {
 }
 
 function FilterBar() {
+  const { t } = useTranslation();
   const { filters, setFilters, resetFilters } = useAuditLogStore();
   const hasActiveFilters = Object.values(filters).some((v) => v !== '');
 
@@ -199,9 +205,9 @@ function FilterBar() {
             aria-label="Filter by risk level"
             data-testid="filter-risk"
           >
-            <option value="">All Risk</option>
+            <option value="">{t('auditLog.allRisk')}</option>
             {(['green', 'yellow', 'red', 'critical', 'forbidden'] as const).map((r) => (
-              <option key={r} value={r}>{RISK_LEVEL_CONFIG[r].label}</option>
+              <option key={r} value={r}>{t(RISK_LEVEL_CONFIG[r].labelKey)}</option>
             ))}
           </select>
 
@@ -212,9 +218,9 @@ function FilterBar() {
             aria-label="Filter by action"
             data-testid="filter-action"
           >
-            <option value="">All Actions</option>
+            <option value="">{t('auditLog.allActions')}</option>
             {(['allowed', 'blocked', 'requires_confirmation'] as const).map((a) => (
-              <option key={a} value={a}>{ACTION_CONFIG[a].label}</option>
+              <option key={a} value={a}>{t(ACTION_CONFIG[a].labelKey)}</option>
             ))}
           </select>
 
@@ -244,7 +250,7 @@ function FilterBar() {
               data-testid="reset-filters"
             >
               <X className="h-3 w-3" />
-              Reset
+              {t('common.reset')}
             </Button>
           )}
         </div>
@@ -323,6 +329,7 @@ function AuditLogRow({
 }
 
 function AuditLogTable() {
+  const { t } = useTranslation();
   const { logs, isLoading, error, setSelectedLog } = useAuditLogStore();
 
   if (isLoading) {
@@ -350,9 +357,9 @@ function AuditLogTable() {
     return (
       <div className="py-12 text-center" data-testid="table-empty">
         <Shield className="mx-auto h-8 w-8 text-muted-foreground/50" />
-        <p className="mt-2 text-sm text-muted-foreground">No audit logs found</p>
+        <p className="mt-2 text-sm text-muted-foreground">{t('auditLog.noLogs')}</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          Command validation events will appear here.
+          {t('auditLog.noLogsDesc')}
         </p>
       </div>
     );
@@ -372,12 +379,12 @@ function AuditLogTable() {
         <table className="w-full text-left">
           <thead>
             <tr className="border-b border-border text-xs font-medium uppercase text-muted-foreground">
-              <th className="px-3 py-2 sm:px-4">Time</th>
-              <th className="px-3 py-2 sm:px-4">Command</th>
-              <th className="px-3 py-2 sm:px-4">Risk</th>
-              <th className="hidden px-3 py-2 sm:table-cell sm:px-4">Action</th>
-              <th className="hidden px-3 py-2 md:table-cell md:px-4">Result</th>
-              <th className="hidden px-3 py-2 lg:table-cell lg:px-4">Reason</th>
+              <th className="px-3 py-2 sm:px-4">{t('auditLog.tableHeaders.time')}</th>
+              <th className="px-3 py-2 sm:px-4">{t('auditLog.tableHeaders.command')}</th>
+              <th className="px-3 py-2 sm:px-4">{t('auditLog.tableHeaders.risk')}</th>
+              <th className="hidden px-3 py-2 sm:table-cell sm:px-4">{t('auditLog.tableHeaders.action')}</th>
+              <th className="hidden px-3 py-2 md:table-cell md:px-4">{t('auditLog.tableHeaders.result')}</th>
+              <th className="hidden px-3 py-2 lg:table-cell lg:px-4">{t('auditLog.tableHeaders.reason')}</th>
             </tr>
           </thead>
           <tbody>
@@ -392,6 +399,7 @@ function AuditLogTable() {
 }
 
 function Pagination() {
+  const { t } = useTranslation();
   const { page, total, setPage } = useAuditLogStore();
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -408,7 +416,7 @@ function Pagination() {
       data-testid="pagination"
     >
       <span className="text-xs text-muted-foreground">
-        Showing {(page - 1) * PAGE_SIZE + 1}-{Math.min(page * PAGE_SIZE, total)} of {total}
+        {t('common.showingRange', { start: (page - 1) * PAGE_SIZE + 1, end: Math.min(page * PAGE_SIZE, total), total })}
       </span>
       <div className="flex items-center gap-1">
         <Button
@@ -442,6 +450,7 @@ function Pagination() {
 }
 
 function AuditDetailDialog() {
+  const { t } = useTranslation();
   const { selectedLog, setSelectedLog } = useAuditLogStore();
   const log = selectedLog;
 
@@ -456,43 +465,43 @@ function AuditDetailDialog() {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Terminal className="h-5 w-5" />
-                Audit Detail
+                {t('auditLog.auditDetail')}
               </DialogTitle>
-              <DialogDescription>Command validation record</DialogDescription>
+              <DialogDescription>{t('auditLog.auditDetailDesc')}</DialogDescription>
             </DialogHeader>
 
             <div className="space-y-4">
               {/* Meta */}
               <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
                 <div>
-                  <span className="text-xs text-muted-foreground">Risk Level</span>
+                  <span className="text-xs text-muted-foreground">{t('auditLog.riskLevel')}</span>
                   <div className="mt-0.5">
                     <RiskBadge level={log.riskLevel} />
                   </div>
                 </div>
                 <div>
-                  <span className="text-xs text-muted-foreground">Action</span>
+                  <span className="text-xs text-muted-foreground">{t('auditLog.action')}</span>
                   <div className="mt-0.5">
                     <ActionBadge action={log.action} />
                   </div>
                 </div>
                 <div>
-                  <span className="text-xs text-muted-foreground">Result</span>
+                  <span className="text-xs text-muted-foreground">{t('auditLog.result')}</span>
                   <div className="mt-0.5">
                     <ResultBadge result={log.executionResult} />
                   </div>
                 </div>
                 <div>
-                  <span className="text-xs text-muted-foreground">Time</span>
+                  <span className="text-xs text-muted-foreground">{t('auditLog.time')}</span>
                   <p className="font-medium">{formatDate(log.createdAt)}</p>
                 </div>
                 <div>
-                  <span className="text-xs text-muted-foreground">Server ID</span>
+                  <span className="text-xs text-muted-foreground">{t('auditLog.serverId')}</span>
                   <p className="font-mono text-xs">{log.serverId}</p>
                 </div>
                 {log.matchedPattern && (
                   <div>
-                    <span className="text-xs text-muted-foreground">Matched Pattern</span>
+                    <span className="text-xs text-muted-foreground">{t('auditLog.matchedPattern')}</span>
                     <p className="font-mono text-xs">{log.matchedPattern}</p>
                   </div>
                 )}
@@ -500,7 +509,7 @@ function AuditDetailDialog() {
 
               {/* Command */}
               <div>
-                <h4 className="mb-1 text-xs font-medium text-muted-foreground">Command</h4>
+                <h4 className="mb-1 text-xs font-medium text-muted-foreground">{t('auditLog.command')}</h4>
                 <pre
                   className="overflow-x-auto rounded-md bg-muted p-3 text-xs"
                   data-testid="detail-command"
@@ -511,7 +520,7 @@ function AuditDetailDialog() {
 
               {/* Reason */}
               <div>
-                <h4 className="mb-1 text-xs font-medium text-muted-foreground">Reason</h4>
+                <h4 className="mb-1 text-xs font-medium text-muted-foreground">{t('auditLog.reason')}</h4>
                 <p className="text-sm">{log.reason}</p>
               </div>
 
@@ -520,7 +529,7 @@ function AuditDetailDialog() {
                 <div>
                   <h4 className="mb-1 flex items-center gap-1 text-xs font-medium text-yellow-600">
                     <AlertCircle className="h-3 w-3" />
-                    Warnings ({log.auditWarnings.length})
+                    {t('auditLog.warnings', { count: log.auditWarnings.length })}
                   </h4>
                   <ul className="space-y-1">
                     {log.auditWarnings.map((w, i) => (
@@ -537,7 +546,7 @@ function AuditDetailDialog() {
                 <div>
                   <h4 className="mb-1 flex items-center gap-1 text-xs font-medium text-red-600">
                     <XCircle className="h-3 w-3" />
-                    Blockers ({log.auditBlockers.length})
+                    {t('auditLog.blockers', { count: log.auditBlockers.length })}
                   </h4>
                   <ul className="space-y-1">
                     {log.auditBlockers.map((b, i) => (
@@ -559,6 +568,7 @@ function AuditDetailDialog() {
 // ── Main Page ──
 
 export function AuditLog() {
+  const { t } = useTranslation();
   const { fetchLogs, exportCsv, page, filters, logs, isExporting } = useAuditLogStore();
 
   useEffect(() => {
@@ -574,9 +584,9 @@ export function AuditLog() {
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-bold text-foreground sm:text-2xl">Audit Log</h1>
+          <h1 className="text-xl font-bold text-foreground sm:text-2xl">{t('auditLog.title')}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Security audit trail — command validation history.
+            {t('auditLog.description')}
           </p>
         </div>
         {logs.length > 0 && (
@@ -594,7 +604,7 @@ export function AuditLog() {
               ) : (
                 <Download className="h-3 w-3" />
               )}
-              CSV
+              {t('auditLog.csv')}
             </Button>
             <Button
               variant="outline"
@@ -604,7 +614,7 @@ export function AuditLog() {
               data-testid="export-json"
             >
               <Download className="h-3 w-3" />
-              JSON
+              {t('auditLog.json')}
             </Button>
           </div>
         )}

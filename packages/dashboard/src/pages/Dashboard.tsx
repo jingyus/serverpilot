@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
 import { useEffect, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import {
   Monitor,
@@ -36,13 +37,13 @@ import type { Alert } from '@/types/dashboard';
 
 const OPERATION_STATUS_CONFIG: Record<
   string,
-  { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon: typeof CheckCircle2 }
+  { labelKey: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon: typeof CheckCircle2 }
 > = {
-  success: { label: 'Success', variant: 'default', icon: CheckCircle2 },
-  failed: { label: 'Failed', variant: 'destructive', icon: XCircle },
-  running: { label: 'Running', variant: 'secondary', icon: Loader2 },
-  pending: { label: 'Pending', variant: 'outline', icon: Clock },
-  rolled_back: { label: 'Rolled Back', variant: 'outline', icon: AlertTriangle },
+  success: { labelKey: 'status.success', variant: 'default', icon: CheckCircle2 },
+  failed: { labelKey: 'status.failed', variant: 'destructive', icon: XCircle },
+  running: { labelKey: 'status.running', variant: 'secondary', icon: Loader2 },
+  pending: { labelKey: 'status.pending', variant: 'outline', icon: Clock },
+  rolled_back: { labelKey: 'status.rolledBack', variant: 'outline', icon: AlertTriangle },
 };
 
 const ALERT_SEVERITY_CONFIG: Record<
@@ -55,12 +56,13 @@ const ALERT_SEVERITY_CONFIG: Record<
 };
 
 function OperationStatusBadge({ status }: { status: string }) {
+  const { t } = useTranslation();
   const config = OPERATION_STATUS_CONFIG[status] ?? OPERATION_STATUS_CONFIG.pending;
   const Icon = config.icon;
   return (
     <Badge variant={config.variant} className="gap-1">
       <Icon className={cn('h-3 w-3', status === 'running' && 'animate-spin')} />
-      {config.label}
+      {t(config.labelKey)}
     </Badge>
   );
 }
@@ -116,6 +118,7 @@ function AlertRow({ alert }: { alert: Alert }) {
 }
 
 export function Dashboard() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const {
     servers,
@@ -156,9 +159,9 @@ export function Dashboard() {
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-bold text-foreground sm:text-2xl">Dashboard</h1>
+          <h1 className="text-xl font-bold text-foreground sm:text-2xl">{t('dashboard.title')}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Server overview and system status.
+            {t('dashboard.description')}
           </p>
         </div>
         <div className="flex gap-2">
@@ -168,14 +171,14 @@ export function Dashboard() {
             data-testid="quick-chat"
           >
             <MessageCircle className="mr-2 h-4 w-4" />
-            Start Chat
+            {t('dashboard.startChat')}
           </Button>
           <Button
             onClick={() => navigate('/servers')}
             data-testid="quick-add-server"
           >
             <Plus className="mr-2 h-4 w-4" />
-            Add Server
+            {t('dashboard.addServer')}
           </Button>
         </div>
       </div>
@@ -198,7 +201,7 @@ export function Dashboard() {
                 </div>
                 <div>
                   <div className="text-xl font-bold sm:text-2xl">{serverStats.total}</div>
-                  <p className="text-xs text-muted-foreground">Total Servers</p>
+                  <p className="text-xs text-muted-foreground">{t('dashboard.totalServers')}</p>
                 </div>
               </div>
             </CardContent>
@@ -213,7 +216,7 @@ export function Dashboard() {
                   <div className="text-xl font-bold text-green-600 sm:text-2xl">
                     {serverStats.online}
                   </div>
-                  <p className="text-xs text-muted-foreground">Online</p>
+                  <p className="text-xs text-muted-foreground">{t('status.online')}</p>
                 </div>
               </div>
             </CardContent>
@@ -228,7 +231,7 @@ export function Dashboard() {
                   <div className="text-xl font-bold text-gray-500 sm:text-2xl">
                     {serverStats.offline}
                   </div>
-                  <p className="text-xs text-muted-foreground">Offline</p>
+                  <p className="text-xs text-muted-foreground">{t('status.offline')}</p>
                 </div>
               </div>
             </CardContent>
@@ -243,7 +246,7 @@ export function Dashboard() {
                   <div className="text-xl font-bold text-red-600 sm:text-2xl">
                     {serverStats.error}
                   </div>
-                  <p className="text-xs text-muted-foreground">Error</p>
+                  <p className="text-xs text-muted-foreground">{t('status.error')}</p>
                 </div>
               </div>
             </CardContent>
@@ -259,7 +262,7 @@ export function Dashboard() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Activity className="h-5 w-5 text-muted-foreground" />
-                <CardTitle className="text-base">Recent Operations</CardTitle>
+                <CardTitle className="text-base">{t('dashboard.recentOperations')}</CardTitle>
               </div>
               <Button
                 variant="ghost"
@@ -267,11 +270,11 @@ export function Dashboard() {
                 onClick={() => navigate('/operations')}
                 data-testid="view-all-operations"
               >
-                View All
+                {t('common.viewAll')}
                 <ArrowRight className="ml-1 h-3.5 w-3.5" />
               </Button>
             </div>
-            <CardDescription>Last 5 operations across all servers</CardDescription>
+            <CardDescription>{t('dashboard.recentOperationsDesc')}</CardDescription>
           </CardHeader>
           <CardContent>
             {isLoadingOperations ? (
@@ -290,7 +293,7 @@ export function Dashboard() {
             ) : operations.length === 0 ? (
               <div className="py-8 text-center" data-testid="operations-empty">
                 <Activity className="mx-auto h-8 w-8 text-muted-foreground/50" />
-                <p className="mt-2 text-sm text-muted-foreground">No operations yet</p>
+                <p className="mt-2 text-sm text-muted-foreground">{t('dashboard.noOperations')}</p>
               </div>
             ) : (
               <div data-testid="operations-list">
@@ -308,7 +311,7 @@ export function Dashboard() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <AlertTriangle className="h-5 w-5 text-muted-foreground" />
-                <CardTitle className="text-base">Active Alerts</CardTitle>
+                <CardTitle className="text-base">{t('dashboard.activeAlerts')}</CardTitle>
                 {unresolvedAlertCount > 0 && (
                   <Badge variant="destructive" className="ml-1">
                     {unresolvedAlertCount}
@@ -316,7 +319,7 @@ export function Dashboard() {
                 )}
               </div>
             </div>
-            <CardDescription>Unresolved alerts requiring attention</CardDescription>
+            <CardDescription>{t('dashboard.activeAlertsDesc')}</CardDescription>
           </CardHeader>
           <CardContent>
             {isLoadingAlerts ? (
@@ -335,7 +338,7 @@ export function Dashboard() {
             ) : alerts.length === 0 ? (
               <div className="py-8 text-center" data-testid="alerts-empty">
                 <CheckCircle2 className="mx-auto h-8 w-8 text-green-500/50" />
-                <p className="mt-2 text-sm text-muted-foreground">No active alerts</p>
+                <p className="mt-2 text-sm text-muted-foreground">{t('dashboard.noAlerts')}</p>
               </div>
             ) : (
               <div className="space-y-2" data-testid="alerts-list">

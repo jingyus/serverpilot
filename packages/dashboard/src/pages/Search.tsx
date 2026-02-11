@@ -8,6 +8,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Search as SearchIcon, X, Loader2, BookOpen, Package, Brain, Users, Terminal } from 'lucide-react';
 
 import { Input } from '@/components/ui/input';
@@ -42,6 +43,7 @@ const sourceColors: Record<KnowledgeSource, string> = {
 };
 
 export function Search() {
+  const { t } = useTranslation();
   const {
     query,
     results,
@@ -85,9 +87,9 @@ export function Search() {
       <div className="border-b border-border bg-card px-4 py-4 sm:px-6">
         <div className="flex flex-col gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Knowledge Base</h1>
+            <h1 className="text-2xl font-bold text-foreground">{t('search.title')}</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Search for installation commands, configurations, and best practices
+              {t('search.description')}
             </p>
           </div>
 
@@ -97,7 +99,7 @@ export function Search() {
               <SearchIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 type="text"
-                placeholder="Search software, commands, or platforms..."
+                placeholder={t('search.searchPlaceholder')}
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyDown={handleKeyDown}
@@ -112,14 +114,14 @@ export function Search() {
                     setQuery('');
                   }}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  aria-label="Clear search"
+                  aria-label={t('search.clearSearch')}
                 >
                   <X className="h-4 w-4" />
                 </button>
               )}
             </div>
             <Button onClick={handleSearch} disabled={isSearching || !inputValue.trim()} data-testid="search-button">
-              {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Search'}
+              {isSearching ? <Loader2 className="h-4 w-4 animate-spin" /> : t('common.search')}
             </Button>
           </div>
 
@@ -131,7 +133,7 @@ export function Search() {
               onClick={() => handleSourceFilter('all')}
               data-testid="filter-all"
             >
-              All Sources
+              {t('search.allSources')}
             </Badge>
             {(['builtin', 'auto_learn', 'scrape', 'community'] as const).map((source) => (
               <Badge
@@ -168,7 +170,7 @@ export function Search() {
         ) : results.length > 0 ? (
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Found {results.length} {results.length === 1 ? 'result' : 'results'} for "{query}"
+              {t('search.resultCount', { count: results.length, query })}
             </p>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {results.map((knowledge) => (
@@ -183,17 +185,17 @@ export function Search() {
         ) : query ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <SearchIcon className="mb-4 h-12 w-12 text-muted-foreground/50" />
-            <h2 className="text-lg font-semibold text-foreground">No results found</h2>
+            <h2 className="text-lg font-semibold text-foreground">{t('search.noResults')}</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Try adjusting your search or filters
+              {t('search.noResultsDesc')}
             </p>
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <BookOpen className="mb-4 h-12 w-12 text-muted-foreground/50" />
-            <h2 className="text-lg font-semibold text-foreground">Search the knowledge base</h2>
+            <h2 className="text-lg font-semibold text-foreground">{t('search.searchPrompt')}</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Enter a search term to find installation commands and configurations
+              {t('search.searchPromptDesc')}
             </p>
           </div>
         )}
@@ -214,6 +216,7 @@ interface KnowledgeCardProps {
 }
 
 function KnowledgeCard({ knowledge, onClick }: KnowledgeCardProps) {
+  const { t } = useTranslation();
   const Icon = sourceIcons[knowledge.source];
   const sourceColor = sourceColors[knowledge.source];
 
@@ -232,25 +235,25 @@ function KnowledgeCard({ knowledge, onClick }: KnowledgeCardProps) {
           </Badge>
         </div>
         <CardDescription className="text-xs">
-          Platform: {knowledge.platform}
+          {t('search.platform', { value: knowledge.platform })}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-2 text-sm">
         {knowledge.content.commands.length > 0 && (
           <div>
-            <p className="mb-1 text-xs font-medium text-muted-foreground">Commands:</p>
+            <p className="mb-1 text-xs font-medium text-muted-foreground">{t('search.commands')}</p>
             <code className="block truncate rounded bg-muted px-2 py-1 text-xs">
               {knowledge.content.commands[0]}
             </code>
             {knowledge.content.commands.length > 1 && (
               <p className="mt-1 text-xs text-muted-foreground">
-                +{knowledge.content.commands.length - 1} more
+                {t('search.moreItems', { count: knowledge.content.commands.length - 1 })}
               </p>
             )}
           </div>
         )}
         <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span>Used {knowledge.successCount} times</span>
+          <span>{t('search.usedCount', { count: knowledge.successCount })}</span>
           {knowledge.lastUsed && <span>{formatDate(knowledge.lastUsed)}</span>}
         </div>
       </CardContent>
@@ -264,6 +267,8 @@ interface KnowledgeDetailDialogProps {
 }
 
 function KnowledgeDetailDialog({ knowledge, onClose }: KnowledgeDetailDialogProps) {
+  const { t } = useTranslation();
+
   if (!knowledge) return null;
 
   const Icon = sourceIcons[knowledge.source];
@@ -278,7 +283,7 @@ function KnowledgeDetailDialog({ knowledge, onClose }: KnowledgeDetailDialogProp
               <div className="flex-1">
                 <CardTitle className="text-xl">{knowledge.software}</CardTitle>
                 <CardDescription className="mt-1">
-                  Platform: {knowledge.platform}
+                  {t('search.platform', { value: knowledge.platform })}
                 </CardDescription>
               </div>
               <Button variant="ghost" size="sm" onClick={onClose}>
@@ -291,7 +296,7 @@ function KnowledgeDetailDialog({ knowledge, onClose }: KnowledgeDetailDialogProp
                 {sourceLabels[knowledge.source]}
               </Badge>
               <Badge variant="outline">
-                Used {knowledge.successCount} times
+                {t('search.usedCount', { count: knowledge.successCount })}
               </Badge>
             </div>
           </CardHeader>
@@ -300,7 +305,7 @@ function KnowledgeDetailDialog({ knowledge, onClose }: KnowledgeDetailDialogProp
             <div>
               <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold">
                 <Terminal className="h-4 w-4" />
-                Installation Commands
+                {t('search.installationCommands')}
               </h3>
               <div className="space-y-2">
                 {knowledge.content.commands.map((cmd, index) => (
@@ -317,7 +322,7 @@ function KnowledgeDetailDialog({ knowledge, onClose }: KnowledgeDetailDialogProp
             {/* Verification */}
             {knowledge.content.verification && (
               <div>
-                <h3 className="mb-2 text-sm font-semibold">Verification</h3>
+                <h3 className="mb-2 text-sm font-semibold">{t('search.verification')}</h3>
                 <code className="block rounded bg-muted px-3 py-2 text-xs">
                   {knowledge.content.verification}
                 </code>
@@ -327,7 +332,7 @@ function KnowledgeDetailDialog({ knowledge, onClose }: KnowledgeDetailDialogProp
             {/* Notes */}
             {knowledge.content.notes && knowledge.content.notes.length > 0 && (
               <div>
-                <h3 className="mb-2 text-sm font-semibold">Notes</h3>
+                <h3 className="mb-2 text-sm font-semibold">{t('search.notes')}</h3>
                 <ul className="list-inside list-disc space-y-1 text-sm text-muted-foreground">
                   {knowledge.content.notes.map((note, index) => (
                     <li key={index}>{note}</li>
@@ -340,16 +345,16 @@ function KnowledgeDetailDialog({ knowledge, onClose }: KnowledgeDetailDialogProp
             <div className="border-t border-border pt-4">
               <div className="grid grid-cols-2 gap-4 text-xs text-muted-foreground">
                 <div>
-                  <p className="font-medium">Created</p>
+                  <p className="font-medium">{t('search.created')}</p>
                   <p>{formatDate(knowledge.createdAt)}</p>
                 </div>
                 <div>
-                  <p className="font-medium">Last Updated</p>
+                  <p className="font-medium">{t('search.lastUpdated')}</p>
                   <p>{formatDate(knowledge.updatedAt)}</p>
                 </div>
                 {knowledge.lastUsed && (
                   <div>
-                    <p className="font-medium">Last Used</p>
+                    <p className="font-medium">{t('search.lastUsed')}</p>
                     <p>{formatDate(knowledge.lastUsed)}</p>
                   </div>
                 )}

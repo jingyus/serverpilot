@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -85,6 +86,7 @@ interface DefaultFallbackProps extends FallbackProps {
 }
 
 function DefaultFallback({ error, resetErrorBoundary, className }: DefaultFallbackProps) {
+  const { t } = useTranslation();
   const isDev = import.meta.env.DEV;
 
   return (
@@ -97,9 +99,9 @@ function DefaultFallback({ error, resetErrorBoundary, className }: DefaultFallba
     >
       <AlertCircle className="h-10 w-10 text-destructive" />
       <div className="space-y-1">
-        <h2 className="text-lg font-semibold text-foreground">Something went wrong</h2>
+        <h2 className="text-lg font-semibold text-foreground">{t('error.somethingWentWrong')}</h2>
         <p className="text-sm text-muted-foreground">
-          An unexpected error occurred. Please try again.
+          {t('error.unexpectedError')}
         </p>
       </div>
 
@@ -112,7 +114,7 @@ function DefaultFallback({ error, resetErrorBoundary, className }: DefaultFallba
 
       <Button variant="outline" size="sm" onClick={resetErrorBoundary}>
         <RefreshCw className="mr-2 h-4 w-4" />
-        Try again
+        {t('error.tryAgain')}
       </Button>
     </div>
   );
