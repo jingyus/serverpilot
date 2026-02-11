@@ -155,17 +155,26 @@ bun scripts/build-binary.ts
 | **云版专业版** | 免配置 AI + 团队协作 + 高级监控 | $19/月 |
 | **云版企业版** | SSO + 审计合规 + API 接入 | $99/月起 |
 
+## 文档
+
+| 文档 | 说明 |
+|------|------|
+| [Architecture](docs/ARCHITECTURE.md) | 系统架构、模块职责、数据流、通信协议 |
+| [Security White Paper](docs/SECURITY.md) | 五层纵深防御架构详细说明 |
+| [Security Policy](SECURITY.md) | 漏洞报告流程和安全策略 |
+| [Deployment Guide](docs/deployment.md) | Docker Compose 部署指南 |
+
 ## 安全
 
 ServerPilot 采用**五层纵深防御**策略保护你的服务器：
 
-1. **命令分级** — GREEN / YELLOW / RED / CRITICAL / FORBIDDEN 五级分类，532+ 条规则
-2. **参数审计** — 43+ 危险参数识别，55+ 保护路径
+1. **命令分级** — GREEN / YELLOW / RED / CRITICAL / FORBIDDEN 五级分类，726+ 条规则
+2. **参数审计** — 45+ 危险参数识别，40+ 保护路径
 3. **操作快照** — 关键操作前自动创建回滚点
 4. **紧急终止** — 一键停止所有运行中的操作
 5. **审计日志** — 完整的操作追踪和可审计记录
 
-Agent 以非 root 用户运行，仅经审批的操作获得提权。详见 [SECURITY.md](SECURITY.md)。
+Agent 以非 root 用户运行，仅经审批的操作获得提权。详见 [Security White Paper](docs/SECURITY.md) 和 [Security Policy](SECURITY.md)。
 
 ## 参与贡献
 
@@ -225,6 +234,12 @@ cd ServerPilot
 docker compose up -d
 # Open http://localhost:3001
 ```
+
+### Documentation
+
+- [Architecture](docs/ARCHITECTURE.md) — System architecture, module responsibilities, data flows
+- [Security White Paper](docs/SECURITY.md) — Five-layer defense-in-depth architecture
+- [Security Policy](SECURITY.md) — Vulnerability reporting and security policy
 
 ### License
 
