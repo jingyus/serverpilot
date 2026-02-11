@@ -21,13 +21,13 @@ const ROLE_CONFIG = {
     icon: Bot,
     align: 'justify-start' as const,
     bubble: 'bg-muted text-foreground',
-    iconBg: 'bg-blue-100 text-blue-600',
+    iconBg: 'bg-blue-100 text-blue-600 dark:bg-blue-900/50 dark:text-blue-400',
   },
   system: {
     icon: Info,
     align: 'justify-center' as const,
-    bubble: 'bg-yellow-50 text-yellow-800 border border-yellow-200',
-    iconBg: 'bg-yellow-100 text-yellow-600',
+    bubble: 'bg-yellow-50 text-yellow-800 border border-yellow-200 dark:bg-yellow-900/20 dark:text-yellow-200 dark:border-yellow-800',
+    iconBg: 'bg-yellow-100 text-yellow-600 dark:bg-yellow-900/50 dark:text-yellow-400',
   },
 };
 

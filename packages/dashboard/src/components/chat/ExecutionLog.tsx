@@ -75,9 +75,9 @@ function StepLog({
     <div
       className={cn(
         'rounded-lg border p-3',
-        isActive && 'border-blue-300 bg-blue-50/50',
-        isSuccess && 'border-green-200 bg-green-50/30',
-        isFailed && 'border-red-200 bg-red-50/30'
+        isActive && 'border-blue-300 bg-blue-50/50 dark:border-blue-700 dark:bg-blue-900/20',
+        isSuccess && 'border-green-200 bg-green-50/30 dark:border-green-800 dark:bg-green-900/20',
+        isFailed && 'border-red-200 bg-red-50/30 dark:border-red-800 dark:bg-red-900/20'
       )}
       data-testid={`exec-step-${step.id}`}
     >

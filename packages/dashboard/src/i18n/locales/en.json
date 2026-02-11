@@ -454,5 +454,13 @@
     "changeRoleConfirm": "Change {{name}}'s role from {{from}} to {{to}}?",
     "expiresInDays": "Expires in {{count}} day",
     "expiresInDays_other": "Expires in {{count}} days"
+  },
+  "theme": {
+    "toggle": "Toggle theme",
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System",
+    "title": "Theme",
+    "description": "Choose your preferred appearance"
   }
 }

@@ -128,6 +128,51 @@ describe('Header', () => {
     });
   });
 
+  describe('theme toggle', () => {
+    it('renders theme toggle button', () => {
+      renderHeader();
+      expect(screen.getByTestId('theme-toggle')).toBeInTheDocument();
+    });
+
+    it('cycles theme from system to light on click', async () => {
+      useUiStore.setState({ theme: 'system' });
+      const user = userEvent.setup();
+      renderHeader();
+
+      // system -> light (next in cycle: light -> dark -> system)
+      // Actually cycle is light -> dark -> system, so system + 1 = light
+      await user.click(screen.getByTestId('theme-toggle'));
+      expect(useUiStore.getState().theme).toBe('light');
+    });
+
+    it('cycles theme from light to dark on click', async () => {
+      useUiStore.setState({ theme: 'light' });
+      const user = userEvent.setup();
+      renderHeader();
+
+      await user.click(screen.getByTestId('theme-toggle'));
+      expect(useUiStore.getState().theme).toBe('dark');
+    });
+
+    it('cycles theme from dark to system on click', async () => {
+      useUiStore.setState({ theme: 'dark' });
+      const user = userEvent.setup();
+      renderHeader();
+
+      await user.click(screen.getByTestId('theme-toggle'));
+      expect(useUiStore.getState().theme).toBe('system');
+    });
+
+    it('persists theme to localStorage', async () => {
+      useUiStore.setState({ theme: 'light' });
+      const user = userEvent.setup();
+      renderHeader();
+
+      await user.click(screen.getByTestId('theme-toggle'));
+      expect(localStorage.getItem('ui_theme')).toBe('dark');
+    });
+  });
+
   describe('connection status', () => {
     it('shows connection indicator', () => {
       renderHeader();

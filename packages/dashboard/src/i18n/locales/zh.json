@@ -454,5 +454,13 @@
     "changeRoleConfirm": "将 {{name}} 的角色从 {{from}} 更改为 {{to}}？",
     "expiresInDays": "{{count}} 天后过期",
     "expiresInDays_other": "{{count}} 天后过期"
+  },
+  "theme": {
+    "toggle": "切换主题",
+    "light": "浅色",
+    "dark": "深色",
+    "system": "跟随系统",
+    "title": "主题",
+    "description": "选择界面外观"
   }
 }

@@ -49,9 +49,9 @@ const SERVICE_STATUS_CONFIG: Record<
   string,
   { icon: typeof Play; color: string; tKey: string }
 > = {
-  running: { icon: Play, color: 'text-green-600', tKey: 'status.running' },
-  stopped: { icon: Square, color: 'text-gray-500', tKey: 'status.stopped' },
-  failed: { icon: AlertTriangle, color: 'text-red-600', tKey: 'status.failed' },
+  running: { icon: Play, color: 'text-green-600 dark:text-green-400', tKey: 'status.running' },
+  stopped: { icon: Square, color: 'text-gray-500 dark:text-gray-400', tKey: 'status.stopped' },
+  failed: { icon: AlertTriangle, color: 'text-red-600 dark:text-red-400', tKey: 'status.failed' },
 };
 
 function StatusBadge({ status }: { status: string }) {
@@ -125,7 +125,7 @@ function MetricsSection({ metrics }: { metrics: Metrics | null }) {
         icon={Cpu}
         label={t('serverDetail.cpuUsage')}
         value={cpuPercent}
-        color="bg-blue-100 text-blue-600"
+        color="bg-blue-100 text-blue-600 dark:bg-blue-900/50 dark:text-blue-400"
         testId="metric-cpu"
       />
       <MetricCard
@@ -133,7 +133,7 @@ function MetricsSection({ metrics }: { metrics: Metrics | null }) {
         label={t('serverDetail.memory')}
         value={memPercent}
         subValue={memDetail}
-        color="bg-purple-100 text-purple-600"
+        color="bg-purple-100 text-purple-600 dark:bg-purple-900/50 dark:text-purple-400"
         testId="metric-memory"
       />
       <MetricCard
@@ -141,7 +141,7 @@ function MetricsSection({ metrics }: { metrics: Metrics | null }) {
         label={t('serverDetail.disk')}
         value={diskPercent}
         subValue={diskDetail}
-        color="bg-amber-100 text-amber-600"
+        color="bg-amber-100 text-amber-600 dark:bg-amber-900/50 dark:text-amber-400"
         testId="metric-disk"
       />
       <MetricCard
@@ -149,7 +149,7 @@ function MetricsSection({ metrics }: { metrics: Metrics | null }) {
         label={t('serverDetail.network')}
         value={`${netIn}/s`}
         subValue={`Out: ${netOut}/s`}
-        color="bg-green-100 text-green-600"
+        color="bg-green-100 text-green-600 dark:bg-green-900/50 dark:text-green-400"
         testId="metric-network"
       />
     </div>
@@ -216,9 +216,9 @@ function ServicesSection({ services }: { services: Service[] }) {
   return (
     <div>
       <div className="mb-4 flex gap-4 text-sm" data-testid="services-summary">
-        <span className="text-green-600">{t('serverDetail.running', { count: running })}</span>
-        <span className="text-gray-500">{t('serverDetail.stopped', { count: stopped })}</span>
-        {failed > 0 && <span className="text-red-600">{t('serverDetail.failed', { count: failed })}</span>}
+        <span className="text-green-600 dark:text-green-400">{t('serverDetail.running', { count: running })}</span>
+        <span className="text-gray-500 dark:text-gray-400">{t('serverDetail.stopped', { count: stopped })}</span>
+        {failed > 0 && <span className="text-red-600 dark:text-red-400">{t('serverDetail.failed', { count: failed })}</span>}
       </div>
       <div className="divide-y" data-testid="services-list">
         {services.map((service) => (

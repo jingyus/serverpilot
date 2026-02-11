@@ -6,6 +6,7 @@ import userEvent from '@testing-library/user-event';
 import { Settings } from './Settings';
 import { useSettingsStore } from '@/stores/settings';
 import { useAuthStore } from '@/stores/auth';
+import { useUiStore } from '@/stores/ui';
 
 vi.mock('@/stores/settings');
 vi.mock('@/stores/auth');
@@ -101,6 +102,7 @@ describe('Settings', () => {
     expect(screen.getByText('User Profile')).toBeInTheDocument();
     expect(screen.getByText('Notifications')).toBeInTheDocument();
     expect(screen.getByText('Security')).toBeInTheDocument();
+    expect(screen.getByText('Theme')).toBeInTheDocument();
     expect(screen.getByText('Knowledge Base')).toBeInTheDocument();
   });
 
@@ -610,6 +612,44 @@ describe('Settings', () => {
 
       const healthStatus = screen.getByTestId('health-status');
       expect(healthStatus).toHaveTextContent('Connection refused');
+    });
+  });
+
+  describe('theme selector', () => {
+    beforeEach(() => {
+      useUiStore.setState({ theme: 'system' });
+    });
+
+    it('should render theme selector with three options', () => {
+      render(<Settings />);
+      expect(screen.getByTestId('theme-selector')).toBeInTheDocument();
+      expect(screen.getByTestId('theme-option-light')).toBeInTheDocument();
+      expect(screen.getByTestId('theme-option-dark')).toBeInTheDocument();
+      expect(screen.getByTestId('theme-option-system')).toBeInTheDocument();
+    });
+
+    it('should highlight the active theme', () => {
+      useUiStore.setState({ theme: 'dark' });
+      render(<Settings />);
+
+      const darkButton = screen.getByTestId('theme-option-dark');
+      expect(darkButton.className).toContain('border-primary');
+    });
+
+    it('should switch theme on click', async () => {
+      const user = userEvent.setup();
+      render(<Settings />);
+
+      await user.click(screen.getByTestId('theme-option-dark'));
+      expect(useUiStore.getState().theme).toBe('dark');
+    });
+
+    it('should persist theme choice to localStorage', async () => {
+      const user = userEvent.setup();
+      render(<Settings />);
+
+      await user.click(screen.getByTestId('theme-option-light'));
+      expect(localStorage.getItem('ui_theme')).toBe('light');
     });
   });
 });

@@ -29,9 +29,9 @@ import type { AlertRule, AlertSeverity, MetricType, ComparisonOperator } from '@
 // ── Config ──
 
 const SEVERITY_CONFIG: Record<AlertSeverity, { labelKey: string; className: string }> = {
-  info: { labelKey: 'severity.info', className: 'bg-blue-100 text-blue-700 border-blue-200' },
-  warning: { labelKey: 'severity.warning', className: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
-  critical: { labelKey: 'severity.critical', className: 'bg-red-100 text-red-700 border-red-200' },
+  info: { labelKey: 'severity.info', className: 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-800' },
+  warning: { labelKey: 'severity.warning', className: 'bg-yellow-100 text-yellow-700 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-300 dark:border-yellow-800' },
+  critical: { labelKey: 'severity.critical', className: 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800' },
 };
 
 const METRIC_LABELS: Record<MetricType, string> = {
@@ -85,7 +85,7 @@ function StatsCards() {
       <Card>
         <CardContent className="p-3 sm:p-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100 text-green-600">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100 text-green-600 dark:bg-green-900/50 dark:text-green-400">
               <ShieldCheck className="h-5 w-5" />
             </div>
             <div>
@@ -98,7 +98,7 @@ function StatsCards() {
       <Card>
         <CardContent className="p-3 sm:p-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-100 text-red-600">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-100 text-red-600 dark:bg-red-900/50 dark:text-red-400">
               <ShieldAlert className="h-5 w-5" />
             </div>
             <div>
@@ -425,7 +425,7 @@ export function Alerts() {
 
       {/* Success message */}
       {successMessage && (
-        <div className="flex items-center gap-2 rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-700" data-testid="success-message">
+        <div className="flex items-center gap-2 rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-700 dark:border-green-800 dark:bg-green-900/20 dark:text-green-300" data-testid="success-message">
           <CheckCircle2 className="h-4 w-4 shrink-0" />
           <span className="flex-1">{successMessage}</span>
           <button type="button" onClick={clearSuccess} className="text-green-500 hover:text-green-700">

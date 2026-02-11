@@ -50,9 +50,9 @@ const ALERT_SEVERITY_CONFIG: Record<
   string,
   { color: string; bgColor: string }
 > = {
-  critical: { color: 'text-red-700', bgColor: 'bg-red-50' },
-  warning: { color: 'text-yellow-700', bgColor: 'bg-yellow-50' },
-  info: { color: 'text-blue-700', bgColor: 'bg-blue-50' },
+  critical: { color: 'text-red-700 dark:text-red-300', bgColor: 'bg-red-50 dark:bg-red-900/20' },
+  warning: { color: 'text-yellow-700 dark:text-yellow-300', bgColor: 'bg-yellow-50 dark:bg-yellow-900/20' },
+  info: { color: 'text-blue-700 dark:text-blue-300', bgColor: 'bg-blue-50 dark:bg-blue-900/20' },
 };
 
 function OperationStatusBadge({ status }: { status: string }) {
@@ -209,7 +209,7 @@ export function Dashboard() {
           <Card>
             <CardContent className="p-3 sm:p-4">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100 text-green-600">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100 text-green-600 dark:bg-green-900/50 dark:text-green-400">
                   <Wifi className="h-5 w-5" />
                 </div>
                 <div>
@@ -224,7 +224,7 @@ export function Dashboard() {
           <Card>
             <CardContent className="p-3 sm:p-4">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100 text-gray-500">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100 text-gray-500 dark:bg-gray-900/50 dark:text-gray-400">
                   <WifiOff className="h-5 w-5" />
                 </div>
                 <div>
@@ -239,7 +239,7 @@ export function Dashboard() {
           <Card>
             <CardContent className="p-3 sm:p-4">
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-100 text-red-600">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-100 text-red-600 dark:bg-red-900/50 dark:text-red-400">
                   <AlertTriangle className="h-5 w-5" />
                 </div>
                 <div>

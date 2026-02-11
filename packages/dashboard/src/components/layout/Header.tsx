@@ -3,7 +3,8 @@
 import { useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Menu, Bell } from 'lucide-react';
+import { Menu, Bell, Sun, Moon, Monitor } from 'lucide-react';
+import type { Theme } from '@/stores/ui';
 import { useAuthStore } from '@/stores/auth';
 import { useUiStore } from '@/stores/ui';
 import { useAlertsStore } from '@/stores/alerts';
@@ -36,6 +37,8 @@ export function Header() {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const toggleMobileSidebar = useUiStore((s) => s.toggleMobileSidebar);
+  const theme = useUiStore((s) => s.theme);
+  const setTheme = useUiStore((s) => s.setTheme);
   const unresolvedCount = useAlertsStore((s) => s.unresolvedCount);
   const fetchUnresolvedCount = useAlertsStore((s) => s.fetchUnresolvedCount);
   const titleKey = getPageTitleKey(pathname);
@@ -66,6 +69,8 @@ export function Header() {
 
       <div className="flex items-center gap-2 sm:gap-3">
         <ConnectionStatus />
+
+        <ThemeToggle theme={theme} setTheme={setTheme} />
 
         <button
           type="button"
@@ -98,5 +103,38 @@ export function Header() {
         </div>
       </div>
     </header>
+  );
+}
+
+const THEME_ORDER: Theme[] = ['light', 'dark', 'system'];
+
+const THEME_ICON: Record<Theme, typeof Sun> = {
+  light: Sun,
+  dark: Moon,
+  system: Monitor,
+};
+
+const THEME_LABEL_KEY: Record<Theme, string> = {
+  light: 'theme.light',
+  dark: 'theme.dark',
+  system: 'theme.system',
+};
+
+function ThemeToggle({ theme, setTheme }: { theme: Theme; setTheme: (t: Theme) => void }) {
+  const { t } = useTranslation();
+  const Icon = THEME_ICON[theme];
+  const next = THEME_ORDER[(THEME_ORDER.indexOf(theme) + 1) % THEME_ORDER.length];
+
+  return (
+    <button
+      type="button"
+      aria-label={t('theme.toggle')}
+      title={t(THEME_LABEL_KEY[theme])}
+      onClick={() => setTheme(next)}
+      className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+      data-testid="theme-toggle"
+    >
+      <Icon className="h-5 w-5" />
+    </button>
   );
 }

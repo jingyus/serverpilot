@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 ServerPilot Contributors
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Save, Loader2, AlertCircle, CheckCircle2, Key, User, Bell, Shield, Book, RefreshCw, Globe } from 'lucide-react';
+import { Save, Loader2, AlertCircle, CheckCircle2, Key, User, Bell, Shield, Book, RefreshCw, Globe, Sun, Moon, Monitor } from 'lucide-react';
 import { supportedLanguages, setStoredLanguage } from '@/i18n';
 import { DocSourceSection } from '@/components/knowledge/DocSourceSection';
 
@@ -14,6 +14,7 @@ import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { useSettingsStore, type AIProvider } from '@/stores/settings';
 import { useAuthStore } from '@/stores/auth';
+import { useUiStore, type Theme } from '@/stores/ui';
 import { cn } from '@/lib/utils';
 
 const TIMEZONES = [
@@ -62,6 +63,8 @@ function getBaseUrlPlaceholder(provider: AIProvider): string {
 export function Settings() {
   const { t, i18n } = useTranslation();
   const { user } = useAuthStore();
+  const theme = useUiStore((s) => s.theme);
+  const setTheme = useUiStore((s) => s.setTheme);
   const {
     settings,
     isLoading,
@@ -245,7 +248,7 @@ export function Settings() {
       {successMessage && (
         <div
           role="status"
-          className="flex items-center gap-2 rounded-md border border-green-500/50 bg-green-50 p-3 text-sm text-green-700"
+          className="flex items-center gap-2 rounded-md border border-green-500/50 bg-green-50 p-3 text-sm text-green-700 dark:bg-green-900/20 dark:text-green-300"
         >
           <CheckCircle2 className="h-4 w-4 shrink-0" />
           <span>{successMessage}</span>
@@ -271,7 +274,7 @@ export function Settings() {
               className={cn(
                 'flex items-center gap-2 rounded-md border p-3 text-sm',
                 healthStatus.available
-                  ? 'border-green-500/50 bg-green-50 text-green-700'
+                  ? 'border-green-500/50 bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-300'
                   : 'border-destructive/50 bg-destructive/10 text-destructive'
               )}
             >
@@ -585,6 +588,42 @@ export function Settings() {
                 </option>
               ))}
             </select>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Theme */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Sun className="h-5 w-5 text-muted-foreground" />
+            <CardTitle>{t('theme.title')}</CardTitle>
+          </div>
+          <CardDescription>{t('theme.description')}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-3" data-testid="theme-selector">
+            {(['light', 'dark', 'system'] as Theme[]).map((option) => {
+              const IconMap = { light: Sun, dark: Moon, system: Monitor };
+              const OptionIcon = IconMap[option];
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setTheme(option)}
+                  className={cn(
+                    'flex flex-1 flex-col items-center gap-2 rounded-lg border p-4 text-sm font-medium transition-colors',
+                    theme === option
+                      ? 'border-primary bg-primary/5 text-primary'
+                      : 'border-border text-muted-foreground hover:border-primary/50 hover:text-foreground',
+                  )}
+                  data-testid={`theme-option-${option}`}
+                >
+                  <OptionIcon className="h-5 w-5" />
+                  {t(`theme.${option}`)}
+                </button>
+              );
+            })}
           </div>
         </CardContent>
       </Card>

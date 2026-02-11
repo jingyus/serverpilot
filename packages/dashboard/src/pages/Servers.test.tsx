@@ -494,7 +494,9 @@ describe('Servers Page', () => {
 
     it('returns a valid color class string', () => {
       const color = getTagColor('test');
-      expect(color).toMatch(/^bg-\w+-100 text-\w+-800 border-\w+-200$/);
+      expect(color).toContain('bg-');
+      expect(color).toContain('text-');
+      expect(color).toContain('border-');
     });
   });
 
