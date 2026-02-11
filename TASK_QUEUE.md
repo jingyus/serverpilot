@@ -7,9 +7,9 @@
 ## 📊 统计信息
 
 - **总任务数**: 30
-- **待完成** (pending): 9
+- **待完成** (pending): 8
 - **进行中** (in_progress): 0
-- **已完成** (completed): 21
+- **已完成** (completed): 22
 - **失败** (failed): 0
 
 ---
@@ -30,7 +30,7 @@
 
 ---
 
-### [pending] Dashboard Settings 页面 - AI Provider 切换联调
+### [completed] Dashboard Settings 页面 - AI Provider 切换联调 ✅
 
 **ID**: task-011
 **优先级**: P0
@@ -39,7 +39,7 @@
 **产品需求**: Dashboard "基本监控、对话界面" - 用户需要能选择和配置 AI Provider
 **验收标准**: 1) Settings 页面可选择 4 种 provider；2) 保存后 Chat 功能使用新 provider；3) API Key 输入有基本验证；4) Ollama 显示本地连接地址配置
 **创建时间**: 2026-02-11 00:00:00
-**完成时间**: -
+**完成时间**: 2026-02-11 10:45:46
 
 ---
 
@@ -902,4 +902,4 @@ ID: task-001
 
 ---
 
-**最后更新**: 2026-02-11 10:38:52
+**最后更新**: 2026-02-11 10:45:46

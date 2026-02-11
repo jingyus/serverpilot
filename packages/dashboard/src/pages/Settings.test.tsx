@@ -47,6 +47,22 @@ describe('Settings', () => {
     timezone: 'UTC',
   };
 
+  const defaultStoreValue = {
+    settings: mockSettings,
+    isLoading: false,
+    error: null,
+    isSaving: false,
+    healthStatus: null,
+    isCheckingHealth: false,
+    fetchSettings: vi.fn(),
+    updateAIProvider: vi.fn(),
+    updateUserProfile: vi.fn(),
+    updateNotifications: vi.fn(),
+    updateKnowledgeBase: vi.fn(),
+    checkProviderHealth: vi.fn(),
+    clearError: vi.fn(),
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
 
@@ -62,36 +78,17 @@ describe('Settings', () => {
       restoreSession: vi.fn(),
     });
 
-    mockUseSettingsStore.mockReturnValue({
-      settings: mockSettings,
-      isLoading: false,
-      error: null,
-      isSaving: false,
-      fetchSettings: vi.fn(),
-      updateAIProvider: vi.fn(),
-      updateUserProfile: vi.fn(),
-      updateNotifications: vi.fn(),
-      updateKnowledgeBase: vi.fn(),
-      clearError: vi.fn(),
-    });
+    mockUseSettingsStore.mockReturnValue({ ...defaultStoreValue });
   });
 
   it('should render loading state', () => {
     mockUseSettingsStore.mockReturnValue({
+      ...defaultStoreValue,
       settings: null,
       isLoading: true,
-      error: null,
-      isSaving: false,
-      fetchSettings: vi.fn(),
-      updateAIProvider: vi.fn(),
-      updateUserProfile: vi.fn(),
-      updateNotifications: vi.fn(),
-      updateKnowledgeBase: vi.fn(),
-      clearError: vi.fn(),
     });
 
     const { container } = render(<Settings />);
-    // The loading spinner is rendered as an SVG with animate-spin class
     const spinner = container.querySelector('.animate-spin');
     expect(spinner).toBeInTheDocument();
   });
@@ -109,16 +106,8 @@ describe('Settings', () => {
 
   it('should display error message', () => {
     mockUseSettingsStore.mockReturnValue({
-      settings: mockSettings,
-      isLoading: false,
+      ...defaultStoreValue,
       error: 'Failed to load settings',
-      isSaving: false,
-      fetchSettings: vi.fn(),
-      updateAIProvider: vi.fn(),
-      updateUserProfile: vi.fn(),
-      updateNotifications: vi.fn(),
-      updateKnowledgeBase: vi.fn(),
-      clearError: vi.fn(),
     });
 
     render(<Settings />);
@@ -133,6 +122,14 @@ describe('Settings', () => {
 
     const modelInput = screen.getByLabelText('Model (optional)') as HTMLInputElement;
     expect(modelInput.value).toBe('claude-3-opus-20240229');
+  });
+
+  it('should list all 4 AI providers including DeepSeek', () => {
+    render(<Settings />);
+
+    const providerSelect = screen.getByLabelText('Provider') as HTMLSelectElement;
+    const options = Array.from(providerSelect.options).map((o) => o.value);
+    expect(options).toEqual(['claude', 'openai', 'deepseek', 'ollama']);
   });
 
   it('should populate user profile form with existing settings', () => {
@@ -153,22 +150,19 @@ describe('Settings', () => {
     const updateAIProvider = vi.fn().mockResolvedValue(undefined);
 
     mockUseSettingsStore.mockReturnValue({
-      settings: mockSettings,
-      isLoading: false,
-      error: null,
-      isSaving: false,
-      fetchSettings: vi.fn(),
+      ...defaultStoreValue,
       updateAIProvider,
-      updateUserProfile: vi.fn(),
-      updateNotifications: vi.fn(),
-      updateKnowledgeBase: vi.fn(),
-      clearError: vi.fn(),
     });
 
     render(<Settings />);
 
     const providerSelect = screen.getByLabelText('Provider');
     await user.selectOptions(providerSelect, 'openai');
+
+    // Need to type API key since openai requires it
+    const apiKeyInput = screen.getByLabelText('API Key');
+    await user.clear(apiKeyInput);
+    await user.type(apiKeyInput, 'sk-openai-test');
 
     const saveButton = screen.getAllByRole('button', { name: /Save AI Provider/i })[0];
     await user.click(saveButton);
@@ -182,21 +176,136 @@ describe('Settings', () => {
     });
   });
 
+  it('should show API key field for DeepSeek', async () => {
+    const user = userEvent.setup();
+    render(<Settings />);
+
+    const providerSelect = screen.getByLabelText('Provider');
+    await user.selectOptions(providerSelect, 'deepseek');
+
+    expect(screen.getByLabelText('API Key')).toBeInTheDocument();
+  });
+
+  it('should hide API key field for Ollama', async () => {
+    const user = userEvent.setup();
+    render(<Settings />);
+
+    const providerSelect = screen.getByLabelText('Provider');
+    await user.selectOptions(providerSelect, 'ollama');
+
+    expect(screen.queryByLabelText('API Key')).not.toBeInTheDocument();
+  });
+
+  it('should show base URL field for Ollama', async () => {
+    const user = userEvent.setup();
+    render(<Settings />);
+
+    const providerSelect = screen.getByLabelText('Provider');
+    await user.selectOptions(providerSelect, 'ollama');
+
+    expect(screen.getByLabelText('Base URL')).toBeInTheDocument();
+  });
+
+  it('should show base URL field for DeepSeek', async () => {
+    const user = userEvent.setup();
+    render(<Settings />);
+
+    const providerSelect = screen.getByLabelText('Provider');
+    await user.selectOptions(providerSelect, 'deepseek');
+
+    expect(screen.getByLabelText('Base URL (optional)')).toBeInTheDocument();
+  });
+
+  it('should validate API key is required for providers needing one', async () => {
+    const user = userEvent.setup();
+    const updateAIProvider = vi.fn().mockResolvedValue(undefined);
+
+    mockUseSettingsStore.mockReturnValue({
+      ...defaultStoreValue,
+      settings: {
+        ...mockSettings,
+        aiProvider: { provider: 'claude' as const, apiKey: '' },
+      },
+      updateAIProvider,
+    });
+
+    render(<Settings />);
+
+    // Clear the API key field
+    const apiKeyInput = screen.getByLabelText('API Key');
+    await user.clear(apiKeyInput);
+
+    const saveButton = screen.getAllByRole('button', { name: /Save AI Provider/i })[0];
+    await user.click(saveButton);
+
+    // Should NOT have called updateAIProvider since key is empty
+    expect(updateAIProvider).not.toHaveBeenCalled();
+  });
+
+  it('should display health status when available (connected)', () => {
+    mockUseSettingsStore.mockReturnValue({
+      ...defaultStoreValue,
+      healthStatus: { provider: 'claude', available: true, tier: 1 },
+    });
+
+    render(<Settings />);
+
+    const healthStatus = screen.getByTestId('health-status');
+    expect(healthStatus).toHaveTextContent('claude is connected');
+  });
+
+  it('should display health status when unavailable', () => {
+    mockUseSettingsStore.mockReturnValue({
+      ...defaultStoreValue,
+      healthStatus: { provider: null, available: false, error: 'No API key configured' },
+    });
+
+    render(<Settings />);
+
+    const healthStatus = screen.getByTestId('health-status');
+    expect(healthStatus).toHaveTextContent('No API key configured');
+  });
+
+  it('should call checkProviderHealth on mount', () => {
+    const checkProviderHealth = vi.fn();
+
+    mockUseSettingsStore.mockReturnValue({
+      ...defaultStoreValue,
+      checkProviderHealth,
+    });
+
+    render(<Settings />);
+
+    expect(checkProviderHealth).toHaveBeenCalledTimes(1);
+  });
+
+  it('should have refresh button for health status', async () => {
+    const user = userEvent.setup();
+    const checkProviderHealth = vi.fn();
+
+    mockUseSettingsStore.mockReturnValue({
+      ...defaultStoreValue,
+      healthStatus: { provider: 'claude', available: true, tier: 1 },
+      checkProviderHealth,
+    });
+
+    render(<Settings />);
+
+    const refreshButton = screen.getByRole('button', { name: /Refresh health status/i });
+    // One call from mount
+    expect(checkProviderHealth).toHaveBeenCalledTimes(1);
+
+    await user.click(refreshButton);
+    expect(checkProviderHealth).toHaveBeenCalledTimes(2);
+  });
+
   it('should handle profile save', async () => {
     const user = userEvent.setup();
     const updateUserProfile = vi.fn().mockResolvedValue(undefined);
 
     mockUseSettingsStore.mockReturnValue({
-      settings: mockSettings,
-      isLoading: false,
-      error: null,
-      isSaving: false,
-      fetchSettings: vi.fn(),
-      updateAIProvider: vi.fn(),
+      ...defaultStoreValue,
       updateUserProfile,
-      updateNotifications: vi.fn(),
-      updateKnowledgeBase: vi.fn(),
-      clearError: vi.fn(),
     });
 
     render(<Settings />);
@@ -233,16 +342,8 @@ describe('Settings', () => {
     const updateNotifications = vi.fn().mockResolvedValue(undefined);
 
     mockUseSettingsStore.mockReturnValue({
-      settings: mockSettings,
-      isLoading: false,
-      error: null,
-      isSaving: false,
-      fetchSettings: vi.fn(),
-      updateAIProvider: vi.fn(),
-      updateUserProfile: vi.fn(),
+      ...defaultStoreValue,
       updateNotifications,
-      updateKnowledgeBase: vi.fn(),
-      clearError: vi.fn(),
     });
 
     render(<Settings />);
@@ -276,16 +377,8 @@ describe('Settings', () => {
     const updateKnowledgeBase = vi.fn().mockResolvedValue(undefined);
 
     mockUseSettingsStore.mockReturnValue({
-      settings: mockSettings,
-      isLoading: false,
-      error: null,
-      isSaving: false,
-      fetchSettings: vi.fn(),
-      updateAIProvider: vi.fn(),
-      updateUserProfile: vi.fn(),
-      updateNotifications: vi.fn(),
+      ...defaultStoreValue,
       updateKnowledgeBase,
-      clearError: vi.fn(),
     });
 
     render(<Settings />);
@@ -309,16 +402,8 @@ describe('Settings', () => {
     const updateUserProfile = vi.fn().mockResolvedValue(undefined);
 
     mockUseSettingsStore.mockReturnValue({
-      settings: mockSettings,
-      isLoading: false,
-      error: null,
-      isSaving: false,
-      fetchSettings: vi.fn(),
-      updateAIProvider: vi.fn(),
+      ...defaultStoreValue,
       updateUserProfile,
-      updateNotifications: vi.fn(),
-      updateKnowledgeBase: vi.fn(),
-      clearError: vi.fn(),
     });
 
     render(<Settings />);
@@ -335,16 +420,8 @@ describe('Settings', () => {
     const fetchSettings = vi.fn();
 
     mockUseSettingsStore.mockReturnValue({
-      settings: mockSettings,
-      isLoading: false,
-      error: null,
-      isSaving: false,
+      ...defaultStoreValue,
       fetchSettings,
-      updateAIProvider: vi.fn(),
-      updateUserProfile: vi.fn(),
-      updateNotifications: vi.fn(),
-      updateKnowledgeBase: vi.fn(),
-      clearError: vi.fn(),
     });
 
     render(<Settings />);
@@ -352,23 +429,10 @@ describe('Settings', () => {
     expect(fetchSettings).toHaveBeenCalledTimes(1);
   });
 
-  it('should show saving state on button', async () => {
-    const user = userEvent.setup();
-    const updateUserProfile = vi.fn().mockImplementation(
-      () => new Promise((resolve) => setTimeout(resolve, 1000))
-    );
-
+  it('should show saving state on button', () => {
     mockUseSettingsStore.mockReturnValue({
-      settings: mockSettings,
-      isLoading: false,
-      error: null,
+      ...defaultStoreValue,
       isSaving: true,
-      fetchSettings: vi.fn(),
-      updateAIProvider: vi.fn(),
-      updateUserProfile,
-      updateNotifications: vi.fn(),
-      updateKnowledgeBase: vi.fn(),
-      clearError: vi.fn(),
     });
 
     render(<Settings />);

@@ -25,6 +25,8 @@ describe('useSettingsStore', () => {
       isLoading: false,
       error: null,
       isSaving: false,
+      healthStatus: null,
+      isCheckingHealth: false,
     });
   });
 
@@ -247,6 +249,79 @@ describe('useSettingsStore', () => {
 
       const state = useSettingsStore.getState();
       expect(state.settings?.knowledgeBase.autoLearning).toBe(true);
+    });
+  });
+
+  describe('checkProviderHealth', () => {
+    it('should fetch provider health status', async () => {
+      const mockHealth = {
+        provider: 'claude' as const,
+        available: true,
+        tier: 1 as const,
+      };
+
+      mockApiRequest.mockResolvedValueOnce(mockHealth);
+
+      const { checkProviderHealth } = useSettingsStore.getState();
+      await checkProviderHealth();
+
+      const state = useSettingsStore.getState();
+      expect(state.healthStatus).toEqual(mockHealth);
+      expect(state.isCheckingHealth).toBe(false);
+      expect(mockApiRequest).toHaveBeenCalledWith('/settings/ai-provider/health');
+    });
+
+    it('should handle health check failure', async () => {
+      mockApiRequest.mockRejectedValueOnce(new Error('Network error'));
+
+      const { checkProviderHealth } = useSettingsStore.getState();
+      await checkProviderHealth();
+
+      const state = useSettingsStore.getState();
+      expect(state.healthStatus).toEqual({
+        provider: null,
+        available: false,
+        error: 'Health check failed',
+      });
+      expect(state.isCheckingHealth).toBe(false);
+    });
+  });
+
+  describe('updateAIProvider with health check', () => {
+    it('should auto-check health after successful provider update', async () => {
+      const mockSettings = {
+        aiProvider: { provider: 'deepseek' as const, apiKey: 'sk-ds-test' },
+        userProfile: { name: 'Test', email: 'test@test.com', timezone: 'UTC' },
+        notifications: {
+          emailNotifications: true,
+          taskCompletion: true,
+          systemAlerts: true,
+          operationReports: false,
+        },
+        knowledgeBase: { autoLearning: false, documentSources: [] },
+      };
+
+      const mockHealth = {
+        provider: 'deepseek' as const,
+        available: true,
+        tier: 2 as const,
+      };
+
+      // First call: updateAIProvider, second call: checkProviderHealth
+      mockApiRequest
+        .mockResolvedValueOnce(mockSettings)
+        .mockResolvedValueOnce(mockHealth);
+
+      const { updateAIProvider } = useSettingsStore.getState();
+      await updateAIProvider({ provider: 'deepseek', apiKey: 'sk-ds-test' });
+
+      const state = useSettingsStore.getState();
+      expect(state.settings?.aiProvider.provider).toBe('deepseek');
+
+      // Wait for the async health check triggered by updateAIProvider
+      await vi.waitFor(() => {
+        expect(mockApiRequest).toHaveBeenCalledTimes(2);
+      });
     });
   });
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
 import { useEffect, useState } from 'react';
-import { Save, Loader2, AlertCircle, CheckCircle2, Key, User, Bell, Shield, Book } from 'lucide-react';
+import { Save, Loader2, AlertCircle, CheckCircle2, Key, User, Bell, Shield, Book, RefreshCw } from 'lucide-react';
 import { DocSourceSection } from '@/components/knowledge/DocSourceSection';
 
 import { Button } from '@/components/ui/button';
@@ -27,8 +27,32 @@ const TIMEZONES = [
 const AI_PROVIDERS: { value: AIProvider; label: string; description: string }[] = [
   { value: 'claude', label: 'Claude (Anthropic)', description: 'Powerful AI with strong reasoning' },
   { value: 'openai', label: 'OpenAI (GPT)', description: 'Versatile and widely supported' },
+  { value: 'deepseek', label: 'DeepSeek', description: 'Cost-effective with strong coding ability' },
   { value: 'ollama', label: 'Ollama (Local)', description: 'Run models locally for privacy' },
 ];
+
+/** Providers that require an API key */
+const PROVIDERS_REQUIRING_KEY: AIProvider[] = ['claude', 'openai', 'deepseek'];
+/** Providers that support a custom base URL */
+const PROVIDERS_WITH_BASE_URL: AIProvider[] = ['openai', 'deepseek', 'ollama'];
+
+function getModelPlaceholder(provider: AIProvider): string {
+  switch (provider) {
+    case 'claude': return 'claude-sonnet-4-5-20250929';
+    case 'openai': return 'gpt-4';
+    case 'deepseek': return 'deepseek-chat';
+    case 'ollama': return 'llama3';
+  }
+}
+
+function getBaseUrlPlaceholder(provider: AIProvider): string {
+  switch (provider) {
+    case 'ollama': return 'http://localhost:11434';
+    case 'deepseek': return 'https://api.deepseek.com';
+    case 'openai': return 'https://api.openai.com/v1';
+    default: return '';
+  }
+}
 
 export function Settings() {
   const { user } = useAuthStore();
@@ -37,11 +61,14 @@ export function Settings() {
     isLoading,
     error,
     isSaving,
+    healthStatus,
+    isCheckingHealth,
     fetchSettings,
     updateAIProvider,
     updateUserProfile,
     updateNotifications,
     updateKnowledgeBase,
+    checkProviderHealth,
     clearError,
   } = useSettingsStore();
 
@@ -69,7 +96,8 @@ export function Settings() {
 
   useEffect(() => {
     fetchSettings();
-  }, [fetchSettings]);
+    checkProviderHealth();
+  }, [fetchSettings, checkProviderHealth]);
 
   useEffect(() => {
     if (settings) {
@@ -106,6 +134,11 @@ export function Settings() {
   };
 
   const handleSaveAIProvider = async () => {
+    // Basic validation: providers requiring a key must have one
+    if (PROVIDERS_REQUIRING_KEY.includes(aiProvider) && !apiKey.trim()) {
+      useSettingsStore.setState({ error: `API key is required for ${aiProvider}` });
+      return;
+    }
     try {
       await updateAIProvider({
         provider: aiProvider,
@@ -214,6 +247,40 @@ export function Settings() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Health Status */}
+          {healthStatus && (
+            <div
+              data-testid="health-status"
+              className={cn(
+                'flex items-center gap-2 rounded-md border p-3 text-sm',
+                healthStatus.available
+                  ? 'border-green-500/50 bg-green-50 text-green-700'
+                  : 'border-destructive/50 bg-destructive/10 text-destructive'
+              )}
+            >
+              {healthStatus.available ? (
+                <CheckCircle2 className="h-4 w-4 shrink-0" />
+              ) : (
+                <AlertCircle className="h-4 w-4 shrink-0" />
+              )}
+              <span>
+                {healthStatus.available
+                  ? `${healthStatus.provider ?? 'Provider'} is connected`
+                  : healthStatus.error ?? 'Provider unavailable'}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={checkProviderHealth}
+                disabled={isCheckingHealth}
+                className="ml-auto h-auto p-1"
+                aria-label="Refresh health status"
+              >
+                <RefreshCw className={cn('h-4 w-4', isCheckingHealth && 'animate-spin')} />
+              </Button>
+            </div>
+          )}
+
           <div className="space-y-2">
             <Label htmlFor="ai-provider">Provider</Label>
             <select
@@ -230,7 +297,7 @@ export function Settings() {
             </select>
           </div>
 
-          {aiProvider !== 'ollama' && (
+          {PROVIDERS_REQUIRING_KEY.includes(aiProvider) && (
             <div className="space-y-2">
               <Label htmlFor="api-key">API Key</Label>
               <Input
@@ -252,18 +319,20 @@ export function Settings() {
               id="model"
               value={model}
               onChange={(e) => setModel(e.target.value)}
-              placeholder={aiProvider === 'claude' ? 'claude-3-opus-20240229' : 'gpt-4'}
+              placeholder={getModelPlaceholder(aiProvider)}
             />
           </div>
 
-          {aiProvider === 'ollama' && (
+          {PROVIDERS_WITH_BASE_URL.includes(aiProvider) && (
             <div className="space-y-2">
-              <Label htmlFor="base-url">Base URL</Label>
+              <Label htmlFor="base-url">
+                Base URL{aiProvider === 'ollama' ? '' : ' (optional)'}
+              </Label>
               <Input
                 id="base-url"
                 value={baseUrl}
                 onChange={(e) => setBaseUrl(e.target.value)}
-                placeholder="http://localhost:11434"
+                placeholder={getBaseUrlPlaceholder(aiProvider)}
               />
             </div>
           )}
