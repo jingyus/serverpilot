@@ -132,3 +132,15 @@ export {
   setUserRepository,
   _resetUserRepository,
 } from './user-repository.js';
+
+export {
+  type TenantRepository,
+  type Tenant,
+  type CreateTenantInput,
+  type UpdateTenantInput,
+  DrizzleTenantRepository,
+  InMemoryTenantRepository,
+  getTenantRepository,
+  setTenantRepository,
+  _resetTenantRepository,
+} from './tenant-repository.js';

@@ -28,6 +28,7 @@ export interface User {
   passwordHash: string;
   name: string | null;
   timezone: string | null;
+  tenantId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -103,6 +104,7 @@ export class DrizzleUserRepository implements UserRepository {
       passwordHash: input.passwordHash,
       name: input.name,
       timezone: 'UTC',
+      tenantId: null,
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
     };
@@ -141,6 +143,7 @@ export class DrizzleUserRepository implements UserRepository {
       passwordHash: row.passwordHash,
       name: row.name,
       timezone: row.timezone,
+      tenantId: row.tenantId ?? null,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     };
@@ -173,6 +176,7 @@ export class InMemoryUserRepository implements UserRepository {
       passwordHash: input.passwordHash,
       name: input.name,
       timezone: 'UTC',
+      tenantId: null,
       createdAt: now,
       updatedAt: now,
     };

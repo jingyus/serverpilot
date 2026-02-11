@@ -6,7 +6,7 @@
  * Defines all database tables using drizzle-orm/sqlite-core.
  * Each table includes typed columns, foreign keys, and indexes.
  *
- * Tables: users, servers, agents, profiles, sessions, operations,
+ * Tables: tenants, users, servers, agents, profiles, sessions, operations,
  *         snapshots, tasks, alerts, metrics, knowledgeCache
  *
  * @module db/schema
@@ -15,18 +15,52 @@
 import { sqliteTable, text, integer, index, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 // ============================================================================
+// Tenants (multi-tenant isolation boundary)
+// ============================================================================
+
+export type TenantPlan = 'free' | 'pro' | 'enterprise';
+
+export const tenants = sqliteTable(
+  'tenants',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    slug: text('slug').notNull().unique(),
+    ownerId: text('owner_id').notNull(),
+    plan: text('plan', { enum: ['free', 'pro', 'enterprise'] })
+      .default('free')
+      .notNull(),
+    maxServers: integer('max_servers').default(5).notNull(),
+    maxUsers: integer('max_users').default(1).notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+  },
+  (table) => [
+    uniqueIndex('tenants_slug_idx').on(table.slug),
+    index('tenants_owner_id_idx').on(table.ownerId),
+  ],
+);
+
+// ============================================================================
 // Users
 // ============================================================================
 
-export const users = sqliteTable('users', {
-  id: text('id').primaryKey(),
-  email: text('email').notNull().unique(),
-  passwordHash: text('password_hash').notNull(),
-  name: text('name'),
-  timezone: text('timezone').default('UTC'),
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
-});
+export const users = sqliteTable(
+  'users',
+  {
+    id: text('id').primaryKey(),
+    email: text('email').notNull().unique(),
+    passwordHash: text('password_hash').notNull(),
+    name: text('name'),
+    timezone: text('timezone').default('UTC'),
+    tenantId: text('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+  },
+  (table) => [
+    index('users_tenant_id_idx').on(table.tenantId),
+  ],
+);
 
 // ============================================================================
 // User Settings (AI Provider, Notifications, Knowledge Base)
@@ -91,6 +125,7 @@ export const servers = sqliteTable(
     userId: text('user_id')
       .references(() => users.id, { onDelete: 'cascade' })
       .notNull(),
+    tenantId: text('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
     status: text('status', { enum: ['online', 'offline', 'error'] })
       .default('offline')
       .notNull(),
@@ -100,6 +135,7 @@ export const servers = sqliteTable(
   },
   (table) => [
     index('servers_user_id_idx').on(table.userId),
+    index('servers_tenant_id_idx').on(table.tenantId),
   ],
 );
 
@@ -254,6 +290,7 @@ export const operations = sqliteTable(
     userId: text('user_id')
       .references(() => users.id, { onDelete: 'cascade' })
       .notNull(),
+    tenantId: text('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
     type: text('type', {
       enum: ['install', 'config', 'restart', 'execute', 'backup'],
     }).notNull(),
@@ -280,6 +317,7 @@ export const operations = sqliteTable(
   (table) => [
     index('operations_server_id_idx').on(table.serverId),
     index('operations_user_id_idx').on(table.userId),
+    index('operations_tenant_id_idx').on(table.tenantId),
     index('operations_session_id_idx').on(table.sessionId),
     index('operations_status_idx').on(table.status),
   ],
@@ -339,6 +377,7 @@ export const tasks = sqliteTable(
     userId: text('user_id')
       .references(() => users.id, { onDelete: 'cascade' })
       .notNull(),
+    tenantId: text('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     description: text('description'),
     cron: text('cron').notNull(),
@@ -354,6 +393,7 @@ export const tasks = sqliteTable(
   (table) => [
     index('tasks_server_id_idx').on(table.serverId),
     index('tasks_user_id_idx').on(table.userId),
+    index('tasks_tenant_id_idx').on(table.tenantId),
     index('tasks_status_idx').on(table.status),
   ],
 );
@@ -576,6 +616,7 @@ export const auditLogs = sqliteTable(
     userId: text('user_id')
       .references(() => users.id, { onDelete: 'cascade' })
       .notNull(),
+    tenantId: text('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
     sessionId: text('session_id'),
     command: text('command').notNull(),
     riskLevel: text('risk_level', {
@@ -597,6 +638,7 @@ export const auditLogs = sqliteTable(
   (table) => [
     index('audit_logs_server_id_idx').on(table.serverId),
     index('audit_logs_user_id_idx').on(table.userId),
+    index('audit_logs_tenant_id_idx').on(table.tenantId),
     index('audit_logs_risk_level_idx').on(table.riskLevel),
     index('audit_logs_action_idx').on(table.action),
     index('audit_logs_created_at_idx').on(table.createdAt),
@@ -634,6 +676,7 @@ export const docSources = sqliteTable(
     userId: text('user_id')
       .references(() => users.id, { onDelete: 'cascade' })
       .notNull(),
+    tenantId: text('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     software: text('software').notNull(),
     type: text('type', { enum: ['github', 'website'] }).notNull(),
@@ -656,6 +699,7 @@ export const docSources = sqliteTable(
   },
   (table) => [
     index('doc_sources_user_id_idx').on(table.userId),
+    index('doc_sources_tenant_id_idx').on(table.tenantId),
     index('doc_sources_software_idx').on(table.software),
     index('doc_sources_enabled_idx').on(table.enabled),
     index('doc_sources_auto_update_idx').on(table.autoUpdate),

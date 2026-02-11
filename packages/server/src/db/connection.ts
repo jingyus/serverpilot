@@ -94,26 +94,44 @@ export function createTables(db?: DrizzleDB): void {
   }
 
   sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS tenants (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      slug TEXT NOT NULL UNIQUE,
+      owner_id TEXT NOT NULL,
+      plan TEXT NOT NULL DEFAULT 'free',
+      max_servers INTEGER NOT NULL DEFAULT 5,
+      max_users INTEGER NOT NULL DEFAULT 1,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS tenants_slug_idx ON tenants(slug);
+    CREATE INDEX IF NOT EXISTS tenants_owner_id_idx ON tenants(owner_id);
+
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       email TEXT NOT NULL UNIQUE,
       password_hash TEXT NOT NULL,
       name TEXT,
       timezone TEXT DEFAULT 'UTC',
+      tenant_id TEXT REFERENCES tenants(id) ON DELETE CASCADE,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
+    CREATE INDEX IF NOT EXISTS users_tenant_id_idx ON users(tenant_id);
 
     CREATE TABLE IF NOT EXISTS servers (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
       user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      tenant_id TEXT REFERENCES tenants(id) ON DELETE CASCADE,
       status TEXT NOT NULL DEFAULT 'offline',
       tags TEXT DEFAULT '[]',
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS servers_user_id_idx ON servers(user_id);
+    CREATE INDEX IF NOT EXISTS servers_tenant_id_idx ON servers(tenant_id);
 
     CREATE TABLE IF NOT EXISTS agents (
       id TEXT PRIMARY KEY,
@@ -156,6 +174,7 @@ export function createTables(db?: DrizzleDB): void {
       server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
       session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
       user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      tenant_id TEXT REFERENCES tenants(id) ON DELETE CASCADE,
       type TEXT NOT NULL,
       description TEXT NOT NULL,
       commands TEXT DEFAULT '[]',
@@ -171,6 +190,7 @@ export function createTables(db?: DrizzleDB): void {
     );
     CREATE INDEX IF NOT EXISTS operations_server_id_idx ON operations(server_id);
     CREATE INDEX IF NOT EXISTS operations_user_id_idx ON operations(user_id);
+    CREATE INDEX IF NOT EXISTS operations_tenant_id_idx ON operations(tenant_id);
     CREATE INDEX IF NOT EXISTS operations_session_id_idx ON operations(session_id);
     CREATE INDEX IF NOT EXISTS operations_status_idx ON operations(status);
 
@@ -190,6 +210,7 @@ export function createTables(db?: DrizzleDB): void {
       id TEXT PRIMARY KEY,
       server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
       user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      tenant_id TEXT REFERENCES tenants(id) ON DELETE CASCADE,
       name TEXT NOT NULL,
       description TEXT,
       cron TEXT NOT NULL,
@@ -202,6 +223,7 @@ export function createTables(db?: DrizzleDB): void {
     );
     CREATE INDEX IF NOT EXISTS tasks_server_id_idx ON tasks(server_id);
     CREATE INDEX IF NOT EXISTS tasks_user_id_idx ON tasks(user_id);
+    CREATE INDEX IF NOT EXISTS tasks_tenant_id_idx ON tasks(tenant_id);
     CREATE INDEX IF NOT EXISTS tasks_status_idx ON tasks(status);
 
     CREATE TABLE IF NOT EXISTS alert_rules (
@@ -306,6 +328,7 @@ export function createTables(db?: DrizzleDB): void {
       id TEXT PRIMARY KEY,
       server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
       user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      tenant_id TEXT REFERENCES tenants(id) ON DELETE CASCADE,
       session_id TEXT,
       command TEXT NOT NULL,
       risk_level TEXT NOT NULL,
@@ -320,6 +343,7 @@ export function createTables(db?: DrizzleDB): void {
     );
     CREATE INDEX IF NOT EXISTS audit_logs_server_id_idx ON audit_logs(server_id);
     CREATE INDEX IF NOT EXISTS audit_logs_user_id_idx ON audit_logs(user_id);
+    CREATE INDEX IF NOT EXISTS audit_logs_tenant_id_idx ON audit_logs(tenant_id);
     CREATE INDEX IF NOT EXISTS audit_logs_risk_level_idx ON audit_logs(risk_level);
     CREATE INDEX IF NOT EXISTS audit_logs_action_idx ON audit_logs(action);
     CREATE INDEX IF NOT EXISTS audit_logs_created_at_idx ON audit_logs(created_at);
@@ -338,5 +362,49 @@ export function createTables(db?: DrizzleDB): void {
     CREATE INDEX IF NOT EXISTS knowledge_cache_software_idx ON knowledge_cache(software);
     CREATE INDEX IF NOT EXISTS knowledge_cache_platform_idx ON knowledge_cache(platform);
     CREATE INDEX IF NOT EXISTS knowledge_cache_software_platform_idx ON knowledge_cache(software, platform);
+
+    CREATE TABLE IF NOT EXISTS doc_sources (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      tenant_id TEXT REFERENCES tenants(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      software TEXT NOT NULL,
+      type TEXT NOT NULL,
+      github_config TEXT,
+      website_config TEXT,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      auto_update INTEGER NOT NULL DEFAULT 0,
+      update_frequency_hours INTEGER DEFAULT 168,
+      last_fetched_at INTEGER,
+      last_fetch_status TEXT,
+      last_fetch_error TEXT,
+      document_count INTEGER NOT NULL DEFAULT 0,
+      last_sha TEXT,
+      last_hash TEXT,
+      last_update_time INTEGER,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS doc_sources_user_id_idx ON doc_sources(user_id);
+    CREATE INDEX IF NOT EXISTS doc_sources_tenant_id_idx ON doc_sources(tenant_id);
+    CREATE INDEX IF NOT EXISTS doc_sources_software_idx ON doc_sources(software);
+    CREATE INDEX IF NOT EXISTS doc_sources_enabled_idx ON doc_sources(enabled);
+    CREATE INDEX IF NOT EXISTS doc_sources_auto_update_idx ON doc_sources(auto_update);
+
+    CREATE TABLE IF NOT EXISTS doc_source_history (
+      id TEXT PRIMARY KEY,
+      source_id TEXT NOT NULL REFERENCES doc_sources(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      change_type TEXT NOT NULL,
+      previous_version TEXT,
+      current_version TEXT,
+      status TEXT NOT NULL,
+      error TEXT,
+      document_count INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS doc_source_history_source_id_idx ON doc_source_history(source_id);
+    CREATE INDEX IF NOT EXISTS doc_source_history_user_id_idx ON doc_source_history(user_id);
+    CREATE INDEX IF NOT EXISTS doc_source_history_created_at_idx ON doc_source_history(created_at);
   `);
 }

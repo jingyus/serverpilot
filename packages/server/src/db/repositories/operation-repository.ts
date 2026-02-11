@@ -48,6 +48,7 @@ export interface OperationRecord {
 export interface CreateOperationInput {
   serverId: string;
   userId: string;
+  tenantId?: string | null;
   sessionId?: string;
   type: OperationType;
   description: string;
@@ -167,6 +168,7 @@ export class DrizzleOperationRepository implements OperationRepository {
       serverId: input.serverId,
       sessionId: input.sessionId ?? null,
       userId: input.userId,
+      tenantId: input.tenantId ?? null,
       type: input.type,
       description: input.description,
       commands: input.commands,

@@ -28,6 +28,7 @@ export interface Server {
   id: string;
   name: string;
   userId: string;
+  tenantId: string | null;
   status: ServerStatus;
   tags: string[];
   agentToken: string | null;
@@ -85,6 +86,7 @@ export interface Operation {
 export interface CreateServerInput {
   name: string;
   userId: string;
+  tenantId?: string | null;
   tags?: string[];
 }
 
@@ -161,6 +163,7 @@ export class DrizzleServerRepository implements ServerRepository {
       id,
       name: input.name,
       userId: input.userId,
+      tenantId: input.tenantId ?? null,
       status: 'offline',
       tags: input.tags ?? [],
       createdAt: now,
@@ -192,6 +195,7 @@ export class DrizzleServerRepository implements ServerRepository {
       id,
       name: input.name,
       userId: input.userId,
+      tenantId: input.tenantId ?? null,
       status: 'offline',
       tags: input.tags ?? [],
       agentToken,
@@ -309,6 +313,7 @@ export class DrizzleServerRepository implements ServerRepository {
       id: row.id,
       name: row.name,
       userId: row.userId,
+      tenantId: row.tenantId ?? null,
       status: row.status as ServerStatus,
       tags: (row.tags ?? []) as string[],
       agentToken: null, // Token not exposed after creation
@@ -347,6 +352,7 @@ export class InMemoryServerRepository implements ServerRepository {
       id: randomUUID(),
       name: input.name,
       userId: input.userId,
+      tenantId: input.tenantId ?? null,
       status: 'offline',
       tags: input.tags ?? [],
       agentToken: generateAgentToken(),

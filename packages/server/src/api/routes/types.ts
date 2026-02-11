@@ -23,6 +23,8 @@ export interface ApiEnv {
     validatedQuery: unknown;
     /** Authenticated user ID (set by auth middleware) */
     userId: string;
+    /** Tenant ID for multi-tenant isolation (set by tenant middleware, nullable for community edition) */
+    tenantId: string | null;
   };
 }
 

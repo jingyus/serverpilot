@@ -29,6 +29,13 @@
       "when": 1770854400000,
       "tag": "0003_metrics_aggregation",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1739289600000,
+      "tag": "0004_multi_tenant",
+      "breakpoints": true
     }
   ]
 }

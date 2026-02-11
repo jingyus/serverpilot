@@ -42,6 +42,7 @@ export interface Task {
 export interface CreateTaskInput {
   serverId: string;
   userId: string;
+  tenantId?: string | null;
   name: string;
   description?: string;
   cron: string;
@@ -128,6 +129,7 @@ export class DrizzleTaskRepository implements TaskRepository {
       id,
       serverId: input.serverId,
       userId: input.userId,
+      tenantId: input.tenantId ?? null,
       name: input.name,
       description: input.description ?? null,
       cron: input.cron,
