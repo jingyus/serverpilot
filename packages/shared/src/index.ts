@@ -16,3 +16,6 @@ export * from './protocol/schemas.js';
 
 // Security exports
 export * from './security/index.js';
+
+// RBAC exports
+export * from './rbac.js';

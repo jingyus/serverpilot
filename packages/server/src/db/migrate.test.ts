@@ -5,7 +5,7 @@
  *
  * Validates that:
  * - Migrations run successfully on a fresh in-memory database
- * - All 19 tables are created with correct structure
+ * - All 22 tables are created with correct structure
  * - All indexes exist after migration
  * - Foreign key constraints work after migration
  * - Migrations are idempotent (safe to run multiple times)
@@ -91,6 +91,7 @@ describe('migrate: runMigrations', () => {
       'metrics',
       'metrics_daily',
       'metrics_hourly',
+      'oauth_accounts',
       'operations',
       'profiles',
       'servers',
@@ -100,6 +101,8 @@ describe('migrate: runMigrations', () => {
       'tenants',
       'user_settings',
       'users',
+      'webhook_deliveries',
+      'webhooks',
     ]);
   });
 
@@ -167,7 +170,7 @@ describe('migrate: runMigrations', () => {
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '__drizzle%' ORDER BY name")
       .all() as { name: string }[];
 
-    expect(tables).toHaveLength(19);
+    expect(tables).toHaveLength(22);
   });
 });
 
@@ -344,6 +347,6 @@ describe('migrate: runMigrationsWithConnection', () => {
       .prepare("SELECT count(*) as cnt FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '__drizzle%'")
       .get() as { cnt: number };
 
-    expect(tables.cnt).toBe(19);
+    expect(tables.cnt).toBe(22);
   });
 });

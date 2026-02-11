@@ -40,6 +40,23 @@ vi.mock('../middleware/auth.js', () => ({
   }),
 }));
 
+vi.mock('../middleware/rbac.js', () => ({
+  resolveRole: vi.fn(async (c: Record<string, (k: string, v: string) => void>, next: () => Promise<void>) => {
+    c.set('userRole', 'owner');
+    await next();
+  }),
+  requirePermission: vi.fn(() => {
+    return async (_c: unknown, next: () => Promise<void>) => {
+      await next();
+    };
+  }),
+  requireRole: vi.fn(() => {
+    return async (_c: unknown, next: () => Promise<void>) => {
+      await next();
+    };
+  }),
+}));
+
 vi.mock('../../utils/logger.js', () => ({
   logger: {
     info: vi.fn(),

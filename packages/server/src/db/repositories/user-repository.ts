@@ -17,6 +17,7 @@ import { getDatabase } from '../connection.js';
 import { users } from '../schema.js';
 
 import type { DrizzleDB } from '../connection.js';
+import type { UserRole } from '@aiinstaller/shared';
 
 // ============================================================================
 // Types
@@ -29,6 +30,7 @@ export interface User {
   name: string | null;
   timezone: string | null;
   tenantId: string | null;
+  role: UserRole;
   createdAt: string;
   updatedAt: string;
 }
@@ -105,6 +107,7 @@ export class DrizzleUserRepository implements UserRepository {
       name: input.name,
       timezone: 'UTC',
       tenantId: null,
+      role: 'member',
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
     };
@@ -144,6 +147,7 @@ export class DrizzleUserRepository implements UserRepository {
       name: row.name,
       timezone: row.timezone,
       tenantId: row.tenantId ?? null,
+      role: (row.role ?? 'member') as UserRole,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     };
@@ -177,6 +181,7 @@ export class InMemoryUserRepository implements UserRepository {
       name: input.name,
       timezone: 'UTC',
       tenantId: null,
+      role: 'member',
       createdAt: now,
       updatedAt: now,
     };

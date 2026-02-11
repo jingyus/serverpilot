@@ -115,10 +115,12 @@ export function createTables(db?: DrizzleDB): void {
       name TEXT,
       timezone TEXT DEFAULT 'UTC',
       tenant_id TEXT REFERENCES tenants(id) ON DELETE CASCADE,
+      role TEXT NOT NULL DEFAULT 'member',
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS users_tenant_id_idx ON users(tenant_id);
+    CREATE INDEX IF NOT EXISTS users_role_idx ON users(role);
 
     CREATE TABLE IF NOT EXISTS servers (
       id TEXT PRIMARY KEY,

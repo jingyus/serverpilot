@@ -9,6 +9,8 @@
  * @module api/routes/types
  */
 
+import type { UserRole } from '@aiinstaller/shared';
+
 /**
  * Hono environment type for all API routes.
  *
@@ -25,6 +27,8 @@ export interface ApiEnv {
     userId: string;
     /** Tenant ID for multi-tenant isolation (set by tenant middleware, nullable for community edition) */
     tenantId: string | null;
+    /** User role within tenant (set by RBAC middleware) */
+    userRole: UserRole;
   };
 }
 

@@ -13,6 +13,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 
 import { requireAuth } from '../middleware/auth.js';
+import { resolveRole, requirePermission } from '../middleware/rbac.js';
 import { getAuditLogger } from '../../core/security/audit-logger.js';
 import type { ApiEnv } from './types.js';
 import type { RiskLevel } from '@aiinstaller/shared';
@@ -20,7 +21,7 @@ import type { ValidationAction } from '../../core/security/command-validator.js'
 
 const auditLog = new Hono<ApiEnv>();
 
-auditLog.use('*', requireAuth);
+auditLog.use('*', requireAuth, resolveRole);
 
 // ============================================================================
 // Query Schema
@@ -40,7 +41,7 @@ const AuditLogQuerySchema = z.object({
 // GET /audit-log — Query audit logs
 // ============================================================================
 
-auditLog.get('/', async (c) => {
+auditLog.get('/', requirePermission('audit-log:read'), async (c) => {
   const userId = c.get('userId');
   const rawQuery = c.req.query();
   const query = AuditLogQuerySchema.parse(rawQuery);

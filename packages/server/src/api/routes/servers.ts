@@ -24,6 +24,7 @@ import {
 } from './schemas.js';
 import { validateBody, validateQuery } from '../middleware/validate.js';
 import { requireAuth } from '../middleware/auth.js';
+import { resolveRole, requirePermission } from '../middleware/rbac.js';
 import { ApiError } from '../middleware/error-handler.js';
 import { getServerRepository } from '../../db/repositories/server-repository.js';
 import { getProfileRepository } from '../../db/repositories/profile-repository.js';
@@ -42,8 +43,8 @@ import type { Server } from '../../db/repositories/server-repository.js';
 
 const servers = new Hono<ApiEnv>();
 
-// All server routes require authentication
-servers.use('*', requireAuth);
+// All server routes require authentication + role resolution
+servers.use('*', requireAuth, resolveRole);
 
 // ============================================================================
 // Helpers
@@ -59,7 +60,7 @@ function toPublicServer(server: Server) {
 // GET /servers — List all servers for the authenticated user
 // ============================================================================
 
-servers.get('/', async (c) => {
+servers.get('/', requirePermission('server:read'), async (c) => {
   const userId = c.get('userId');
   const repo = getServerRepository();
 
@@ -71,7 +72,7 @@ servers.get('/', async (c) => {
 // POST /servers — Add a new server (generates agent install token)
 // ============================================================================
 
-servers.post('/', validateBody(CreateServerBodySchema), async (c) => {
+servers.post('/', requirePermission('server:create'), validateBody(CreateServerBodySchema), async (c) => {
   const userId = c.get('userId');
   const body = c.get('validatedBody') as CreateServerBody;
   const repo = getServerRepository();
@@ -104,7 +105,7 @@ servers.post('/', validateBody(CreateServerBodySchema), async (c) => {
 // GET /servers/:id — Get server details
 // ============================================================================
 
-servers.get('/:id', async (c) => {
+servers.get('/:id', requirePermission('server:read'), async (c) => {
   const userId = c.get('userId');
   const { id } = c.req.param();
   const repo = getServerRepository();
@@ -121,7 +122,7 @@ servers.get('/:id', async (c) => {
 // PATCH /servers/:id — Update server info
 // ============================================================================
 
-servers.patch('/:id', validateBody(UpdateServerBodySchema), async (c) => {
+servers.patch('/:id', requirePermission('server:update'), validateBody(UpdateServerBodySchema), async (c) => {
   const userId = c.get('userId');
   const { id } = c.req.param();
   const body = c.get('validatedBody') as UpdateServerBody;
@@ -148,7 +149,7 @@ servers.patch('/:id', validateBody(UpdateServerBodySchema), async (c) => {
 // DELETE /servers/:id — Delete a server
 // ============================================================================
 
-servers.delete('/:id', async (c) => {
+servers.delete('/:id', requirePermission('server:delete'), async (c) => {
   const userId = c.get('userId');
   const { id } = c.req.param();
   const repo = getServerRepository();
@@ -170,7 +171,7 @@ servers.delete('/:id', async (c) => {
 // GET /servers/:id/profile — Get server profile
 // ============================================================================
 
-servers.get('/:id/profile', async (c) => {
+servers.get('/:id/profile', requirePermission('server:read'), async (c) => {
   const userId = c.get('userId');
   const { id } = c.req.param();
   const repo = getServerRepository();
@@ -187,7 +188,7 @@ servers.get('/:id/profile', async (c) => {
 // GET /servers/:id/metrics — Get monitoring metrics
 // ============================================================================
 
-servers.get('/:id/metrics', validateQuery(ServerMetricsQuerySchema), async (c) => {
+servers.get('/:id/metrics', requirePermission('server:read'), validateQuery(ServerMetricsQuerySchema), async (c) => {
   const userId = c.get('userId');
   const { id } = c.req.param();
   const query = c.get('validatedQuery') as ServerMetricsQuery;
@@ -209,7 +210,7 @@ servers.get('/:id/metrics', validateQuery(ServerMetricsQuerySchema), async (c) =
 // GET /servers/:id/operations — Get operation records
 // ============================================================================
 
-servers.get('/:id/operations', validateQuery(OperationQuerySchema), async (c) => {
+servers.get('/:id/operations', requirePermission('operation:read'), validateQuery(OperationQuerySchema), async (c) => {
   const userId = c.get('userId');
   const { id } = c.req.param();
   const query = c.get('validatedQuery') as OperationQuery;
@@ -236,7 +237,7 @@ servers.get('/:id/operations', validateQuery(OperationQuerySchema), async (c) =>
 // POST /servers/:id/profile/notes — Add a note
 // ============================================================================
 
-servers.post('/:id/profile/notes', validateBody(AddNoteBodySchema), async (c) => {
+servers.post('/:id/profile/notes', requirePermission('server:update'), validateBody(AddNoteBodySchema), async (c) => {
   const userId = c.get('userId');
   const { id } = c.req.param();
   const body = c.get('validatedBody') as AddNoteBody;
@@ -259,7 +260,7 @@ servers.post('/:id/profile/notes', validateBody(AddNoteBodySchema), async (c) =>
 // DELETE /servers/:id/profile/notes — Remove a note by index
 // ============================================================================
 
-servers.delete('/:id/profile/notes', validateBody(RemoveNoteBodySchema), async (c) => {
+servers.delete('/:id/profile/notes', requirePermission('server:update'), validateBody(RemoveNoteBodySchema), async (c) => {
   const userId = c.get('userId');
   const { id } = c.req.param();
   const body = c.get('validatedBody') as RemoveNoteBody;
@@ -282,7 +283,7 @@ servers.delete('/:id/profile/notes', validateBody(RemoveNoteBodySchema), async (
 // PATCH /servers/:id/profile/preferences — Update preferences
 // ============================================================================
 
-servers.patch('/:id/profile/preferences', validateBody(UpdatePreferencesBodySchema), async (c) => {
+servers.patch('/:id/profile/preferences', requirePermission('server:update'), validateBody(UpdatePreferencesBodySchema), async (c) => {
   const userId = c.get('userId');
   const { id } = c.req.param();
   const body = c.get('validatedBody') as UpdatePreferencesBody;
@@ -306,7 +307,7 @@ servers.patch('/:id/profile/preferences', validateBody(UpdatePreferencesBodySche
 // POST /servers/:id/profile/history — Record an operation in history
 // ============================================================================
 
-servers.post('/:id/profile/history', validateBody(RecordOperationBodySchema), async (c) => {
+servers.post('/:id/profile/history', requirePermission('server:update'), validateBody(RecordOperationBodySchema), async (c) => {
   const userId = c.get('userId');
   const { id } = c.req.param();
   const body = c.get('validatedBody') as RecordOperationBody;
@@ -332,7 +333,7 @@ servers.post('/:id/profile/history', validateBody(RecordOperationBodySchema), as
 // GET /servers/:id/profile/history — Get operation history
 // ============================================================================
 
-servers.get('/:id/profile/history', validateQuery(PaginationQuerySchema), async (c) => {
+servers.get('/:id/profile/history', requirePermission('server:read'), validateQuery(PaginationQuerySchema), async (c) => {
   const userId = c.get('userId');
   const { id } = c.req.param();
   const query = c.get('validatedQuery') as PaginationQuery;
@@ -349,7 +350,7 @@ servers.get('/:id/profile/history', validateQuery(PaginationQuerySchema), async 
 // PUT /servers/:id/profile/summary — Set history summary (after summarization)
 // ============================================================================
 
-servers.put('/:id/profile/summary', validateBody(SetHistorySummaryBodySchema), async (c) => {
+servers.put('/:id/profile/summary', requirePermission('server:update'), validateBody(SetHistorySummaryBodySchema), async (c) => {
   const userId = c.get('userId');
   const { id } = c.req.param();
   const body = c.get('validatedBody') as SetHistorySummaryBody;
@@ -375,7 +376,7 @@ servers.put('/:id/profile/summary', validateBody(SetHistorySummaryBodySchema), a
 // GET /servers/:id/profile/summary — Get history summary
 // ============================================================================
 
-servers.get('/:id/profile/summary', async (c) => {
+servers.get('/:id/profile/summary', requirePermission('server:read'), async (c) => {
   const userId = c.get('userId');
   const { id } = c.req.param();
   const profileRepo = getProfileRepository();

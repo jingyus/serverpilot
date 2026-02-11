@@ -852,7 +852,9 @@ curl -fsSL https://get.aiinstaller.dev/install.sh | bash
 | `ANTHROPIC_API_KEY` | - | 是 | Anthropic Claude API 密钥 |
 | `OPENAI_API_KEY` | - | 否 | OpenAI API 密钥 |
 | `DEEPSEEK_API_KEY` | - | 否 | DeepSeek API 密钥 |
-| `AI_PROVIDER` | `claude` | 否 | AI Provider: claude/openai/ollama/deepseek |
+| `CUSTOM_OPENAI_BASE_URL` | - | 否 | Custom OpenAI 兼容 API Base URL (AI_PROVIDER=custom-openai 时需要) |
+| `CUSTOM_OPENAI_API_KEY` | - | 否 | Custom OpenAI 兼容 API Key (AI_PROVIDER=custom-openai 时需要) |
+| `AI_PROVIDER` | `claude` | 否 | AI Provider: claude/openai/ollama/deepseek/custom-openai |
 | `JWT_SECRET` | - | 是 | JWT 签名密钥 (至少 32 字符) |
 | `DASHBOARD_PORT` | `3001` | 否 | Dashboard 外部访问端口 |
 | `SERVER_PORT` | `3000` | 否 | 服务端口 |
@@ -874,6 +876,14 @@ curl -fsSL https://get.aiinstaller.dev/install.sh | bash
 | `LOG_FILE` | - | 否 | 日志文件路径 |
 | `MAGIC_API_BASE_URL` | `http://localhost:8088` | 否 | Magic API 服务地址 |
 | `MAGIC_API_TIMEOUT_MS` | `5000` | 否 | Magic API 请求超时 (ms) |
+
+### GitHub OAuth 配置
+
+| 变量名 | 默认值 | 必填 | 说明 |
+|--------|-------|------|------|
+| `GITHUB_OAUTH_CLIENT_ID` | - | 否 | GitHub OAuth App Client ID |
+| `GITHUB_OAUTH_CLIENT_SECRET` | - | 否 | GitHub OAuth App Client Secret |
+| `GITHUB_OAUTH_REDIRECT_URI` | `http://localhost:3000/api/v1/auth/github/callback` | 否 | GitHub OAuth 回调地址 (生产环境需修改) |
 
 ### 数据库配置
 

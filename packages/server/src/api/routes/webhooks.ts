@@ -19,6 +19,7 @@ import {
 } from './schemas.js';
 import { validateBody, validateQuery } from '../middleware/validate.js';
 import { requireAuth } from '../middleware/auth.js';
+import { resolveRole, requirePermission } from '../middleware/rbac.js';
 import { ApiError } from '../middleware/error-handler.js';
 import { getWebhookRepository } from '../../db/repositories/webhook-repository.js';
 import { getWebhookDispatcher } from '../../core/webhook/dispatcher.js';
@@ -29,13 +30,13 @@ import type { ApiEnv } from './types.js';
 const webhooksRoute = new Hono<ApiEnv>();
 
 // All webhook routes require authentication
-webhooksRoute.use('*', requireAuth);
+webhooksRoute.use('*', requireAuth, resolveRole);
 
 // ============================================================================
 // GET /webhooks — List user's webhooks
 // ============================================================================
 
-webhooksRoute.get('/', validateQuery(WebhookQuerySchema), async (c) => {
+webhooksRoute.get('/', requirePermission('webhook:read'), validateQuery(WebhookQuerySchema), async (c) => {
   const userId = c.get('userId');
   const query = c.get('validatedQuery') as WebhookQuery;
   const repo = getWebhookRepository();
@@ -58,7 +59,7 @@ webhooksRoute.get('/', validateQuery(WebhookQuerySchema), async (c) => {
 // POST /webhooks — Create a webhook
 // ============================================================================
 
-webhooksRoute.post('/', validateBody(CreateWebhookBodySchema), async (c) => {
+webhooksRoute.post('/', requirePermission('webhook:create'), validateBody(CreateWebhookBodySchema), async (c) => {
   const userId = c.get('userId');
   const body = c.get('validatedBody') as CreateWebhookBody;
   const repo = getWebhookRepository();
@@ -87,7 +88,7 @@ webhooksRoute.post('/', validateBody(CreateWebhookBodySchema), async (c) => {
 // GET /webhooks/:id — Get webhook details
 // ============================================================================
 
-webhooksRoute.get('/:id', async (c) => {
+webhooksRoute.get('/:id', requirePermission('webhook:read'), async (c) => {
   const userId = c.get('userId');
   const { id } = c.req.param();
   const repo = getWebhookRepository();
@@ -104,7 +105,7 @@ webhooksRoute.get('/:id', async (c) => {
 // PATCH /webhooks/:id — Update a webhook
 // ============================================================================
 
-webhooksRoute.patch('/:id', validateBody(UpdateWebhookBodySchema), async (c) => {
+webhooksRoute.patch('/:id', requirePermission('webhook:update'), validateBody(UpdateWebhookBodySchema), async (c) => {
   const userId = c.get('userId');
   const { id } = c.req.param();
   const body = c.get('validatedBody') as UpdateWebhookBody;
@@ -127,7 +128,7 @@ webhooksRoute.patch('/:id', validateBody(UpdateWebhookBodySchema), async (c) => 
 // DELETE /webhooks/:id — Delete a webhook
 // ============================================================================
 
-webhooksRoute.delete('/:id', async (c) => {
+webhooksRoute.delete('/:id', requirePermission('webhook:delete'), async (c) => {
   const userId = c.get('userId');
   const { id } = c.req.param();
   const repo = getWebhookRepository();
@@ -149,7 +150,7 @@ webhooksRoute.delete('/:id', async (c) => {
 // POST /webhooks/:id/test — Send a test event
 // ============================================================================
 
-webhooksRoute.post('/:id/test', validateBody(WebhookTestBodySchema), async (c) => {
+webhooksRoute.post('/:id/test', requirePermission('webhook:update'), validateBody(WebhookTestBodySchema), async (c) => {
   const userId = c.get('userId');
   const { id } = c.req.param();
   const body = c.get('validatedBody') as WebhookTestBody;
@@ -178,7 +179,7 @@ webhooksRoute.post('/:id/test', validateBody(WebhookTestBodySchema), async (c) =
 // GET /webhooks/:id/deliveries — List delivery history
 // ============================================================================
 
-webhooksRoute.get('/:id/deliveries', validateQuery(WebhookQuerySchema), async (c) => {
+webhooksRoute.get('/:id/deliveries', requirePermission('webhook:read'), validateQuery(WebhookQuerySchema), async (c) => {
   const userId = c.get('userId');
   const { id } = c.req.param();
   const query = c.get('validatedQuery') as WebhookQuery;

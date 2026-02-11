@@ -18,6 +18,7 @@ import {
 } from './schemas.js';
 import { validateBody, validateQuery } from '../middleware/validate.js';
 import { requireAuth } from '../middleware/auth.js';
+import { resolveRole, requirePermission } from '../middleware/rbac.js';
 import { ApiError } from '../middleware/error-handler.js';
 import { getOperationHistoryService } from '../../core/operation/operation-history-service.js';
 import { logger } from '../../utils/logger.js';
@@ -32,13 +33,13 @@ import type { ApiEnv } from './types.js';
 const operations = new Hono<ApiEnv>();
 
 // All operation routes require authentication
-operations.use('*', requireAuth);
+operations.use('*', requireAuth, resolveRole);
 
 // ============================================================================
 // GET /operations — List operations with filtering
 // ============================================================================
 
-operations.get('/', validateQuery(OperationQuerySchema), async (c) => {
+operations.get('/', requirePermission('operation:read'), validateQuery(OperationQuerySchema), async (c) => {
   const userId = c.get('userId');
   const query = c.get('validatedQuery') as OperationQuery;
   const service = getOperationHistoryService();
@@ -64,7 +65,7 @@ operations.get('/', validateQuery(OperationQuerySchema), async (c) => {
 // GET /operations/stats — Get operation statistics
 // ============================================================================
 
-operations.get('/stats', validateQuery(OperationStatsQuerySchema), async (c) => {
+operations.get('/stats', requirePermission('operation:read'), validateQuery(OperationStatsQuerySchema), async (c) => {
   const userId = c.get('userId');
   const query = c.get('validatedQuery') as OperationStatsQuery;
   const service = getOperationHistoryService();
@@ -77,7 +78,7 @@ operations.get('/stats', validateQuery(OperationStatsQuerySchema), async (c) => 
 // GET /operations/:id — Get operation by ID
 // ============================================================================
 
-operations.get('/:id', async (c) => {
+operations.get('/:id', requirePermission('operation:read'), async (c) => {
   const userId = c.get('userId');
   const { id } = c.req.param();
   const service = getOperationHistoryService();
@@ -94,7 +95,7 @@ operations.get('/:id', async (c) => {
 // POST /operations — Create a new operation record
 // ============================================================================
 
-operations.post('/', validateBody(CreateOperationBodySchema), async (c) => {
+operations.post('/', requirePermission('operation:create'), validateBody(CreateOperationBodySchema), async (c) => {
   const userId = c.get('userId');
   const body = c.get('validatedBody') as CreateOperationBody;
   const service = getOperationHistoryService();
@@ -122,7 +123,7 @@ operations.post('/', validateBody(CreateOperationBodySchema), async (c) => {
 // PATCH /operations/:id/status — Update operation status
 // ============================================================================
 
-operations.patch('/:id/status', validateBody(UpdateOperationStatusBodySchema), async (c) => {
+operations.patch('/:id/status', requirePermission('operation:create'), validateBody(UpdateOperationStatusBodySchema), async (c) => {
   const userId = c.get('userId');
   const { id } = c.req.param();
   const body = c.get('validatedBody') as UpdateOperationStatusBody;

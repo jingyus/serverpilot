@@ -18,6 +18,7 @@ import {
 } from './schemas.js';
 import { validateBody } from '../middleware/validate.js';
 import { requireAuth } from '../middleware/auth.js';
+import { resolveRole, requirePermission } from '../middleware/rbac.js';
 import { ApiError } from '../middleware/error-handler.js';
 import { getSettingsRepository } from '../../db/repositories/settings-repository.js';
 import { getUserRepository } from '../../db/repositories/user-repository.js';
@@ -41,13 +42,13 @@ import type { ApiEnv } from './types.js';
 const settings = new Hono<ApiEnv>();
 
 // All settings routes require authentication
-settings.use('*', requireAuth);
+settings.use('*', requireAuth, resolveRole);
 
 // ============================================================================
 // GET /settings
 // ============================================================================
 
-settings.get('/', async (c) => {
+settings.get('/', requirePermission('settings:read'), async (c) => {
   const userId = c.get('userId');
   const settingsRepo = getSettingsRepository();
   const userRepo = getUserRepository();
@@ -82,7 +83,7 @@ settings.get('/', async (c) => {
 // PUT /settings/ai-provider
 // ============================================================================
 
-settings.put('/ai-provider', validateBody(UpdateAIProviderBodySchema), async (c) => {
+settings.put('/ai-provider', requirePermission('settings:update'), validateBody(UpdateAIProviderBodySchema), async (c) => {
   const userId = c.get('userId');
   const body = c.get('validatedBody') as UpdateAIProviderBody;
   const settingsRepo = getSettingsRepository();
@@ -189,7 +190,7 @@ settings.put('/profile', validateBody(UpdateUserProfileBodySchema), async (c) =>
 // PUT /settings/notifications
 // ============================================================================
 
-settings.put('/notifications', validateBody(UpdateNotificationsBodySchema), async (c) => {
+settings.put('/notifications', requirePermission('settings:update'), validateBody(UpdateNotificationsBodySchema), async (c) => {
   const userId = c.get('userId');
   const body = c.get('validatedBody') as UpdateNotificationsBody;
   const settingsRepo = getSettingsRepository();
@@ -233,7 +234,7 @@ settings.put('/notifications', validateBody(UpdateNotificationsBodySchema), asyn
 // PUT /settings/knowledge-base
 // ============================================================================
 
-settings.put('/knowledge-base', validateBody(UpdateKnowledgeBaseBodySchema), async (c) => {
+settings.put('/knowledge-base', requirePermission('settings:update'), validateBody(UpdateKnowledgeBaseBodySchema), async (c) => {
   const userId = c.get('userId');
   const body = c.get('validatedBody') as UpdateKnowledgeBaseBody;
   const settingsRepo = getSettingsRepository();
@@ -277,7 +278,7 @@ settings.put('/knowledge-base', validateBody(UpdateKnowledgeBaseBodySchema), asy
 // GET /settings/ai-provider/health — Check current AI provider availability
 // ============================================================================
 
-settings.get('/ai-provider/health', async (c) => {
+settings.get('/ai-provider/health', requirePermission('settings:read'), async (c) => {
   const provider = getActiveProvider();
   if (!provider) {
     return c.json({

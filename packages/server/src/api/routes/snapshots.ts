@@ -15,6 +15,7 @@ import { z } from 'zod';
 import { PaginationQuerySchema } from './schemas.js';
 import { validateBody, validateQuery } from '../middleware/validate.js';
 import { requireAuth } from '../middleware/auth.js';
+import { resolveRole, requirePermission } from '../middleware/rbac.js';
 import { ApiError, ErrorCode } from '../middleware/error-handler.js';
 import { getSnapshotRepository } from '../../db/repositories/snapshot-repository.js';
 import { getRollbackService } from '../../core/rollback/rollback-service.js';
@@ -25,7 +26,7 @@ import type { ApiEnv } from './types.js';
 const snapshots = new Hono<ApiEnv>();
 
 // All snapshot routes require authentication
-snapshots.use('*', requireAuth);
+snapshots.use('*', requireAuth, resolveRole);
 
 // ============================================================================
 // Validation Schemas
@@ -46,7 +47,7 @@ type RollbackBody = z.infer<typeof RollbackBodySchema>;
 // GET /servers/:serverId/snapshots — List snapshots for a server
 // ============================================================================
 
-snapshots.get('/', validateQuery(PaginationQuerySchema), async (c) => {
+snapshots.get('/', requirePermission('snapshot:read'), validateQuery(PaginationQuerySchema), async (c) => {
   const userId = c.get('userId');
   const serverId = c.req.param('serverId');
   const query = c.get('validatedQuery') as PaginationQuery;
@@ -64,7 +65,7 @@ snapshots.get('/', validateQuery(PaginationQuerySchema), async (c) => {
 // GET /servers/:serverId/snapshots/:snapshotId — Get snapshot details
 // ============================================================================
 
-snapshots.get('/:snapshotId', async (c) => {
+snapshots.get('/:snapshotId', requirePermission('snapshot:read'), async (c) => {
   const userId = c.get('userId');
   const { snapshotId } = c.req.param();
   const repo = getSnapshotRepository();
@@ -81,7 +82,7 @@ snapshots.get('/:snapshotId', async (c) => {
 // DELETE /servers/:serverId/snapshots/:snapshotId — Delete a snapshot
 // ============================================================================
 
-snapshots.delete('/:snapshotId', async (c) => {
+snapshots.delete('/:snapshotId', requirePermission('snapshot:create'), async (c) => {
   const userId = c.get('userId');
   const { snapshotId } = c.req.param();
   const repo = getSnapshotRepository();
@@ -105,6 +106,7 @@ snapshots.delete('/:snapshotId', async (c) => {
 
 snapshots.post(
   '/:snapshotId/rollback',
+  requirePermission('snapshot:create'),
   validateBody(RollbackBodySchema),
   async (c) => {
     const userId = c.get('userId');

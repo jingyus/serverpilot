@@ -37,6 +37,7 @@ import { _resetSnapshotRepository } from '../packages/server/src/db/repositories
 import { _resetTaskExecutor, getTaskExecutor } from '../packages/server/src/core/task/executor.js';
 import { initAgentConnector, _resetAgentConnector } from '../packages/server/src/core/agent/agent-connector.js';
 import { _resetProviderFactory } from '../packages/server/src/ai/providers/provider-factory.js';
+import { InMemoryRbacRepository, setRbacRepository, _resetRbacRepository } from '../packages/server/src/db/repositories/rbac-repository.js';
 import type { AIProviderInterface, StreamResponse } from '../packages/server/src/ai/providers/base.js';
 import { MessageType } from '@aiinstaller/shared';
 import { users, servers as serversTable } from '../packages/server/src/db/schema.js';
@@ -178,6 +179,11 @@ describe('E2E: Chat → Plan → Execute → Result Flow', () => {
 
     setServerRepository(new InMemoryServerRepository());
 
+    // Set up RBAC with owner role for test user
+    const rbacRepo = new InMemoryRbacRepository();
+    rbacRepo.setRole(TEST_USER_ID, 'owner');
+    setRbacRepository(rbacRepo);
+
     _resetProviderFactory();
     _resetChatAIAgent();
     initChatAIAgent(createMockProvider());
@@ -194,6 +200,11 @@ describe('E2E: Chat → Plan → Execute → Result Flow', () => {
     wsServer.on('message', async (clientId, message) => {
       await routeMessage(wsServer, clientId, message);
     });
+
+    // Seed SQLite with the test user before creating server (RBAC middleware needs user)
+    const db = getDatabase();
+    const now = new Date();
+    db.insert(users).values({ id: TEST_USER_ID, email: 'e2e@test.local', passwordHash: 'n/a', createdAt: now, updatedAt: now }).run();
 
     const apiApp = createApiApp();
     httpServer = createHttpServer(getRequestListener(apiApp.fetch));
@@ -212,16 +223,13 @@ describe('E2E: Chat → Plan → Execute → Result Flow', () => {
     serverId = (await createRes.json()).server.id;
 
     // Seed SQLite so DrizzleOperationRepository.verifyServerOwnership() passes
-    const db = getDatabase();
-    const now = new Date();
-    db.insert(users).values({ id: TEST_USER_ID, email: 'e2e@test.local', passwordHash: 'n/a', createdAt: now, updatedAt: now }).run();
     db.insert(serversTable).values({ id: serverId, name: 'e2e-test-server', userId: TEST_USER_ID, status: 'online', createdAt: now, updatedAt: now }).run();
   }, 15000);
 
   afterAll(async () => {
     [_resetTaskExecutor, _resetAgentConnector, _resetChatAIAgent, _resetSessionManager,
      _resetServerRepository, _resetProfileRepository, _resetOperationRepository,
-     _resetTaskRepository, _resetSnapshotRepository].forEach((fn) => fn());
+     _resetTaskRepository, _resetSnapshotRepository, _resetRbacRepository].forEach((fn) => fn());
     if (wsServer) await wsServer.stop();
     if (httpServer) await new Promise<void>((r) => httpServer.close(() => r()));
     closeDatabase();

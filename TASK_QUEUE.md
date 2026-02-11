@@ -6,10 +6,10 @@
 
 ## 📊 统计信息
 
-- **总任务数**: 50
-- **待完成** (pending): 0
+- **总任务数**: 60
+- **待完成** (pending): 9
 - **进行中** (in_progress): 0
-- **已完成** (completed): 49
+- **已完成** (completed): 50
 - **失败** (failed): 1
 
 ---
@@ -17,6 +17,184 @@
 ## 📋 任务列表
 
 <!-- 任务将由 AI 自动生成和更新 -->
+### [completed] RBAC 角色权限系统 ✅
+
+**ID**: task-035
+**优先级**: P0
+**模块路径**: packages/server/src/core/rbac/
+**任务描述**: 基于现有多租户架构，实现角色权限控制系统。需要创建 `roles` 和 `user_roles` 表（migration 0007），实现三种内置角色：owner（所有权限）、admin（管理服务器和成员）、member（查看和对话）。创建 `RbacRepository` 处理角色分配，创建 `requireRole()` 中间件在 API 路由中进行权限校验。所有现有 API 路由需根据角色分级保护（如删除服务器需 admin+，添加成员需 owner）。
+**产品需求**: Phase 4 团队协作 — 邀请成员、角色权限（产品方案 6.5 操作审计 + 13.5 多租户隔离）
+**验收标准**:
+- `roles`、`user_roles` 表通过 migration 创建
+- `requireRole('admin')` 中间件可在路由中使用
+- 3 种内置角色 (owner/admin/member) 权限矩阵清晰
+- 现有 API 路由全部加上角色校验
+- 单元测试覆盖率 ≥ 90%
+**创建时间**: 2025-02-11 15:30:00
+**完成时间**: 2026-02-11 19:28:19
+
+---
+
+### [pending] 团队邀请与成员管理
+
+**ID**: task-036
+**优先级**: P0
+**模块路径**: packages/server/src/api/routes/team.ts, packages/dashboard/src/pages/Team.tsx
+**任务描述**: 实现团队成员邀请和管理功能。后端：创建 `invitations` 表（migration 0008），实现 `POST /api/v1/team/invite`（发送邀请邮件或生成邀请链接）、`POST /api/v1/team/invite/:token/accept`（接受邀请）、`GET /api/v1/team/members`（成员列表）、`PUT /api/v1/team/members/:id/role`（修改角色）、`DELETE /api/v1/team/members/:id`（移除成员）。前端：创建 Team 页面展示成员列表、邀请表单、角色切换。邀请链接有效期 7 天，需要 owner/admin 权限。
+**产品需求**: Phase 4 团队协作 — 邀请成员功能
+**验收标准**:
+- 邀请 API 完整（创建/接受/撤回）
+- Dashboard Team 页面可操作
+- 邀请链接 7 天过期
+- 权限校验：仅 owner/admin 可邀请
+- 接受邀请后自动分配 member 角色
+**创建时间**: 2025-02-11 15:30:00
+**完成时间**: -
+
+---
+
+### [pending] 通用 API 速率限制中间件
+
+**ID**: task-037
+**优先级**: P0
+**模块路径**: packages/server/src/api/middleware/rate-limit.ts
+**任务描述**: 当前仅有 AI 调用配额限制，缺少通用 REST API 的速率限制。实现基于 IP + 用户的滑动窗口限速中间件：默认 100 req/min（认证用户）、20 req/min（匿名）。特殊路由自定义限制：登录/注册 5 req/min（防暴力破解），chat API 30 req/min。使用内存存储（Map + 定时清理），返回标准 `429 Too Many Requests` 响应和 `X-RateLimit-*` 响应头。中间件挂载在 Hono app 全局。
+**产品需求**: 安全架构 — 防 DDoS 和暴力破解（产品方案 7.2 五层纵深防御）
+**验收标准**:
+- 全局中间件对所有路由生效
+- 响应头包含 `X-RateLimit-Limit`、`X-RateLimit-Remaining`、`X-RateLimit-Reset`
+- 超限返回 429 状态码
+- 登录/注册路由有更严格限制
+- 内存使用合理（定时清理过期记录）
+- 测试覆盖正常/超限/重置场景
+**创建时间**: 2025-02-11 15:30:00
+**完成时间**: -
+
+---
+
+### [pending] 审计日志导出功能
+
+**ID**: task-038
+**优先级**: P1
+**模块路径**: packages/server/src/api/routes/audit-log.ts, packages/dashboard/src/pages/AuditLog.tsx
+**任务描述**: 在现有审计日志 API 基础上，增加导出功能。后端：新增 `GET /api/v1/audit-log/export?format=csv&from=&to=` 端点，支持 CSV 格式导出（使用流式响应避免内存溢出），包含字段：时间、操作人、服务器、命令、风险等级、状态、告警信息。支持日期范围和服务器筛选。前端：在审计日志页面增加「导出」按钮，支持选择日期范围后下载 CSV 文件。文件名格式：`audit-log-{from}-{to}.csv`。
+**产品需求**: Phase 4 操作审计报告 — 合规导出
+**验收标准**:
+- CSV 导出 API 可用，流式传输
+- 支持日期范围、服务器 ID、风险等级过滤
+- Dashboard 有导出按钮和日期选择器
+- 大数据量（10000+ 条）不 OOM
+- CSV 格式正确，Excel 可直接打开
+**创建时间**: 2025-02-11 15:30:00
+**完成时间**: -
+
+---
+
+### [pending] 测试覆盖率修复与提升
+
+**ID**: task-039
+**优先级**: P1
+**模块路径**: vitest.config.ts, packages/*/
+**任务描述**: 当前覆盖率报告显示整体仅 7.29%，与实际测试代码量严重不符，疑似覆盖率收集配置问题。排查步骤：1) 检查根 `vitest.config.ts` 的 coverage include/exclude 配置是否遗漏了关键路径；2) 确认 dashboard 覆盖率是否被正确聚合（dashboard 使用独立 vitest config）；3) 确认 `c8`/`v8` provider 是否正确配置；4) 修复配置后运行全量覆盖率，对比各模块实际覆盖率与目标值；5) 补充覆盖率不达标模块的测试用例。目标：整体覆盖率达到 80%+。
+**产品需求**: 开发标准 — 测试覆盖率 80% 整体目标（docs/开发标准.md 第六章）
+**验收标准**:
+- 覆盖率报告能正确反映所有包的测试情况
+- 整体 statements 覆盖率 ≥ 80%
+- 安全模块覆盖率 ≥ 95%
+- CI 中覆盖率 gate 正常工作
+- 识别并列出覆盖率最低的 5 个文件
+**创建时间**: 2025-02-11 15:30:00
+**完成时间**: -
+
+---
+
+### [pending] Stripe 计费系统集成
+
+**ID**: task-040
+**优先级**: P1
+**模块路径**: packages/server/src/core/billing/
+**任务描述**: 集成 Stripe 支付系统，支持云版订阅计费。1) 安装 `stripe` SDK，创建 `billing/` 模块；2) 数据库：新增 `subscriptions` 表（id, tenantId, stripeCustomerId, stripeSubscriptionId, plan, status, currentPeriodEnd）和 `invoices` 表；3) API：`POST /api/v1/billing/checkout`（创建 Checkout Session）、`GET /api/v1/billing/subscription`（查询当前订阅）、`POST /api/v1/billing/portal`（跳转 Stripe Customer Portal）、`POST /api/v1/billing/webhook`（Stripe Webhook 处理）；4) 三档定价：Free（3台服务器）、Pro（20台，$19/月）、Enterprise（无限制，$99/月）；5) 配额联动：订阅变更自动更新 tenant 的 maxServers/maxUsers。
+**产品需求**: Phase 4 计费系统 — Stripe 集成（产品方案 9.1 定价策略）
+**验收标准**:
+- Stripe Checkout 流程可走通（测试模式）
+- Webhook 正确处理 subscription.created/updated/deleted 事件
+- 配额与订阅计划联动
+- Customer Portal 可管理订阅
+- Dashboard 设置页展示当前订阅状态
+**创建时间**: 2025-02-11 15:30:00
+**完成时间**: -
+
+---
+
+### [pending] TODO.md 状态同步与 Phase 3 收尾
+
+**ID**: task-041
+**优先级**: P0
+**模块路径**: docs/TODO.md
+**任务描述**: TODO.md 中多项任务状态与代码实际状态不一致，需要同步。具体：1) Phase 3「更多 AI Provider — 自定义 OpenAI 兼容接口」实际已完成（custom-openai.ts 已实现 424 行，含测试），标记为 ✅；2) Phase 4「多租户架构」已完成（task-032），标记为 ✅；3) Phase 4「用户系统 — GitHub OAuth」已完成（task-033），标记为 ✅；4) Phase 4「Webhook 通知」已完成（task-034），标记为 ✅；5) 更新 Phase 3 进度为 90%（仅 Product Hunt 发布待做）；6) 更新 Phase 4 进度为 40%（3/8 已完成）；7) 添加新生成的 task-035 到 task-041 到任务清单。
+**产品需求**: 开发流程 — 任务状态准确追踪
+**验收标准**:
+- 所有已完成任务标记为 ✅
+- Phase 进度百分比准确
+- 新任务已添加到对应 Phase
+- 文档与代码实际状态一致
+**创建时间**: 2025-02-11 15:30:00
+**完成时间**: -
+
+---
+
+### [pending] Dashboard 实时监控 WebSocket 推送
+
+**ID**: task-042
+**优先级**: P1
+**模块路径**: packages/server/src/api/routes/metrics.ts, packages/dashboard/src/stores/server-detail.ts
+**任务描述**: 当前 Dashboard 服务器监控数据使用轮询获取（定时 fetch），改为 WebSocket/SSE 实时推送。1) 后端：新增 `GET /api/v1/servers/:id/metrics/stream` SSE 端点，Agent 上报指标时自动推送给订阅该服务器的 Dashboard 客户端；2) 使用现有 agent heartbeat 中的 CPU/内存数据作为实时指标源；3) 前端：server-detail store 新增 SSE 连接管理，MetricsChart 组件支持实时追加数据点（最近 1 小时滑动窗口）；4) 连接自动重连，切换页面时断开。比轮询节省带宽，延迟从 10s+ 降到 <2s。
+**产品需求**: Dashboard 基本监控 — 实时 CPU/内存/磁盘曲线（产品方案 4.4 数据流设计）
+**验收标准**:
+- SSE 端点可用，数据格式与现有 metrics API 一致
+- Dashboard MetricsChart 实时更新，无闪烁
+- 切换服务器时正确切换 SSE 连接
+- 页面离开时断开连接释放资源
+- 延迟 < 2s（Agent heartbeat → Dashboard 显示）
+**创建时间**: 2025-02-11 15:30:00
+**完成时间**: -
+
+---
+
+### [pending] PostgreSQL 适配器（云版数据库支持）
+
+**ID**: task-043
+**优先级**: P2
+**模块路径**: packages/server/src/db/
+**任务描述**: 为云版部署准备 PostgreSQL 支持。1) 安装 `drizzle-orm/pg-core` 和 `pg` 驱动；2) 创建 `db/pg-schema.ts`（从 SQLite schema 转换，处理类型差异：integer→serial, text→varchar, SQLite JSON→jsonb）；3) 创建 `db/connection.ts` 工厂，根据 `DB_TYPE=sqlite|postgres` 环境变量选择数据库驱动；4) 抽象 repository 层，确保 SQLite 和 PostgreSQL 使用统一接口；5) 创建 PostgreSQL migration 脚本；6) docker-compose.cloud.yml 增加 PostgreSQL 服务。不影响现有 SQLite 社区版的使用。
+**产品需求**: Phase 4 高可用部署 — PostgreSQL + 多副本（产品方案 4.1 部署模式）
+**验收标准**:
+- `DB_TYPE=postgres` 时可正常连接 PostgreSQL
+- 所有 repository 操作在两种数据库下均通过测试
+- 现有 SQLite 模式不受影响（默认行为不变）
+- docker-compose.cloud.yml 可一键启动 PostgreSQL 版
+- Migration 脚本覆盖所有现有表
+**创建时间**: 2025-02-11 15:30:00
+**完成时间**: -
+
+---
+
+### [pending] i18n 国际化框架搭建
+
+**ID**: task-044
+**优先级**: P2
+**模块路径**: packages/dashboard/src/i18n/
+**任务描述**: 为 Dashboard 搭建国际化框架，支持中英文切换。1) 安装 `react-i18next` + `i18next`；2) 创建 `i18n/` 目录，配置 i18n 初始化（语言检测、fallback）；3) 提取现有 UI 中的硬编码英文文本为 key-value，创建 `locales/en.json` 和 `locales/zh.json`；4) 优先翻译核心页面：Login、Dashboard、Servers、Chat（约 200 个 key）；5) Header 组件增加语言切换器；6) 浏览器语言自动检测，用户选择持久化到 localStorage。不要求一次性翻译所有文本，先搭建框架和核心页面。
+**产品需求**: 开源发布 — 面向国际社区（产品方案 11.1 开源冷启动）
+**验收标准**:
+- react-i18next 正确配置和初始化
+- 核心 4 个页面支持中英文切换
+- 语言切换器在 Header 可见
+- 浏览器语言自动检测
+- 新增 UI 文本有 i18n key 规范文档
+**创建时间**: 2025-02-11 15:30:00
+**完成时间**: -
+
 ### [completed] Dashboard AI Provider 选择器支持 custom-openai ✅
 
 **ID**: task-025
@@ -1239,4 +1417,4 @@ ID: task-001
 
 ---
 
-**最后更新**: 2026-02-11 18:04:06
+**最后更新**: 2026-02-11 19:28:19

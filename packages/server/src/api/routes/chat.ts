@@ -19,6 +19,7 @@ import {
 } from './schemas.js';
 import { validateBody } from '../middleware/validate.js';
 import { requireAuth } from '../middleware/auth.js';
+import { resolveRole, requirePermission } from '../middleware/rbac.js';
 import { ApiError } from '../middleware/error-handler.js';
 import { getSessionManager } from '../../core/session/manager.js';
 import { getServerRepository } from '../../db/repositories/server-repository.js';
@@ -41,13 +42,13 @@ const activePlanExecutions = new Map<string, string>();
 const chat = new Hono<ApiEnv>();
 
 // All chat routes require authentication
-chat.use('*', requireAuth);
+chat.use('*', requireAuth, resolveRole);
 
 // ============================================================================
 // POST /chat/:serverId — Send message, AI generates plan (SSE)
 // ============================================================================
 
-chat.post('/:serverId', validateBody(ChatMessageBodySchema), async (c) => {
+chat.post('/:serverId', requirePermission('chat:use'), validateBody(ChatMessageBodySchema), async (c) => {
   const { serverId } = c.req.param();
   const userId = c.get('userId');
   const body = c.get('validatedBody') as ChatMessageBody;
@@ -211,7 +212,7 @@ chat.post('/:serverId', validateBody(ChatMessageBodySchema), async (c) => {
 // POST /chat/:serverId/execute — Execute confirmed plan (SSE)
 // ============================================================================
 
-chat.post('/:serverId/execute', validateBody(ExecutePlanBodySchema), async (c) => {
+chat.post('/:serverId/execute', requirePermission('chat:use'), validateBody(ExecutePlanBodySchema), async (c) => {
   const { serverId } = c.req.param();
   const userId = c.get('userId');
   const body = c.get('validatedBody') as ExecutePlanBody;
@@ -521,7 +522,7 @@ chat.post('/:serverId/execute', validateBody(ExecutePlanBodySchema), async (c) =
 // POST /chat/:serverId/execute/cancel — Emergency stop running execution
 // ============================================================================
 
-chat.post('/:serverId/execute/cancel', validateBody(CancelExecutionBodySchema), async (c) => {
+chat.post('/:serverId/execute/cancel', requirePermission('chat:use'), validateBody(CancelExecutionBodySchema), async (c) => {
   const { serverId } = c.req.param();
   const userId = c.get('userId');
   const body = c.get('validatedBody') as CancelExecutionBody;
@@ -556,7 +557,7 @@ chat.post('/:serverId/execute/cancel', validateBody(CancelExecutionBodySchema), 
 // GET /chat/:serverId/sessions — List chat sessions
 // ============================================================================
 
-chat.get('/:serverId/sessions', async (c) => {
+chat.get('/:serverId/sessions', requirePermission('chat:use'), async (c) => {
   const { serverId } = c.req.param();
   const userId = c.get('userId');
 
@@ -575,7 +576,7 @@ chat.get('/:serverId/sessions', async (c) => {
 // GET /chat/:serverId/sessions/:sessionId — Get session details
 // ============================================================================
 
-chat.get('/:serverId/sessions/:sessionId', async (c) => {
+chat.get('/:serverId/sessions/:sessionId', requirePermission('chat:use'), async (c) => {
   const { serverId, sessionId } = c.req.param();
   const userId = c.get('userId');
 
@@ -604,7 +605,7 @@ chat.get('/:serverId/sessions/:sessionId', async (c) => {
 // DELETE /chat/:serverId/sessions/:sessionId — Delete session
 // ============================================================================
 
-chat.delete('/:serverId/sessions/:sessionId', async (c) => {
+chat.delete('/:serverId/sessions/:sessionId', requirePermission('chat:use'), async (c) => {
   const { serverId, sessionId } = c.req.param();
   const userId = c.get('userId');
 

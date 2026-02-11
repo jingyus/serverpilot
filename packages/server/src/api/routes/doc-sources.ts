@@ -12,6 +12,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { requireAuth } from '../middleware/auth.js';
+import { resolveRole, requirePermission } from '../middleware/rbac.js';
 import { validateBody } from '../middleware/validate.js';
 import { getDocSourceRepository } from '../../db/repositories/doc-source-repository.js';
 import type { CreateDocSourceData, UpdateDocSourceData } from '../../db/repositories/doc-source-repository.js';
@@ -67,10 +68,13 @@ const UpdateDocSourceSchema = z.object({
 
 const app = new Hono<ApiEnv>();
 
+// All doc-source routes require authentication
+app.use('*', requireAuth, resolveRole);
+
 /**
  * List all doc sources for the authenticated user.
  */
-app.get('/', requireAuth, async (c) => {
+app.get('/', requirePermission('doc-source:read'), async (c) => {
   const userId = c.get('userId');
   const repository = getDocSourceRepository();
 
@@ -96,7 +100,7 @@ app.get('/', requireAuth, async (c) => {
 /**
  * Get a single doc source by ID.
  */
-app.get('/:id', requireAuth, async (c) => {
+app.get('/:id', requirePermission('doc-source:read'), async (c) => {
   const userId = c.get('userId');
   const id = c.req.param('id');
   const repository = getDocSourceRepository();
@@ -113,7 +117,7 @@ app.get('/:id', requireAuth, async (c) => {
 /**
  * Create a new doc source.
  */
-app.post('/', requireAuth, validateBody(CreateDocSourceSchema), async (c) => {
+app.post('/', requirePermission('doc-source:create'), validateBody(CreateDocSourceSchema), async (c) => {
   const userId = c.get('userId');
   const data = c.get('validatedBody') as z.infer<typeof CreateDocSourceSchema>;
   const repository = getDocSourceRepository();
@@ -137,7 +141,7 @@ app.post('/', requireAuth, validateBody(CreateDocSourceSchema), async (c) => {
 /**
  * Update an existing doc source.
  */
-app.patch('/:id', requireAuth, validateBody(UpdateDocSourceSchema), async (c) => {
+app.patch('/:id', requirePermission('doc-source:update'), validateBody(UpdateDocSourceSchema), async (c) => {
   const userId = c.get('userId');
   const id = c.req.param('id');
   const data = c.get('validatedBody') as UpdateDocSourceData;
@@ -155,7 +159,7 @@ app.patch('/:id', requireAuth, validateBody(UpdateDocSourceSchema), async (c) =>
 /**
  * Delete a doc source.
  */
-app.delete('/:id', requireAuth, async (c) => {
+app.delete('/:id', requirePermission('doc-source:delete'), async (c) => {
   const userId = c.get('userId');
   const id = c.req.param('id');
   const repository = getDocSourceRepository();
@@ -172,7 +176,7 @@ app.delete('/:id', requireAuth, async (c) => {
 /**
  * Manually trigger a fetch for a specific doc source.
  */
-app.post('/:id/fetch', requireAuth, async (c) => {
+app.post('/:id/fetch', requirePermission('doc-source:update'), async (c) => {
   const userId = c.get('userId');
   const id = c.req.param('id');
   const repository = getDocSourceRepository();
@@ -249,7 +253,7 @@ app.post('/:id/fetch', requireAuth, async (c) => {
 /**
  * Get fetch history/status for a doc source.
  */
-app.get('/:id/status', requireAuth, async (c) => {
+app.get('/:id/status', requirePermission('doc-source:read'), async (c) => {
   const userId = c.get('userId');
   const id = c.req.param('id');
   const repository = getDocSourceRepository();

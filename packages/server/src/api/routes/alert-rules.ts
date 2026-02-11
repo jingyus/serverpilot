@@ -17,6 +17,7 @@ import {
 } from './schemas.js';
 import { validateBody, validateQuery } from '../middleware/validate.js';
 import { requireAuth } from '../middleware/auth.js';
+import { resolveRole, requirePermission } from '../middleware/rbac.js';
 import { ApiError } from '../middleware/error-handler.js';
 import { getAlertRuleRepository } from '../../db/repositories/alert-rule-repository.js';
 import { logger } from '../../utils/logger.js';
@@ -29,7 +30,7 @@ import type { ApiEnv } from './types.js';
 
 const alertRules = new Hono<ApiEnv>();
 
-alertRules.use('*', requireAuth);
+alertRules.use('*', requireAuth, resolveRole);
 
 // ============================================================================
 // POST /alert-rules — Create a new alert rule
@@ -37,6 +38,7 @@ alertRules.use('*', requireAuth);
 
 alertRules.post(
   '/',
+  requirePermission('alert-rule:create'),
   validateBody(CreateAlertRuleBodySchema),
   async (c) => {
     const userId = c.get('userId');
@@ -77,6 +79,7 @@ alertRules.post(
 
 alertRules.get(
   '/',
+  requirePermission('alert-rule:read'),
   validateQuery(AlertRuleQuerySchema),
   async (c) => {
     const userId = c.get('userId');
@@ -100,7 +103,7 @@ alertRules.get(
 // GET /alert-rules/:id — Get alert rule details
 // ============================================================================
 
-alertRules.get('/:id', async (c) => {
+alertRules.get('/:id', requirePermission('alert-rule:read'), async (c) => {
   const userId = c.get('userId');
   const { id } = c.req.param();
   const repo = getAlertRuleRepository();
@@ -119,6 +122,7 @@ alertRules.get('/:id', async (c) => {
 
 alertRules.patch(
   '/:id',
+  requirePermission('alert-rule:update'),
   validateBody(UpdateAlertRuleBodySchema),
   async (c) => {
     const userId = c.get('userId');
@@ -144,7 +148,7 @@ alertRules.patch(
 // DELETE /alert-rules/:id — Delete alert rule
 // ============================================================================
 
-alertRules.delete('/:id', async (c) => {
+alertRules.delete('/:id', requirePermission('alert-rule:delete'), async (c) => {
   const userId = c.get('userId');
   const { id } = c.req.param();
   const repo = getAlertRuleRepository();

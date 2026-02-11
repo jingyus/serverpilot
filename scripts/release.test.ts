@@ -428,21 +428,21 @@ describe('executeRelease()', () => {
 
   it.skipIf(!changelogExists)('should succeed in dry-run mode with real CHANGELOG', () => {
     const result = executeRelease({
-      tag: 'v1.1.0',
+      tag: 'v0.2.0',
       dryRun: true,
       skipTag: false,
       skipGhRelease: false,
       rootDir: ROOT_DIR,
     });
     expect(result.success).toBe(true);
-    expect(result.release.tag).toBe('v1.1.0');
-    expect(result.release.version).toBe('1.1.0');
+    expect(result.release.tag).toBe('v0.2.0');
+    expect(result.release.version).toBe('0.2.0');
     expect(result.release.notes.length).toBeGreaterThan(0);
   });
 
   it.skipIf(!changelogExists)('should have 4 steps in dry-run', () => {
     const result = executeRelease({
-      tag: 'v1.1.0',
+      tag: 'v0.2.0',
       dryRun: true,
       skipTag: false,
       skipGhRelease: false,
@@ -454,7 +454,7 @@ describe('executeRelease()', () => {
 
   it('should mark all steps as skipped in dry-run', () => {
     const result = executeRelease({
-      tag: 'v1.1.0',
+      tag: 'v0.2.0',
       dryRun: true,
       skipTag: false,
       skipGhRelease: false,
@@ -493,7 +493,7 @@ describe('executeRelease()', () => {
 
   it.skipIf(!changelogExists)('should handle skip flags', () => {
     const result = executeRelease({
-      tag: 'v1.1.0',
+      tag: 'v0.2.0',
       dryRun: false,
       skipTag: true,
       skipGhRelease: true,
@@ -515,23 +515,23 @@ describe.skipIf(!changelogExists)('Integration: project CHANGELOG', () => {
     ? fs.readFileSync(path.join(ROOT_DIR, 'CHANGELOG.md'), 'utf-8')
     : '';
 
-  it('should contain version 1.1.0', () => {
-    expect(changelog).toContain('[1.1.0]');
+  it('should contain version 0.2.0', () => {
+    expect(changelog).toContain('[0.2.0]');
   });
 
-  it('should contain version 1.0.0', () => {
-    expect(changelog).toContain('[1.0.0]');
+  it('should contain version 0.1.0', () => {
+    expect(changelog).toContain('[0.1.0]');
   });
 
-  it('should extract non-empty notes for v1.1.0', () => {
-    const notes = extractReleaseNotes(changelog, '1.1.0');
+  it('should extract non-empty notes for v0.2.0', () => {
+    const notes = extractReleaseNotes(changelog, '0.2.0');
     expect(notes.length).toBeGreaterThan(0);
     expect(notes).toContain('Added');
   });
 
-  it('should extract correct date for v1.1.0', () => {
-    const date = extractReleaseDate(changelog, '1.1.0');
-    expect(date).toBe('2026-02-08');
+  it('should extract correct date for v0.2.0', () => {
+    const date = extractReleaseDate(changelog, '0.2.0');
+    expect(date).toBe('2026-02-11');
   });
 });
 
@@ -546,11 +546,11 @@ describe.skipIf(!vitepressConfigExists || !changelogExists)('Integration: VitePr
   it('should be updateable with announcement', () => {
     const release = buildReleaseInfo(
       fs.readFileSync(path.join(ROOT_DIR, 'CHANGELOG.md'), 'utf-8'),
-      'v1.1.0',
+      'v0.2.0',
     );
     const updated = updateWebsiteAnnouncement(configContent, release);
     expect(updated).toContain('announcement:');
-    expect(updated).toContain('v1.1.0');
+    expect(updated).toContain('v0.2.0');
     // Should still have the rest of the config
     expect(updated).toContain("title: 'AI Installer'");
     expect(updated).toContain('themeConfig');
@@ -572,20 +572,20 @@ describe.skipIf(!websiteIndexExists || !changelogExists)('Integration: homepage 
   it('should be updateable with release tagline', () => {
     const release = buildReleaseInfo(
       fs.readFileSync(path.join(ROOT_DIR, 'CHANGELOG.md'), 'utf-8'),
-      'v1.1.0',
+      'v0.2.0',
     );
     const updated = updateHomepageTagline(indexContent, release);
-    expect(updated).toContain('v1.1.0');
+    expect(updated).toContain('v0.2.0');
     // Should keep the rest of the page
     expect(updated).toContain('name: AI Installer');
     expect(updated).toContain('快速开始');
   });
 });
 
-describe.skipIf(!changelogExists)('Integration: full dry-run release of v1.1.0', () => {
+describe.skipIf(!changelogExists)('Integration: full dry-run release of v0.2.0', () => {
   it('should produce a valid release result', () => {
     const result = executeRelease({
-      tag: 'v1.1.0',
+      tag: 'v0.2.0',
       dryRun: true,
       skipTag: false,
       skipGhRelease: false,
@@ -593,9 +593,9 @@ describe.skipIf(!changelogExists)('Integration: full dry-run release of v1.1.0',
     });
 
     expect(result.success).toBe(true);
-    expect(result.release.tag).toBe('v1.1.0');
-    expect(result.release.version).toBe('1.1.0');
-    expect(result.release.date).toBe('2026-02-08');
+    expect(result.release.tag).toBe('v0.2.0');
+    expect(result.release.version).toBe('0.2.0');
+    expect(result.release.date).toBe('2026-02-11');
     expect(result.release.notes).toContain('AI');
     expect(result.steps.every(s => s.status !== 'failed')).toBe(true);
   });

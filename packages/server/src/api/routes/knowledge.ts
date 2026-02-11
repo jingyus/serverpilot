@@ -14,6 +14,7 @@ import { Hono } from 'hono';
 import { ScrapeDocBodySchema } from './schemas.js';
 import { validateBody } from '../middleware/validate.js';
 import { requireAuth } from '../middleware/auth.js';
+import { resolveRole, requirePermission } from '../middleware/rbac.js';
 import { logger } from '../../utils/logger.js';
 import {
   DocFetcher,
@@ -55,13 +56,13 @@ export function setDocFetcher(fetcher: DocFetcher | null): void {
 const knowledge = new Hono<ApiEnv>();
 
 // All knowledge routes require authentication
-knowledge.use('*', requireAuth);
+knowledge.use('*', requireAuth, resolveRole);
 
 // --------------------------------------------------------------------------
 // POST /knowledge/scrape — Trigger a documentation scrape
 // --------------------------------------------------------------------------
 
-knowledge.post('/scrape', validateBody(ScrapeDocBodySchema), async (c) => {
+knowledge.post('/scrape', requirePermission('knowledge:create'), validateBody(ScrapeDocBodySchema), async (c) => {
   const body = c.get('validatedBody') as ScrapeDocBody;
   const fetcher = getFetcher();
 
@@ -120,7 +121,7 @@ knowledge.post('/scrape', validateBody(ScrapeDocBodySchema), async (c) => {
 // POST /knowledge/scrape/builtin — Scrape all built-in sources
 // --------------------------------------------------------------------------
 
-knowledge.post('/scrape/builtin', async (c) => {
+knowledge.post('/scrape/builtin', requirePermission('knowledge:create'), async (c) => {
   const fetcher = getFetcher();
 
   logger.info('Starting built-in sources scrape');
@@ -139,7 +140,7 @@ knowledge.post('/scrape/builtin', async (c) => {
 // GET /knowledge/sources — List configured documentation sources
 // --------------------------------------------------------------------------
 
-knowledge.get('/sources', (c) => {
+knowledge.get('/sources', requirePermission('knowledge:read'), (c) => {
   return c.json({
     sources: BUILTIN_SOURCES.map((s) => ({
       id: s.id,
@@ -154,7 +155,7 @@ knowledge.get('/sources', (c) => {
 // GET /knowledge/docs — List available fetched documentation
 // --------------------------------------------------------------------------
 
-knowledge.get('/docs', (c) => {
+knowledge.get('/docs', requirePermission('knowledge:read'), (c) => {
   const fetcher = getFetcher();
   const docs = fetcher.listAvailableDocs();
   return c.json({ docs });
@@ -164,7 +165,7 @@ knowledge.get('/docs', (c) => {
 // GET /knowledge/tasks — List fetch tasks
 // --------------------------------------------------------------------------
 
-knowledge.get('/tasks', (c) => {
+knowledge.get('/tasks', requirePermission('knowledge:read'), (c) => {
   const fetcher = getFetcher();
   const tasks = fetcher.listTasks();
   return c.json({ tasks });
@@ -174,7 +175,7 @@ knowledge.get('/tasks', (c) => {
 // GET /knowledge/tasks/:taskId — Get a specific fetch task
 // --------------------------------------------------------------------------
 
-knowledge.get('/tasks/:taskId', (c) => {
+knowledge.get('/tasks/:taskId', requirePermission('knowledge:read'), (c) => {
   const fetcher = getFetcher();
   const task = fetcher.getTask(c.req.param('taskId'));
   if (!task) {
@@ -187,7 +188,7 @@ knowledge.get('/tasks/:taskId', (c) => {
 // GET /knowledge/search — Search knowledge base entries
 // --------------------------------------------------------------------------
 
-knowledge.get('/search', async (c) => {
+knowledge.get('/search', requirePermission('knowledge:read'), async (c) => {
   const query = c.req.query('q');
   const source = c.req.query('source') as 'builtin' | 'auto_learn' | 'scrape' | 'community' | undefined;
 

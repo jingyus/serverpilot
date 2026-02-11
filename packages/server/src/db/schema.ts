@@ -54,11 +54,13 @@ export const users = sqliteTable(
     name: text('name'),
     timezone: text('timezone').default('UTC'),
     tenantId: text('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+    role: text('role', { enum: ['owner', 'admin', 'member'] }).default('member').notNull(),
     createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
     updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
   },
   (table) => [
     index('users_tenant_id_idx').on(table.tenantId),
+    index('users_role_idx').on(table.role),
   ],
 );
 

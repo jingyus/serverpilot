@@ -13,6 +13,7 @@ import { Hono } from 'hono';
 import { AlertQuerySchema, PaginationQuerySchema } from './schemas.js';
 import { validateQuery } from '../middleware/validate.js';
 import { requireAuth } from '../middleware/auth.js';
+import { resolveRole, requirePermission } from '../middleware/rbac.js';
 import { ApiError } from '../middleware/error-handler.js';
 import { getAlertRepository } from '../../db/repositories/alert-repository.js';
 import { logger } from '../../utils/logger.js';
@@ -22,7 +23,7 @@ import type { ApiEnv } from './types.js';
 const alerts = new Hono<ApiEnv>();
 
 // All alert routes require authentication
-alerts.use('*', requireAuth);
+alerts.use('*', requireAuth, resolveRole);
 
 // ============================================================================
 // GET /alerts — List alerts
@@ -30,6 +31,7 @@ alerts.use('*', requireAuth);
 
 alerts.get(
   '/',
+  requirePermission('alert:read'),
   validateQuery(AlertQuerySchema),
   async (c) => {
     const userId = c.get('userId');
@@ -77,7 +79,7 @@ alerts.get(
 // GET /alerts/:id — Get alert details
 // ============================================================================
 
-alerts.get('/:id', async (c) => {
+alerts.get('/:id', requirePermission('alert:read'), async (c) => {
   const userId = c.get('userId');
   const { id } = c.req.param();
   const repo = getAlertRepository();
@@ -94,7 +96,7 @@ alerts.get('/:id', async (c) => {
 // PATCH /alerts/:id/resolve — Mark alert as resolved
 // ============================================================================
 
-alerts.patch('/:id/resolve', async (c) => {
+alerts.patch('/:id/resolve', requirePermission('alert:read'), async (c) => {
   const userId = c.get('userId');
   const { id } = c.req.param();
   const repo = getAlertRepository();

@@ -22,6 +22,7 @@ import {
 } from './schemas.js';
 import { validateBody, validateQuery } from '../middleware/validate.js';
 import { requireAuth } from '../middleware/auth.js';
+import { resolveRole, requirePermission } from '../middleware/rbac.js';
 import { ApiError } from '../middleware/error-handler.js';
 import { getTaskRepository } from '../../db/repositories/task-repository.js';
 import { getNextRunDate } from '../../core/task/scheduler.js';
@@ -34,13 +35,13 @@ import type { ApiEnv } from './types.js';
 const tasks = new Hono<ApiEnv>();
 
 // All task routes require authentication
-tasks.use('*', requireAuth);
+tasks.use('*', requireAuth, resolveRole);
 
 // ============================================================================
 // GET /tasks — List scheduled tasks
 // ============================================================================
 
-tasks.get('/', validateQuery(TaskQuerySchema), async (c) => {
+tasks.get('/', requirePermission('task:read'), validateQuery(TaskQuerySchema), async (c) => {
   const userId = c.get('userId');
   const query = c.get('validatedQuery') as TaskQuery;
   const repo = getTaskRepository();
@@ -76,7 +77,7 @@ tasks.get('/', validateQuery(TaskQuerySchema), async (c) => {
 // POST /tasks — Create a scheduled task
 // ============================================================================
 
-tasks.post('/', validateBody(CreateTaskBodySchema), async (c) => {
+tasks.post('/', requirePermission('task:create'), validateBody(CreateTaskBodySchema), async (c) => {
   const userId = c.get('userId');
   const body = c.get('validatedBody') as CreateTaskBody;
   const repo = getTaskRepository();
@@ -115,7 +116,7 @@ tasks.post('/', validateBody(CreateTaskBodySchema), async (c) => {
 // GET /tasks/:id — Get task details
 // ============================================================================
 
-tasks.get('/:id', async (c) => {
+tasks.get('/:id', requirePermission('task:read'), async (c) => {
   const userId = c.get('userId');
   const { id } = c.req.param();
   const repo = getTaskRepository();
@@ -132,7 +133,7 @@ tasks.get('/:id', async (c) => {
 // PATCH /tasks/:id — Update a task
 // ============================================================================
 
-tasks.patch('/:id', validateBody(UpdateTaskBodySchema), async (c) => {
+tasks.patch('/:id', requirePermission('task:update'), validateBody(UpdateTaskBodySchema), async (c) => {
   const userId = c.get('userId');
   const { id } = c.req.param();
   const body = c.get('validatedBody') as UpdateTaskBody;
@@ -165,7 +166,7 @@ tasks.patch('/:id', validateBody(UpdateTaskBodySchema), async (c) => {
 // DELETE /tasks/:id — Soft-delete a task
 // ============================================================================
 
-tasks.delete('/:id', async (c) => {
+tasks.delete('/:id', requirePermission('task:delete'), async (c) => {
   const userId = c.get('userId');
   const { id } = c.req.param();
   const repo = getTaskRepository();
@@ -187,7 +188,7 @@ tasks.delete('/:id', async (c) => {
 // POST /tasks/:id/run — Execute task immediately
 // ============================================================================
 
-tasks.post('/:id/run', async (c) => {
+tasks.post('/:id/run', requirePermission('task:update'), async (c) => {
   const userId = c.get('userId');
   const { id } = c.req.param();
   const repo = getTaskRepository();

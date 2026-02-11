@@ -16,6 +16,7 @@ import { z } from 'zod';
 import { getMetricsRepository } from '../../db/repositories/metrics-repository.js';
 import type { MetricsRange } from '../../db/repositories/metrics-repository.js';
 import { requireAuth } from '../middleware/auth.js';
+import { resolveRole, requirePermission } from '../middleware/rbac.js';
 import type { AuthContext } from '../routes/types.js';
 
 // ============================================================================
@@ -25,7 +26,7 @@ import type { AuthContext } from '../routes/types.js';
 const app = new Hono<AuthContext>();
 
 // Apply auth middleware to all routes
-app.use('*', requireAuth);
+app.use('*', requireAuth, resolveRole);
 
 // ============================================================================
 // Validation Schemas
@@ -55,7 +56,7 @@ const GetLatestQuerySchema = z.object({
  *
  * Returns array of metric points with timestamps.
  */
-app.get('/', async (c) => {
+app.get('/', requirePermission('metrics:read'), async (c) => {
   const userId = c.get('userId');
   const query = c.req.query();
 
@@ -87,7 +88,7 @@ app.get('/', async (c) => {
  *
  * Returns the most recent metric point or null.
  */
-app.get('/latest', async (c) => {
+app.get('/latest', requirePermission('metrics:read'), async (c) => {
   const userId = c.get('userId');
   const query = c.req.query();
 
@@ -119,7 +120,7 @@ app.get('/latest', async (c) => {
  *
  * Returns aggregated metric points (avg, min, max per bucket).
  */
-app.get('/aggregated', async (c) => {
+app.get('/aggregated', requirePermission('metrics:read'), async (c) => {
   const userId = c.get('userId');
   const query = c.req.query();
 
