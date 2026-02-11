@@ -85,6 +85,7 @@ describe('Sidebar', () => {
       expect(screen.getByText('Knowledge')).toBeInTheDocument();
       expect(screen.getByText('Tasks')).toBeInTheDocument();
       expect(screen.getByText('Operations')).toBeInTheDocument();
+      expect(screen.getByText('Alerts')).toBeInTheDocument();
       expect(screen.getByText('Settings')).toBeInTheDocument();
     });
 
@@ -209,6 +210,7 @@ describe('Sidebar', () => {
         '/search',
         '/tasks',
         '/operations',
+        '/alerts',
         '/settings',
       ];
       const links = screen.getAllByRole('link');

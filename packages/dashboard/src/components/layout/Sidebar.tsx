@@ -7,6 +7,7 @@ import {
   MessageCircle,
   ListChecks,
   History,
+  Bell,
   Settings,
   LogOut,
   ChevronLeft,
@@ -34,6 +35,7 @@ const navItems: NavItem[] = [
   { to: '/search', label: 'Knowledge', icon: BookOpen },
   { to: '/tasks', label: 'Tasks', icon: ListChecks },
   { to: '/operations', label: 'Operations', icon: History },
+  { to: '/alerts', label: 'Alerts', icon: Bell },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
 

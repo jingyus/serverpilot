@@ -11,6 +11,7 @@ import { Tasks } from './pages/Tasks';
 import { Operations } from './pages/Operations';
 import { Settings } from './pages/Settings';
 import { Search } from './pages/Search';
+import { Alerts } from './pages/Alerts';
 
 export function App() {
   return (
@@ -26,6 +27,7 @@ export function App() {
         <Route path="tasks" element={<Tasks />} />
         <Route path="operations" element={<Operations />} />
         <Route path="search" element={<Search />} />
+        <Route path="alerts" element={<Alerts />} />
         <Route path="settings" element={<Settings />} />
       </Route>
     </Routes>

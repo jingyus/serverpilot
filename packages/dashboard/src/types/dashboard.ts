@@ -136,3 +136,57 @@ export interface UpdateTaskInput {
   description?: string;
   status?: TaskStatus;
 }
+
+// ── Alert Rule Types ──
+
+export const MetricTypeSchema = z.enum(['cpu', 'memory', 'disk']);
+export type MetricType = z.infer<typeof MetricTypeSchema>;
+
+export const ComparisonOperatorSchema = z.enum(['gt', 'lt', 'gte', 'lte']);
+export type ComparisonOperator = z.infer<typeof ComparisonOperatorSchema>;
+
+export const AlertRuleSchema = z.object({
+  id: z.string(),
+  serverId: z.string(),
+  userId: z.string(),
+  name: z.string(),
+  metricType: MetricTypeSchema,
+  operator: ComparisonOperatorSchema,
+  threshold: z.number(),
+  severity: AlertSeveritySchema,
+  enabled: z.boolean(),
+  emailRecipients: z.array(z.string()).nullable().optional(),
+  cooldownMinutes: z.number().nullable().optional(),
+  lastTriggeredAt: z.string().nullable().optional(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type AlertRule = z.infer<typeof AlertRuleSchema>;
+
+export const AlertRulesResponseSchema = z.object({
+  rules: z.array(AlertRuleSchema),
+  total: z.number(),
+});
+export type AlertRulesResponse = z.infer<typeof AlertRulesResponseSchema>;
+
+export interface CreateAlertRuleInput {
+  serverId: string;
+  name: string;
+  metricType: MetricType;
+  operator: ComparisonOperator;
+  threshold: number;
+  severity: AlertSeverity;
+  emailRecipients?: string[];
+  cooldownMinutes?: number;
+}
+
+export interface UpdateAlertRuleInput {
+  name?: string;
+  metricType?: MetricType;
+  operator?: ComparisonOperator;
+  threshold?: number;
+  severity?: AlertSeverity;
+  enabled?: boolean;
+  emailRecipients?: string[];
+  cooldownMinutes?: number;
+}

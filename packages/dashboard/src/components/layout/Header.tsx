@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Menu, Bell } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth';
 import { useUiStore } from '@/stores/ui';
+import { useAlertsStore } from '@/stores/alerts';
 import { ConnectionStatus } from '@/components/common/ConnectionStatus';
 
 const pageTitles: Record<string, string> = {
@@ -12,6 +14,7 @@ const pageTitles: Record<string, string> = {
   '/chat': 'AI Chat',
   '/tasks': 'Tasks',
   '/operations': 'Operations',
+  '/alerts': 'Alerts',
   '/settings': 'Settings',
 };
 
@@ -24,9 +27,18 @@ function getPageTitle(pathname: string): string {
 
 export function Header() {
   const { pathname } = useLocation();
+  const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const toggleMobileSidebar = useUiStore((s) => s.toggleMobileSidebar);
+  const unresolvedCount = useAlertsStore((s) => s.unresolvedCount);
+  const fetchUnresolvedCount = useAlertsStore((s) => s.fetchUnresolvedCount);
   const title = getPageTitle(pathname);
+
+  useEffect(() => {
+    fetchUnresolvedCount();
+    const interval = setInterval(fetchUnresolvedCount, 60_000);
+    return () => clearInterval(interval);
+  }, [fetchUnresolvedCount]);
 
   return (
     <header
@@ -51,9 +63,19 @@ export function Header() {
         <button
           type="button"
           aria-label="Notifications"
-          className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+          onClick={() => navigate('/alerts')}
+          className="relative flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+          data-testid="alert-badge-btn"
         >
           <Bell className="h-5 w-5" />
+          {unresolvedCount > 0 && (
+            <span
+              className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground"
+              data-testid="alert-count-badge"
+            >
+              {unresolvedCount > 99 ? '99+' : unresolvedCount}
+            </span>
+          )}
         </button>
 
         <div className="flex items-center gap-2">
