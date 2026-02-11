@@ -81,8 +81,10 @@ function setupStore(overrides: Partial<ReturnType<typeof useAuditLogStore.getSta
     },
     page: 1,
     isLoading: false,
+    isExporting: false,
     error: null,
     fetchLogs: vi.fn().mockResolvedValue(undefined),
+    exportCsv: vi.fn().mockResolvedValue(undefined),
     setFilters: vi.fn((partial) => {
       const current = useAuditLogStore.getState().filters;
       useAuditLogStore.setState({ filters: { ...current, ...partial }, page: 1 });
@@ -340,18 +342,21 @@ describe('AuditLog Page', () => {
       expect(screen.queryByTestId('export-buttons')).not.toBeInTheDocument();
     });
 
-    it('triggers CSV export on click', async () => {
+    it('triggers server-side CSV export on click', async () => {
       const user = userEvent.setup();
-      const createObjectURL = vi.fn().mockReturnValue('blob:test');
-      const revokeObjectURL = vi.fn();
-      global.URL.createObjectURL = createObjectURL;
-      global.URL.revokeObjectURL = revokeObjectURL;
+      const exportCsv = vi.fn().mockResolvedValue(undefined);
+      setupStore({ exportCsv });
 
       renderAuditLog();
       await user.click(screen.getByTestId('export-csv'));
 
-      expect(createObjectURL).toHaveBeenCalled();
-      expect(revokeObjectURL).toHaveBeenCalled();
+      expect(exportCsv).toHaveBeenCalled();
+    });
+
+    it('disables CSV button while exporting', () => {
+      setupStore({ isExporting: true });
+      renderAuditLog();
+      expect(screen.getByTestId('export-csv')).toBeDisabled();
     });
 
     it('triggers JSON export on click', async () => {

@@ -63,6 +63,7 @@ export const PERMISSIONS = [
 
   // Audit log
   'audit-log:read',
+  'audit-log:export',
 
   // Knowledge & doc sources
   'knowledge:read',
@@ -134,6 +135,7 @@ const ADMIN_PERMISSIONS: readonly Permission[] = [
   'webhook:update',
   'webhook:delete',
   'settings:update',
+  'audit-log:export',
   'knowledge:create',
   'doc-source:create',
   'doc-source:update',

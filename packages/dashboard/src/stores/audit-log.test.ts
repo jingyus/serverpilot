@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { useAuditLogStore, PAGE_SIZE } from './audit-log';
 
 vi.mock('@/api/client', () => ({
@@ -66,6 +66,7 @@ function resetStore() {
     },
     page: 1,
     isLoading: false,
+    isExporting: false,
     error: null,
   });
 }
@@ -84,6 +85,7 @@ describe('useAuditLogStore', () => {
       expect(state.selectedLog).toBeNull();
       expect(state.page).toBe(1);
       expect(state.isLoading).toBe(false);
+      expect(state.isExporting).toBe(false);
       expect(state.error).toBeNull();
       expect(state.filters).toEqual({
         serverId: '',
@@ -250,6 +252,135 @@ describe('useAuditLogStore', () => {
       useAuditLogStore.getState().clearError();
 
       expect(useAuditLogStore.getState().error).toBeNull();
+    });
+  });
+
+  describe('exportCsv', () => {
+    let originalFetch: typeof global.fetch;
+
+    beforeEach(() => {
+      originalFetch = global.fetch;
+    });
+
+    afterEach(() => {
+      global.fetch = originalFetch;
+    });
+
+    it('calls export endpoint and triggers download', async () => {
+      const mockBlob = new Blob(['csv-data'], { type: 'text/csv' });
+      const mockResponse = {
+        ok: true,
+        blob: vi.fn().mockResolvedValue(mockBlob),
+        headers: new Headers({
+          'Content-Disposition': 'attachment; filename="audit-log-2026-02-01-2026-02-09.csv"',
+        }),
+      };
+      global.fetch = vi.fn().mockResolvedValue(mockResponse);
+
+      const createObjectURL = vi.fn().mockReturnValue('blob:test');
+      const revokeObjectURL = vi.fn();
+      global.URL.createObjectURL = createObjectURL;
+      global.URL.revokeObjectURL = revokeObjectURL;
+
+      await useAuditLogStore.getState().exportCsv();
+
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.stringContaining('/audit-log/export?'),
+        expect.objectContaining({ headers: expect.any(Object) }),
+      );
+
+      const state = useAuditLogStore.getState();
+      expect(state.isExporting).toBe(false);
+      expect(state.error).toBeNull();
+      expect(createObjectURL).toHaveBeenCalled();
+      expect(revokeObjectURL).toHaveBeenCalled();
+    });
+
+    it('sets isExporting during export', async () => {
+      let resolvePromise: (value: unknown) => void;
+      global.fetch = vi.fn().mockReturnValue(
+        new Promise((resolve) => {
+          resolvePromise = resolve;
+        }),
+      );
+
+      const promise = useAuditLogStore.getState().exportCsv();
+      expect(useAuditLogStore.getState().isExporting).toBe(true);
+
+      const mockBlob = new Blob(['csv-data'], { type: 'text/csv' });
+      resolvePromise!({
+        ok: true,
+        blob: vi.fn().mockResolvedValue(mockBlob),
+        headers: new Headers(),
+      });
+
+      global.URL.createObjectURL = vi.fn().mockReturnValue('blob:test');
+      global.URL.revokeObjectURL = vi.fn();
+
+      await promise;
+      expect(useAuditLogStore.getState().isExporting).toBe(false);
+    });
+
+    it('handles export error', async () => {
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+      });
+
+      await useAuditLogStore.getState().exportCsv();
+
+      const state = useAuditLogStore.getState();
+      expect(state.error).toBe('Failed to export audit logs');
+      expect(state.isExporting).toBe(false);
+    });
+
+    it('includes filters in export params', async () => {
+      useAuditLogStore.setState({
+        filters: {
+          serverId: 'srv-1',
+          riskLevel: 'critical',
+          action: 'blocked',
+          startDate: '2026-02-01',
+          endDate: '2026-02-09',
+        },
+      });
+
+      const mockBlob = new Blob(['csv-data'], { type: 'text/csv' });
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        blob: vi.fn().mockResolvedValue(mockBlob),
+        headers: new Headers(),
+      });
+      global.URL.createObjectURL = vi.fn().mockReturnValue('blob:test');
+      global.URL.revokeObjectURL = vi.fn();
+
+      await useAuditLogStore.getState().exportCsv();
+
+      const fetchUrl = vi.mocked(global.fetch).mock.calls[0][0] as string;
+      expect(fetchUrl).toContain('format=csv');
+      expect(fetchUrl).toContain('serverId=srv-1');
+      expect(fetchUrl).toContain('riskLevel=critical');
+      expect(fetchUrl).toContain('from=');
+      expect(fetchUrl).toContain('to=');
+    });
+
+    it('uses fallback filename when Content-Disposition missing', async () => {
+      const mockBlob = new Blob(['csv-data'], { type: 'text/csv' });
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        blob: vi.fn().mockResolvedValue(mockBlob),
+        headers: new Headers(),
+      });
+
+      const createObjectURL = vi.fn().mockReturnValue('blob:test');
+      global.URL.createObjectURL = createObjectURL;
+      global.URL.revokeObjectURL = vi.fn();
+
+      await useAuditLogStore.getState().exportCsv();
+
+      // Should not throw and should complete successfully
+      expect(useAuditLogStore.getState().isExporting).toBe(false);
+      expect(createObjectURL).toHaveBeenCalled();
     });
   });
 

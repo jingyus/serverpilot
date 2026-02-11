@@ -10,7 +10,6 @@ import {
   CheckCircle2,
   XCircle,
   AlertCircle,
-  Clock,
   Filter,
   Loader2,
   ChevronLeft,
@@ -70,33 +69,13 @@ const EXECUTION_RESULT_CONFIG: Record<
 
 // ── Export Utilities ──
 
-function exportToCSV(logs: AuditLogEntry[]) {
-  const headers = ['Time', 'Command', 'Risk Level', 'Action', 'Result', 'Reason', 'Warnings', 'Blockers'];
-  const rows = logs.map((log) => [
-    log.createdAt,
-    `"${log.command.replace(/"/g, '""')}"`,
-    log.riskLevel,
-    log.action,
-    log.executionResult ?? '',
-    `"${log.reason.replace(/"/g, '""')}"`,
-    `"${log.auditWarnings.join('; ').replace(/"/g, '""')}"`,
-    `"${log.auditBlockers.join('; ').replace(/"/g, '""')}"`,
-  ]);
-  const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-  downloadFile(csv, 'audit-log.csv', 'text/csv');
-}
-
 function exportToJSON(logs: AuditLogEntry[]) {
   const json = JSON.stringify(logs, null, 2);
-  downloadFile(json, 'audit-log.json', 'application/json');
-}
-
-function downloadFile(content: string, filename: string, mimeType: string) {
-  const blob = new Blob([content], { type: mimeType });
+  const blob = new Blob([json], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = filename;
+  a.download = 'audit-log.json';
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -540,7 +519,7 @@ function AuditDetailDialog() {
 // ── Main Page ──
 
 export function AuditLog() {
-  const { fetchLogs, page, filters, logs } = useAuditLogStore();
+  const { fetchLogs, exportCsv, page, filters, logs, isExporting } = useAuditLogStore();
 
   useEffect(() => {
     fetchLogs();
@@ -566,10 +545,15 @@ export function AuditLog() {
               variant="outline"
               size="sm"
               className="gap-1 text-xs"
-              onClick={() => exportToCSV(logs)}
+              onClick={exportCsv}
+              disabled={isExporting}
               data-testid="export-csv"
             >
-              <Download className="h-3 w-3" />
+              {isExporting ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Download className="h-3 w-3" />
+              )}
               CSV
             </Button>
             <Button

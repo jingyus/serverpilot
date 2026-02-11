@@ -81,6 +81,9 @@ export interface AuditLogger {
     filter: AuditLogFilter,
     pagination: AuditLogPagination,
   ): Promise<{ logs: AuditLogEntry[]; total: number }>;
+
+  /** Query all matching audit logs (no pagination) for export. */
+  queryAll(userId: string, filter: AuditLogFilter): Promise<AuditLogEntry[]>;
 }
 
 export class DrizzleAuditLogger implements AuditLogger {
@@ -183,6 +186,19 @@ export class DrizzleAuditLogger implements AuditLogger {
       logs: rows.map((row) => this.toEntry(row)),
       total,
     };
+  }
+
+  async queryAll(userId: string, filter: AuditLogFilter): Promise<AuditLogEntry[]> {
+    const conditions = this.buildConditions(userId, filter);
+
+    const rows = this.db
+      .select()
+      .from(auditLogs)
+      .where(and(...conditions))
+      .orderBy(desc(auditLogs.createdAt))
+      .all();
+
+    return rows.map((row) => this.toEntry(row));
   }
 
   private buildConditions(userId: string, filter: AuditLogFilter) {

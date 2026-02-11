@@ -3,6 +3,7 @@
 import { create } from 'zustand';
 
 import { apiRequest, ApiError } from '@/api/client';
+import { API_BASE_URL } from '@/utils/constants';
 import type { AuditLogEntry, AuditLogsResponse } from '@/types/dashboard';
 
 export interface AuditLogFilters {
@@ -30,9 +31,11 @@ interface AuditLogState {
   filters: AuditLogFilters;
   page: number;
   isLoading: boolean;
+  isExporting: boolean;
   error: string | null;
 
   fetchLogs: () => Promise<void>;
+  exportCsv: () => Promise<void>;
   setFilters: (filters: Partial<AuditLogFilters>) => void;
   resetFilters: () => void;
   setPage: (page: number) => void;
@@ -54,6 +57,16 @@ function buildQueryString(filters: AuditLogFilters, page: number): string {
   return params.toString();
 }
 
+function buildExportParams(filters: AuditLogFilters): string {
+  const params = new URLSearchParams();
+  params.set('format', 'csv');
+  if (filters.startDate) params.set('from', new Date(filters.startDate).toISOString());
+  if (filters.endDate) params.set('to', new Date(filters.endDate).toISOString());
+  if (filters.serverId) params.set('serverId', filters.serverId);
+  if (filters.riskLevel) params.set('riskLevel', filters.riskLevel);
+  return params.toString();
+}
+
 export const useAuditLogStore = create<AuditLogState>((set, get) => ({
   logs: [],
   total: 0,
@@ -61,6 +74,7 @@ export const useAuditLogStore = create<AuditLogState>((set, get) => ({
   filters: { ...DEFAULT_FILTERS },
   page: 1,
   isLoading: false,
+  isExporting: false,
   error: null,
 
   fetchLogs: async () => {
@@ -74,6 +88,40 @@ export const useAuditLogStore = create<AuditLogState>((set, get) => ({
       const message =
         err instanceof ApiError ? err.message : 'Failed to load audit logs';
       set({ error: message, isLoading: false });
+    }
+  },
+
+  exportCsv: async () => {
+    const { filters } = get();
+    set({ isExporting: true, error: null });
+    try {
+      const qs = buildExportParams(filters);
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${API_BASE_URL}/audit-log/export?${qs}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+
+      if (!response.ok) {
+        throw new Error(`Export failed with status ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      const disposition = response.headers.get('Content-Disposition') ?? '';
+      const match = disposition.match(/filename="(.+?)"/);
+      const filename = match?.[1] ?? 'audit-log-export.csv';
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      set({ isExporting: false });
+    } catch (err) {
+      const message =
+        err instanceof ApiError ? err.message : 'Failed to export audit logs';
+      set({ error: message, isExporting: false });
     }
   },
 
