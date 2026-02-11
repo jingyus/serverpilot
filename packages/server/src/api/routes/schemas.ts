@@ -405,3 +405,19 @@ export const WebhookTestBodySchema = z.object({
   eventType: webhookEventType.default('task.completed'),
 });
 export type WebhookTestBody = z.infer<typeof WebhookTestBodySchema>;
+
+// ============================================================================
+// Invitation Schemas
+// ============================================================================
+
+export const CreateInvitationBodySchema = z.object({
+  email: z.string().email('Invalid email format'),
+  role: z.enum(['admin', 'member']).default('member'),
+});
+export type CreateInvitationBody = z.infer<typeof CreateInvitationBodySchema>;
+
+export const AcceptInvitationBodySchema = z.object({
+  name: z.string().min(1, 'Name is required').max(100),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
+});
+export type AcceptInvitationBody = z.infer<typeof AcceptInvitationBodySchema>;

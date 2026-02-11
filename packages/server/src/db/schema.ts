@@ -814,6 +814,42 @@ export const webhookDeliveries = sqliteTable(
 );
 
 // ============================================================================
+// Invitations (team member invite workflow)
+// ============================================================================
+
+export type InvitationStatus = 'pending' | 'accepted' | 'cancelled' | 'expired';
+
+export const invitations = sqliteTable(
+  'invitations',
+  {
+    id: text('id').primaryKey(),
+    tenantId: text('tenant_id')
+      .references(() => tenants.id, { onDelete: 'cascade' })
+      .notNull(),
+    email: text('email').notNull(),
+    role: text('role', { enum: ['admin', 'member'] }).default('member').notNull(),
+    token: text('token').notNull().unique(),
+    status: text('status', { enum: ['pending', 'accepted', 'cancelled', 'expired'] })
+      .default('pending')
+      .notNull(),
+    invitedBy: text('invited_by')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+    expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
+    acceptedAt: integer('accepted_at', { mode: 'timestamp' }),
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+  },
+  (table) => [
+    index('invitations_tenant_id_idx').on(table.tenantId),
+    index('invitations_email_idx').on(table.email),
+    index('invitations_token_idx').on(table.token),
+    index('invitations_status_idx').on(table.status),
+    index('invitations_expires_at_idx').on(table.expiresAt),
+  ],
+);
+
+// ============================================================================
 // Document Source History (update tracking)
 // ============================================================================
 

@@ -214,6 +214,7 @@ describe('Sidebar', () => {
         '/alerts',
         '/audit-log',
         '/webhooks',
+        '/team',
         '/settings',
       ];
       const links = screen.getAllByRole('link');
