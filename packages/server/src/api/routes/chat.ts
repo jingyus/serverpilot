@@ -32,6 +32,7 @@ import { findConnectedAgent } from '../../core/agent/agent-connector.js';
 import { getTaskExecutor } from '../../core/task/executor.js';
 import { validateCommand, validatePlan } from '../../core/security/command-validator.js';
 import { getAuditLogger } from '../../core/security/audit-logger.js';
+import { autoDiagnoseStepFailure } from '../../ai/error-diagnosis-service.js';
 import type { InstallStep } from '@aiinstaller/shared';
 import type { ChatMessageBody, ExecutePlanBody, CancelExecutionBody } from './schemas.js';
 import type { ApiEnv } from './types.js';
@@ -309,6 +310,20 @@ chat.post('/:serverId/execute', requirePermission('chat:use'), validateBody(Exec
     let firstFailedStep: string | null = null;
     let cancelled = false;
 
+    // Track completed step results for diagnosis context
+    const completedSteps: Array<{
+      stepId: string;
+      success: boolean;
+      exitCode: number;
+      stdout: string;
+      stderr: string;
+      duration: number;
+    }> = [];
+
+    // Pre-fetch server profile for environment-aware diagnosis
+    const profileMgr = getProfileManager();
+    const serverProfile = await profileMgr.getProfile(serverId, userId);
+
     // Track this plan execution for the cancel endpoint
     activePlanExecutions.set(body.planId, '');
 
@@ -473,6 +488,16 @@ chat.post('/:serverId/execute', requirePermission('chat:use'), validateBody(Exec
           result.operationId,
         );
 
+        // Track completed step for diagnosis context
+        completedSteps.push({
+          stepId: step.id,
+          success: result.success,
+          exitCode: result.exitCode,
+          stdout: result.stdout,
+          stderr: result.stderr,
+          duration: Date.now() - startTime,
+        });
+
         if (result.error === 'Cancelled') {
           cancelled = true;
           allSucceeded = false;
@@ -493,6 +518,40 @@ chat.post('/:serverId/execute', requirePermission('chat:use'), validateBody(Exec
             },
             `Step failed: ${step.description}`,
           );
+
+          // Auto-diagnose the failure and push results via SSE
+          try {
+            const diagnosis = await autoDiagnoseStepFailure({
+              stepId: step.id,
+              command: step.command,
+              exitCode: result.exitCode,
+              stdout: result.stdout,
+              stderr: result.stderr,
+              serverId,
+              serverProfile,
+              previousSteps: completedSteps.slice(0, -1),
+            });
+
+            await stream.writeSSE({
+              event: 'diagnosis',
+              data: JSON.stringify(diagnosis),
+            });
+
+            // Store diagnosis summary in session for conversation context
+            if (diagnosis.success) {
+              const diagMsg = `Error diagnosis for "${step.command}": ${diagnosis.rootCause}` +
+                (diagnosis.fixSuggestions.length > 0
+                  ? `. Suggested fix: ${diagnosis.fixSuggestions[0].description}`
+                  : '');
+              sessionMgr.addMessage(body.sessionId, 'system', diagMsg);
+            }
+          } catch (diagErr) {
+            logger.error(
+              { operation: 'auto_diagnosis', serverId, stepId: step.id, error: String(diagErr) },
+              'Auto-diagnosis failed',
+            );
+          }
+
           break; // Stop execution on first failure
         }
       } catch (err) {
@@ -528,6 +587,30 @@ chat.post('/:serverId/execute', requirePermission('chat:use'), validateBody(Exec
 
         // Update audit log with failure
         await auditLogger.updateExecutionResult(auditEntry.id, 'failed');
+
+        // Auto-diagnose the exception-level failure
+        try {
+          const diagnosis = await autoDiagnoseStepFailure({
+            stepId: step.id,
+            command: step.command,
+            exitCode: -1,
+            stdout: '',
+            stderr: errorMsg,
+            serverId,
+            serverProfile,
+            previousSteps: completedSteps,
+          });
+
+          await stream.writeSSE({
+            event: 'diagnosis',
+            data: JSON.stringify(diagnosis),
+          });
+        } catch (diagErr) {
+          logger.error(
+            { operation: 'auto_diagnosis', serverId, stepId: step.id, error: String(diagErr) },
+            'Auto-diagnosis failed',
+          );
+        }
 
         allSucceeded = false;
         firstFailedStep = step.id;
