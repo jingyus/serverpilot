@@ -14,6 +14,7 @@ import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { useSettingsStore, type AIProvider } from '@/stores/settings';
 import { useAuthStore } from '@/stores/auth';
+import { useNotificationsStore } from '@/stores/notifications';
 import { useUiStore, type Theme } from '@/stores/ui';
 import { cn } from '@/lib/utils';
 
@@ -81,8 +82,6 @@ export function Settings() {
     clearError,
   } = useSettingsStore();
 
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
-
   // AI Provider form state
   const [aiProvider, setAiProvider] = useState<AIProvider>('claude');
   const [apiKey, setApiKey] = useState('');
@@ -138,8 +137,7 @@ export function Settings() {
   }, [settings, user]);
 
   const showSuccess = (message: string) => {
-    setSuccessMessage(message);
-    setTimeout(() => setSuccessMessage(null), 3000);
+    useNotificationsStore.getState().add({ type: 'success', title: message });
   };
 
   const handleSaveAIProvider = async () => {
@@ -168,7 +166,7 @@ export function Settings() {
       });
       showSuccess(t('settings.aiProviderSaved'));
     } catch {
-      // Error is handled by store
+      useNotificationsStore.getState().add({ type: 'error', title: t('settings.saveFailed') });
     }
   };
 
@@ -177,7 +175,7 @@ export function Settings() {
       await updateUserProfile({ name, email, timezone });
       showSuccess(t('settings.profileSaved'));
     } catch {
-      // Error is handled by store
+      useNotificationsStore.getState().add({ type: 'error', title: t('settings.saveFailed') });
     }
   };
 
@@ -191,7 +189,7 @@ export function Settings() {
       });
       showSuccess(t('settings.preferencesSaved'));
     } catch {
-      // Error is handled by store
+      useNotificationsStore.getState().add({ type: 'error', title: t('settings.saveFailed') });
     }
   };
 
@@ -203,7 +201,7 @@ export function Settings() {
       });
       showSuccess(t('settings.knowledgeBaseSaved'));
     } catch {
-      // Error is handled by store
+      useNotificationsStore.getState().add({ type: 'error', title: t('settings.saveFailed') });
     }
   };
 
@@ -241,17 +239,6 @@ export function Settings() {
           >
             {t('common.dismiss')}
           </Button>
-        </div>
-      )}
-
-      {/* Success Message */}
-      {successMessage && (
-        <div
-          role="status"
-          className="flex items-center gap-2 rounded-md border border-green-500/50 bg-green-50 p-3 text-sm text-green-700 dark:bg-green-900/20 dark:text-green-300"
-        >
-          <CheckCircle2 className="h-4 w-4 shrink-0" />
-          <span>{successMessage}</span>
         </div>
       )}
 

@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/card';
 import { AddServerDialog, DeleteServerDialog } from '@/components/server';
 import { useServersStore } from '@/stores/servers';
+import { useNotificationsStore } from '@/stores/notifications';
 import { cn } from '@/lib/utils';
 import { formatDate } from '@/utils/format';
 import type { Server as ServerType } from '@/types/server';
@@ -294,12 +295,19 @@ export function Servers() {
     navigate(`/servers/${id}`);
   }, [navigate]);
 
+  const handleAddServer = useCallback(async (name: string, tags?: string[], group?: string) => {
+    const result = await addServer(name, tags, group);
+    useNotificationsStore.getState().add({ type: 'success', title: t('servers.serverAdded'), message: name });
+    return result;
+  }, [addServer, t]);
+
   async function handleDeleteConfirm() {
     if (!deleteTarget) return;
     try {
       await deleteServer(deleteTarget.id);
+      useNotificationsStore.getState().add({ type: 'success', title: t('servers.serverDeleted'), message: deleteTarget.name });
     } catch {
-      // error handled by store
+      useNotificationsStore.getState().add({ type: 'error', title: t('servers.deleteFailed') });
     }
     setDeleteTarget(null);
   }
@@ -510,7 +518,7 @@ export function Servers() {
       <AddServerDialog
         open={showAddDialog}
         onOpenChange={setShowAddDialog}
-        onAdd={addServer}
+        onAdd={handleAddServer}
         availableGroups={groups}
       />
       <DeleteServerDialog

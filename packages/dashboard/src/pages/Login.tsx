@@ -18,6 +18,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { useAuthStore } from '@/stores/auth';
+import { useNotificationsStore } from '@/stores/notifications';
 import { setToken } from '@/api/client';
 import { API_BASE_URL } from '@/utils/constants';
 
@@ -94,9 +95,10 @@ export function Login() {
     const errorMsg = parseOAuthError();
     if (errorMsg) {
       setOauthError(errorMsg);
+      useNotificationsStore.getState().add({ type: 'error', title: t('login.oauthFailed'), message: errorMsg });
       window.location.hash = '';
     }
-  }, [navigate]);
+  }, [navigate, t]);
 
   function toggleMode() {
     setIsRegisterMode((prev) => !prev);
@@ -136,12 +138,13 @@ export function Login() {
     try {
       if (isRegisterMode) {
         await register(email, password, name);
+        useNotificationsStore.getState().add({ type: 'success', title: t('login.registerSuccess') });
       } else {
         await login(email, password);
       }
       navigate('/dashboard');
     } catch {
-      // Error is handled by the store
+      useNotificationsStore.getState().add({ type: 'error', title: t('login.loginFailed') });
     }
   }
 

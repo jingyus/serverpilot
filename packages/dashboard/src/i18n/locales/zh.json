@@ -121,7 +121,10 @@
     "allGroups": "所有分组",
     "ungrouped": "未分组",
     "allTags": "所有标签",
-    "group": "分组"
+    "group": "分组",
+    "serverAdded": "服务器已添加",
+    "serverDeleted": "服务器已删除",
+    "deleteFailed": "删除服务器失败"
   },
   "serverDetail": {
     "chatWithAi": "AI 对话",
@@ -160,7 +163,9 @@
     "suggestion1": "安装并配置 nginx",
     "suggestion2": "检查磁盘使用情况并清理",
     "suggestion3": "显示所有运行中的服务",
-    "suggestion4": "设置防火墙"
+    "suggestion4": "设置防火墙",
+    "executionCompleted": "执行成功完成",
+    "executionFailed": "执行失败"
   },
   "search": {
     "title": "知识库",
@@ -245,7 +250,8 @@
     "knowledgeBaseSaved": "知识库设置已保存",
     "language": "语言",
     "languageDesc": "选择界面显示语言",
-    "languageSaved": "语言切换成功"
+    "languageSaved": "语言切换成功",
+    "saveFailed": "保存设置失败"
   },
   "login": {
     "appName": "ServerPilot",
@@ -265,7 +271,10 @@
     "invalidEmail": "请输入有效的邮箱地址",
     "passwordTooShort": "密码至少需要 6 个字符",
     "nameRequired": "请输入姓名",
-    "passwordMismatch": "两次输入的密码不一致"
+    "passwordMismatch": "两次输入的密码不一致",
+    "oauthFailed": "GitHub 登录失败",
+    "registerSuccess": "账户创建成功",
+    "loginFailed": "登录失败"
   },
   "tasks": {
     "title": "定时任务",
@@ -453,7 +462,14 @@
     "changeRoleTitle": "更改角色",
     "changeRoleConfirm": "将 {{name}} 的角色从 {{from}} 更改为 {{to}}？",
     "expiresInDays": "{{count}} 天后过期",
-    "expiresInDays_other": "{{count}} 天后过期"
+    "expiresInDays_other": "{{count}} 天后过期",
+    "memberRemoved": "成员已移除",
+    "removeFailed": "移除成员失败",
+    "roleUpdated": "角色已更新",
+    "roleUpdateFailed": "更新角色失败",
+    "invitationSent": "邀请已发送",
+    "invitationCancelled": "邀请已取消",
+    "cancelFailed": "取消邀请失败"
   },
   "theme": {
     "toggle": "切换主题",

@@ -22,6 +22,7 @@ import { MessageInput } from '@/components/chat/MessageInput';
 import { ExecutionLog } from '@/components/chat/ExecutionLog';
 import { useChatStore } from '@/stores/chat';
 import { useServersStore } from '@/stores/servers';
+import { useNotificationsStore } from '@/stores/notifications';
 import { cn } from '@/lib/utils';
 import { formatDate } from '@/utils/format';
 
@@ -81,6 +82,20 @@ export function Chat() {
   useEffect(() => {
     scrollToBottom();
   }, [messages.length, streamingContent, scrollToBottom]);
+
+  const prevPlanStatus = useRef(planStatus);
+  useEffect(() => {
+    const prev = prevPlanStatus.current;
+    prevPlanStatus.current = planStatus;
+    if (prev === 'executing' && planStatus === 'completed') {
+      const notify = useNotificationsStore.getState().add;
+      if (execution.success) {
+        notify({ type: 'success', title: t('chat.executionCompleted') });
+      } else {
+        notify({ type: 'error', title: t('chat.executionFailed') });
+      }
+    }
+  }, [planStatus, execution.success, t]);
 
   const handleSend = useCallback(
     (message: string) => {

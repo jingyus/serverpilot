@@ -399,7 +399,10 @@ describe('Settings', () => {
     });
   });
 
-  it('should show success message after save', async () => {
+  it('should show success toast after save', async () => {
+    const { useNotificationsStore } = await import('@/stores/notifications');
+    useNotificationsStore.setState({ notifications: [] });
+
     const user = userEvent.setup();
     const updateUserProfile = vi.fn().mockResolvedValue(undefined);
 
@@ -414,7 +417,8 @@ describe('Settings', () => {
     await user.click(saveButton);
 
     await waitFor(() => {
-      expect(screen.getByRole('status')).toHaveTextContent('Profile updated successfully');
+      const notifications = useNotificationsStore.getState().notifications;
+      expect(notifications.some((n) => n.type === 'success')).toBe(true);
     });
   });
 

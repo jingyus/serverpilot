@@ -2,6 +2,7 @@
 // Copyright (c) 2024-2026 ServerPilot Contributors
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useThemeEffect } from './hooks/useThemeEffect';
+import { ToastContainer } from './components/common/Toast';
 import { MainLayout } from './components/layout/MainLayout';
 import { Dashboard } from './pages/Dashboard';
 import { Servers } from './pages/Servers';
@@ -21,6 +22,8 @@ export function App() {
   useThemeEffect();
 
   return (
+    <>
+    <ToastContainer />
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/" element={<MainLayout />}>
@@ -40,5 +43,6 @@ export function App() {
         <Route path="settings" element={<Settings />} />
       </Route>
     </Routes>
+    </>
   );
 }

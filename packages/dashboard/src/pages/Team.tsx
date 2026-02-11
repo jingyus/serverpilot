@@ -28,6 +28,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { useTeamStore } from '@/stores/team';
+import { useNotificationsStore } from '@/stores/notifications';
 import type { TeamMember, Invitation } from '@/types/team';
 
 // ============================================================================
@@ -63,22 +64,31 @@ export function Team() {
     if (!deleteTarget) return;
     try {
       await removeMember(deleteTarget.id);
-    } catch { /* handled by store */ }
+      useNotificationsStore.getState().add({ type: 'success', title: t('team.memberRemoved') });
+    } catch {
+      useNotificationsStore.getState().add({ type: 'error', title: t('team.removeFailed') });
+    }
     setDeleteTarget(null);
-  }, [deleteTarget, removeMember]);
+  }, [deleteTarget, removeMember, t]);
 
   const handleRoleChange = useCallback(async (member: TeamMember, newRole: 'admin' | 'member') => {
     try {
       await updateMemberRole(member.id, newRole);
-    } catch { /* handled by store */ }
+      useNotificationsStore.getState().add({ type: 'success', title: t('team.roleUpdated') });
+    } catch {
+      useNotificationsStore.getState().add({ type: 'error', title: t('team.roleUpdateFailed') });
+    }
     setRoleTarget(null);
-  }, [updateMemberRole]);
+  }, [updateMemberRole, t]);
 
   const handleCancelInvitation = useCallback(async (id: string) => {
     try {
       await cancelInvitation(id);
-    } catch { /* handled by store */ }
-  }, [cancelInvitation]);
+      useNotificationsStore.getState().add({ type: 'success', title: t('team.invitationCancelled') });
+    } catch {
+      useNotificationsStore.getState().add({ type: 'error', title: t('team.cancelFailed') });
+    }
+  }, [cancelInvitation, t]);
 
   const pendingInvitations = invitations.filter((inv) => inv.status === 'pending');
 
@@ -166,6 +176,7 @@ export function Team() {
         onOpenChange={setShowInviteDialog}
         onSubmit={async (email, role) => {
           await createInvitation(email, role);
+          useNotificationsStore.getState().add({ type: 'success', title: t('team.invitationSent'), message: email });
           setShowInviteDialog(false);
         }}
       />

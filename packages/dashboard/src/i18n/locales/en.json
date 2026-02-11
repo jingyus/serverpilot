@@ -121,7 +121,10 @@
     "allGroups": "All Groups",
     "ungrouped": "Ungrouped",
     "allTags": "All Tags",
-    "group": "Group"
+    "group": "Group",
+    "serverAdded": "Server added",
+    "serverDeleted": "Server deleted",
+    "deleteFailed": "Failed to delete server"
   },
   "serverDetail": {
     "chatWithAi": "Chat with AI",
@@ -160,7 +163,9 @@
     "suggestion1": "Install nginx and configure it",
     "suggestion2": "Check disk usage and clean up",
     "suggestion3": "Show all running services",
-    "suggestion4": "Set up a firewall"
+    "suggestion4": "Set up a firewall",
+    "executionCompleted": "Execution completed successfully",
+    "executionFailed": "Execution failed"
   },
   "search": {
     "title": "Knowledge Base",
@@ -245,7 +250,8 @@
     "knowledgeBaseSaved": "Knowledge base settings saved",
     "language": "Language",
     "languageDesc": "Choose your preferred display language",
-    "languageSaved": "Language changed successfully"
+    "languageSaved": "Language changed successfully",
+    "saveFailed": "Failed to save settings"
   },
   "login": {
     "appName": "ServerPilot",
@@ -265,7 +271,10 @@
     "invalidEmail": "Please enter a valid email address",
     "passwordTooShort": "Password must be at least 6 characters",
     "nameRequired": "Name is required",
-    "passwordMismatch": "Passwords do not match"
+    "passwordMismatch": "Passwords do not match",
+    "oauthFailed": "GitHub login failed",
+    "registerSuccess": "Account created successfully",
+    "loginFailed": "Login failed"
   },
   "tasks": {
     "title": "Scheduled Tasks",
@@ -453,7 +462,14 @@
     "changeRoleTitle": "Change Role",
     "changeRoleConfirm": "Change {{name}}'s role from {{from}} to {{to}}?",
     "expiresInDays": "Expires in {{count}} day",
-    "expiresInDays_other": "Expires in {{count}} days"
+    "expiresInDays_other": "Expires in {{count}} days",
+    "memberRemoved": "Member removed",
+    "removeFailed": "Failed to remove member",
+    "roleUpdated": "Role updated",
+    "roleUpdateFailed": "Failed to update role",
+    "invitationSent": "Invitation sent",
+    "invitationCancelled": "Invitation cancelled",
+    "cancelFailed": "Failed to cancel invitation"
   },
   "theme": {
     "toggle": "Toggle theme",
