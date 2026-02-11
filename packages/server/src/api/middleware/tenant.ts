@@ -4,8 +4,8 @@
  * Multi-tenant isolation middleware for Hono REST API.
  *
  * Resolves the current user's tenant from the database and injects
- * the tenantId into context. For community edition (no tenants),
- * sets tenantId to null to maintain backward compatibility.
+ * the tenantId into context. In single-tenant mode (default, non-CLOUD_MODE),
+ * auto-provisions a default tenant for users who don't have one yet.
  *
  * @module api/middleware/tenant
  */
@@ -15,6 +15,7 @@ import type { Context, Next } from 'hono';
 import type { ApiEnv } from '../routes/types.js';
 import { getDatabase } from '../../db/connection.js';
 import { users } from '../../db/schema.js';
+import { ensureDefaultTenant } from '../../utils/auto-tenant.js';
 
 /**
  * Hono middleware that resolves the tenant for the authenticated user.
@@ -24,8 +25,8 @@ import { users } from '../../db/schema.js';
  * Behavior:
  * - Looks up the user's `tenant_id` from the database
  * - If user has a tenant: sets `tenantId` in context
- * - If user has no tenant (community edition): sets `tenantId` to null
- * - If user not found: throws 401
+ * - If user has no tenant in single-tenant mode: auto-provisions one
+ * - If user not found: sets `tenantId` to null
  *
  * @example
  * ```ts
@@ -43,7 +44,7 @@ export async function requireTenant(c: Context<ApiEnv>, next: Next): Promise<voi
   const db = getDatabase();
 
   const rows = db
-    .select({ tenantId: users.tenantId })
+    .select({ tenantId: users.tenantId, email: users.email })
     .from(users)
     .where(eq(users.id, userId))
     .limit(1)
@@ -56,6 +57,14 @@ export async function requireTenant(c: Context<ApiEnv>, next: Next): Promise<voi
     return;
   }
 
-  c.set('tenantId', rows[0].tenantId ?? null);
+  let tenantId = rows[0].tenantId ?? null;
+
+  // In single-tenant mode, auto-provision a default tenant for users
+  // who registered before auto-tenant was enabled (migration safety net)
+  if (!tenantId) {
+    tenantId = await ensureDefaultTenant(userId, rows[0].email);
+  }
+
+  c.set('tenantId', tenantId);
   await next();
 }

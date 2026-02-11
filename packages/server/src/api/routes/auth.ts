@@ -19,6 +19,7 @@ import { getUserRepository } from '../../db/repositories/user-repository.js';
 import { getDatabase } from '../../db/connection.js';
 import { users } from '../../db/schema.js';
 import { hashPassword, verifyPassword } from '../../utils/password.js';
+import { ensureDefaultTenant } from '../../utils/auto-tenant.js';
 import type { LoginBody, RegisterBody, RefreshTokenBody } from './schemas.js';
 import type { ApiEnv } from './types.js';
 
@@ -62,6 +63,9 @@ auth.post('/register', validateBody(RegisterBodySchema), async (c) => {
   } catch {
     // Database may not be available in unit tests using InMemoryUserRepository
   }
+
+  // Auto-provision default tenant in single-tenant mode
+  await ensureDefaultTenant(user.id, user.email);
 
   // Generate tokens
   const tokens = await generateTokens(user.id);

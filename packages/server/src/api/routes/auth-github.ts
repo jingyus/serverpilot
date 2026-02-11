@@ -26,6 +26,7 @@ import {
   fetchGitHubUserEmail,
 } from '../../utils/github-oauth.js';
 import { logger } from '../../utils/logger.js';
+import { ensureDefaultTenant } from '../../utils/auto-tenant.js';
 import type { ApiEnv } from './types.js';
 import type { User } from '../../db/repositories/user-repository.js';
 
@@ -189,6 +190,9 @@ authGitHub.get('/callback', async (c) => {
     providerUsername: githubUser.login,
     providerAvatarUrl: githubUser.avatar_url,
   });
+
+  // Auto-provision default tenant in single-tenant mode
+  await ensureDefaultTenant(newUser.id, email);
 
   const tokens = await generateTokens(newUser.id);
   logger.info({ operation: 'github_oauth_register', userId: newUser.id }, 'New user created via GitHub OAuth');
