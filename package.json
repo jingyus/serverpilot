@@ -6,7 +6,7 @@
   "description": "AI-powered intelligent remote installation platform",
   "type": "module",
   "scripts": {
-    "dev": "pnpm -r --parallel dev",
+    "dev": "pnpm --filter @aiinstaller/shared build && pnpm -r --parallel dev",
     "dev:server": "pnpm --filter @aiinstaller/server dev",
     "dev:agent": "pnpm --filter @aiinstaller/agent dev",
     "dev:dashboard": "pnpm --filter @aiinstaller/dashboard dev",

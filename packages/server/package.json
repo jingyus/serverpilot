@@ -15,7 +15,8 @@
   },
   "scripts": {
     "build": "tsc",
-    "dev": "tsc --watch",
+    "dev": "tsx watch src/index.ts",
+    "dev:compile": "tsc --watch",
     "start": "node dist/index.js",
     "test": "vitest run",
     "test:watch": "vitest",

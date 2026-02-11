@@ -38,31 +38,33 @@ Please read our [Code of Conduct](CODE_OF_CONDUCT.md) before contributing. We ar
 git clone https://github.com/<your-username>/ServerPilot.git
 cd ServerPilot
 
-# 3. Install dependencies
-pnpm install
+# 3. Run the setup script (checks prerequisites, installs deps, creates .env.local)
+./scripts/dev-setup.sh
 
-# 4. Copy environment file and configure
-cp .env.example .env
-# Edit .env with your settings (see Environment Variables below)
-
-# 5. Initialize the database
-pnpm --filter @aiinstaller/server db:migrate
-
-# 6. Start development
+# 4. (Optional) Edit .env.local to configure your AI provider
+# 5. Start development
 pnpm dev
 ```
+
+> **Manual setup** (if you prefer not to use the script):
+> ```bash
+> pnpm install
+> cp .env.example .env.local
+> # Edit .env.local with your settings
+> pnpm dev
+> ```
 
 ### Environment Variables
 
 | Variable | Required | Description |
 | --- | --- | --- |
-| `JWT_SECRET` | Yes | Secret for JWT tokens (min 32 chars) |
+| `JWT_SECRET` | No | Secret for JWT tokens (auto-generated if not set) |
 | `AI_PROVIDER` | No | AI provider: `claude`, `openai`, `ollama`, `deepseek` (default: `claude`) |
 | `ANTHROPIC_API_KEY` | If using Claude | Anthropic API key |
 | `OPENAI_API_KEY` | If using OpenAI | OpenAI API key |
 | `DEEPSEEK_API_KEY` | If using DeepSeek | DeepSeek API key |
 | `DATABASE_PATH` | No | SQLite database path (default: `./data/serverpilot.db`) |
-| `PORT` | No | Server port (default: `3000`) |
+| `SERVER_PORT` | No | Server port (default: `3000`) |
 
 ### Verifying Your Setup
 

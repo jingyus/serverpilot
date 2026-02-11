@@ -62,8 +62,8 @@ describe('packages/server/package.json', () => {
       expect(scripts().build).toBe('tsc');
     });
 
-    it('should have dev script using tsc --watch', () => {
-      expect(scripts().dev).toBe('tsc --watch');
+    it('should have dev script using tsx watch for hot-reload', () => {
+      expect(scripts().dev).toBe('tsx watch src/index.ts');
     });
 
     it('should have start script', () => {

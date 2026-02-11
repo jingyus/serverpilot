@@ -14,6 +14,8 @@ import { randomBytes } from 'node:crypto';
 import { createServer as createHttpServer } from 'node:http';
 import type { Server as HttpServer } from 'node:http';
 
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { config } from 'dotenv';
 import { getRequestListener } from '@hono/node-server';
 
@@ -112,6 +114,12 @@ export interface ServerConfig {
  * @returns The resolved server configuration
  */
 export function loadConfig(): ServerConfig {
+  // Load .env.local first (higher priority), then .env as fallback.
+  // dotenv does not overwrite existing env vars, so loading order matters.
+  const envLocal = resolve(process.cwd(), '.env.local');
+  if (existsSync(envLocal)) {
+    config({ path: envLocal });
+  }
   config();
 
   // Generate a random JWT secret if not set or empty
