@@ -106,7 +106,7 @@ describe('OpenAPI Routes', () => {
   // ==========================================================================
 
   describe('Route Coverage', () => {
-    it('should have all required tags', async () => {
+    it('should have all required tags (19 groups)', async () => {
       const res = await app.request('/api-docs/openapi.json');
       const doc = await res.json() as { tags: Array<{ name: string }> };
       const tagNames = doc.tags.map((t) => t.name);
@@ -125,7 +125,12 @@ describe('OpenAPI Routes', () => {
       expect(tagNames).toContain('Doc Sources');
       expect(tagNames).toContain('Settings');
       expect(tagNames).toContain('Metrics');
+      expect(tagNames).toContain('Audit Log');
+      expect(tagNames).toContain('Webhooks');
+      expect(tagNames).toContain('Members');
+      expect(tagNames).toContain('Team');
       expect(tagNames).toContain('System');
+      expect(tagNames.length).toBeGreaterThanOrEqual(19);
     });
 
     it('should document auth endpoints', async () => {
@@ -422,6 +427,44 @@ describe('OpenAPI Routes', () => {
       expect(settingsSchema.properties).toHaveProperty('knowledgeBase');
     });
 
+    it('should have typed response schemas for webhook endpoints', async () => {
+      const res = await app.request('/api-docs/openapi.json');
+      const doc = await res.json() as Record<string, unknown>;
+      const paths = doc.paths as Record<string, Record<string, { responses: Record<string, { content?: Record<string, { schema?: Record<string, unknown> }> }> }>>;
+
+      // GET /webhooks should have webhooks array and total
+      const listResp = paths['/api/v1/webhooks'].get.responses['200'];
+      expect(listResp.content).toBeDefined();
+      const listSchema = listResp.content!['application/json'].schema as Record<string, unknown>;
+      expect(listSchema.properties).toHaveProperty('webhooks');
+      expect(listSchema.properties).toHaveProperty('total');
+    });
+
+    it('should have typed response schemas for audit log endpoints', async () => {
+      const res = await app.request('/api-docs/openapi.json');
+      const doc = await res.json() as Record<string, unknown>;
+      const paths = doc.paths as Record<string, Record<string, { responses: Record<string, { content?: Record<string, { schema?: Record<string, unknown> }> }> }>>;
+
+      // GET /audit-log should have logs array with total/limit/offset
+      const listResp = paths['/api/v1/audit-log'].get.responses['200'];
+      expect(listResp.content).toBeDefined();
+      const listSchema = listResp.content!['application/json'].schema as Record<string, unknown>;
+      expect(listSchema.properties).toHaveProperty('logs');
+      expect(listSchema.properties).toHaveProperty('total');
+    });
+
+    it('should have typed response schemas for team endpoints', async () => {
+      const res = await app.request('/api-docs/openapi.json');
+      const doc = await res.json() as Record<string, unknown>;
+      const paths = doc.paths as Record<string, Record<string, { responses: Record<string, { content?: Record<string, { schema?: Record<string, unknown> }> }> }>>;
+
+      // GET /team/invitations should have invitations array
+      const listResp = paths['/api/v1/team/invitations'].get.responses['200'];
+      expect(listResp.content).toBeDefined();
+      const listSchema = listResp.content!['application/json'].schema as Record<string, unknown>;
+      expect(listSchema.properties).toHaveProperty('invitations');
+    });
+
     it('should have typed response for health check', async () => {
       const res = await app.request('/api-docs/openapi.json');
       const doc = await res.json() as Record<string, unknown>;
@@ -504,7 +547,77 @@ describe('OpenAPI Routes', () => {
       expect(doc.paths).toHaveProperty('/api/v1/knowledge/search');
     });
 
-    it('should have at least 60 unique endpoint operations', async () => {
+    it('should document GitHub OAuth endpoints', async () => {
+      const res = await app.request('/api-docs/openapi.json');
+      const doc = await res.json() as { paths: Record<string, unknown> };
+
+      expect(doc.paths).toHaveProperty('/api/v1/auth/github');
+      expect(doc.paths).toHaveProperty('/api/v1/auth/github/callback');
+    });
+
+    it('should document chat cancel endpoint', async () => {
+      const res = await app.request('/api-docs/openapi.json');
+      const doc = await res.json() as { paths: Record<string, unknown> };
+
+      expect(doc.paths).toHaveProperty('/api/v1/chat/{serverId}/execute/cancel');
+    });
+
+    it('should document settings AI provider health endpoint', async () => {
+      const res = await app.request('/api-docs/openapi.json');
+      const doc = await res.json() as { paths: Record<string, unknown> };
+
+      expect(doc.paths).toHaveProperty('/api/v1/settings/ai-provider/health');
+    });
+
+    it('should document metrics SSE stream endpoint', async () => {
+      const res = await app.request('/api-docs/openapi.json');
+      const doc = await res.json() as { paths: Record<string, unknown> };
+
+      expect(doc.paths).toHaveProperty('/api/v1/metrics/stream');
+    });
+
+    it('should document audit log endpoints', async () => {
+      const res = await app.request('/api-docs/openapi.json');
+      const doc = await res.json() as { paths: Record<string, unknown> };
+
+      expect(doc.paths).toHaveProperty('/api/v1/audit-log');
+      expect(doc.paths).toHaveProperty('/api/v1/audit-log/export');
+    });
+
+    it('should document webhook endpoints', async () => {
+      const res = await app.request('/api-docs/openapi.json');
+      const doc = await res.json() as { paths: Record<string, unknown> };
+
+      expect(doc.paths).toHaveProperty('/api/v1/webhooks');
+      expect(doc.paths).toHaveProperty('/api/v1/webhooks/{id}');
+      expect(doc.paths).toHaveProperty('/api/v1/webhooks/{id}/test');
+      expect(doc.paths).toHaveProperty('/api/v1/webhooks/{id}/deliveries');
+    });
+
+    it('should document member endpoints', async () => {
+      const res = await app.request('/api-docs/openapi.json');
+      const doc = await res.json() as { paths: Record<string, unknown> };
+
+      expect(doc.paths).toHaveProperty('/api/v1/members');
+      expect(doc.paths).toHaveProperty('/api/v1/members/{userId}/role');
+      expect(doc.paths).toHaveProperty('/api/v1/members/{userId}');
+    });
+
+    it('should document team invitation endpoints', async () => {
+      const res = await app.request('/api-docs/openapi.json');
+      const doc = await res.json() as { paths: Record<string, unknown> };
+
+      expect(doc.paths).toHaveProperty('/api/v1/team/invite');
+      expect(doc.paths).toHaveProperty('/api/v1/team/invitations');
+      expect(doc.paths).toHaveProperty('/api/v1/team/invitations/{id}');
+      expect(doc.paths).toHaveProperty('/api/v1/team/members');
+      expect(doc.paths).toHaveProperty('/api/v1/team/members/{id}/role');
+      expect(doc.paths).toHaveProperty('/api/v1/team/members/{id}');
+      expect(doc.paths).toHaveProperty('/api/v1/team/invite/{token}');
+      expect(doc.paths).toHaveProperty('/api/v1/team/invite/{token}/accept');
+    });
+
+    it('should have at least 85 unique endpoint operations', async () => {
       const res = await app.request('/api-docs/openapi.json');
       const doc = await res.json() as { paths: Record<string, Record<string, unknown>> };
 
@@ -515,7 +628,7 @@ describe('OpenAPI Routes', () => {
           if (pathMethods[method]) operationCount++;
         }
       }
-      expect(operationCount).toBeGreaterThanOrEqual(60);
+      expect(operationCount).toBeGreaterThanOrEqual(85);
     });
   });
 

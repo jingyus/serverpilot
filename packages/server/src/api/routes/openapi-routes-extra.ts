@@ -34,6 +34,8 @@ import {
   HealthResponseSchema, SuccessResponseSchema,
 } from './openapi-schemas.js';
 
+import { registerExtra2Routes } from './openapi-routes-extra2.js';
+
 // ============================================================================
 // Registration entry-point
 // ============================================================================
@@ -46,6 +48,7 @@ export function registerExtraRoutes(registry: OpenAPIRegistry): void {
   registerSettingsRoutes(registry);
   registerMetricsRoutes(registry);
   registerSystemRoutes(registry);
+  registerExtra2Routes(registry);
 }
 
 // --------------------------------------------------------------------------

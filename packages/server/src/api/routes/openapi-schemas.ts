@@ -461,6 +461,123 @@ export const SettingsResponseSchema = z.object({
 });
 
 // ============================================================================
+// Audit Log response schemas
+// ============================================================================
+
+export const AuditLogEntrySchema = z.object({
+  id: z.string().openapi({ example: '1' }),
+  userId: z.string().openapi({ example: '550e8400-e29b-41d4-a716-446655440000' }),
+  serverId: z.string().openapi({ example: '550e8400-e29b-41d4-a716-446655440001' }),
+  command: z.string().openapi({ example: 'systemctl restart nginx' }),
+  riskLevel: z.enum(['green', 'yellow', 'red', 'critical', 'forbidden']).openapi({ example: 'yellow' }),
+  action: z.enum(['allowed', 'blocked', 'requires_confirmation']).openapi({ example: 'allowed' }),
+  executionResult: z.string().nullable().openapi({ example: 'success' }),
+  reason: z.string().openapi({ example: 'Service restart operation' }),
+  auditWarnings: z.array(z.string()).openapi({ example: [] }),
+  auditBlockers: z.array(z.string()).openapi({ example: [] }),
+  createdAt: z.string().openapi({ example: '2026-02-11T10:30:00Z' }),
+});
+
+export const AuditLogListResponseSchema = z.object({
+  logs: z.array(AuditLogEntrySchema),
+  total: z.number().openapi({ example: 256 }),
+  limit: z.number().openapi({ example: 50 }),
+  offset: z.number().openapi({ example: 0 }),
+});
+
+// ============================================================================
+// Webhook response schemas
+// ============================================================================
+
+export const WebhookSchema = z.object({
+  id: z.string().openapi({ example: 'ff0e8400-e29b-41d4-a716-446655440000' }),
+  userId: z.string().openapi({ example: '550e8400-e29b-41d4-a716-446655440000' }),
+  name: z.string().openapi({ example: 'Deployment Notifier' }),
+  url: z.string().openapi({ example: 'https://hooks.example.com/deploy' }),
+  secret: z.string().openapi({ example: 'a1b2****' }),
+  events: z.array(z.string()).openapi({ example: ['task.completed', 'operation.failed'] }),
+  enabled: z.boolean().openapi({ example: true }),
+  maxRetries: z.number().openapi({ example: 3 }),
+  createdAt: z.string().openapi({ example: '2026-02-01T00:00:00Z' }),
+  updatedAt: z.string().openapi({ example: '2026-02-11T10:00:00Z' }),
+});
+
+export const WebhookListResponseSchema = z.object({
+  webhooks: z.array(WebhookSchema),
+  total: z.number().openapi({ example: 5 }),
+});
+
+export const WebhookResponseSchema = z.object({ webhook: WebhookSchema });
+
+export const WebhookDeliverySchema = z.object({
+  id: z.string().openapi({ example: 'dd0e8400-e29b-41d4-a716-446655440000' }),
+  webhookId: z.string().openapi({ example: 'ff0e8400-e29b-41d4-a716-446655440000' }),
+  eventType: z.string().openapi({ example: 'task.completed' }),
+  statusCode: z.number().nullable().openapi({ example: 200 }),
+  success: z.boolean().openapi({ example: true }),
+  attempt: z.number().openapi({ example: 1 }),
+  error: z.string().nullable().openapi({ example: null }),
+  createdAt: z.string().openapi({ example: '2026-02-11T10:30:00Z' }),
+});
+
+export const WebhookDeliveryListResponseSchema = z.object({
+  deliveries: z.array(WebhookDeliverySchema),
+  total: z.number().openapi({ example: 12 }),
+});
+
+// ============================================================================
+// Team & Member response schemas
+// ============================================================================
+
+export const MemberSchema = z.object({
+  id: z.string().openapi({ example: '550e8400-e29b-41d4-a716-446655440000' }),
+  email: z.string().openapi({ example: 'member@example.com' }),
+  name: z.string().openapi({ example: 'Team Member' }),
+  role: z.enum(['owner', 'admin', 'member']).openapi({ example: 'admin' }),
+});
+
+export const MemberListResponseSchema = z.object({
+  members: z.array(MemberSchema),
+  total: z.number().openapi({ example: 5 }),
+});
+
+export const InvitationSchema = z.object({
+  id: z.string().openapi({ example: 'aa0e8400-e29b-41d4-a716-446655440000' }),
+  email: z.string().openapi({ example: 'invitee@example.com' }),
+  role: z.enum(['admin', 'member']).openapi({ example: 'member' }),
+  status: z.enum(['pending', 'accepted', 'cancelled', 'expired']).openapi({ example: 'pending' }),
+  expiresAt: z.string().openapi({ example: '2026-02-18T10:00:00Z' }),
+  createdAt: z.string().openapi({ example: '2026-02-11T10:00:00Z' }),
+});
+
+export const InvitationListResponseSchema = z.object({
+  invitations: z.array(InvitationSchema),
+  total: z.number().openapi({ example: 3 }),
+});
+
+export const InvitationResponseSchema = z.object({ invitation: InvitationSchema });
+
+export const InvitationInfoResponseSchema = z.object({
+  invitation: z.object({
+    id: z.string().openapi({ example: 'aa0e8400-e29b-41d4-a716-446655440000' }),
+    email: z.string().openapi({ example: 'invitee@example.com' }),
+    role: z.enum(['admin', 'member']).openapi({ example: 'member' }),
+    expiresAt: z.string().openapi({ example: '2026-02-18T10:00:00Z' }),
+  }),
+});
+
+// ============================================================================
+// AI Provider Health response schemas
+// ============================================================================
+
+export const AIProviderHealthResponseSchema = z.object({
+  provider: z.string().openapi({ example: 'claude' }),
+  available: z.boolean().openapi({ example: true }),
+  model: z.string().openapi({ example: 'claude-sonnet-4-5-20250929' }),
+  responseTime: z.number().optional().openapi({ example: 450 }),
+});
+
+// ============================================================================
 // Health check
 // ============================================================================
 
