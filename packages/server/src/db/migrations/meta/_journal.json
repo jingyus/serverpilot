@@ -57,6 +57,20 @@
       "when": 1739548800000,
       "tag": "0007_rbac",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1739635200000,
+      "tag": "0008_invitations",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1739721600000,
+      "tag": "0009_server_groups",
+      "breakpoints": true
     }
   ]
 }

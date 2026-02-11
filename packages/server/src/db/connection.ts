@@ -129,11 +129,13 @@ export function createTables(db?: DrizzleDB): void {
       tenant_id TEXT REFERENCES tenants(id) ON DELETE CASCADE,
       status TEXT NOT NULL DEFAULT 'offline',
       tags TEXT DEFAULT '[]',
+      "group" TEXT,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS servers_user_id_idx ON servers(user_id);
     CREATE INDEX IF NOT EXISTS servers_tenant_id_idx ON servers(tenant_id);
+    CREATE INDEX IF NOT EXISTS servers_group_idx ON servers("group");
 
     CREATE TABLE IF NOT EXISTS agents (
       id TEXT PRIMARY KEY,

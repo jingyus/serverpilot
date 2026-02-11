@@ -4,7 +4,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { Servers } from './Servers';
+import { Servers, getTagColor } from './Servers';
 import { useServersStore } from '@/stores/servers';
 import type { Server } from '@/types/server';
 
@@ -20,6 +20,7 @@ const mockServers: Server[] = [
     name: 'web-prod-01',
     status: 'online',
     tags: ['production', 'web'],
+    group: 'prod',
     createdAt: '2026-01-01T00:00:00Z',
     updatedAt: '2026-01-15T00:00:00Z',
     osInfo: {
@@ -37,6 +38,7 @@ const mockServers: Server[] = [
     name: 'db-prod-01',
     status: 'offline',
     tags: ['production', 'database'],
+    group: 'prod',
     createdAt: '2026-01-02T00:00:00Z',
     updatedAt: '2026-01-16T00:00:00Z',
     osInfo: null,
@@ -47,6 +49,7 @@ const mockServers: Server[] = [
     name: 'staging-app',
     status: 'error',
     tags: ['staging'],
+    group: 'staging',
     createdAt: '2026-01-03T00:00:00Z',
     updatedAt: '2026-01-17T00:00:00Z',
     osInfo: null,
@@ -71,6 +74,8 @@ describe('Servers Page', () => {
       error: null,
       statusFilter: 'all',
       searchQuery: '',
+      groupFilter: 'all',
+      tagFilter: 'all',
       fetchServers: vi.fn().mockResolvedValue(undefined),
       addServer: vi.fn(),
       deleteServer: vi.fn().mockResolvedValue(undefined),
@@ -79,6 +84,12 @@ describe('Servers Page', () => {
       }),
       setSearchQuery: vi.fn((query: string) => {
         useServersStore.setState({ searchQuery: query });
+      }),
+      setGroupFilter: vi.fn((group: string) => {
+        useServersStore.setState({ groupFilter: group });
+      }),
+      setTagFilter: vi.fn((tag: string) => {
+        useServersStore.setState({ tagFilter: tag });
       }),
       clearError: vi.fn(() => {
         useServersStore.setState({ error: null });
@@ -137,11 +148,12 @@ describe('Servers Page', () => {
 
     it('renders server tags', () => {
       renderServers();
-      // "production" tag appears on both srv-1 and srv-2
-      const productionTags = screen.getAllByText('production');
-      expect(productionTags).toHaveLength(2);
+      // "production" tag appears on srv-1, srv-2 cards, and in tag filter dropdown
       const card1 = screen.getByTestId('server-card-srv-1');
+      expect(within(card1).getByText('production')).toBeInTheDocument();
       expect(within(card1).getByText('web')).toBeInTheDocument();
+      const card2 = screen.getByTestId('server-card-srv-2');
+      expect(within(card2).getByText('production')).toBeInTheDocument();
     });
 
     it('renders search input', () => {
@@ -362,6 +374,127 @@ describe('Servers Page', () => {
       expect(
         screen.getByText(/curl -sSL/)
       ).toBeInTheDocument();
+    });
+  });
+
+  describe('group and tag display', () => {
+    it('renders group badges on server cards', () => {
+      renderServers();
+      const card1 = screen.getByTestId('server-card-srv-1');
+      expect(within(card1).getByTestId('server-group')).toHaveTextContent('prod');
+      const card3 = screen.getByTestId('server-card-srv-3');
+      expect(within(card3).getByTestId('server-group')).toHaveTextContent('staging');
+    });
+
+    it('renders colored tag chips', () => {
+      renderServers();
+      const card1 = screen.getByTestId('server-card-srv-1');
+      const webTag = within(card1).getByText('web');
+      // Tag chips have border and color classes (not just plain text)
+      expect(webTag.className).toContain('rounded-md');
+      expect(webTag.className).toContain('border');
+    });
+
+    it('shows advanced filters when groups/tags exist', () => {
+      renderServers();
+      expect(screen.getByTestId('advanced-filters')).toBeInTheDocument();
+      expect(screen.getByLabelText('Filter by group')).toBeInTheDocument();
+      expect(screen.getByLabelText('Filter by tag')).toBeInTheDocument();
+    });
+
+    it('does not show advanced filters when no groups or tags', () => {
+      const noTagServers = mockServers.map((s) => ({
+        ...s,
+        tags: [],
+        group: null as string | null,
+      }));
+      useServersStore.setState({ servers: noTagServers });
+      renderServers();
+      expect(screen.queryByTestId('advanced-filters')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('group filtering', () => {
+    it('filters servers by group', async () => {
+      const user = userEvent.setup();
+      renderServers();
+
+      const groupSelect = screen.getByLabelText('Filter by group');
+      await user.selectOptions(groupSelect, 'staging');
+
+      // Only staging-app should show
+      expect(screen.queryByTestId('server-card-srv-1')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('server-card-srv-2')).not.toBeInTheDocument();
+      expect(screen.getByTestId('server-card-srv-3')).toBeInTheDocument();
+    });
+
+    it('shows ungrouped servers filter option', () => {
+      renderServers();
+      const groupSelect = screen.getByLabelText('Filter by group');
+      const options = within(groupSelect).getAllByRole('option');
+      const optionTexts = options.map((o) => o.textContent);
+      expect(optionTexts).toContain('All Groups');
+      expect(optionTexts).toContain('Ungrouped');
+    });
+
+    it('searches by group name', async () => {
+      const user = userEvent.setup();
+      renderServers();
+
+      await user.type(screen.getByLabelText('Search servers'), 'staging');
+
+      // staging-app has group "staging" and tag "staging"
+      expect(screen.getByTestId('server-card-srv-3')).toBeInTheDocument();
+      expect(screen.queryByTestId('server-card-srv-1')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('tag filtering', () => {
+    it('filters servers by tag', async () => {
+      const user = userEvent.setup();
+      renderServers();
+
+      const tagSelect = screen.getByLabelText('Filter by tag');
+      await user.selectOptions(tagSelect, 'database');
+
+      // Only db-prod-01 has the 'database' tag
+      expect(screen.queryByTestId('server-card-srv-1')).not.toBeInTheDocument();
+      expect(screen.getByTestId('server-card-srv-2')).toBeInTheDocument();
+      expect(screen.queryByTestId('server-card-srv-3')).not.toBeInTheDocument();
+    });
+
+    it('shows all unique tags in tag filter dropdown', () => {
+      renderServers();
+      const tagSelect = screen.getByLabelText('Filter by tag');
+      const options = within(tagSelect).getAllByRole('option');
+      const optionTexts = options.map((o) => o.textContent);
+      expect(optionTexts).toContain('All Tags');
+      expect(optionTexts).toContain('database');
+      expect(optionTexts).toContain('production');
+      expect(optionTexts).toContain('staging');
+      expect(optionTexts).toContain('web');
+    });
+  });
+
+  describe('getTagColor', () => {
+    it('returns consistent color for the same tag', () => {
+      const color1 = getTagColor('production');
+      const color2 = getTagColor('production');
+      expect(color1).toBe(color2);
+    });
+
+    it('returns different colors for different tags', () => {
+      const color1 = getTagColor('production');
+      const color2 = getTagColor('staging');
+      // Different strings should produce different hashes (not guaranteed, but very likely)
+      // At minimum, the function should return a valid color string
+      expect(color1).toContain('bg-');
+      expect(color2).toContain('bg-');
+    });
+
+    it('returns a valid color class string', () => {
+      const color = getTagColor('test');
+      expect(color).toMatch(/^bg-\w+-100 text-\w+-800 border-\w+-200$/);
     });
   });
 

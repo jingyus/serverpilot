@@ -28,6 +28,7 @@ export const ServerSchema = z.object({
   name: z.string(),
   status: ServerStatusSchema,
   tags: z.array(z.string()).default([]),
+  group: z.string().nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
   osInfo: OsInfoSchema.nullable().optional(),

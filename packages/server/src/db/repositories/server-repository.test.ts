@@ -239,6 +239,105 @@ function sharedTests(
       expect(result.operations).toEqual([]);
       expect(result.total).toBe(0);
     });
+
+    // ================================================================
+    // Group support
+    // ================================================================
+
+    it('should create server with group', async () => {
+      const server = await repo.create({
+        name: 'grouped',
+        userId: 'user-1',
+        group: 'production',
+      });
+
+      expect(server.group).toBe('production');
+    });
+
+    it('should create server with null group by default', async () => {
+      const server = await repo.create({
+        name: 'no-group',
+        userId: 'user-1',
+      });
+
+      expect(server.group).toBeNull();
+    });
+
+    it('should update server group', async () => {
+      const created = await repo.create({
+        name: 'to-group',
+        userId: 'user-1',
+      });
+
+      const updated = await repo.update(created.id, 'user-1', {
+        group: 'staging',
+      });
+
+      expect(updated!.group).toBe('staging');
+    });
+
+    it('should clear server group with null', async () => {
+      const created = await repo.create({
+        name: 'grouped',
+        userId: 'user-1',
+        group: 'production',
+      });
+
+      const updated = await repo.update(created.id, 'user-1', {
+        group: null,
+      });
+
+      expect(updated!.group).toBeNull();
+    });
+
+    // ================================================================
+    // Filtering
+    // ================================================================
+
+    it('should filter servers by group', async () => {
+      await repo.create({ name: 'srv-a', userId: 'user-1', group: 'prod' });
+      await repo.create({ name: 'srv-b', userId: 'user-1', group: 'staging' });
+      await repo.create({ name: 'srv-c', userId: 'user-1' });
+
+      const prodServers = await repo.findAllByUserId('user-1', { group: 'prod' });
+      expect(prodServers).toHaveLength(1);
+      expect(prodServers[0].name).toBe('srv-a');
+    });
+
+    it('should filter servers by tag', async () => {
+      await repo.create({ name: 'srv-a', userId: 'user-1', tags: ['web', 'prod'] });
+      await repo.create({ name: 'srv-b', userId: 'user-1', tags: ['db', 'prod'] });
+      await repo.create({ name: 'srv-c', userId: 'user-1', tags: ['web'] });
+
+      const webServers = await repo.findAllByUserId('user-1', { tag: 'web' });
+      expect(webServers).toHaveLength(2);
+      expect(webServers.map((s) => s.name).sort()).toEqual(['srv-a', 'srv-c']);
+    });
+
+    it('should filter by both group and tag', async () => {
+      await repo.create({ name: 'srv-a', userId: 'user-1', group: 'prod', tags: ['web'] });
+      await repo.create({ name: 'srv-b', userId: 'user-1', group: 'prod', tags: ['db'] });
+      await repo.create({ name: 'srv-c', userId: 'user-1', group: 'staging', tags: ['web'] });
+
+      const result = await repo.findAllByUserId('user-1', { group: 'prod', tag: 'web' });
+      expect(result).toHaveLength(1);
+      expect(result[0].name).toBe('srv-a');
+    });
+
+    it('should return all servers when no filters', async () => {
+      await repo.create({ name: 'srv-a', userId: 'user-1', group: 'prod', tags: ['web'] });
+      await repo.create({ name: 'srv-b', userId: 'user-1' });
+
+      const all = await repo.findAllByUserId('user-1');
+      expect(all).toHaveLength(2);
+    });
+
+    it('should filter tags case-insensitively', async () => {
+      await repo.create({ name: 'srv-a', userId: 'user-1', tags: ['Production'] });
+
+      const result = await repo.findAllByUserId('user-1', { tag: 'production' });
+      expect(result).toHaveLength(1);
+    });
   });
 }
 

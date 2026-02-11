@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
@@ -30,6 +30,27 @@ import { cn } from '@/lib/utils';
 import { formatDate } from '@/utils/format';
 import type { Server as ServerType } from '@/types/server';
 
+// Hash-based color palette for tag chips
+const TAG_COLORS = [
+  'bg-blue-100 text-blue-800 border-blue-200',
+  'bg-green-100 text-green-800 border-green-200',
+  'bg-purple-100 text-purple-800 border-purple-200',
+  'bg-orange-100 text-orange-800 border-orange-200',
+  'bg-pink-100 text-pink-800 border-pink-200',
+  'bg-teal-100 text-teal-800 border-teal-200',
+  'bg-indigo-100 text-indigo-800 border-indigo-200',
+  'bg-amber-100 text-amber-800 border-amber-200',
+];
+
+/** Deterministic color based on tag string hash. */
+export function getTagColor(tag: string): string {
+  let hash = 0;
+  for (let i = 0; i < tag.length; i++) {
+    hash = ((hash << 5) - hash + tag.charCodeAt(i)) | 0;
+  }
+  return TAG_COLORS[Math.abs(hash) % TAG_COLORS.length];
+}
+
 const STATUS_CONFIG: Record<
   string,
   { tKey: string; variant: 'default' | 'secondary' | 'destructive'; dot: string }
@@ -54,6 +75,15 @@ function StatusBadge({ status }: { status: string }) {
       <span className={cn('h-2 w-2 rounded-full', config.dot)} />
       {t(config.tKey)}
     </Badge>
+  );
+}
+
+function TagChip({ tag }: { tag: string }) {
+  const colorClass = getTagColor(tag);
+  return (
+    <span className={cn('inline-flex items-center rounded-md border px-1.5 py-0.5 text-xs font-medium', colorClass)}>
+      {tag}
+    </span>
   );
 }
 
@@ -95,12 +125,15 @@ function ServerCard({
       </CardHeader>
       <CardContent>
         <div className="space-y-2">
-          {server.tags.length > 0 && (
+          {(server.tags.length > 0 || server.group) && (
             <div className="flex flex-wrap gap-1">
-              {server.tags.map((tag) => (
-                <Badge key={tag} variant="outline" className="text-xs">
-                  {tag}
+              {server.group && (
+                <Badge variant="secondary" className="text-xs" data-testid="server-group">
+                  {server.group}
                 </Badge>
+              )}
+              {server.tags.map((tag) => (
+                <TagChip key={tag} tag={tag} />
               ))}
             </div>
           )}
@@ -153,11 +186,15 @@ export function Servers() {
     error,
     statusFilter,
     searchQuery,
+    groupFilter,
+    tagFilter,
     fetchServers,
     addServer,
     deleteServer,
     setStatusFilter,
     setSearchQuery,
+    setGroupFilter,
+    setTagFilter,
     clearError,
   } = useServersStore();
 
@@ -168,19 +205,44 @@ export function Servers() {
     fetchServers();
   }, [fetchServers]);
 
+  // Extract unique groups and tags for filter dropdowns
+  const { groups, allTags } = useMemo(() => {
+    const groupSet = new Set<string>();
+    const tagSet = new Set<string>();
+    for (const s of servers) {
+      if (s.group) groupSet.add(s.group);
+      for (const tag of s.tags) tagSet.add(tag);
+    }
+    return {
+      groups: [...groupSet].sort(),
+      allTags: [...tagSet].sort(),
+    };
+  }, [servers]);
+
   const filteredServers = useMemo(() => {
     return servers.filter((s) => {
       if (statusFilter !== 'all' && s.status !== statusFilter) return false;
+      if (groupFilter !== 'all') {
+        if (groupFilter === '_ungrouped') {
+          if (s.group) return false;
+        } else {
+          if (s.group !== groupFilter) return false;
+        }
+      }
+      if (tagFilter !== 'all') {
+        if (!s.tags.some((tag) => tag === tagFilter)) return false;
+      }
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         return (
           s.name.toLowerCase().includes(q) ||
-          s.tags.some((t) => t.toLowerCase().includes(q))
+          s.tags.some((tag) => tag.toLowerCase().includes(q)) ||
+          (s.group && s.group.toLowerCase().includes(q))
         );
       }
       return true;
     });
-  }, [servers, statusFilter, searchQuery]);
+  }, [servers, statusFilter, searchQuery, groupFilter, tagFilter]);
 
   const stats = useMemo(() => {
     const counts = { total: servers.length, online: 0, offline: 0, error: 0 };
@@ -192,13 +254,13 @@ export function Servers() {
     return counts;
   }, [servers]);
 
-  function handleChat(id: string) {
+  const handleChat = useCallback((id: string) => {
     navigate(`/chat/${id}`);
-  }
+  }, [navigate]);
 
-  function handleDetail(id: string) {
+  const handleDetail = useCallback((id: string) => {
     navigate(`/servers/${id}`);
-  }
+  }, [navigate]);
 
   async function handleDeleteConfirm() {
     if (!deleteTarget) return;
@@ -294,6 +356,39 @@ export function Servers() {
           ))}
         </div>
       </div>
+
+      {/* Group and Tag filters */}
+      {(groups.length > 0 || allTags.length > 0) && (
+        <div className="flex flex-wrap gap-2" data-testid="advanced-filters">
+          {groups.length > 0 && (
+            <select
+              value={groupFilter}
+              onChange={(e) => setGroupFilter(e.target.value)}
+              className="rounded-md border border-input bg-background px-3 py-1.5 text-sm"
+              aria-label="Filter by group"
+            >
+              <option value="all">{t('servers.allGroups')}</option>
+              <option value="_ungrouped">{t('servers.ungrouped')}</option>
+              {groups.map((g) => (
+                <option key={g} value={g}>{g}</option>
+              ))}
+            </select>
+          )}
+          {allTags.length > 0 && (
+            <select
+              value={tagFilter}
+              onChange={(e) => setTagFilter(e.target.value)}
+              className="rounded-md border border-input bg-background px-3 py-1.5 text-sm"
+              aria-label="Filter by tag"
+            >
+              <option value="all">{t('servers.allTags')}</option>
+              {allTags.map((tag) => (
+                <option key={tag} value={tag}>{tag}</option>
+              ))}
+            </select>
+          )}
+        </div>
+      )}
 
       {/* Server list */}
       {isLoading ? (

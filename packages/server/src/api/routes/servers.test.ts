@@ -291,6 +291,30 @@ describe('GET /api/v1/servers', () => {
     const body = await res.json();
     expect(body.servers[0].agentToken).toBeUndefined();
   });
+
+  it('should filter servers by tag query param', async () => {
+    await createServer('web-01', tokenA, ['production', 'web']);
+    await createServer('db-01', tokenA, ['production', 'database']);
+    await createServer('staging-01', tokenA, ['staging']);
+
+    const res = await req('/api/v1/servers?tag=web', tokenA);
+    const body = await res.json();
+    expect(body.servers).toHaveLength(1);
+    expect(body.servers[0].name).toBe('web-01');
+  });
+
+  it('should filter servers by group query param', async () => {
+    // Create servers with groups via the update endpoint
+    const s1 = await createServer('web-01', tokenA);
+    const s2 = await createServer('db-01', tokenA);
+    await jsonPatch(`/api/v1/servers/${s1.id}`, { group: 'prod' }, tokenA);
+    await jsonPatch(`/api/v1/servers/${s2.id}`, { group: 'staging' }, tokenA);
+
+    const res = await req('/api/v1/servers?group=prod', tokenA);
+    const body = await res.json();
+    expect(body.servers).toHaveLength(1);
+    expect(body.servers[0].name).toBe('web-01');
+  });
 });
 
 // ============================================================================

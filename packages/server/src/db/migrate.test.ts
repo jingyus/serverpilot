@@ -87,6 +87,7 @@ describe('migrate: runMigrations', () => {
       'audit_logs',
       'doc_source_history',
       'doc_sources',
+      'invitations',
       'knowledge_cache',
       'metrics',
       'metrics_daily',
@@ -153,6 +154,14 @@ describe('migrate: runMigrations', () => {
     expect(indexNames).toContain('tasks_tenant_id_idx');
     expect(indexNames).toContain('audit_logs_tenant_id_idx');
     expect(indexNames).toContain('doc_sources_tenant_id_idx');
+    // Invitation indexes
+    expect(indexNames).toContain('invitations_tenant_id_idx');
+    expect(indexNames).toContain('invitations_email_idx');
+    expect(indexNames).toContain('invitations_token_idx');
+    expect(indexNames).toContain('invitations_status_idx');
+    expect(indexNames).toContain('invitations_expires_at_idx');
+    // Server group index
+    expect(indexNames).toContain('servers_group_idx');
   });
 
   it('should be idempotent (safe to run multiple times)', () => {
@@ -170,7 +179,7 @@ describe('migrate: runMigrations', () => {
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '__drizzle%' ORDER BY name")
       .all() as { name: string }[];
 
-    expect(tables).toHaveLength(22);
+    expect(tables).toHaveLength(23);
   });
 });
 
@@ -347,6 +356,6 @@ describe('migrate: runMigrationsWithConnection', () => {
       .prepare("SELECT count(*) as cnt FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '__drizzle%'")
       .get() as { cnt: number };
 
-    expect(tables.cnt).toBe(22);
+    expect(tables.cnt).toBe(23);
   });
 });

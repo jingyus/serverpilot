@@ -52,6 +52,8 @@ describe('useServersStore', () => {
       error: null,
       statusFilter: 'all',
       searchQuery: '',
+      groupFilter: 'all',
+      tagFilter: 'all',
     });
   });
 
@@ -166,6 +168,61 @@ describe('useServersStore', () => {
     });
   });
 
+  describe('updateServer', () => {
+    it('updates server and replaces in list', async () => {
+      useServersStore.setState({ servers: [...mockServers] });
+      const updatedServer = { ...mockServers[0], name: 'renamed', group: 'staging' };
+      mockApiRequest.mockResolvedValueOnce({ server: updatedServer });
+
+      const result = await useServersStore.getState().updateServer('srv-1', {
+        name: 'renamed',
+        group: 'staging',
+      });
+
+      expect(mockApiRequest).toHaveBeenCalledWith('/servers/srv-1', {
+        method: 'PATCH',
+        body: JSON.stringify({ name: 'renamed', group: 'staging' }),
+      });
+      expect(result).toEqual(updatedServer);
+      expect(useServersStore.getState().servers[0].name).toBe('renamed');
+      expect(useServersStore.getState().servers[0].group).toBe('staging');
+    });
+
+    it('updates server tags', async () => {
+      useServersStore.setState({ servers: [...mockServers] });
+      const updatedServer = { ...mockServers[0], tags: ['web', 'v2'] };
+      mockApiRequest.mockResolvedValueOnce({ server: updatedServer });
+
+      await useServersStore.getState().updateServer('srv-1', {
+        tags: ['web', 'v2'],
+      });
+
+      expect(useServersStore.getState().servers[0].tags).toEqual(['web', 'v2']);
+    });
+
+    it('handles update error', async () => {
+      useServersStore.setState({ servers: [...mockServers] });
+      mockApiRequest.mockRejectedValueOnce(new Error('Failed'));
+
+      await expect(
+        useServersStore.getState().updateServer('srv-1', { name: 'new' })
+      ).rejects.toThrow('Failed');
+      expect(useServersStore.getState().error).toBe('Failed to update server');
+    });
+
+    it('handles ApiError on update', async () => {
+      useServersStore.setState({ servers: [...mockServers] });
+      mockApiRequest.mockRejectedValueOnce(
+        new ApiError(404, 'NOT_FOUND', 'Server not found')
+      );
+
+      await expect(
+        useServersStore.getState().updateServer('srv-1', { name: 'new' })
+      ).rejects.toThrow();
+      expect(useServersStore.getState().error).toBe('Server not found');
+    });
+  });
+
   describe('filters', () => {
     it('sets status filter', () => {
       useServersStore.getState().setStatusFilter('online');
@@ -175,6 +232,28 @@ describe('useServersStore', () => {
     it('sets search query', () => {
       useServersStore.getState().setSearchQuery('web');
       expect(useServersStore.getState().searchQuery).toBe('web');
+    });
+
+    it('sets group filter', () => {
+      useServersStore.getState().setGroupFilter('production');
+      expect(useServersStore.getState().groupFilter).toBe('production');
+    });
+
+    it('sets tag filter', () => {
+      useServersStore.getState().setTagFilter('web');
+      expect(useServersStore.getState().tagFilter).toBe('web');
+    });
+
+    it('resets group filter to all', () => {
+      useServersStore.setState({ groupFilter: 'production' });
+      useServersStore.getState().setGroupFilter('all');
+      expect(useServersStore.getState().groupFilter).toBe('all');
+    });
+
+    it('resets tag filter to all', () => {
+      useServersStore.setState({ tagFilter: 'web' });
+      useServersStore.getState().setTagFilter('all');
+      expect(useServersStore.getState().tagFilter).toBe('all');
     });
   });
 

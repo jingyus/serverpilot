@@ -117,7 +117,11 @@
     "noServers": "No servers yet",
     "noServersDesc": "Add your first server to get started.",
     "noMatch": "No servers match",
-    "noMatchDesc": "Try adjusting your search or filter."
+    "noMatchDesc": "Try adjusting your search or filter.",
+    "allGroups": "All Groups",
+    "ungrouped": "Ungrouped",
+    "allTags": "All Tags",
+    "group": "Group"
   },
   "serverDetail": {
     "chatWithAi": "Chat with AI",

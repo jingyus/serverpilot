@@ -31,6 +31,7 @@ export interface Server {
   tenantId: string | null;
   status: ServerStatus;
   tags: string[];
+  group: string | null;
   agentToken: string | null;
   createdAt: string;
   updatedAt: string;
@@ -88,11 +89,18 @@ export interface CreateServerInput {
   userId: string;
   tenantId?: string | null;
   tags?: string[];
+  group?: string | null;
 }
 
 export interface UpdateServerInput {
   name?: string;
   tags?: string[];
+  group?: string | null;
+}
+
+export interface ServerFilterOptions {
+  group?: string;
+  tag?: string;
 }
 
 export interface PaginationOptions {
@@ -105,7 +113,7 @@ export interface PaginationOptions {
 // ============================================================================
 
 export interface ServerRepository {
-  findAllByUserId(userId: string): Promise<Server[]>;
+  findAllByUserId(userId: string, filters?: ServerFilterOptions): Promise<Server[]>;
   findById(id: string, userId: string): Promise<Server | null>;
   create(input: CreateServerInput): Promise<Server>;
   update(id: string, userId: string, input: UpdateServerInput): Promise<Server | null>;
@@ -133,14 +141,29 @@ function toISOString(date: Date | null | undefined): string | null {
 export class DrizzleServerRepository implements ServerRepository {
   constructor(private db: DrizzleDB) {}
 
-  async findAllByUserId(userId: string): Promise<Server[]> {
+  async findAllByUserId(userId: string, filters?: ServerFilterOptions): Promise<Server[]> {
+    const conditions = [eq(servers.userId, userId)];
+    if (filters?.group) {
+      conditions.push(eq(servers.group, filters.group));
+    }
+
     const rows = this.db
       .select()
       .from(servers)
-      .where(eq(servers.userId, userId))
+      .where(and(...conditions))
       .all();
 
-    return rows.map((row) => this.toServer(row));
+    let result = rows.map((row) => this.toServer(row));
+
+    // Tag filtering done in JS (SQLite has no native JSON array contains)
+    if (filters?.tag) {
+      const tagLower = filters.tag.toLowerCase();
+      result = result.filter((s) =>
+        s.tags.some((t) => t.toLowerCase() === tagLower),
+      );
+    }
+
+    return result;
   }
 
   async findById(id: string, userId: string): Promise<Server | null> {
@@ -166,6 +189,7 @@ export class DrizzleServerRepository implements ServerRepository {
       tenantId: input.tenantId ?? null,
       status: 'offline',
       tags: input.tags ?? [],
+      group: input.group ?? null,
       createdAt: now,
       updatedAt: now,
     }).run();
@@ -198,6 +222,7 @@ export class DrizzleServerRepository implements ServerRepository {
       tenantId: input.tenantId ?? null,
       status: 'offline',
       tags: input.tags ?? [],
+      group: input.group ?? null,
       agentToken,
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
@@ -216,6 +241,7 @@ export class DrizzleServerRepository implements ServerRepository {
     const updates: Record<string, unknown> = { updatedAt: now };
     if (input.name !== undefined) updates.name = input.name;
     if (input.tags !== undefined) updates.tags = input.tags;
+    if (input.group !== undefined) updates.group = input.group;
 
     this.db
       .update(servers)
@@ -316,6 +342,7 @@ export class DrizzleServerRepository implements ServerRepository {
       tenantId: row.tenantId ?? null,
       status: row.status as ServerStatus,
       tags: (row.tags ?? []) as string[],
+      group: row.group ?? null,
       agentToken: null, // Token not exposed after creation
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
@@ -336,8 +363,18 @@ export class InMemoryServerRepository implements ServerRepository {
   private profiles = new Map<string, ServerProfile>();
   private operations = new Map<string, Operation[]>();
 
-  async findAllByUserId(userId: string): Promise<Server[]> {
-    return [...this.servers.values()].filter((s) => s.userId === userId);
+  async findAllByUserId(userId: string, filters?: ServerFilterOptions): Promise<Server[]> {
+    let result = [...this.servers.values()].filter((s) => s.userId === userId);
+    if (filters?.group) {
+      result = result.filter((s) => s.group === filters.group);
+    }
+    if (filters?.tag) {
+      const tagLower = filters.tag.toLowerCase();
+      result = result.filter((s) =>
+        s.tags.some((t) => t.toLowerCase() === tagLower),
+      );
+    }
+    return result;
   }
 
   async findById(id: string, userId: string): Promise<Server | null> {
@@ -355,6 +392,7 @@ export class InMemoryServerRepository implements ServerRepository {
       tenantId: input.tenantId ?? null,
       status: 'offline',
       tags: input.tags ?? [],
+      group: input.group ?? null,
       agentToken: generateAgentToken(),
       createdAt: now,
       updatedAt: now,
@@ -383,6 +421,7 @@ export class InMemoryServerRepository implements ServerRepository {
 
     if (input.name !== undefined) server.name = input.name;
     if (input.tags !== undefined) server.tags = input.tags;
+    if (input.group !== undefined) server.group = input.group;
     server.updatedAt = nowISO();
 
     this.servers.set(id, server);

@@ -117,7 +117,11 @@
     "noServers": "暂无服务器",
     "noServersDesc": "添加您的第一台服务器开始使用。",
     "noMatch": "没有匹配的服务器",
-    "noMatchDesc": "请调整搜索条件或筛选器。"
+    "noMatchDesc": "请调整搜索条件或筛选器。",
+    "allGroups": "所有分组",
+    "ungrouped": "未分组",
+    "allTags": "所有标签",
+    "group": "分组"
   },
   "serverDetail": {
     "chatWithAi": "AI 对话",

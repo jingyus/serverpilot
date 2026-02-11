@@ -15,9 +15,9 @@ CREATE TABLE IF NOT EXISTS invitations (
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
-
-CREATE INDEX IF NOT EXISTS invitations_tenant_id_idx ON invitations(tenant_id);
-CREATE INDEX IF NOT EXISTS invitations_email_idx ON invitations(email);
-CREATE INDEX IF NOT EXISTS invitations_token_idx ON invitations(token);
-CREATE INDEX IF NOT EXISTS invitations_status_idx ON invitations(status);
+--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS invitations_tenant_id_idx ON invitations(tenant_id);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS invitations_email_idx ON invitations(email);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS invitations_token_idx ON invitations(token);--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS invitations_status_idx ON invitations(status);--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS invitations_expires_at_idx ON invitations(expires_at);

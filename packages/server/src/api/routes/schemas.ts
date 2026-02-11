@@ -55,15 +55,23 @@ export type RefreshTokenBody = z.infer<typeof RefreshTokenBodySchema>;
 
 export const CreateServerBodySchema = z.object({
   name: z.string().min(1, 'Server name is required').max(100),
-  tags: z.array(z.string().max(50)).max(20).optional(),
+  tags: z.array(z.string().max(50)).max(10).optional(),
+  group: z.string().min(1).max(100).optional(),
 });
 export type CreateServerBody = z.infer<typeof CreateServerBodySchema>;
 
 export const UpdateServerBodySchema = z.object({
   name: z.string().min(1).max(100).optional(),
-  tags: z.array(z.string().max(50)).max(20).optional(),
+  tags: z.array(z.string().max(50)).max(10).optional(),
+  group: z.string().max(100).nullable().optional(),
 });
 export type UpdateServerBody = z.infer<typeof UpdateServerBodySchema>;
+
+export const ServerListQuerySchema = z.object({
+  group: z.string().max(100).optional(),
+  tag: z.string().max(50).optional(),
+});
+export type ServerListQuery = z.infer<typeof ServerListQuerySchema>;
 
 export const ServerIdParamSchema = z.object({
   id: uuid,

@@ -13,6 +13,7 @@ import { Hono } from 'hono';
 import {
   CreateServerBodySchema,
   UpdateServerBodySchema,
+  ServerListQuerySchema,
   ServerMetricsQuerySchema,
   OperationQuerySchema,
   PaginationQuerySchema,
@@ -33,8 +34,8 @@ import { getOperationHistoryService } from '../../core/operation/operation-histo
 import { snapshots as snapshotsRouter } from './snapshots.js';
 import { logger } from '../../utils/logger.js';
 import type {
-  CreateServerBody, UpdateServerBody, ServerMetricsQuery, PaginationQuery,
-  OperationQuery,
+  CreateServerBody, UpdateServerBody, ServerListQuery, ServerMetricsQuery,
+  PaginationQuery, OperationQuery,
   AddNoteBody, RemoveNoteBody, UpdatePreferencesBody,
   SetHistorySummaryBody, RecordOperationBody,
 } from './schemas.js';
@@ -60,11 +61,16 @@ function toPublicServer(server: Server) {
 // GET /servers — List all servers for the authenticated user
 // ============================================================================
 
-servers.get('/', requirePermission('server:read'), async (c) => {
+servers.get('/', requirePermission('server:read'), validateQuery(ServerListQuerySchema), async (c) => {
   const userId = c.get('userId');
+  const query = c.get('validatedQuery') as ServerListQuery;
   const repo = getServerRepository();
 
-  const list = await repo.findAllByUserId(userId);
+  const filters = {
+    group: query.group,
+    tag: query.tag,
+  };
+  const list = await repo.findAllByUserId(userId, filters);
   return c.json({ servers: list.map(toPublicServer), total: list.length });
 });
 
@@ -81,6 +87,7 @@ servers.post('/', requirePermission('server:create'), validateBody(CreateServerB
     name: body.name,
     userId,
     tags: body.tags,
+    group: body.group,
   });
 
   logger.info(
@@ -131,6 +138,7 @@ servers.patch('/:id', requirePermission('server:update'), validateBody(UpdateSer
   const server = await repo.update(id, userId, {
     name: body.name,
     tags: body.tags,
+    group: body.group,
   });
 
   if (!server) {

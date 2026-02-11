@@ -156,12 +156,14 @@ export const servers = sqliteTable(
       .default('offline')
       .notNull(),
     tags: text('tags', { mode: 'json' }).$type<string[]>().default([]),
+    group: text('group'),
     createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
     updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
   },
   (table) => [
     index('servers_user_id_idx').on(table.userId),
     index('servers_tenant_id_idx').on(table.tenantId),
+    index('servers_group_idx').on(table.group),
   ],
 );
 
