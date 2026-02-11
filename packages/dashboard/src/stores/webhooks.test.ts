@@ -2,6 +2,7 @@
 // Copyright (c) 2024-2026 ServerPilot Contributors
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useWebhooksStore } from './webhooks';
+import type { WebhookEventType } from '@/types/webhook';
 
 // Mock the API client module
 const mockApiRequest = vi.fn();
@@ -22,7 +23,7 @@ const makeWebhook = (overrides: Record<string, unknown> = {}) => ({
   name: 'My Webhook',
   url: 'https://example.com/hook',
   secret: '***',
-  events: ['task.completed'] as const,
+  events: ['task.completed'] as WebhookEventType[],
   enabled: true,
   maxRetries: 3,
   createdAt: '2026-01-01T00:00:00Z',

@@ -6,10 +6,10 @@
 
 ## 📊 统计信息
 
-- **总任务数**: 76
-- **待完成** (pending): 0
+- **总任务数**: 86
+- **待完成** (pending): 9
 - **进行中** (in_progress): 0
-- **已完成** (completed): 76
+- **已完成** (completed): 77
 - **失败** (failed): 0
 
 ---
@@ -17,6 +17,176 @@
 ## 📋 任务列表
 
 <!-- 任务将由 AI 自动生成和更新 -->
+### [completed] 修复 Dashboard 构建失败 — webhooks.test.ts 类型错误 ✅
+
+**ID**: task-058
+**优先级**: P0
+**模块路径**: packages/dashboard/src/stores/webhooks.test.ts
+**任务描述**: Dashboard 的 `pnpm build` 因 `webhooks.test.ts` 中 10 处 TypeScript 类型错误而失败。原因是测试 fixture 中 `events` 字段为 `readonly ["task.completed"]`，无法赋值给可变类型 `WebhookEventType[]`。需要将所有 fixture 中的 events 数组加上 `as WebhookEventType[]` 类型断言，或将 Webhook 类型中 events 改为 `readonly`。此问题直接阻塞 Docker 镜像构建和 CI/CD 流程。
+**产品需求**: 开源发布准备 — CI/CD 流水线必须全绿
+**验收标准**: 
+- `pnpm build` 全部通过，无 TypeScript 错误
+- `pnpm test` 仍全部通过（260 files, 10389 tests）
+- Docker Compose `docker compose build` 成功
+**创建时间**: 2026-02-12 14:00:00
+**完成时间**: 2026-02-12 05:57:05
+
+---
+
+### [pending] Dashboard 全局 Toast 通知组件 — 用户反馈闭环
+
+**ID**: task-059
+**优先级**: P0
+**模块路径**: packages/dashboard/src/components/common/Toast.tsx, packages/dashboard/src/components/layout/MainLayout.tsx
+**任务描述**: 当前 `useNotificationsStore` 已有完整的通知状态管理（add/remove/clear），但前端没有任何 Toast 渲染组件。用户执行操作（创建服务器、保存设置、API 错误等）时完全看不到反馈。需要: 1) 创建 Toast/Notification 渲染组件（支持 success/error/warning/info 4 种类型，自动消失+手动关闭）；2) 在 MainLayout 中挂载 Toast 容器；3) 在关键操作点（服务器 CRUD、设置保存、登录失败等）接入通知。
+**产品需求**: 产品方案 5.1 首次使用流程 — 用户需要清晰的操作反馈
+**验收标准**: 
+- Toast 组件支持 4 种类型，3 秒自动消失
+- MainLayout 渲染 Toast 容器（固定定位右上角）
+- 至少 5 个页面接入通知（Login/Servers/Settings/Chat/Team）
+- 新增 10+ 组件测试 + 页面集成测试
+**创建时间**: 2026-02-12 14:00:00
+**完成时间**: -
+
+---
+
+### [pending] CORS 安全加固 — 生产环境 Origin 白名单
+
+**ID**: task-060
+**优先级**: P0
+**模块路径**: packages/server/src/api/routes/index.ts
+**任务描述**: 当前 CORS 配置为 `origin: '*'`，允许任何域名跨域请求 API，存在 CSRF 和数据泄露风险。开源版用户自部署时，Server 和 Dashboard 通常同域或已知域名。需要: 1) 新增 `CORS_ORIGIN` 环境变量（默认值为 `*` 保持开发兼容）；2) 生产模式下要求明确配置 origin；3) 支持逗号分隔多 origin；4) 在 `.env.example` 中添加说明；5) 启动时如果 `NODE_ENV=production` 且 `CORS_ORIGIN=*`，输出安全警告日志。
+**产品需求**: 产品方案 7.2 五层纵深防御 — 网络层安全
+**验收标准**: 
+- `CORS_ORIGIN` 环境变量生效，支持单值和逗号分隔多值
+- 生产模式 + `origin: '*'` 时 pino 打印 warn 级别日志
+- `.env.example` 更新并有中英文注释说明
+- 现有 CORS 相关测试通过 + 新增 8+ 测试
+**创建时间**: 2026-02-12 14:00:00
+**完成时间**: -
+
+---
+
+### [pending] AI 对话容错增强 — Provider 请求重试与降级
+
+**ID**: task-061
+**优先级**: P0
+**模块路径**: packages/server/src/ai/chat-ai.ts, packages/server/src/ai/request-retry.ts
+**任务描述**: 当前 `ChatAIAgent.chat()` 对 AI Provider 请求失败只做单次尝试，无重试机制。项目已有 `request-retry.ts`（指数退避）和 `fault-tolerance.ts`（降级策略），但 chat-ai.ts 未接入。需要: 1) 在 ChatAIAgent 中接入 request-retry 的指数退避重试（最多 3 次，间隔 1s/2s/4s）；2) 区分可重试错误（网络超时、503、429 rate limit）和不可重试错误（认证失败、参数错误）；3) 重试时通过 SSE 推送"正在重试"状态给前端；4) 3 次失败后触发 fault-tolerance 降级（如切换备选 provider）。
+**产品需求**: 产品方案 8.2 模型降级策略 — AI 不可用时有备选方案
+**验收标准**: 
+- 可重试错误自动重试最多 3 次（指数退避）
+- 429 错误尊重 Retry-After header
+- SSE 推送 `retry` 事件通知前端
+- 3 次失败后尝试降级到备选 provider
+- 新增 15+ 测试（重试逻辑 + 降级逻辑 + SSE 事件）
+**创建时间**: 2026-02-12 14:00:00
+**完成时间**: -
+
+---
+
+### [pending] 内存泄漏防护 — activePlanExecutions 清理 + Session TTL
+
+**ID**: task-062
+**优先级**: P1
+**模块路径**: packages/server/src/api/routes/chat.ts, packages/server/src/core/session/manager.ts
+**任务描述**: `chat.ts` 中的 `activePlanExecutions` Map 只在 cancel/complete 时删除条目，如果客户端断开连接或执行异常中断，条目永不清理，长时间运行会内存泄漏。需要: 1) 为 activePlanExecutions 添加 TTL 机制（默认 30 分钟过期）；2) 定期扫描清理过期条目（每 5 分钟一次，使用 `setInterval().unref()`）；3) 检查 SessionManager 是否有类似问题并修复；4) 在 server shutdown 时清理所有执行。
+**产品需求**: 产品方案 14 技术指标 — 内存使用 < 512MB
+**验收标准**: 
+- activePlanExecutions 条目 30 分钟后自动过期
+- 定期清理定时器不阻止进程退出（`.unref()`）
+- graceful shutdown 时清理所有条目
+- 新增 10+ 测试（TTL 过期、清理定时器、shutdown 清理）
+**创建时间**: 2026-02-12 14:00:00
+**完成时间**: -
+
+---
+
+### [pending] Content-Security-Policy 安全头 + Nginx 配置加固
+
+**ID**: task-063
+**优先级**: P1
+**模块路径**: packages/dashboard/nginx.conf, packages/server/src/api/routes/index.ts
+**任务描述**: 当前 Nginx 只设置了 X-Frame-Options、X-Content-Type-Options、X-XSS-Protection、Referrer-Policy 四个安全头，缺少关键的 Content-Security-Policy (CSP) 头。对于一个运维管理平台，CSP 可有效防止 XSS 注入和数据外泄。需要: 1) 在 nginx.conf 中添加合理的 CSP（允许 self、inline styles/scripts for Vite、SSE 连接、WebSocket）；2) 在 Hono server 添加 X-Request-Id、Strict-Transport-Security 等 header；3) 确保 CSP 不阻断正常功能（SSE、WebSocket、内联样式）。
+**产品需求**: 产品方案 7.2 五层纵深防御 — 传输层安全
+**验收标准**: 
+- CSP header 已配置，允许 self + inline styles + wss: 连接
+- Hono server 设置 HSTS header（仅 HTTPS 时）
+- Docker Compose 部署后 `curl -I` 返回完整安全头
+- 现有 E2E 测试和功能不受 CSP 影响
+**创建时间**: 2026-02-12 14:00:00
+**完成时间**: -
+
+---
+
+### [pending] Agent 离线消息队列 — 断线恢复不丢数据
+
+**ID**: task-064
+**优先级**: P1
+**模块路径**: packages/agent/src/client/client.ts, packages/agent/src/client/message-queue.ts
+**任务描述**: 当前 Agent WebSocket 客户端在断线期间发送消息会直接抛错，重连后不会重发。对于命令执行结果、心跳数据等关键消息，断线期间的数据会丢失。需要: 1) 实现 `MessageQueue` 类（内存队列，最大 1000 条，FIFO）；2) send 失败时消息入队而非抛错；3) 重连成功后自动 flush 队列（按序发送）；4) 队列满时丢弃最旧消息并记录 warn 日志；5) 区分可缓存消息（结果、指标）和不可缓存消息（实时 stdout 流）。
+**产品需求**: 产品方案 4.5 断线容错 — Agent 断线期间数据不丢失
+**验收标准**: 
+- 断线期间消息缓存到队列，不抛错
+- 重连后自动按序发送队列中消息
+- 队列上限 1000 条，超出 FIFO 淘汰
+- stdout 流式输出不进入队列（实时性要求）
+- 新增 15+ 测试（入队、出队、flush、上限淘汰、消息分类）
+**创建时间**: 2026-02-12 14:00:00
+**完成时间**: -
+
+---
+
+### [pending] Docker Compose 预构建镜像支持 — 降低部署门槛
+
+**ID**: task-065
+**优先级**: P1
+**模块路径**: docker-compose.yml, .github/workflows/docker-publish.yml
+**任务描述**: 当前 `docker-compose.yml` 默认从源码构建镜像（`build: context: .`），首次部署需要完整 monorepo 和数分钟构建时间。开源用户更期望 `docker compose pull && docker compose up -d` 即可运行。需要: 1) 创建 `docker-compose.yml` 使用预构建镜像（ghcr.io/serverpilot/server:latest）；2) 保留 `docker-compose.build.yml` 供开发者从源码构建；3) 添加 GitHub Actions workflow 在 tag 推送时自动构建并推送 Docker 镜像到 GHCR；4) 更新 README 快速开始文档。
+**产品需求**: 产品方案 12.1 MVP — `docker compose up` 一键自部署
+**验收标准**: 
+- `docker-compose.yml` 默认使用 ghcr.io 镜像
+- `docker-compose.build.yml` 保留源码构建能力（override）
+- GitHub Actions workflow 自动构建 + 推送多架构镜像（amd64 + arm64）
+- README 快速开始使用预构建镜像命令
+**创建时间**: 2026-02-12 14:00:00
+**完成时间**: -
+
+---
+
+### [pending] Protocol 版本协商 — Agent/Server 兼容性检查
+
+**ID**: task-066
+**优先级**: P2
+**模块路径**: packages/shared/src/protocol/version.ts, packages/server/src/api/handlers.ts, packages/agent/src/client/authenticated-client.ts
+**任务描述**: 当前 Agent 和 Server 之间没有协议版本检查，Agent 的 `protocol-lite.ts` 需手动与 Server 保持同步，版本不匹配时会出现静默失败。开源发布后用户可能 Server 升级但 Agent 未更新。需要: 1) 在 shared 中定义 `PROTOCOL_VERSION` 常量（语义化版本 "1.0.0"）；2) Agent 连接认证时携带版本号；3) Server 检查版本兼容性（主版本必须一致，次版本向后兼容）；4) 不兼容时返回明确错误信息和升级提示；5) 在 Agent 的 protocol-lite.ts 中也定义版本号。
+**产品需求**: 产品方案 13.1 WSS 协议规范 — 版本管理
+**验收标准**: 
+- `PROTOCOL_VERSION = "1.0.0"` 在 shared 和 agent 中同步定义
+- Agent 认证消息包含 `protocolVersion` 字段
+- Server 验证版本兼容性，不兼容时返回错误码 + 升级链接
+- 向后兼容：缺少版本号的旧 Agent 被视为 "0.x"，仅 warn 不拒绝
+- 新增 12+ 测试（版本匹配、不匹配、缺失、边界情况）
+**创建时间**: 2026-02-12 14:00:00
+**完成时间**: -
+
+---
+
+### [pending] Dashboard Chat 体验优化 — 消息重试 + 命令复制 + 移动端适配
+
+**ID**: task-067
+**优先级**: P2
+**模块路径**: packages/dashboard/src/pages/Chat.tsx, packages/dashboard/src/components/chat/
+**任务描述**: Chat 页面核心功能完整但缺少几个重要的交互细节: 1) 消息发送失败时没有重试按钮，用户需要重新输入；2) AI 返回的命令和输出没有一键复制功能；3) 移动端 (<lg breakpoint) 会话侧边栏隐藏且无法打开。需要: 1) 失败消息旁添加"重试"按钮；2) 代码块/命令输出添加复制到剪贴板图标（navigator.clipboard API）；3) 移动端添加汉堡菜单切换会话侧边栏；4) 复制成功后显示 Toast 反馈（依赖 task-059）。
+**产品需求**: 产品方案 5.2 日常使用场景 — 流畅的对话运维体验 + 4.3 移动端适配
+**验收标准**: 
+- 失败消息显示重试按钮，点击后重发相同内容
+- 代码块右上角显示复制图标，点击后复制内容到剪贴板
+- 移动端可通过汉堡图标展开/收起会话侧边栏
+- 新增 8+ 组件测试
+**创建时间**: 2026-02-12 14:00:00
+**完成时间**: -
+
 ### [completed] 知识库 RAG 接入 AI 对话流 — 相似度检索 + 上下文注入 ✅
 
 **ID**: task-054
@@ -1703,4 +1873,4 @@ ID: task-001
 
 ---
 
-**最后更新**: 2026-02-12 05:44:25
+**最后更新**: 2026-02-12 05:57:05
