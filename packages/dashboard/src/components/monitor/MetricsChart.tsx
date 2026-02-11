@@ -14,10 +14,32 @@ import {
 import { formatBytes } from '@/utils/format';
 import type { MetricPoint } from '@/types/server';
 
+export type EmptyReason = 'no-data' | 'offline' | 'awaiting-first-report';
+
 interface MetricsChartProps {
   data: MetricPoint[];
   type: 'cpu' | 'memory' | 'disk' | 'network';
+  emptyReason?: EmptyReason;
 }
+
+const MAX_CHART_POINTS = 200;
+
+/** Down-sample data by picking evenly-spaced points to keep charts responsive. */
+export function sampleData<T>(data: T[], maxPoints: number = MAX_CHART_POINTS): T[] {
+  if (data.length <= maxPoints) return data;
+  const step = (data.length - 1) / (maxPoints - 1);
+  const result: T[] = [];
+  for (let i = 0; i < maxPoints; i++) {
+    result.push(data[Math.round(i * step)]);
+  }
+  return result;
+}
+
+const EMPTY_MESSAGES: Record<EmptyReason, string> = {
+  'no-data': 'No data available for this time range.',
+  'offline': 'Server is offline. Metrics will resume when the agent reconnects.',
+  'awaiting-first-report': 'Waiting for the first metrics report from the agent.',
+};
 
 function formatTime(timestamp: string): string {
   const date = new Date(timestamp);
@@ -25,7 +47,7 @@ function formatTime(timestamp: string): string {
 }
 
 function CpuChart({ data }: { data: MetricPoint[] }) {
-  const chartData = data.map((p) => ({
+  const chartData = sampleData(data).map((p) => ({
     time: formatTime(p.timestamp),
     cpu: Number(p.cpuUsage.toFixed(1)),
   }));
@@ -56,7 +78,7 @@ function CpuChart({ data }: { data: MetricPoint[] }) {
 }
 
 function MemoryChart({ data }: { data: MetricPoint[] }) {
-  const chartData = data.map((p) => ({
+  const chartData = sampleData(data).map((p) => ({
     time: formatTime(p.timestamp),
     used: Number(((p.memoryUsage / p.memoryTotal) * 100).toFixed(1)),
   }));
@@ -87,7 +109,7 @@ function MemoryChart({ data }: { data: MetricPoint[] }) {
 }
 
 function DiskChart({ data }: { data: MetricPoint[] }) {
-  const chartData = data.map((p) => ({
+  const chartData = sampleData(data).map((p) => ({
     time: formatTime(p.timestamp),
     used: Number(((p.diskUsage / p.diskTotal) * 100).toFixed(1)),
   }));
@@ -118,7 +140,7 @@ function DiskChart({ data }: { data: MetricPoint[] }) {
 }
 
 function NetworkChart({ data }: { data: MetricPoint[] }) {
-  const chartData = data.map((p) => ({
+  const chartData = sampleData(data).map((p) => ({
     time: formatTime(p.timestamp),
     in: p.networkIn,
     out: p.networkOut,
@@ -168,14 +190,14 @@ const CHART_MAP = {
   network: NetworkChart,
 } as const;
 
-export function MetricsChart({ data, type }: MetricsChartProps) {
+export function MetricsChart({ data, type, emptyReason = 'no-data' }: MetricsChartProps) {
   if (data.length === 0) {
     return (
       <div
         className="flex items-center justify-center py-12 text-sm text-muted-foreground"
         data-testid={`chart-empty-${type}`}
       >
-        No data available for this time range.
+        {EMPTY_MESSAGES[emptyReason]}
       </div>
     );
   }

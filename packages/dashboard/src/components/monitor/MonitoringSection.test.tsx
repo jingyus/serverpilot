@@ -114,4 +114,48 @@ describe('MonitoringSection', () => {
     expect(screen.getByTestId('chart-disk')).toBeInTheDocument();
     expect(screen.getByTestId('chart-network')).toBeInTheDocument();
   });
+
+  it('shows offline message when server is offline and no data', () => {
+    render(
+      <MonitoringSection
+        {...defaultProps}
+        metricsHistory={[]}
+        serverStatus="offline"
+      />,
+    );
+    const empties = screen.getAllByText(
+      'Server is offline. Metrics will resume when the agent reconnects.',
+    );
+    expect(empties).toHaveLength(4);
+  });
+
+  it('shows awaiting-first-report message for new server', () => {
+    render(
+      <MonitoringSection
+        {...defaultProps}
+        metricsHistory={[]}
+        serverStatus="online"
+        hasEverReported={false}
+      />,
+    );
+    const empties = screen.getAllByText(
+      'Waiting for the first metrics report from the agent.',
+    );
+    expect(empties).toHaveLength(4);
+  });
+
+  it('shows generic no-data message when online with history', () => {
+    render(
+      <MonitoringSection
+        {...defaultProps}
+        metricsHistory={[]}
+        serverStatus="online"
+        hasEverReported={true}
+      />,
+    );
+    const empties = screen.getAllByText(
+      'No data available for this time range.',
+    );
+    expect(empties).toHaveLength(4);
+  });
 });

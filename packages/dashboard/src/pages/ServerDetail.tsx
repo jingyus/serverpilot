@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { useEffect } from 'react';
+import { useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -31,6 +31,7 @@ import {
 } from '@/components/ui/card';
 import { useServerDetailStore } from '@/stores/server-detail';
 import { MonitoringSection } from '@/components/monitor/MonitoringSection';
+import { usePolling } from '@/hooks/usePolling';
 import { cn } from '@/lib/utils';
 import { formatBytes, formatDate, formatDuration } from '@/utils/format';
 import type { Service, Software, Metrics } from '@/types/server';
@@ -295,6 +296,15 @@ export function ServerDetail() {
     return () => reset();
   }, [id, fetchServer, fetchProfile, fetchMetrics, reset]);
 
+  const refreshMetrics = useCallback(() => {
+    if (id) fetchMetrics(id);
+  }, [id, fetchMetrics]);
+
+  usePolling(refreshMetrics, 60_000, !!id && !isLoading);
+
+  // Determine if server has ever had metrics reported
+  const hasEverReported = server ? (metricsHistory.length > 0 || metrics !== null) : undefined;
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-24" data-testid="loading-spinner">
@@ -413,6 +423,8 @@ export function ServerDetail() {
                 metricsHistory={metricsHistory}
                 metricsRange={metricsRange}
                 serverId={id!}
+                serverStatus={server.status}
+                hasEverReported={hasEverReported}
                 onRangeChange={(range) => fetchMetrics(id!, range)}
               />
             </div>

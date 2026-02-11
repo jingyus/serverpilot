@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 ServerPilot Contributors
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
-import { MetricsChart } from './MetricsChart';
+import { MetricsChart, sampleData } from './MetricsChart';
 import type { MetricPoint } from '@/types/server';
 
 // Mock recharts to avoid rendering issues in jsdom
@@ -88,5 +88,54 @@ describe('MetricsChart', () => {
     render(<MetricsChart data={mockData} type="network" />);
     expect(screen.getByTestId('chart-network')).toBeInTheDocument();
     expect(screen.getByTestId('line-chart')).toBeInTheDocument();
+  });
+
+  it('shows offline message when emptyReason is offline', () => {
+    render(<MetricsChart data={[]} type="cpu" emptyReason="offline" />);
+    expect(screen.getByText('Server is offline. Metrics will resume when the agent reconnects.')).toBeInTheDocument();
+  });
+
+  it('shows awaiting first report message', () => {
+    render(<MetricsChart data={[]} type="cpu" emptyReason="awaiting-first-report" />);
+    expect(screen.getByText('Waiting for the first metrics report from the agent.')).toBeInTheDocument();
+  });
+
+  it('shows default no-data message when emptyReason is not provided', () => {
+    render(<MetricsChart data={[]} type="cpu" />);
+    expect(screen.getByText('No data available for this time range.')).toBeInTheDocument();
+  });
+});
+
+describe('sampleData', () => {
+  it('returns original data when within max points', () => {
+    const data = [1, 2, 3, 4, 5];
+    expect(sampleData(data, 10)).toBe(data);
+  });
+
+  it('returns original data when exactly at max points', () => {
+    const data = [1, 2, 3, 4, 5];
+    expect(sampleData(data, 5)).toBe(data);
+  });
+
+  it('down-samples data exceeding max points', () => {
+    const data = Array.from({ length: 10 }, (_, i) => i);
+    const sampled = sampleData(data, 5);
+    expect(sampled).toHaveLength(5);
+    expect(sampled[0]).toBe(0);
+    expect(sampled[sampled.length - 1]).toBe(9);
+  });
+
+  it('preserves first and last elements', () => {
+    const data = Array.from({ length: 500 }, (_, i) => i);
+    const sampled = sampleData(data, 100);
+    expect(sampled).toHaveLength(100);
+    expect(sampled[0]).toBe(0);
+    expect(sampled[99]).toBe(499);
+  });
+
+  it('handles large datasets efficiently', () => {
+    const data = Array.from({ length: 10000 }, (_, i) => i);
+    const sampled = sampleData(data, 200);
+    expect(sampled).toHaveLength(200);
   });
 });

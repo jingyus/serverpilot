@@ -11,12 +11,15 @@ import {
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { MetricsChart } from './MetricsChart';
+import type { EmptyReason } from './MetricsChart';
 import type { MetricPoint, MetricsRange } from '@/types/server';
 
 interface MonitoringSectionProps {
   metricsHistory: MetricPoint[];
   metricsRange: MetricsRange;
   serverId: string;
+  serverStatus?: string;
+  hasEverReported?: boolean;
   onRangeChange: (range: MetricsRange) => void;
 }
 
@@ -33,9 +36,20 @@ const CHART_CONFIGS = [
   { type: 'network' as const, label: 'Network I/O', icon: Network },
 ];
 
+function deriveEmptyReason(
+  serverStatus?: string,
+  hasEverReported?: boolean,
+): EmptyReason {
+  if (serverStatus === 'offline') return 'offline';
+  if (hasEverReported === false) return 'awaiting-first-report';
+  return 'no-data';
+}
+
 export function MonitoringSection({
   metricsHistory,
   metricsRange,
+  serverStatus,
+  hasEverReported,
   onRangeChange,
 }: MonitoringSectionProps) {
   const handleRangeChange = useCallback(
@@ -44,6 +58,8 @@ export function MonitoringSection({
     },
     [onRangeChange],
   );
+
+  const emptyReason = deriveEmptyReason(serverStatus, hasEverReported);
 
   return (
     <div className="space-y-4" data-testid="monitoring-section">
@@ -73,7 +89,11 @@ export function MonitoringSection({
               </CardTitle>
             </CardHeader>
             <CardContent className="pb-4">
-              <MetricsChart data={metricsHistory} type={type} />
+              <MetricsChart
+                data={metricsHistory}
+                type={type}
+                emptyReason={emptyReason}
+              />
             </CardContent>
           </Card>
         ))}
