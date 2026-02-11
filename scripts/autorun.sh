@@ -31,6 +31,7 @@ cd "$PROJECT_DIR"
 PRODUCT_GUIDE="$PROJECT_DIR/docs/产品方案-目录.md"  # 精简版产品方案
 PRODUCT_DOC="$PROJECT_DIR/docs/DevOps产品方案.md"   # 完整产品方案
 DEV_STANDARD="$PROJECT_DIR/docs/开发标准.md"        # 开发标准
+AI_CONSTRAINTS="$PROJECT_DIR/docs/AI开发约束.md"    # AI 开发约束（必读）
 LOG_FILE="$PROJECT_DIR/autorun.log"
 STATE_FILE="$PROJECT_DIR/AUTORUN_STATE.md"
 TASK_FILE="$PROJECT_DIR/CURRENT_TASK.md"
@@ -43,6 +44,8 @@ MAX_ITERATIONS=1000    # 最大迭代次数
 ANALYZE_TIMEOUT=3600   # 分析阶段超时（60分钟）
 EXECUTE_TIMEOUT=3600   # 执行阶段超时（60分钟）
 NO_OUTPUT_TIMEOUT=3600 # 无输出超时（秒）— claude -p 是最终一次性输出，需要与执行超时一致
+STUCK_CHECK_AFTER=1200 # 无输出超过多久后开始卡死检测（秒，默认20分钟）
+STUCK_CONFIRM_TIME=300 # 连续确认卡死多久后终止（秒，默认5分钟）
 MAX_RETRIES=3          # 单任务单轮最大重试次数
 MAX_TASK_FAILURES=3    # 同一任务跨轮次最大失败次数（超过后自动跳过）
 BATCH_SIZE=5           # 每次生成任务数量
@@ -215,6 +218,38 @@ smart_retry() {
     esac
 }
 
+# 检测进程是否卡死（CPU=0% + 无子进程 + 无网络连接 = 大概率卡死）
+# 返回 0 = 疑似卡死, 1 = 正常工作中
+is_process_stuck() {
+    local pid="$1"
+
+    # 进程不存在
+    if ! kill -0 "$pid" 2>/dev/null; then
+        return 1
+    fi
+
+    # 检查 CPU 使用率（macOS ps 给出最近约1分钟的衰减平均值）
+    local cpu=$(ps -o %cpu= -p "$pid" 2>/dev/null | tr -d ' ')
+    if [ -z "$cpu" ]; then return 1; fi
+    local cpu_idle=$(awk "BEGIN { print ($cpu <= 0.1) ? 1 : 0 }")
+    if [ "$cpu_idle" != "1" ]; then
+        return 1  # CPU 有活动，没卡
+    fi
+
+    # 检查是否有子进程（说明在执行工具调用）
+    if pgrep -P "$pid" > /dev/null 2>&1; then
+        return 1  # 有子进程，没卡
+    fi
+
+    # 检查是否有 TCP 连接（说明在等 API 响应）
+    if lsof -i TCP -a -p "$pid" > /dev/null 2>&1; then
+        return 1  # 有网络连接，没卡
+    fi
+
+    # 三项全空 → 大概率卡死
+    return 0
+}
+
 # 发送通知函数
 send_notification() {
     local title="$1"
@@ -291,6 +326,14 @@ check_environment() {
     else
         log_success "开发标准文档: $DEV_STANDARD"
     fi
+
+    # 检查 AI 开发约束文档（强制）
+    if [ ! -f "$AI_CONSTRAINTS" ]; then
+        log_error "AI 开发约束文档不存在: $AI_CONSTRAINTS"
+        log_error "此文档是 AI 自循环开发的强制约束，缺失将导致开发方向偏离"
+        exit 1
+    fi
+    log_success "AI 开发约束: $AI_CONSTRAINTS"
 }
 
 # 初始化状态文件
@@ -336,22 +379,27 @@ build_analyze_prompt() {
     cat << 'EOF'
 你是 ServerPilot 项目的 AI 开发助手。请分析项目当前状态并决定下一步工作。
 
-## 项目目标
+## 必读文档
 
+> **⚠️ 强制约束**: 在开始任何工作前，必须先阅读 `docs/AI开发约束.md`，严格遵守其中的版本分离原则和开发优先级。
+
+**AI 开发约束**: docs/AI开发约束.md - **必读** — 版本分离规则、开发优先级、代码质量约束
 **产品方案**: docs/产品方案-目录.md - MVP 范围、优先级、技术栈概要
 **完整方案**: docs/DevOps产品方案.md - 详细产品设计（需要时查阅）
 **开发标准**: docs/开发标准.md - 技术架构、代码规范、Git 工作流、测试标准
 
 ## 你的任务
 
-1. **阅读产品方案目录**: 先读 docs/产品方案-目录.md，了解 MVP 范围和开发优先级
-2. **遵循开发标准**: 查看 docs/开发标准.md，了解技术架构和代码规范
-3. **分析当前代码**: 检查 packages/ 目录下各模块的实现状态
-4. **确定下一个任务**: 根据"产品方案-目录.md"中的开发优先级，选择一个最重要的任务
-5. **生成任务描述**: 输出一个明确的任务描述
+1. **阅读 AI 开发约束**: 先读 docs/AI开发约束.md，了解版本分离规则和当前开发阶段优先级
+2. **阅读产品方案目录**: 读 docs/产品方案-目录.md，了解 MVP 范围和开发优先级
+3. **遵循开发标准**: 查看 docs/开发标准.md，了解技术架构和代码规范
+4. **分析当前代码**: 检查 packages/ 目录下各模块的实现状态
+5. **确定下一个任务**: 根据 AI 开发约束中的优先级排序，选择一个最重要的任务
+6. **生成任务描述**: 输出一个明确的任务描述
 
 **注意**:
-- 优先完成 MVP (v0.1) 范围内的功能，按照"第一优先级 → 第二优先级 → 第三优先级"顺序开发
+- 严格遵守 docs/AI开发约束.md 中的版本分离原则：云版代码不得混入开源核心
+- 优先完成开源版 MVP 功能完善和稳定性，暂不开发云版专属功能（PostgreSQL、Stripe 等）
 - 必须遵守开发标准中的代码规范、命名规则、Git 提交规范
 
 ## 输出格式
@@ -394,22 +442,30 @@ build_execute_prompt() {
     cat << EOF
 你正在开发 ServerPilot 项目 - 一个 AI 驱动的智能运维平台。
 
-## 项目目标
+## 必读文档
+
+> **⚠️ 强制约束**: 执行任务前，必须先阅读 \`docs/AI开发约束.md\`，严格遵守版本分离原则。
+
+**AI 开发约束**: docs/AI开发约束.md - **必读** — 版本分离规则、代码隔离、架构边界
 **产品方案**: docs/产品方案-目录.md - MVP 范围、优先级、技术栈
 **开发标准**: docs/开发标准.md - 技术架构、代码规范、Git 工作流、测试标准
 
 ## 项目信息
 - **技术栈**: Node.js 22+ / TypeScript / Hono / React / Drizzle ORM / SQLite
 - **架构**: Monorepo (packages/server, packages/agent, packages/dashboard, packages/shared)
-- **当前阶段**: MVP v0.1 - 核心闭环 (6周)
+- **当前阶段**: 开源版 MVP 完善（云版暂不开发）
 
 ## 当前任务
 $task_content
 
 ## 开发要求
 
-1. **对照产品方案**: 确保实现符合 docs/产品方案-目录.md 中的 MVP 范围
-2. **遵循开发标准**: 严格按照 docs/开发标准.md 中的规范执行：
+1. **遵守 AI 开发约束**: 严格按照 docs/AI开发约束.md 的规则：
+   - 云版专属功能（PostgreSQL、Stripe、多副本）不得混入开源核心代码
+   - 新增文件必须放在对应模块目录下
+   - Commit message 必须准确描述实际变更内容
+2. **对照产品方案**: 确保实现符合 docs/产品方案-目录.md 中的 MVP 范围
+3. **遵循开发标准**: 严格按照 docs/开发标准.md 中的规范执行：
    - 技术架构：分层架构、模块职责、技术栈选型
    - 代码规范：TypeScript strict mode、命名规则、文件结构
    - 测试标准：安全模块 ≥95%、AI 模块 ≥90%、整体 ≥80%
@@ -453,6 +509,7 @@ $test_output
 - 不要删除或跳过测试
 - 修复代码而不是修改测试期望值（除非测试本身有误）
 - 确保修复不会引入新的问题
+- 遵守 docs/AI开发约束.md 中的代码隔离和架构边界规则
 
 开始修复...
 EOF
@@ -463,18 +520,22 @@ build_batch_generate_prompt() {
     cat << 'EOF'
 你是 ServerPilot 项目的 AI 开发助手。请分析项目当前状态，**批量生成**接下来要完成的任务。
 
-## 项目目标
+## 必读文档
 
+> **⚠️ 强制约束**: 在生成任务前，必须先阅读 `docs/AI开发约束.md`，严格遵守版本分离原则和开发优先级。
+
+**AI 开发约束**: docs/AI开发约束.md - **必读** — 版本分离规则、开发优先级、暂缓功能列表
 **产品方案**: docs/产品方案-目录.md - MVP 范围、优先级、技术栈概要
 **完整方案**: docs/DevOps产品方案.md - 详细产品设计（需要时查阅）
 **开发标准**: docs/开发标准.md - 技术架构、代码规范、Git 工作流、测试标准
 
 ## 你的任务
 
-1. **阅读产品方案目录**: 读 docs/产品方案-目录.md，了解 MVP 范围和开发优先级
-2. **遵循开发标准**: 查看 docs/开发标准.md，了解技术架构和代码规范
-3. **分析当前代码**: 检查 packages/ 目录下各模块的实现状态
-4. **批量生成任务**: 根据优先级生成 5-10 个待完成任务（按重要性排序）
+1. **阅读 AI 开发约束**: 先读 docs/AI开发约束.md，了解版本分离规则和暂缓开发的功能列表
+2. **阅读产品方案目录**: 读 docs/产品方案-目录.md，了解 MVP 范围和开发优先级
+3. **遵循开发标准**: 查看 docs/开发标准.md，了解技术架构和代码规范
+4. **分析当前代码**: 检查 packages/ 目录下各模块的实现状态
+5. **批量生成任务**: 根据 AI 开发约束中的优先级生成 5-10 个待完成任务（按重要性排序）
 
 ## 输出格式
 
@@ -512,11 +573,13 @@ build_batch_generate_prompt() {
 
 ## 注意事项
 
+- **版本分离**: 不得生成云版专属任务（PostgreSQL适配、Stripe计费、多副本部署等），除非 AI开发约束.md 明确允许
 - **任务粒度**: 每个任务 1-2 小时可完成
-- **优先级**: 优先生成 P0 任务，然后 P1、P2
+- **优先级**: 按照 AI开发约束.md 中的优先级排序（P0 开源核心 > P1 开源发布 > P2 开源增值）
 - **依赖关系**: 考虑任务之间的依赖，先生成基础任务
 - **数量**: 生成 5-10 个任务（根据项目状态决定）
 - **可执行性**: 每个任务描述要清晰、可独立执行
+- **代码隔离**: 任务涉及的模块路径必须符合 AI开发约束.md 中的架构边界
 
 开始分析并生成任务列表...
 EOF
@@ -627,6 +690,7 @@ run_claude_analyze() {
     local check_interval=10
     local last_size=0
     local no_progress_count=0
+    local stuck_count=0
     local max_no_progress=$((NO_OUTPUT_TIMEOUT / check_interval))  # 无输出超时
 
     while kill -0 $claude_pid 2>/dev/null; do
@@ -650,6 +714,28 @@ run_claude_analyze() {
             else
                 last_size=$current_size
                 no_progress_count=0
+                stuck_count=0
+            fi
+        fi
+
+        # 卡死检测：无输出超过 STUCK_CHECK_AFTER 秒后，检查进程是否还活着
+        if [ $((no_progress_count * check_interval)) -ge $STUCK_CHECK_AFTER ]; then
+            if is_process_stuck $claude_pid; then
+                stuck_count=$((stuck_count + 1))
+                local stuck_seconds=$((stuck_count * check_interval))
+                if [ $stuck_seconds -ge $STUCK_CONFIRM_TIME ]; then
+                    log_error "进程卡死确认（CPU=0% + 无子进程 + 无网络，持续 $((stuck_seconds / 60)) 分钟），强制终止..."
+                    pkill -TERM -P $claude_pid 2>/dev/null || true
+                    sleep 2
+                    pkill -KILL -P $claude_pid 2>/dev/null || true
+                    kill -9 $claude_pid 2>/dev/null || true
+                    rm -f "$output_file" "$pid_file" "$pid_file.exit"
+                    return 2
+                elif [ $((stuck_count % 6)) -eq 0 ]; then
+                    log_warning "卡死检测中... CPU=0%/无子进程/无网络 已持续 $((stuck_seconds / 60)) 分钟 (确认阈值: $((STUCK_CONFIRM_TIME / 60))分钟)"
+                fi
+            else
+                stuck_count=0
             fi
         fi
 
@@ -736,6 +822,7 @@ run_claude_execute() {
     local check_interval=10
     local last_size=0
     local no_progress_count=0
+    local stuck_count=0
     local max_no_progress=$((NO_OUTPUT_TIMEOUT / check_interval))  # 无输出超时
 
     while kill -0 $claude_pid 2>/dev/null; do
@@ -759,6 +846,28 @@ run_claude_execute() {
             else
                 last_size=$current_size
                 no_progress_count=0
+                stuck_count=0
+            fi
+        fi
+
+        # 卡死检测：无输出超过 STUCK_CHECK_AFTER 秒后，检查进程是否还活着
+        if [ $((no_progress_count * check_interval)) -ge $STUCK_CHECK_AFTER ]; then
+            if is_process_stuck $claude_pid; then
+                stuck_count=$((stuck_count + 1))
+                local stuck_seconds=$((stuck_count * check_interval))
+                if [ $stuck_seconds -ge $STUCK_CONFIRM_TIME ]; then
+                    log_error "进程卡死确认（CPU=0% + 无子进程 + 无网络，持续 $((stuck_seconds / 60)) 分钟），强制终止..."
+                    pkill -TERM -P $claude_pid 2>/dev/null || true
+                    sleep 2
+                    pkill -KILL -P $claude_pid 2>/dev/null || true
+                    kill -9 $claude_pid 2>/dev/null || true
+                    rm -f "$output_file" "$pid_file" "$pid_file.exit"
+                    return 2
+                elif [ $((stuck_count % 6)) -eq 0 ]; then
+                    log_warning "卡死检测中... CPU=0%/无子进程/无网络 已持续 $((stuck_seconds / 60)) 分钟 (确认阈值: $((STUCK_CONFIRM_TIME / 60))分钟)"
+                fi
+            else
+                stuck_count=0
             fi
         fi
 
@@ -1072,10 +1181,15 @@ main() {
             echo "  --show-failures   显示失败任务统计"
             echo "  --help, -h        显示帮助信息"
             echo ""
+            echo "必读文档:"
+            echo "  AI_CONSTRAINTS=$AI_CONSTRAINTS"
+            echo ""
             echo "配置:"
             echo "  MAX_RETRIES=$MAX_RETRIES        单轮最大重试次数"
             echo "  MAX_TASK_FAILURES=$MAX_TASK_FAILURES   跨轮次最大失败次数"
             echo "  INTERVAL=$INTERVAL           循环间隔（秒）"
+            echo "  STUCK_CHECK_AFTER=$((STUCK_CHECK_AFTER/60))min   无输出多久后开始卡死检测"
+            echo "  STUCK_CONFIRM_TIME=$((STUCK_CONFIRM_TIME/60))min  确认卡死多久后终止"
             exit 0
             ;;
     esac

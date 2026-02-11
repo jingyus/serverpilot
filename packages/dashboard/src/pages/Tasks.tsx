@@ -34,8 +34,6 @@ import { useServersStore } from '@/stores/servers';
 import { formatDate } from '@/utils/format';
 import type { Task, TaskStatus, TaskLastStatus, CreateTaskInput, UpdateTaskInput } from '@/types/dashboard';
 
-// ── Config Maps ──
-
 const TASK_STATUS_CONFIG: Record<
   TaskStatus,
   { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon: typeof CheckCircle2 }
@@ -52,8 +50,6 @@ const LAST_STATUS_CONFIG: Record<
   success: { label: 'Success', variant: 'default', icon: CheckCircle2 },
   failed: { label: 'Failed', variant: 'destructive', icon: XCircle },
 };
-
-// ── Cron Description ──
 
 function describeCron(cron: string): string {
   const parts = cron.trim().split(/\s+/);
@@ -77,8 +73,6 @@ function describeCron(cron: string): string {
   }
   return cron;
 }
-
-// ── Sub-components ──
 
 function TaskStatusBadge({ status }: { status: TaskStatus }) {
   const config = TASK_STATUS_CONFIG[status] ?? TASK_STATUS_CONFIG.active;
@@ -111,12 +105,10 @@ function LastRunBadge({ lastStatus }: { lastStatus: TaskLastStatus | null | unde
 
 function StatsCards() {
   const { tasks } = useTasksStore();
-
   const active = tasks.filter((t) => t.status === 'active').length;
   const paused = tasks.filter((t) => t.status === 'paused').length;
   const successCount = tasks.filter((t) => t.lastStatus === 'success').length;
   const failedCount = tasks.filter((t) => t.lastStatus === 'failed').length;
-
   return (
     <div className="grid grid-cols-2 gap-2 sm:gap-4 lg:grid-cols-4" data-testid="task-stats">
       <Card>
@@ -235,92 +227,81 @@ function FilterBar() {
   );
 }
 
-function TaskRow({
-  task,
-  onEdit,
-  onDelete,
-  onToggleStatus,
-  onRun,
-}: {
+interface TaskItemProps {
   task: Task;
   onEdit: (task: Task) => void;
   onDelete: (task: Task) => void;
   onToggleStatus: (task: Task) => void;
   onRun: (task: Task) => void;
-}) {
+}
+
+function TaskActions({ task, onRun, onToggleStatus, onEdit, onDelete, idPrefix = '' }: TaskItemProps & { idPrefix?: string }) {
+  const p = idPrefix;
+  return (
+    <div className="flex items-center gap-1 shrink-0">
+      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onRun(task)} disabled={task.status !== 'active'} aria-label="Run task" data-testid={`${p}run-task-${task.id}`}>
+        <Play className="h-3.5 w-3.5" />
+      </Button>
+      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onToggleStatus(task)} aria-label={task.status === 'active' ? 'Pause task' : 'Resume task'} data-testid={`${p}toggle-task-${task.id}`}>
+        {task.status === 'active' ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5 text-green-600" />}
+      </Button>
+      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onEdit(task)} aria-label="Edit task" data-testid={`${p}edit-task-${task.id}`}>
+        <Pencil className="h-3.5 w-3.5" />
+      </Button>
+      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => onDelete(task)} aria-label="Delete task" data-testid={`${p}delete-task-${task.id}`}>
+        <Trash2 className="h-3.5 w-3.5" />
+      </Button>
+    </div>
+  );
+}
+
+function TaskCard(props: TaskItemProps) {
+  const { task } = props;
+  return (
+    <Card data-testid={`task-card-${task.id}`}>
+      <CardContent className="p-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium">{task.name}</span>
+              <TaskStatusBadge status={task.status} />
+            </div>
+            <p className="text-xs text-muted-foreground">{task.serverName ?? task.serverId}</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{task.cron}</code>
+              <span className="text-xs text-muted-foreground">{describeCron(task.cron)}</span>
+            </div>
+            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+              <LastRunBadge lastStatus={task.lastStatus} />
+              {task.nextRun && <span>Next: {formatDate(task.nextRun)}</span>}
+            </div>
+          </div>
+          <TaskActions {...props} idPrefix="m-" />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function TaskRow(props: TaskItemProps) {
+  const { task } = props;
   return (
     <tr
       className="border-b border-border/50 transition-colors hover:bg-muted/50"
       data-testid={`task-row-${task.id}`}
     >
       <td className="px-3 py-3 text-sm font-medium sm:px-4">{task.name}</td>
-      <td className="px-3 py-3 text-sm sm:px-4">
-        {task.serverName ?? task.serverId}
-      </td>
+      <td className="px-3 py-3 text-sm sm:px-4">{task.serverName ?? task.serverId}</td>
       <td className="hidden px-3 py-3 text-sm sm:table-cell sm:px-4">
         <div>
           <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{task.cron}</code>
           <p className="mt-0.5 text-xs text-muted-foreground">{describeCron(task.cron)}</p>
         </div>
       </td>
-      <td className="px-3 py-3 sm:px-4">
-        <TaskStatusBadge status={task.status} />
-      </td>
-      <td className="hidden px-3 py-3 sm:table-cell sm:px-4">
-        <LastRunBadge lastStatus={task.lastStatus} />
-      </td>
-      <td className="hidden px-3 py-3 text-xs text-muted-foreground md:table-cell md:px-4">
-        {task.nextRun ? formatDate(task.nextRun) : '-'}
-      </td>
-      <td className="px-3 py-3 sm:px-4">
-        <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={() => onRun(task)}
-            disabled={task.status !== 'active'}
-            aria-label="Run task"
-            data-testid={`run-task-${task.id}`}
-          >
-            <Play className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={() => onToggleStatus(task)}
-            aria-label={task.status === 'active' ? 'Pause task' : 'Resume task'}
-            data-testid={`toggle-task-${task.id}`}
-          >
-            {task.status === 'active' ? (
-              <Pause className="h-3.5 w-3.5" />
-            ) : (
-              <Play className="h-3.5 w-3.5 text-green-600" />
-            )}
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={() => onEdit(task)}
-            aria-label="Edit task"
-            data-testid={`edit-task-${task.id}`}
-          >
-            <Pencil className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-destructive"
-            onClick={() => onDelete(task)}
-            aria-label="Delete task"
-            data-testid={`delete-task-${task.id}`}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      </td>
+      <td className="px-3 py-3 sm:px-4"><TaskStatusBadge status={task.status} /></td>
+      <td className="hidden px-3 py-3 sm:table-cell sm:px-4"><LastRunBadge lastStatus={task.lastStatus} /></td>
+      <td className="hidden px-3 py-3 text-xs text-muted-foreground md:table-cell md:px-4">{task.nextRun ? formatDate(task.nextRun) : '-'}</td>
+      <td className="px-3 py-3 sm:px-4"><TaskActions {...props} /></td>
     </tr>
   );
 }
@@ -392,7 +373,22 @@ function TasksTable() {
 
   return (
     <>
-      <div className="overflow-x-auto" data-testid="tasks-table">
+      {/* Mobile card view */}
+      <div className="space-y-2 p-2 sm:hidden" data-testid="tasks-table">
+        {tasks.map((task) => (
+          <TaskCard
+            key={task.id}
+            task={task}
+            onEdit={setEditTask}
+            onDelete={setDeleteConfirm}
+            onToggleStatus={handleToggleStatus}
+            onRun={handleRun}
+          />
+        ))}
+      </div>
+
+      {/* Desktop table view */}
+      <div className="hidden sm:block" data-testid="tasks-table-desktop">
         <table className="w-full text-left">
           <thead>
             <tr className="border-b border-border text-xs font-medium uppercase text-muted-foreground">
@@ -448,8 +444,6 @@ function TasksTable() {
     </>
   );
 }
-
-// ── Create Task Dialog ──
 
 function CreateTaskDialog({
   open,
@@ -609,8 +603,6 @@ function CreateTaskDialog({
   );
 }
 
-// ── Edit Task Dialog ──
-
 function EditTaskDialog({
   task,
   onClose,
@@ -742,8 +734,6 @@ function EditTaskDialog({
   );
 }
 
-// ── Main Page ──
-
 export function Tasks() {
   const { fetchTasks, filters, error, clearError } = useTasksStore();
   const { fetchServers } = useServersStore();
@@ -761,14 +751,14 @@ export function Tasks() {
   return (
     <div className="space-y-4 sm:space-y-6" data-testid="tasks-page">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl font-bold text-foreground sm:text-2xl">Scheduled Tasks</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Manage recurring scheduled tasks across your servers.
           </p>
         </div>
-        <Button onClick={() => setCreateOpen(true)} data-testid="create-task-btn">
+        <Button onClick={() => setCreateOpen(true)} className="w-full sm:w-auto" data-testid="create-task-btn">
           <Plus className="mr-2 h-4 w-4" />
           Create Task
         </Button>
@@ -803,7 +793,6 @@ export function Tasks() {
           <TasksTable />
         </CardContent>
       </Card>
-
       {/* Create Dialog */}
       <CreateTaskDialog open={createOpen} onClose={() => setCreateOpen(false)} />
     </div>

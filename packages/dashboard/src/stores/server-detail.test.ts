@@ -18,8 +18,15 @@ vi.mock('@/api/client', () => ({
   },
 }));
 
+const mockAbort = vi.fn();
+vi.mock('@/api/sse', () => ({
+  createMetricsSSE: vi.fn(() => ({ abort: mockAbort })),
+}));
+
 const { apiRequest } = await import('@/api/client');
 const mockApiRequest = vi.mocked(apiRequest);
+const { createMetricsSSE } = await import('@/api/sse');
+const mockCreateMetricsSSE = vi.mocked(createMetricsSSE);
 
 const mockServer = {
   id: 'srv-1',
@@ -261,6 +268,144 @@ describe('useServerDetailStore', () => {
       expect(state.metricsRange).toBe('1h');
       expect(state.isLoading).toBe(false);
       expect(state.error).toBeNull();
+    });
+
+    it('aborts active stream on reset', () => {
+      useServerDetailStore.getState().startMetricsStream('srv-1');
+      useServerDetailStore.getState().reset();
+
+      expect(mockAbort).toHaveBeenCalled();
+    });
+  });
+
+  describe('startMetricsStream', () => {
+    it('creates SSE connection with correct path', () => {
+      useServerDetailStore.getState().startMetricsStream('srv-1');
+
+      expect(mockCreateMetricsSSE).toHaveBeenCalledWith(
+        '/metrics/stream?serverId=srv-1',
+        expect.objectContaining({
+          onMetric: expect.any(Function),
+          onError: expect.any(Function),
+        }),
+      );
+    });
+
+    it('sets isStreaming to true', () => {
+      useServerDetailStore.getState().startMetricsStream('srv-1');
+      expect(useServerDetailStore.getState().isStreaming).toBe(true);
+    });
+
+    it('aborts previous stream when starting a new one', () => {
+      useServerDetailStore.getState().startMetricsStream('srv-1');
+      const firstAbort = mockAbort;
+
+      const secondAbort = vi.fn();
+      mockCreateMetricsSSE.mockReturnValueOnce({ abort: secondAbort });
+
+      useServerDetailStore.getState().startMetricsStream('srv-2');
+
+      expect(firstAbort).toHaveBeenCalled();
+    });
+
+    it('appends incoming metric and updates latest metrics', () => {
+      useServerDetailStore.getState().startMetricsStream('srv-1');
+
+      // Get the onMetric callback
+      const calls = mockCreateMetricsSSE.mock.calls;
+      const callbacks = calls[0][1];
+
+      const newMetric = {
+        id: 'm-3',
+        serverId: 'srv-1',
+        cpuUsage: 65.0,
+        memoryUsage: 5368709120,
+        memoryTotal: 8589934592,
+        diskUsage: 53687091200,
+        diskTotal: 107374182400,
+        networkIn: 2097152,
+        networkOut: 1048576,
+        timestamp: new Date().toISOString(),
+      };
+
+      callbacks.onMetric!(JSON.stringify(newMetric));
+
+      const state = useServerDetailStore.getState();
+      expect(state.metricsHistory).toContainEqual(newMetric);
+      expect(state.metrics?.cpuUsage).toBe(65.0);
+      expect(state.metrics?.memoryUsage).toBe(5368709120);
+    });
+
+    it('trims old metrics outside the sliding window', () => {
+      // Set range to 1h and pre-populate with old data
+      useServerDetailStore.setState({
+        metricsRange: '1h',
+        metricsHistory: [
+          {
+            id: 'm-old',
+            serverId: 'srv-1',
+            cpuUsage: 10,
+            memoryUsage: 1024,
+            memoryTotal: 8192,
+            diskUsage: 5000,
+            diskTotal: 10000,
+            networkIn: 100,
+            networkOut: 200,
+            timestamp: '2020-01-01T00:00:00Z', // very old
+          },
+        ],
+      });
+
+      useServerDetailStore.getState().startMetricsStream('srv-1');
+
+      const calls = mockCreateMetricsSSE.mock.calls;
+      const callbacks = calls[0][1];
+
+      const freshMetric = {
+        id: 'm-new',
+        serverId: 'srv-1',
+        cpuUsage: 50,
+        memoryUsage: 4096,
+        memoryTotal: 8192,
+        diskUsage: 5000,
+        diskTotal: 10000,
+        networkIn: 500,
+        networkOut: 600,
+        timestamp: new Date().toISOString(),
+      };
+
+      callbacks.onMetric!(JSON.stringify(freshMetric));
+
+      const history = useServerDetailStore.getState().metricsHistory;
+      // Old metric should be filtered out
+      expect(history.find(m => m.id === 'm-old')).toBeUndefined();
+      expect(history.find(m => m.id === 'm-new')).toBeDefined();
+    });
+
+    it('encodes serverId in the URL', () => {
+      useServerDetailStore.getState().startMetricsStream('srv with spaces');
+
+      expect(mockCreateMetricsSSE).toHaveBeenCalledWith(
+        '/metrics/stream?serverId=srv%20with%20spaces',
+        expect.any(Object),
+      );
+    });
+  });
+
+  describe('stopMetricsStream', () => {
+    it('aborts active stream', () => {
+      useServerDetailStore.getState().startMetricsStream('srv-1');
+      useServerDetailStore.getState().stopMetricsStream();
+
+      expect(mockAbort).toHaveBeenCalled();
+    });
+
+    it('sets isStreaming to false', () => {
+      useServerDetailStore.getState().startMetricsStream('srv-1');
+      expect(useServerDetailStore.getState().isStreaming).toBe(true);
+
+      useServerDetailStore.getState().stopMetricsStream();
+      expect(useServerDetailStore.getState().isStreaming).toBe(false);
     });
   });
 });

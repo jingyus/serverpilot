@@ -3,6 +3,7 @@
 import { create } from 'zustand';
 
 import { apiRequest, ApiError } from '@/api/client';
+import { createMetricsSSE } from '@/api/sse';
 import type {
   Server,
   ServerProfile,
@@ -14,6 +15,13 @@ import type {
   MetricsHistoryResponse,
 } from '@/types/server';
 
+/** Sliding window durations in milliseconds. */
+const WINDOW_MS: Record<MetricsRange, number> = {
+  '1h': 60 * 60 * 1000,
+  '24h': 24 * 60 * 60 * 1000,
+  '7d': 7 * 24 * 60 * 60 * 1000,
+};
+
 interface ServerDetailState {
   server: Server | null;
   profile: ServerProfile | null;
@@ -23,11 +31,14 @@ interface ServerDetailState {
   isLoading: boolean;
   isProfileLoading: boolean;
   isMetricsLoading: boolean;
+  isStreaming: boolean;
   error: string | null;
   fetchServer: (id: string) => Promise<void>;
   fetchProfile: (id: string) => Promise<void>;
   fetchMetrics: (id: string, range?: MetricsRange) => Promise<void>;
   setMetricsRange: (range: MetricsRange) => void;
+  startMetricsStream: (serverId: string) => void;
+  stopMetricsStream: () => void;
   clearError: () => void;
   reset: () => void;
 }
@@ -41,8 +52,12 @@ const initialState = {
   isLoading: false,
   isProfileLoading: false,
   isMetricsLoading: false,
+  isStreaming: false,
   error: null,
 };
+
+// Module-level SSE handle (not in Zustand state to avoid serialization issues)
+let activeStream: { abort: () => void } | null = null;
 
 export const useServerDetailStore = create<ServerDetailState>((set, get) => ({
   ...initialState,
@@ -110,6 +125,59 @@ export const useServerDetailStore = create<ServerDetailState>((set, get) => ({
 
   setMetricsRange: (range) => set({ metricsRange: range }),
 
+  startMetricsStream: (serverId) => {
+    // Close existing stream if any
+    activeStream?.abort();
+
+    set({ isStreaming: true });
+
+    activeStream = createMetricsSSE(
+      `/metrics/stream?serverId=${encodeURIComponent(serverId)}`,
+      {
+        onMetric: (data) => {
+          try {
+            const metric = JSON.parse(data) as MetricPoint;
+            set((state) => {
+              const windowMs = WINDOW_MS[state.metricsRange];
+              const cutoff = new Date(Date.now() - windowMs).toISOString();
+              // Append new point and trim outside window
+              const updated = [...state.metricsHistory, metric]
+                .filter((p) => p.timestamp >= cutoff);
+              return {
+                metricsHistory: updated,
+                metrics: {
+                  cpuUsage: metric.cpuUsage,
+                  memoryUsage: metric.memoryUsage,
+                  memoryTotal: metric.memoryTotal,
+                  diskUsage: metric.diskUsage,
+                  diskTotal: metric.diskTotal,
+                  networkIn: metric.networkIn,
+                  networkOut: metric.networkOut,
+                  timestamp: metric.timestamp,
+                },
+              };
+            });
+          } catch {
+            // Ignore parse errors
+          }
+        },
+        onError: () => {
+          // Reconnect is handled internally by createMetricsSSE
+        },
+      },
+    );
+  },
+
+  stopMetricsStream: () => {
+    activeStream?.abort();
+    activeStream = null;
+    set({ isStreaming: false });
+  },
+
   clearError: () => set({ error: null }),
-  reset: () => set(initialState),
+  reset: () => {
+    activeStream?.abort();
+    activeStream = null;
+    set(initialState);
+  },
 }));

@@ -1,0 +1,74 @@
+# ==============================================================================
+# ServerPilot Cloud Deployment — PostgreSQL Edition
+# ==============================================================================
+# Usage:
+#   docker compose -f docker-compose.cloud.yml up -d
+#
+# Environment variables (set in .env or override):
+#   JWT_SECRET           — Required. Min 32 chars.
+#   PG_PASSWORD          — PostgreSQL password (default: serverpilot)
+#   AI_PROVIDER          — claude|openai|ollama|deepseek (default: claude)
+#   ANTHROPIC_API_KEY    — Required if AI_PROVIDER=claude
+#   OPENAI_API_KEY       — Required if AI_PROVIDER=openai
+# ==============================================================================
+
+services:
+  # --------------------------------------------------------------------------
+  # PostgreSQL Database
+  # --------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: serverpilot
+      POSTGRES_USER: serverpilot
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-serverpilot}
+    ports:
+      - "${PG_PORT:-5432}:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U serverpilot -d serverpilot"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # --------------------------------------------------------------------------
+  # ServerPilot Server (PostgreSQL mode)
+  # --------------------------------------------------------------------------
+  server:
+    build:
+      context: .
+      dockerfile: packages/server/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${SERVER_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+      DB_TYPE: postgres
+      DATABASE_URL: postgres://serverpilot:${PG_PASSWORD:-serverpilot}@postgres:5432/serverpilot
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      SERVER_PORT: "3000"
+      SERVER_HOST: "0.0.0.0"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      AI_PROVIDER: ${AI_PROVIDER:-claude}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      GITHUB_OAUTH_CLIENT_ID: ${GITHUB_OAUTH_CLIENT_ID:-}
+      GITHUB_OAUTH_CLIENT_SECRET: ${GITHUB_OAUTH_CLIENT_SECRET:-}
+      GITHUB_OAUTH_REDIRECT_URI: ${GITHUB_OAUTH_REDIRECT_URI:-}
+    healthcheck:
+      test: ["CMD", "node", "-e", "const http = require('http'); http.get('http://localhost:3000/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
+
+volumes:
+  pg_data:
+    driver: local

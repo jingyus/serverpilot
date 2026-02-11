@@ -240,22 +240,25 @@ describe('AuditLog Page', () => {
 
     it('renders command text', () => {
       renderAuditLog();
-      expect(screen.getByText('ls -la /etc')).toBeInTheDocument();
-      expect(screen.getByText('rm -rf /var/log')).toBeInTheDocument();
+      const table = screen.getByTestId('audit-table-desktop');
+      expect(within(table).getByText('ls -la /etc')).toBeInTheDocument();
+      expect(within(table).getByText('rm -rf /var/log')).toBeInTheDocument();
     });
 
     it('renders risk badges', () => {
       renderAuditLog();
-      expect(screen.getByTestId('risk-badge-green')).toBeInTheDocument();
-      expect(screen.getByTestId('risk-badge-forbidden')).toBeInTheDocument();
-      expect(screen.getByTestId('risk-badge-yellow')).toBeInTheDocument();
+      const table = screen.getByTestId('audit-table-desktop');
+      expect(within(table).getByTestId('risk-badge-green')).toBeInTheDocument();
+      expect(within(table).getByTestId('risk-badge-forbidden')).toBeInTheDocument();
+      expect(within(table).getByTestId('risk-badge-yellow')).toBeInTheDocument();
     });
 
     it('renders action badges', () => {
       renderAuditLog();
-      expect(screen.getByTestId('action-badge-allowed')).toBeInTheDocument();
-      expect(screen.getByTestId('action-badge-blocked')).toBeInTheDocument();
-      expect(screen.getByTestId('action-badge-requires_confirmation')).toBeInTheDocument();
+      const table = screen.getByTestId('audit-table-desktop');
+      expect(within(table).getByTestId('action-badge-allowed')).toBeInTheDocument();
+      expect(within(table).getByTestId('action-badge-blocked')).toBeInTheDocument();
+      expect(within(table).getByTestId('action-badge-requires_confirmation')).toBeInTheDocument();
     });
 
     it('shows loading state', () => {

@@ -92,11 +92,14 @@ describe('ServerDetail Page', () => {
       isLoading: false,
       isProfileLoading: false,
       isMetricsLoading: false,
+      isStreaming: false,
       error: null,
       fetchServer: vi.fn(),
       fetchProfile: vi.fn(),
       fetchMetrics: vi.fn(),
       setMetricsRange: vi.fn(),
+      startMetricsStream: vi.fn(),
+      stopMetricsStream: vi.fn(),
       clearError: vi.fn(() => useServerDetailStore.setState({ error: null })),
       reset: vi.fn(),
     });
@@ -354,6 +357,42 @@ describe('ServerDetail Page', () => {
       unmount();
 
       expect(resetMock).toHaveBeenCalled();
+    });
+  });
+
+  describe('metrics streaming', () => {
+    it('starts metrics stream after initial metrics load', () => {
+      const startMetricsStream = vi.fn();
+      useServerDetailStore.setState({
+        isMetricsLoading: false,
+        startMetricsStream,
+      });
+
+      renderServerDetail();
+
+      expect(startMetricsStream).toHaveBeenCalledWith('srv-1');
+    });
+
+    it('does not start stream while metrics are loading', () => {
+      const startMetricsStream = vi.fn();
+      useServerDetailStore.setState({
+        isMetricsLoading: true,
+        startMetricsStream,
+      });
+
+      renderServerDetail();
+
+      expect(startMetricsStream).not.toHaveBeenCalled();
+    });
+
+    it('stops stream on unmount', () => {
+      const stopMetricsStream = vi.fn();
+      useServerDetailStore.setState({ stopMetricsStream });
+
+      const { unmount } = renderServerDetail();
+      unmount();
+
+      expect(stopMetricsStream).toHaveBeenCalled();
     });
   });
 

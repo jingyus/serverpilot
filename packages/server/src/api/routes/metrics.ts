@@ -12,9 +12,12 @@
  */
 
 import { Hono } from 'hono';
+import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
 import { getMetricsRepository } from '../../db/repositories/metrics-repository.js';
 import type { MetricsRange } from '../../db/repositories/metrics-repository.js';
+import { getMetricsBus } from '../../core/metrics/metrics-bus.js';
+import { getServerRepository } from '../../db/repositories/server-repository.js';
 import { requireAuth } from '../middleware/auth.js';
 import { resolveRole, requirePermission } from '../middleware/rbac.js';
 import type { AuthContext } from '../routes/types.js';
@@ -146,6 +149,80 @@ app.get('/aggregated', requirePermission('metrics:read'), async (c) => {
   const aggregated = aggregateMetrics(rawMetrics, bucketSize);
 
   return c.json({ metrics: aggregated });
+});
+
+// ============================================================================
+// SSE Stream
+// ============================================================================
+
+const StreamQuerySchema = z.object({
+  serverId: z.string().min(1),
+});
+
+/**
+ * GET /metrics/stream
+ *
+ * Server-Sent Events endpoint for real-time metrics.
+ * Subscribes to the metrics bus and pushes new metric points
+ * as they arrive from the agent heartbeat.
+ *
+ * Query parameters:
+ * - serverId: Server ID (required)
+ *
+ * Events:
+ * - metric: New metric data point (JSON)
+ * - error: Error notification
+ */
+app.get('/stream', requirePermission('metrics:read'), async (c) => {
+  const userId = c.get('userId');
+  const query = c.req.query();
+
+  const result = StreamQuerySchema.safeParse(query);
+  if (!result.success) {
+    return c.json({ error: 'Invalid query parameters' }, 400);
+  }
+
+  const { serverId } = result.data;
+
+  // Verify server exists and belongs to user
+  const serverRepo = getServerRepository();
+  const server = await serverRepo.findById(serverId, userId);
+  if (!server) {
+    return c.json({ error: 'Server not found' }, 404);
+  }
+
+  return streamSSE(c, async (stream) => {
+    let unsubscribe: (() => void) | null = null;
+
+    stream.onAbort(() => {
+      unsubscribe?.();
+    });
+
+    const bus = getMetricsBus();
+    unsubscribe = bus.subscribe(serverId, async (metric) => {
+      try {
+        await stream.writeSSE({
+          event: 'metric',
+          data: JSON.stringify(metric),
+        });
+      } catch {
+        // Client disconnected — cleanup handled by onAbort
+      }
+    });
+
+    // Send initial ping so client knows connection is live
+    await stream.writeSSE({
+      event: 'connected',
+      data: JSON.stringify({ serverId }),
+    });
+
+    // Keep connection open until client disconnects.
+    // The stream stays alive via the SSE protocol; the bus subscription
+    // pushes data as it arrives from the agent heartbeat handler.
+    await new Promise<void>((resolve) => {
+      stream.onAbort(() => resolve());
+    });
+  });
 });
 
 // ============================================================================

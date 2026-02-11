@@ -253,6 +253,36 @@ function FilterBar() {
   );
 }
 
+function AuditLogCard({
+  log,
+  onSelect,
+}: {
+  log: AuditLogEntry;
+  onSelect: (log: AuditLogEntry) => void;
+}) {
+  return (
+    <Card
+      className="cursor-pointer transition-colors hover:bg-muted/50"
+      onClick={() => onSelect(log)}
+      data-testid={`audit-card-${log.id}`}
+    >
+      <CardContent className="p-3">
+        <div className="space-y-1.5">
+          <code className="line-clamp-2 block rounded bg-muted px-1.5 py-0.5 text-xs">
+            {log.command}
+          </code>
+          <div className="flex flex-wrap items-center gap-2">
+            <RiskBadge level={log.riskLevel} />
+            <ActionBadge action={log.action} />
+            <ResultBadge result={log.executionResult} />
+          </div>
+          <p className="text-xs text-muted-foreground">{formatDate(log.createdAt)}</p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function AuditLogRow({
   log,
   onSelect,
@@ -329,25 +359,35 @@ function AuditLogTable() {
   }
 
   return (
-    <div className="overflow-x-auto" data-testid="audit-table">
-      <table className="w-full text-left">
-        <thead>
-          <tr className="border-b border-border text-xs font-medium uppercase text-muted-foreground">
-            <th className="px-3 py-2 sm:px-4">Time</th>
-            <th className="px-3 py-2 sm:px-4">Command</th>
-            <th className="px-3 py-2 sm:px-4">Risk</th>
-            <th className="hidden px-3 py-2 sm:table-cell sm:px-4">Action</th>
-            <th className="hidden px-3 py-2 md:table-cell md:px-4">Result</th>
-            <th className="hidden px-3 py-2 lg:table-cell lg:px-4">Reason</th>
-          </tr>
-        </thead>
-        <tbody>
-          {logs.map((log) => (
-            <AuditLogRow key={log.id} log={log} onSelect={setSelectedLog} />
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <>
+      {/* Mobile card view */}
+      <div className="space-y-2 p-2 sm:hidden" data-testid="audit-table">
+        {logs.map((log) => (
+          <AuditLogCard key={log.id} log={log} onSelect={setSelectedLog} />
+        ))}
+      </div>
+
+      {/* Desktop table view */}
+      <div className="hidden sm:block" data-testid="audit-table-desktop">
+        <table className="w-full text-left">
+          <thead>
+            <tr className="border-b border-border text-xs font-medium uppercase text-muted-foreground">
+              <th className="px-3 py-2 sm:px-4">Time</th>
+              <th className="px-3 py-2 sm:px-4">Command</th>
+              <th className="px-3 py-2 sm:px-4">Risk</th>
+              <th className="hidden px-3 py-2 sm:table-cell sm:px-4">Action</th>
+              <th className="hidden px-3 py-2 md:table-cell md:px-4">Result</th>
+              <th className="hidden px-3 py-2 lg:table-cell lg:px-4">Reason</th>
+            </tr>
+          </thead>
+          <tbody>
+            {logs.map((log) => (
+              <AuditLogRow key={log.id} log={log} onSelect={setSelectedLog} />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 
@@ -532,7 +572,7 @@ export function AuditLog() {
   return (
     <div className="space-y-4 sm:space-y-6" data-testid="audit-log-page">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl font-bold text-foreground sm:text-2xl">Audit Log</h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -540,7 +580,7 @@ export function AuditLog() {
           </p>
         </div>
         {logs.length > 0 && (
-          <div className="flex items-center gap-2" data-testid="export-buttons">
+          <div className="flex items-center gap-2 shrink-0" data-testid="export-buttons">
             <Button
               variant="outline"
               size="sm"

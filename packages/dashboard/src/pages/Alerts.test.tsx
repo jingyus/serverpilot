@@ -316,7 +316,7 @@ describe('Alerts Page', () => {
     it('renders alerts table when on history tab', () => {
       setupStore({ activeTab: 'history' });
       renderAlerts();
-      expect(screen.getByTestId('alerts-table')).toBeInTheDocument();
+      expect(screen.getByTestId('alerts-table-desktop')).toBeInTheDocument();
     });
 
     it('renders alert rows', () => {
@@ -329,15 +329,17 @@ describe('Alerts Page', () => {
     it('renders alert type badges', () => {
       setupStore({ activeTab: 'history' });
       renderAlerts();
-      expect(screen.getByText('CPU')).toBeInTheDocument();
-      expect(screen.getByText('MEMORY')).toBeInTheDocument();
+      const table = screen.getByTestId('alerts-table-desktop');
+      expect(within(table).getByText('CPU')).toBeInTheDocument();
+      expect(within(table).getByText('MEMORY')).toBeInTheDocument();
     });
 
     it('renders alert status badges', () => {
       setupStore({ activeTab: 'history' });
       renderAlerts();
-      expect(screen.getByText('Active')).toBeInTheDocument();
-      expect(screen.getByText('Resolved')).toBeInTheDocument();
+      const table = screen.getByTestId('alerts-table-desktop');
+      expect(within(table).getByText('Active')).toBeInTheDocument();
+      expect(within(table).getByText('Resolved')).toBeInTheDocument();
     });
 
     it('renders resolve button for unresolved alerts', () => {

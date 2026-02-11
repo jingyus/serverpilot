@@ -825,7 +825,7 @@ export async function handleMetricsReport(
     const metricsRepo = getMetricsRepository();
 
     // Store metrics in database
-    await metricsRepo.record({
+    const recorded = await metricsRepo.record({
       serverId: message.payload.serverId,
       cpuUsage: message.payload.cpuUsage,
       memoryUsage: message.payload.memoryUsage,
@@ -836,7 +836,22 @@ export async function handleMetricsReport(
       networkOut: message.payload.networkOut,
     });
 
-    logger.debug('Metrics stored successfully');
+    // Publish to metrics bus for real-time SSE subscribers
+    const { getMetricsBus } = await import('../core/metrics/metrics-bus.js');
+    getMetricsBus().publish(message.payload.serverId, {
+      id: recorded.id,
+      serverId: recorded.serverId,
+      cpuUsage: recorded.cpuUsage,
+      memoryUsage: recorded.memoryUsage,
+      memoryTotal: recorded.memoryTotal,
+      diskUsage: recorded.diskUsage,
+      diskTotal: recorded.diskTotal,
+      networkIn: recorded.networkIn,
+      networkOut: recorded.networkOut,
+      timestamp: recorded.timestamp,
+    });
+
+    logger.debug('Metrics stored and published');
 
     return { success: true };
   } catch (err) {

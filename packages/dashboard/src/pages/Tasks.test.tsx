@@ -255,9 +255,10 @@ describe('Tasks Page', () => {
 
     it('renders task names', () => {
       renderTasks();
-      expect(screen.getByText('MySQL Daily Backup')).toBeInTheDocument();
-      expect(screen.getByText('Log Cleanup')).toBeInTheDocument();
-      expect(screen.getByText('Health Check')).toBeInTheDocument();
+      const table = screen.getByTestId('tasks-table-desktop');
+      expect(within(table).getByText('MySQL Daily Backup')).toBeInTheDocument();
+      expect(within(table).getByText('Log Cleanup')).toBeInTheDocument();
+      expect(within(table).getByText('Health Check')).toBeInTheDocument();
     });
 
     it('renders server names in table', () => {
@@ -269,21 +270,24 @@ describe('Tasks Page', () => {
 
     it('renders task status badges', () => {
       renderTasks();
-      expect(screen.getAllByTestId('task-status-active')).toHaveLength(2);
-      expect(screen.getByTestId('task-status-paused')).toBeInTheDocument();
+      const table = screen.getByTestId('tasks-table-desktop');
+      expect(within(table).getAllByTestId('task-status-active')).toHaveLength(2);
+      expect(within(table).getByTestId('task-status-paused')).toBeInTheDocument();
     });
 
     it('renders last run badges', () => {
       renderTasks();
-      expect(screen.getByTestId('last-status-success')).toBeInTheDocument();
-      expect(screen.getByTestId('last-status-failed')).toBeInTheDocument();
-      expect(screen.getByTestId('last-status-none')).toBeInTheDocument();
+      const table = screen.getByTestId('tasks-table-desktop');
+      expect(within(table).getByTestId('last-status-success')).toBeInTheDocument();
+      expect(within(table).getByTestId('last-status-failed')).toBeInTheDocument();
+      expect(within(table).getByTestId('last-status-none')).toBeInTheDocument();
     });
 
     it('renders cron expressions', () => {
       renderTasks();
-      expect(screen.getByText('0 2 * * *')).toBeInTheDocument();
-      expect(screen.getByText('Daily at 02:00')).toBeInTheDocument();
+      const table = screen.getByTestId('tasks-table-desktop');
+      expect(within(table).getByText('0 2 * * *')).toBeInTheDocument();
+      expect(within(table).getByText('Daily at 02:00')).toBeInTheDocument();
     });
 
     it('renders action buttons for each task', () => {

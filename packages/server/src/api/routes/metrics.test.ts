@@ -12,6 +12,7 @@ import { Hono } from 'hono';
 
 import type { AuthContext } from './types.js';
 import type { MetricPoint } from '../../db/repositories/metrics-repository.js';
+import type { MetricEvent } from '../../core/metrics/metrics-bus.js';
 
 // ============================================================================
 // Module Mocks — must be before imports of the module under test
@@ -32,6 +33,34 @@ const mockMetricsRepo = {
 
 vi.mock('../../db/repositories/metrics-repository.js', () => ({
   getMetricsRepository: () => mockMetricsRepo,
+}));
+
+const mockServerRepo = {
+  findById: vi.fn(),
+  findAllByUserId: vi.fn(),
+  create: vi.fn(),
+  update: vi.fn(),
+  remove: vi.fn(),
+  getProfile: vi.fn(),
+  updateProfile: vi.fn(),
+  findByAgentToken: vi.fn(),
+  updateLastSeen: vi.fn(),
+  getAll: vi.fn(),
+};
+
+vi.mock('../../db/repositories/server-repository.js', () => ({
+  getServerRepository: () => mockServerRepo,
+}));
+
+const mockMetricsBus = {
+  subscribe: vi.fn(() => vi.fn()),
+  publish: vi.fn(),
+  listenerCount: vi.fn(() => 0),
+  removeAll: vi.fn(),
+};
+
+vi.mock('../../core/metrics/metrics-bus.js', () => ({
+  getMetricsBus: () => mockMetricsBus,
 }));
 
 vi.mock('../middleware/auth.js', () => ({
@@ -579,5 +608,74 @@ describe('aggregateMetrics', () => {
     const bucketTime = new Date(result[0].timestamp).getTime();
     expect(bucketTime % tenMinBucket).toBe(0);
     expect(new Date(bucketTime).toISOString()).toBe('2026-02-10T12:00:00.000Z');
+  });
+});
+
+// ============================================================================
+// GET /metrics/stream — SSE streaming endpoint
+// ============================================================================
+
+describe('GET /metrics/stream', () => {
+  it('should return 400 when serverId is missing', async () => {
+    const res = await app.request('/metrics/stream');
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe('Invalid query parameters');
+  });
+
+  it('should return 404 when server not found', async () => {
+    mockServerRepo.findById.mockResolvedValue(null);
+
+    const res = await app.request('/metrics/stream?serverId=nonexistent');
+
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.error).toBe('Server not found');
+  });
+
+  it('should verify server ownership', async () => {
+    mockServerRepo.findById.mockResolvedValue(null);
+
+    await app.request('/metrics/stream?serverId=server-1');
+
+    expect(mockServerRepo.findById).toHaveBeenCalledWith('server-1', 'user-1');
+  });
+
+  it('should establish SSE connection and subscribe to metrics bus', async () => {
+    mockServerRepo.findById.mockResolvedValue({ id: 'server-1', name: 'test' });
+    mockMetricsBus.subscribe.mockReturnValue(vi.fn());
+
+    // Use AbortController to cancel the long-lived SSE stream
+    const controller = new AbortController();
+    const resPromise = app.request('/metrics/stream?serverId=server-1', {
+      signal: controller.signal,
+    });
+
+    // Give the stream time to start
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Verify subscription was established
+    expect(mockMetricsBus.subscribe).toHaveBeenCalledWith(
+      'server-1',
+      expect.any(Function),
+    );
+
+    // Abort to close the stream
+    controller.abort();
+    // The request may resolve or reject after abort
+    await resPromise.catch(() => {});
+  });
+
+  it('should subscribe to the correct serverId on the metrics bus', async () => {
+    mockServerRepo.findById.mockResolvedValue({ id: 'server-42', name: 'test' });
+    mockMetricsBus.subscribe.mockReturnValue(vi.fn());
+
+    await app.request('/metrics/stream?serverId=server-42');
+
+    expect(mockMetricsBus.subscribe).toHaveBeenCalledWith(
+      'server-42',
+      expect.any(Function),
+    );
   });
 });

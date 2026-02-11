@@ -25,6 +25,7 @@ import { routeMessage } from './api/handlers.js';
 import { createApiApp } from './api/routes/index.js';
 import { initJwtConfig } from './api/middleware/auth.js';
 import { initDatabase, closeDatabase, createTables } from './db/connection.js';
+import { resolveDbType, initDatabaseFromEnv, closeDatabaseConnection } from './db/db-factory.js';
 import { seedDefaultAdmin } from './db/seed-admin.js';
 import { getSnapshotService } from './core/snapshot/snapshot-service.js';
 import { getRollbackService } from './core/rollback/rollback-service.js';
@@ -76,7 +77,9 @@ export interface ServerConfig {
   requireAuth: boolean;
   /** Authentication timeout in ms */
   authTimeoutMs: number;
-  /** Path to the SQLite database file */
+  /** Database type: 'sqlite' (default) or 'postgres' */
+  dbType: 'sqlite' | 'postgres';
+  /** Path to the SQLite database file (only used when dbType=sqlite) */
   databasePath: string;
   /** JWT secret key (min 32 chars) */
   jwtSecret: string;
@@ -131,6 +134,7 @@ export function loadConfig(): ServerConfig {
     logLevel: process.env.LOG_LEVEL ?? 'info',
     requireAuth: process.env.WS_REQUIRE_AUTH !== 'false', // Default to true
     authTimeoutMs: parseInt(process.env.WS_AUTH_TIMEOUT_MS ?? '10000', 10),
+    dbType: resolveDbType(),
     databasePath: process.env.DATABASE_PATH ?? './data/serverpilot.db',
     jwtSecret,
   };
@@ -329,7 +333,7 @@ export function registerShutdownHandlers(server: InstallServer, httpServer?: Htt
         });
       }
 
-      closeDatabase();
+      await closeDatabaseConnection();
       logger.info({ operation: 'shutdown' }, 'Server stopped gracefully');
       process.exit(0);
     } catch (err) {
@@ -362,10 +366,17 @@ export async function startServer(): Promise<InstallServer> {
   initLogger({ level: serverConfig.logLevel });
 
   // 1. Initialize database
-  logger.info({ operation: 'startup', databasePath: serverConfig.databasePath }, 'Initializing database...');
-  initDatabase(serverConfig.databasePath);
-  createTables();
-  logger.info({ operation: 'startup' }, 'Database initialized with tables');
+  const dbType = resolveDbType();
+  if (dbType === 'postgres') {
+    logger.info({ operation: 'startup', dbType: 'postgres' }, 'Initializing PostgreSQL database...');
+    await initDatabaseFromEnv();
+    logger.info({ operation: 'startup' }, 'PostgreSQL database initialized (use migrations for schema)');
+  } else {
+    logger.info({ operation: 'startup', databasePath: serverConfig.databasePath }, 'Initializing SQLite database...');
+    initDatabase(serverConfig.databasePath);
+    createTables();
+    logger.info({ operation: 'startup' }, 'SQLite database initialized with tables');
+  }
 
   // 1b. Seed default admin (only on first run when users table is empty)
   await seedDefaultAdmin();

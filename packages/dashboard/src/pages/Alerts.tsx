@@ -266,7 +266,44 @@ function HistoryTab() {
 
   return (
     <div className="space-y-3">
-      <div className="overflow-x-auto" data-testid="alerts-table">
+      {/* Mobile card view */}
+      <div className="space-y-2 sm:hidden" data-testid="alerts-cards">
+        {alerts.map((alert) => (
+          <Card key={alert.id} data-testid={`alert-card-${alert.id}`}>
+            <CardContent className="p-3">
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="text-xs">{alert.type.toUpperCase()}</Badge>
+                    <SeverityBadge severity={alert.severity} />
+                  </div>
+                  {alert.resolved ? (
+                    <Badge variant="default" className="gap-1 text-xs">
+                      <CheckCircle2 className="h-3 w-3" /> Resolved
+                    </Badge>
+                  ) : (
+                    <Badge variant="destructive" className="gap-1 text-xs">
+                      <AlertCircle className="h-3 w-3" /> Active
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-sm line-clamp-2">{alert.message}</p>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-muted-foreground">{formatDate(alert.createdAt)}</span>
+                  {!alert.resolved && (
+                    <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => resolveAlert(alert.id)} data-testid={`m-resolve-btn-${alert.id}`}>
+                      Resolve
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Desktop table view */}
+      <div className="hidden sm:block" data-testid="alerts-table-desktop">
         <table className="w-full text-left">
           <thead>
             <tr className="border-b border-border text-xs font-medium uppercase text-muted-foreground">

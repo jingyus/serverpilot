@@ -267,6 +267,42 @@ function FilterBar() {
   );
 }
 
+function OperationCard({
+  operation,
+  onSelect,
+}: {
+  operation: Operation;
+  onSelect: (op: Operation) => void;
+}) {
+  return (
+    <Card
+      className="cursor-pointer transition-colors hover:bg-muted/50"
+      onClick={() => onSelect(operation)}
+      data-testid={`operation-card-${operation.id}`}
+    >
+      <CardContent className="p-3">
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-sm font-medium line-clamp-1">{operation.description}</span>
+            <StatusBadge status={operation.status} />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-muted-foreground">{operation.serverName ?? operation.serverId}</span>
+            <Badge variant="outline" className="text-xs">
+              {OPERATION_TYPE_LABELS[operation.type] ?? operation.type}
+            </Badge>
+            <RiskBadge level={operation.riskLevel} />
+          </div>
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <span>{formatDate(operation.createdAt)}</span>
+            {operation.duration != null && <span>{formatDuration(operation.duration)}</span>}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function OperationRow({
   operation,
   onSelect,
@@ -344,30 +380,36 @@ function OperationsTable() {
   }
 
   return (
-    <div className="overflow-x-auto" data-testid="operations-table">
-      <table className="w-full text-left">
-        <thead>
-          <tr className="border-b border-border text-xs font-medium uppercase text-muted-foreground">
-            <th className="px-3 py-2 sm:px-4">Time</th>
-            <th className="px-3 py-2 sm:px-4">Server</th>
-            <th className="hidden px-3 py-2 sm:table-cell sm:px-4">Type</th>
-            <th className="hidden px-3 py-2 md:table-cell md:px-4">Description</th>
-            <th className="px-3 py-2 sm:px-4">Risk</th>
-            <th className="px-3 py-2 sm:px-4">Status</th>
-            <th className="hidden px-3 py-2 lg:table-cell lg:px-4">Duration</th>
-          </tr>
-        </thead>
-        <tbody>
-          {operations.map((op) => (
-            <OperationRow
-              key={op.id}
-              operation={op}
-              onSelect={setSelectedOperation}
-            />
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <>
+      {/* Mobile card view */}
+      <div className="space-y-2 p-2 sm:hidden" data-testid="operations-table">
+        {operations.map((op) => (
+          <OperationCard key={op.id} operation={op} onSelect={setSelectedOperation} />
+        ))}
+      </div>
+
+      {/* Desktop table view */}
+      <div className="hidden sm:block" data-testid="operations-table-desktop">
+        <table className="w-full text-left">
+          <thead>
+            <tr className="border-b border-border text-xs font-medium uppercase text-muted-foreground">
+              <th className="px-3 py-2 sm:px-4">Time</th>
+              <th className="px-3 py-2 sm:px-4">Server</th>
+              <th className="hidden px-3 py-2 sm:table-cell sm:px-4">Type</th>
+              <th className="hidden px-3 py-2 md:table-cell md:px-4">Description</th>
+              <th className="px-3 py-2 sm:px-4">Risk</th>
+              <th className="px-3 py-2 sm:px-4">Status</th>
+              <th className="hidden px-3 py-2 lg:table-cell lg:px-4">Duration</th>
+            </tr>
+          </thead>
+          <tbody>
+            {operations.map((op) => (
+              <OperationRow key={op.id} operation={op} onSelect={setSelectedOperation} />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 

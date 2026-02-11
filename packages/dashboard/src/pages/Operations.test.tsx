@@ -285,22 +285,25 @@ describe('Operations Page', () => {
 
     it('renders server names', () => {
       renderOperations();
-      expect(screen.getAllByText('web-prod-01')).toHaveLength(2);
-      expect(screen.getByText('db-prod-01')).toBeInTheDocument();
+      const table = screen.getByTestId('operations-table-desktop');
+      expect(within(table).getAllByText('web-prod-01')).toHaveLength(2);
+      expect(within(table).getByText('db-prod-01')).toBeInTheDocument();
     });
 
     it('renders status badges', () => {
       renderOperations();
-      expect(screen.getByTestId('status-badge-success')).toBeInTheDocument();
-      expect(screen.getByTestId('status-badge-failed')).toBeInTheDocument();
-      expect(screen.getByTestId('status-badge-running')).toBeInTheDocument();
+      const table = screen.getByTestId('operations-table-desktop');
+      expect(within(table).getByTestId('status-badge-success')).toBeInTheDocument();
+      expect(within(table).getByTestId('status-badge-failed')).toBeInTheDocument();
+      expect(within(table).getByTestId('status-badge-running')).toBeInTheDocument();
     });
 
     it('renders risk badges', () => {
       renderOperations();
-      expect(screen.getByTestId('risk-badge-green')).toBeInTheDocument();
-      expect(screen.getByTestId('risk-badge-yellow')).toBeInTheDocument();
-      expect(screen.getByTestId('risk-badge-red')).toBeInTheDocument();
+      const table = screen.getByTestId('operations-table-desktop');
+      expect(within(table).getByTestId('risk-badge-green')).toBeInTheDocument();
+      expect(within(table).getByTestId('risk-badge-yellow')).toBeInTheDocument();
+      expect(within(table).getByTestId('risk-badge-red')).toBeInTheDocument();
     });
 
     it('shows loading state', () => {

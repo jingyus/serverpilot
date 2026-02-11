@@ -6,195 +6,17 @@
 
 ## 📊 统计信息
 
-- **总任务数**: 66
-- **待完成** (pending): 9
-- **进行中** (in_progress): 0
-- **已完成** (completed): 57
-- **失败** (failed): 0
+- **总任务数**: 60
+- **待完成** (pending): 0
+- **进行中** (in_progress): 3
+- **已完成** (completed): 56
+- **失败** (failed): 1
 
 ---
 
 ## 📋 任务列表
 
 <!-- 任务将由 AI 自动生成和更新 -->
-### [completed] Dashboard 响应式布局适配（移动端/平板） ✅
-
-**ID**: task-044
-**优先级**: P1
-**模块路径**: packages/dashboard/src/components/, packages/dashboard/src/pages/
-**任务描述**: 产品方案 4.3 明确要求 "Web Dashboard 从 MVP 起就支持响应式设计"，但当前 Dashboard 页面主要面向桌面端设计。需要：1) 审查所有 13 个页面组件的移动端显示效果；2) 为 Sidebar 添加移动端折叠/汉堡菜单行为；3) 服务器列表页在窄屏下切换为单列卡片布局；4) Chat 页面在移动端优化输入区域和消息展示；5) 表格类页面（Tasks、Operations、AuditLog）在窄屏下改为卡片/列表视图。使用 Tailwind CSS 响应式断点（sm/md/lg），不引入额外 CSS 框架。
-**产品需求**: 产品方案 4.3 移动端适配 — "支持响应式设计，手机/平板可查看服务器状态"
-**验收标准**:
-- 所有页面在 375px（iPhone SE）宽度下可正常使用
-- Sidebar 在窄屏下自动折叠，点击汉堡菜单展开
-- 表格在窄屏下不出现水平滚动条（改用卡片布局）
-- 不引入新的 CSS 依赖
-- 现有 Dashboard 测试不受影响
-**创建时间**: 2026-02-11 22:20:00
-**完成时间**: 2026-02-11 22:41:52
-
----
-
-### [pending] Docker 镜像自动构建与发布流水线
-
-**ID**: task-045
-**优先级**: P1
-**模块路径**: .github/workflows/, docker-compose.yml, packages/server/Dockerfile
-**任务描述**: 开源发布需要在 Docker Hub / GHCR 上发布预构建镜像。当前仅有 CI/CD 测试流水线，缺少镜像发布 workflow。需要：1) 创建 `.github/workflows/docker-publish.yml`，在 tag 推送时自动构建并推送 `serverpilot/server` 和 `serverpilot/dashboard` 镜像；2) 支持多架构构建（linux/amd64 + linux/arm64）；3) 镜像 tag 策略：`latest`、语义版本（v0.3.0）、commit SHA；4) 构建前运行测试，确保只发布测试通过的镜像；5) 更新 docker-compose.yml 中的镜像引用说明。
-**产品需求**: 产品方案 12.3 v0.3 开源发布 — Docker Hub 镜像发布
-**验收标准**:
-- GitHub Actions workflow 可正确构建多架构 Docker 镜像
-- Tag push 触发自动发布到 Docker Hub / GHCR
-- 镜像支持 amd64 和 arm64 架构
-- tests/ci-config.test.ts 更新覆盖新 workflow 结构
-- 本地 `docker compose up` 可使用发布的镜像
-**创建时间**: 2026-02-11 22:20:00
-**完成时间**: -
-
----
-
-### [pending] 国际化 (i18n) 基础架构搭建
-
-**ID**: task-046
-**优先级**: P1
-**模块路径**: packages/dashboard/src/i18n/, packages/dashboard/src/
-**任务描述**: 作为开源项目面向全球用户，Dashboard 需要支持多语言。当前所有 UI 文本硬编码在组件中。需要：1) 引入轻量 i18n 方案（推荐 `react-i18next`）；2) 创建语言包目录 `src/i18n/locales/`，包含 `en.json`（英文，默认）和 `zh.json`（中文）；3) 提取所有 13 个页面组件中的硬编码文本为翻译 key；4) 在 Settings 页面添加语言切换功能；5) 将用户语言偏好存储在 localStorage。首批仅覆盖导航栏、页面标题和关键操作按钮文本（约 100 个 key），详细文本后续补充。
-**产品需求**: 开源项目国际化 — 面向全球开发者社区
-**验收标准**:
-- `react-i18next` 集成完成，默认英文
-- 英文和中文两套语言包包含核心 UI 文本（≥100 key）
-- Settings 页面可切换语言，切换后立即生效
-- 语言偏好持久化到 localStorage
-- 现有 Dashboard 测试通过（mock i18n）
-**创建时间**: 2026-02-11 22:20:00
-**完成时间**: -
-
----
-
-### [pending] 服务器分组与标签管理
-
-**ID**: task-047
-**优先级**: P2
-**模块路径**: packages/server/src/db/schema.ts, packages/server/src/api/routes/servers.ts, packages/dashboard/src/pages/Servers.tsx
-**任务描述**: 当服务器数量增多时，用户需要按业务分组管理。当前服务器仅有 name 字段，缺少分组和标签。需要：1) 在 servers 表添加 `tags` 字段（JSON 数组，SQLite TEXT 存储）和 `group` 字段（可选字符串）；2) 创建 migration 脚本；3) API 支持：`PATCH /servers/:id` 更新 tags/group，`GET /servers?group=&tag=` 过滤；4) Dashboard Servers 页面：显示标签 chips、添加分组侧栏筛选、支持批量添加标签；5) 标签颜色自动分配（基于 hash）。
-**产品需求**: 产品方案 12.5 长期规划 v1.5 — 服务器分组（提前到开源版实现基础版）
-**验收标准**:
-- 服务器可添加/删除标签（最多 10 个）
-- 服务器列表可按标签和分组筛选
-- 标签在 UI 上以彩色 chip 显示
-- Migration 脚本兼容现有数据
-- 测试覆盖 CRUD 和筛选场景
-**创建时间**: 2026-02-11 22:20:00
-**完成时间**: -
-
----
-
-### [pending] AI 对话上下文增强 — 服务器档案自动注入
-
-**ID**: task-048
-**优先级**: P0
-**模块路径**: packages/server/src/ai/prompts.ts, packages/server/src/ai/agent.ts, packages/server/src/core/profile/manager.ts
-**任务描述**: 产品方案核心理念 "档案驱动" 要求每次 AI 对话自动注入服务器档案，使 AI 生成的方案适配目标环境。当前 AI 对话可能未充分利用 ProfileManager 中的服务器信息。需要：1) 在 chat 流程中，AI 调用前通过 ProfileManager 获取目标服务器的完整档案（OS、已安装软件、服务状态、历史摘要、用户备注）；2) 将档案信息结构化注入 system prompt（使用 context-enhancer.ts 增强）；3) 确保 prompt 中包含服务器特定的注意事项（如 "该服务器已安装 Nginx，勿重复安装"）；4) 添加档案注入的 token 用量跟踪，避免超出上下文窗口。
-**产品需求**: 产品方案 3.2 服务器档案 — "AI 记住每台服务器的状态和偏好"；4.8 服务器档案系统
-**验收标准**:
-- chat API 调用时 system prompt 包含目标服务器档案信息
-- 档案包含：OS 版本、已安装软件列表、服务状态、用户注意事项
-- Token 用量不超过总上下文窗口的 20%（档案部分）
-- AI 回复能正确引用服务器已有环境（如 "检测到已安装 MySQL 5.7"）
-- 测试覆盖档案注入和 token 裁剪逻辑
-**创建时间**: 2026-02-11 22:20:00
-**完成时间**: -
-
----
-
-### [pending] Agent 安装脚本端到端验证与修复
-
-**ID**: task-049
-**优先级**: P0
-**模块路径**: install.sh, scripts/install.sh, scripts/build-binary.ts
-**任务描述**: 开源发布的第一印象取决于安装体验。当前 install.sh 和 scripts/install.sh 中引用了 `aiinstaller/aiinstaller` 的 GitHub release URL，需要与实际发布仓库对齐。需要：1) 统一 install.sh（根目录用于用户 curl 安装）和 scripts/install.sh（详细版本）的逻辑，消除重复；2) 验证 build-binary.ts 输出的二进制命名与 install.sh 中下载名一致；3) 检查 systemd service 文件中的路径和用户配置是否正确；4) 确保 install.sh 在 Ubuntu 22.04/24.04、Debian 12、CentOS 9 上可正确运行（通过 Docker 容器模拟测试）；5) 添加 `--uninstall` 选项清理安装。
-**产品需求**: 产品方案 12.3 v0.3 — 社区版一键安装脚本
-**验收标准**:
-- install.sh 可在主流 Linux 发行版上正确安装 Agent
-- 安装后 Agent 通过 systemd 自动启动并连接 Server
-- `--uninstall` 可完全清理 Agent 安装痕迹
-- 二进制文件名与 GitHub Release 资产名一致
-- 安装脚本测试覆盖平台检测和错误处理路径
-**创建时间**: 2026-02-11 22:20:00
-**完成时间**: -
-
----
-
-### [pending] Dashboard 暗色主题支持
-
-**ID**: task-050
-**优先级**: P2
-**模块路径**: packages/dashboard/src/styles/, packages/dashboard/src/stores/ui.ts, packages/dashboard/tailwind.config.ts
-**任务描述**: 开发者偏好暗色主题，这是提升用户体验的重要功能。需要：1) 配置 Tailwind CSS `darkMode: 'class'`；2) 在 ui store 中添加 theme 状态（light/dark/system），持久化到 localStorage；3) 在 Header/Settings 页面添加主题切换按钮（太阳/月亮图标）；4) 为所有页面和组件添加 `dark:` Tailwind 变体样式；5) 确保 Shadcn/ui 组件的暗色主题兼容。优先覆盖 Sidebar、Chat、ServerDetail 三个高频页面。
-**产品需求**: P1 用户体验优化 — 暗色主题是开发者工具标配
-**验收标准**:
-- 三种主题模式可切换（Light/Dark/System）
-- 主题偏好持久化，刷新后保持
-- Sidebar、Chat、ServerDetail 页面暗色模式视觉效果良好
-- 文本对比度符合 WCAG AA 标准
-- 现有 Dashboard 测试不受影响
-**创建时间**: 2026-02-11 22:20:00
-**完成时间**: -
-
----
-
-### [pending] API 文档自动生成与完善
-
-**ID**: task-051
-**优先级**: P1
-**模块路径**: packages/server/src/api/routes/openapi-spec.ts, packages/server/src/api/routes/openapi-routes.ts, docs/API文档.md
-**任务描述**: 虽然已有 OpenAPI 基础框架和 Swagger UI，但需要确保所有 API 端点都有完整的文档覆盖。需要：1) 审查 openapi-routes.ts 和 openapi-routes-extra.ts，确认所有路由（44+ 个）都有对应的 OpenAPI 定义；2) 补充缺失端点的请求/响应 schema（使用现有 Zod schema 转换）；3) 为每个端点添加真实的请求/响应示例（example）；4) 在 Swagger UI 中分组展示（Auth、Servers、Chat、Tasks、Operations 等）；5) 生成 docs/API文档.md 的 Markdown 版本供 README 链接。
-**产品需求**: 产品方案 12.3 v0.3 开源发布 — 文档完善；开发标准 10.3 API 文档
-**验收标准**:
-- `/api-docs` Swagger UI 展示所有 API 端点
-- 每个端点有完整的请求参数和响应体 schema
-- 至少 20 个核心端点有请求/响应示例
-- API 分组清晰（至少 8 个分组）
-- docs/API文档.md 自动生成或手动同步
-**创建时间**: 2026-02-11 22:20:00
-**完成时间**: -
-
----
-
-### [pending] E2E 测试覆盖核心用户旅程
-
-**ID**: task-052
-**优先级**: P1
-**模块路径**: tests/e2e/, packages/dashboard/e2e/
-**任务描述**: 产品方案 12.7 要求 E2E 测试验证端到端流程。当前 CI 有 E2E workflow 但需确保覆盖核心用户旅程。需要：1) 验证现有 Playwright E2E 测试覆盖范围；2) 补充核心用户旅程测试：a) 注册→登录→添加服务器→查看密钥；b) 选择服务器→发起对话→接收 AI 回复→查看计划；c) 设置页面→切换 AI Provider→验证健康检查；d) 服务器详情→查看实时监控指标；3) 确保 E2E 测试可在 CI 中稳定运行（mock AI Provider 避免外部依赖）。
-**产品需求**: 产品方案 12.7 测试与质量保证策略 — E2E 测试覆盖核心用户旅程
-**验收标准**:
-- 至少 4 条核心用户旅程有 E2E 测试
-- E2E 测试在 CI 中稳定通过（无 flaky tests）
-- AI Provider 在 E2E 中使用 mock（不依赖外部 API）
-- 测试覆盖登录、服务器管理、对话、设置四个核心模块
-- ci.yml 中 E2E job 正常运行
-**创建时间**: 2026-02-11 22:20:00
-**完成时间**: -
-
----
-
-### [pending] 开源发布 Checklist 与 Release 流程完善
-
-**ID**: task-053
-**优先级**: P0
-**模块路径**: .github/workflows/release.yml, scripts/release.ts, CHANGELOG.md
-**任务描述**: 开源发布需要完整的 release 流程。需要：1) 审查并修复 scripts/release.ts 和 release.yml workflow 的兼容性（已知 scripts/release.test.ts 有 pre-existing 失败）；2) 确保 release 流程包含：版本号更新（package.json）、CHANGELOG 追加、Git tag 创建、GitHub Release 发布（含 Agent 二进制）、Docker 镜像发布触发；3) 创建 release checklist 模板（.github/ISSUE_TEMPLATE/release.md）；4) 验证 Agent 二进制可通过 GitHub Release 下载并安装；5) 确保 LICENSE 文件正确（Agent: Apache 2.0, Server: AGPL 3.0）。
-**产品需求**: 产品方案 12.3 v0.3 — 开源发布完整流程
-**验收标准**:
-- `pnpm release` 命令可自动完成版本发布流程
-- GitHub Release 包含 Agent 二进制（4 个平台）
-- CHANGELOG.md 在发布时自动追加版本信息
-- LICENSE 文件符合 Open Core 模型（双协议）
-- scripts/release.test.ts 全部通过
-**创建时间**: 2026-02-11 22:20:00
-**完成时间**: -
-
 ### [completed] RBAC 角色权限系统 ✅
 
 **ID**: task-035
@@ -320,6 +142,58 @@
 **完成时间**: 2026-02-11
 
 ---
+
+### [in_progress] Dashboard 实时监控 WebSocket 推送
+
+**ID**: task-042
+**优先级**: P1
+**模块路径**: packages/server/src/api/routes/metrics.ts, packages/dashboard/src/stores/server-detail.ts
+**任务描述**: 当前 Dashboard 服务器监控数据使用轮询获取（定时 fetch），改为 WebSocket/SSE 实时推送。1) 后端：新增 `GET /api/v1/servers/:id/metrics/stream` SSE 端点，Agent 上报指标时自动推送给订阅该服务器的 Dashboard 客户端；2) 使用现有 agent heartbeat 中的 CPU/内存数据作为实时指标源；3) 前端：server-detail store 新增 SSE 连接管理，MetricsChart 组件支持实时追加数据点（最近 1 小时滑动窗口）；4) 连接自动重连，切换页面时断开。比轮询节省带宽，延迟从 10s+ 降到 <2s。
+**产品需求**: Dashboard 基本监控 — 实时 CPU/内存/磁盘曲线（产品方案 4.4 数据流设计）
+**验收标准**:
+- SSE 端点可用，数据格式与现有 metrics API 一致
+- Dashboard MetricsChart 实时更新，无闪烁
+- 切换服务器时正确切换 SSE 连接
+- 页面离开时断开连接释放资源
+- 延迟 < 2s（Agent heartbeat → Dashboard 显示）
+**创建时间**: 2025-02-11 15:30:00
+**完成时间**: -
+
+---
+
+### [in_progress] PostgreSQL 适配器（云版数据库支持）
+
+**ID**: task-043
+**优先级**: P2
+**模块路径**: packages/server/src/db/
+**任务描述**: 为云版部署准备 PostgreSQL 支持。1) 安装 `drizzle-orm/pg-core` 和 `pg` 驱动；2) 创建 `db/pg-schema.ts`（从 SQLite schema 转换，处理类型差异：integer→serial, text→varchar, SQLite JSON→jsonb）；3) 创建 `db/connection.ts` 工厂，根据 `DB_TYPE=sqlite|postgres` 环境变量选择数据库驱动；4) 抽象 repository 层，确保 SQLite 和 PostgreSQL 使用统一接口；5) 创建 PostgreSQL migration 脚本；6) docker-compose.cloud.yml 增加 PostgreSQL 服务。不影响现有 SQLite 社区版的使用。
+**产品需求**: Phase 4 高可用部署 — PostgreSQL + 多副本（产品方案 4.1 部署模式）
+**验收标准**:
+- `DB_TYPE=postgres` 时可正常连接 PostgreSQL
+- 所有 repository 操作在两种数据库下均通过测试
+- 现有 SQLite 模式不受影响（默认行为不变）
+- docker-compose.cloud.yml 可一键启动 PostgreSQL 版
+- Migration 脚本覆盖所有现有表
+**创建时间**: 2025-02-11 15:30:00
+**完成时间**: -
+
+---
+
+### [in_progress] i18n 国际化框架搭建
+
+**ID**: task-044
+**优先级**: P2
+**模块路径**: packages/dashboard/src/i18n/
+**任务描述**: 为 Dashboard 搭建国际化框架，支持中英文切换。1) 安装 `react-i18next` + `i18next`；2) 创建 `i18n/` 目录，配置 i18n 初始化（语言检测、fallback）；3) 提取现有 UI 中的硬编码英文文本为 key-value，创建 `locales/en.json` 和 `locales/zh.json`；4) 优先翻译核心页面：Login、Dashboard、Servers、Chat（约 200 个 key）；5) Header 组件增加语言切换器；6) 浏览器语言自动检测，用户选择持久化到 localStorage。不要求一次性翻译所有文本，先搭建框架和核心页面。
+**产品需求**: 开源发布 — 面向国际社区（产品方案 11.1 开源冷启动）
+**验收标准**:
+- react-i18next 正确配置和初始化
+- 核心 4 个页面支持中英文切换
+- 语言切换器在 Header 可见
+- 浏览器语言自动检测
+- 新增 UI 文本有 i18n key 规范文档
+**创建时间**: 2025-02-11 15:30:00
+**完成时间**: -
 
 ### [completed] Dashboard AI Provider 选择器支持 custom-openai ✅
 
@@ -732,6 +606,21 @@
 **创建时间**: 2026-02-11 00:00:00
 **完成时间**: 2026-02-11 12:24:03
 
+---
+
+### [failed] CONTRIBUTING.md 贡献指南与开发环境搭建
+
+**ID**: task-016
+**优先级**: P1
+**模块路径**: CONTRIBUTING.md, docs/
+**任务描述**: 编写开源贡献指南：1) `CONTRIBUTING.md` - 开发环境搭建步骤、代码规范摘要、PR 提交流程、Issue 模板；2) `.github/ISSUE_TEMPLATE/` - bug_report.md 和 feature_request.md 模板；3) `.github/PULL_REQUEST_TEMPLATE.md` - PR 模板；4) 知识库贡献指南 - 如何添加新软件的知识文档
+**产品需求**: Phase 3 "贡献指南 CONTRIBUTING.md" + "知识库贡献指南"
+**验收标准**: 1) 新开发者按 CONTRIBUTING.md 可搭建开发环境；2) Issue/PR 模板可用；3) 知识库贡献流程清晰；4) 包含行为准则 (Code of Conduct)
+**创建时间**: 2026-02-11 00:00:00
+**失败时间**: 2026-02-11 13:33:53
+
+**失败次数**: 3
+**失败原因**: 执行阶段尝试 3 次
 ---
 
 ### [completed] CI/CD 流水线完善 - 测试覆盖率门禁 ✅
@@ -1501,6 +1390,7 @@ Settings 页面目前只是一个空壳，需要实现完整的设置功能：
 **创建时间**: 2026-02-10 23:35:00
 **完成时间**: 2026-02-11 06:22:00
 
+
 ---
 
 ## 使用说明
@@ -1527,4 +1417,4 @@ ID: task-001
 
 ---
 
-**最后更新**: 2026-02-11 22:41:52
+**最后更新**: 2026-02-11 22:05:30
