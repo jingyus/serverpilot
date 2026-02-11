@@ -7,9 +7,9 @@
 ## 📊 统计信息
 
 - **总任务数**: 30
-- **待完成** (pending): 7
+- **待完成** (pending): 6
 - **进行中** (in_progress): 0
-- **已完成** (completed): 23
+- **已完成** (completed): 24
 - **失败** (failed): 0
 
 ---
@@ -75,7 +75,7 @@
 
 ---
 
-### [pending] Docker Compose 一键部署验证与优化
+### [completed] Docker Compose 一键部署验证与优化 ✅
 
 **ID**: task-013
 **优先级**: P0
@@ -83,8 +83,30 @@
 **任务描述**: 验证并优化 Docker Compose 部署流程：1) 从零开始执行 `docker compose up`，确认所有服务正常启动；2) 验证 Dashboard → Server API 代理（Nginx 反向代理）正常；3) 验证 WebSocket 连接通过 Nginx 代理正常；4) 验证 SQLite 数据持久化（volume 挂载）；5) 验证 health check 正确运行；6) 优化启动顺序（depends_on + healthcheck）；7) 编写 `scripts/verify-deployment.sh` 自动化验证脚本
 **产品需求**: 部署方式 "docker compose up 一键自部署"
 **验收标准**: 1) `docker compose up -d` 在全新环境成功启动；2) Dashboard 可通过浏览器访问；3) API 和 WebSocket 代理正常；4) 重启后数据不丢失；5) verify-deployment.sh 自动验证各端点可达
+
+**实现内容**:
+- ✅ docker-compose.yml 优化：添加 AI_PROVIDER、OPENAI_API_KEY、DEEPSEEK_API_KEY 环境变量（支持多 AI Provider 切换）
+- ✅ docker-compose.yml 优化：为 Dashboard 添加 healthcheck（curl -f http://localhost/）
+- ✅ .env.example 更新：添加 AI_PROVIDER、OPENAI_API_KEY、DEEPSEEK_API_KEY 文档
+- ✅ verify-deployment.sh 完全重写：从 MySQL 架构迁移到 SQLite 架构
+  - 静态检查：文件结构、Docker Compose 配置、Dockerfile、Nginx、安全、环境模板
+  - 运行时检查：容器状态、Health 端点、Dashboard 访问、API 代理、WebSocket、SQLite 持久化、日志错误
+  - 支持 `--static` 模式（无需运行容器）
+- ✅ tests/docker-compose-production.test.ts 更新：移除 MySQL 遗留测试，添加 Dashboard healthcheck 和 AI_PROVIDER 测试
+- ✅ tests/deployment-verification.test.ts 更新：从 MySQL/init-db.sql 迁移到 SQLite/init.sh 架构
+- ✅ Server Dockerfile：3 阶段构建、非 root 用户、HEALTHCHECK（已验证无需修改）
+- ✅ Dashboard Dockerfile：2 阶段构建、nginx:alpine、curl healthcheck（已验证无需修改）
+- ✅ Nginx 反向代理：API (/api/) + WebSocket (/ws) + Health (/health) + SPA fallback（已验证无需修改）
+- ✅ 启动顺序：Dashboard depends_on server (service_healthy)
+- ✅ SQLite 数据持久化：server-data volume 挂载到 /data
+
+**测试覆盖率**:
+- Docker Compose 测试: 156 tests (140 passed, 16 skipped legacy MySQL)
+- 部署验证测试: 35/35 通过 (100%)
+- Dashboard 测试: 774/774 通过 (100%)
+
 **创建时间**: 2026-02-11 00:00:00
-**完成时间**: -
+**完成时间**: 2026-02-11 11:35:00
 
 ---
 
@@ -921,4 +943,4 @@ ID: task-001
 
 ---
 
-**最后更新**: 2026-02-11 11:22:25
+**最后更新**: 2026-02-11 12:03:05

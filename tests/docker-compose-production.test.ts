@@ -104,23 +104,27 @@ describe('Docker Compose Production Deployment', () => {
       expect(retries).toBeGreaterThanOrEqual(3);
       expect(retries).toBeLessThanOrEqual(10);
     });
+
+    it('should configure dashboard health check', () => {
+      const content = readFileSync(dockerComposePath, 'utf-8');
+      const config = parseYaml(content);
+
+      const dashboardHealthCheck = config.services.dashboard.healthcheck;
+      expect(dashboardHealthCheck).toBeDefined();
+      expect(dashboardHealthCheck.interval).toBeDefined();
+      expect(dashboardHealthCheck.timeout).toBeDefined();
+      expect(dashboardHealthCheck.retries).toBeDefined();
+    });
   });
 
   describe('Service Dependencies', () => {
-    it.skip('should configure server to depend on MySQL (Legacy MySQL test)', () => {
+    it('should configure dashboard to depend on server being healthy', () => {
       const content = readFileSync(dockerComposePath, 'utf-8');
       const config = parseYaml(content);
 
-      expect(config.services.server.depends_on).toBeDefined();
-      expect(config.services.server.depends_on.mysql).toBeDefined();
-    });
-
-    it.skip('should configure server to wait for MySQL to be healthy (Legacy MySQL test)', () => {
-      const content = readFileSync(dockerComposePath, 'utf-8');
-      const config = parseYaml(content);
-
-      const mysqlDependency = config.services.server.depends_on.mysql;
-      expect(mysqlDependency.condition).toBe('service_healthy');
+      expect(config.services.dashboard.depends_on).toBeDefined();
+      expect(config.services.dashboard.depends_on.server).toBeDefined();
+      expect(config.services.dashboard.depends_on.server.condition).toBe('service_healthy');
     });
   });
 
@@ -136,6 +140,17 @@ describe('Docker Compose Production Deployment', () => {
         env.includes('NODE_ENV=production')
       );
       expect(nodeEnv).toBeDefined();
+    });
+
+    it('should configure AI_PROVIDER with default', () => {
+      const content = readFileSync(dockerComposePath, 'utf-8');
+      const config = parseYaml(content);
+
+      const serverEnv = config.services.server.environment;
+      const aiProvider = serverEnv.find((env: string) =>
+        env.includes('AI_PROVIDER')
+      );
+      expect(aiProvider).toBeDefined();
     });
 
     it.skip('should configure server with database connection variables (Legacy MySQL test)', () => {
@@ -386,27 +401,17 @@ describe('Docker Compose Production Deployment', () => {
         'docker-compose.yml',
         '.env.example',
         'packages/server/Dockerfile',
+        'packages/dashboard/Dockerfile',
+        'packages/dashboard/nginx.conf',
         '.dockerignore',
-        'scripts/init-db.sql'
+        'init.sh',
+        'scripts/verify-deployment.sh'
       ];
 
       requiredFiles.forEach(file => {
         const filePath = join(projectRoot, file);
         expect(existsSync(filePath)).toBe(true);
       });
-    });
-
-    it.skip('should have init-db.sql mounted correctly (Legacy MySQL test)', () => {
-      const content = readFileSync(dockerComposePath, 'utf-8');
-      const config = parseYaml(content);
-
-      const mysqlVolumes = config.services.mysql.volumes;
-      const initScriptMount = mysqlVolumes.find((vol: string) =>
-        vol.includes('init-db.sql') && vol.includes('/docker-entrypoint-initdb.d/')
-      );
-
-      expect(initScriptMount).toBeDefined();
-      expect(initScriptMount).toContain(':ro'); // Should be read-only
     });
   });
 
@@ -434,16 +439,37 @@ describe('Docker Compose Production Deployment', () => {
       });
     });
 
-    it('should configure logging implicitly through Docker', () => {
+    it('should configure JSON-file logging with rotation', () => {
       const content = readFileSync(dockerComposePath, 'utf-8');
       const config = parseYaml(content);
 
-      // Docker will handle logging by default
-      // We don't need explicit logging configuration
-      // Just verify services are properly configured
-      expect(config.services.server).toBeDefined();
-      expect(config.services.dashboard).toBeDefined();
-      // Note: Using SQLite instead of MySQL for zero-configuration deployment
+      // Server logging
+      expect(config.services.server.logging).toBeDefined();
+      expect(config.services.server.logging.driver).toBe('json-file');
+      expect(config.services.server.logging.options['max-size']).toBeDefined();
+      expect(config.services.server.logging.options['max-file']).toBeDefined();
+
+      // Dashboard logging
+      expect(config.services.dashboard.logging).toBeDefined();
+      expect(config.services.dashboard.logging.driver).toBe('json-file');
+    });
+  });
+
+  describe('Graceful Shutdown', () => {
+    it('should configure stop_grace_period for server', () => {
+      const content = readFileSync(dockerComposePath, 'utf-8');
+      const config = parseYaml(content);
+
+      expect(config.services.server.stop_grace_period).toBeDefined();
+      expect(config.services.server.stop_grace_period).toMatch(/\d+s/);
+    });
+
+    it('should configure stop_grace_period for dashboard', () => {
+      const content = readFileSync(dockerComposePath, 'utf-8');
+      const config = parseYaml(content);
+
+      expect(config.services.dashboard.stop_grace_period).toBeDefined();
+      expect(config.services.dashboard.stop_grace_period).toMatch(/\d+s/);
     });
   });
 

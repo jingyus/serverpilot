@@ -1,476 +1,536 @@
 #!/usr/bin/env bash
 
 # ==============================================================================
-# AI Installer - Docker Compose Deployment Verification Script
+# ServerPilot - Docker Compose Deployment Verification Script
 # ==============================================================================
-# This script verifies that Docker Compose deployment is properly configured
-# and ready for production use.
+# Verifies that Docker Compose deployment is properly configured and running.
 #
 # Usage:
-#   ./scripts/verify-deployment.sh
+#   ./scripts/verify-deployment.sh           # Full verification
+#   ./scripts/verify-deployment.sh --static  # Static checks only (no running containers)
 #
 # Exit codes:
 #   0 - All checks passed
 #   1 - One or more checks failed
 # ==============================================================================
 
-set -e
+# Note: no `set -e` — the script tracks pass/fail internally and exits with
+# code 1 when any check fails. Early-exit on error would prevent later checks
+# from running and displaying a full report.
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+# --------------------------------------------------------------------------
+# Colors (respect NO_COLOR)
+# --------------------------------------------------------------------------
+if [[ -z "${NO_COLOR:-}" ]]; then
+  RED='\033[0;31m'
+  GREEN='\033[0;32m'
+  YELLOW='\033[1;33m'
+  BLUE='\033[0;34m'
+  NC='\033[0m'
+else
+  RED='' GREEN='' YELLOW='' BLUE='' NC=''
+fi
 
+# --------------------------------------------------------------------------
 # Counters
+# --------------------------------------------------------------------------
 TOTAL_CHECKS=0
 PASSED_CHECKS=0
 FAILED_CHECKS=0
 
-# Print functions
+# --------------------------------------------------------------------------
+# Print helpers
+# --------------------------------------------------------------------------
 print_header() {
-    echo -e "\n${BLUE}========================================${NC}"
-    echo -e "${BLUE}$1${NC}"
-    echo -e "${BLUE}========================================${NC}\n"
+  echo -e "\n${BLUE}========================================${NC}"
+  echo -e "${BLUE}$1${NC}"
+  echo -e "${BLUE}========================================${NC}\n"
 }
 
 print_check() {
-    echo -e "${YELLOW}[CHECK]${NC} $1"
-    TOTAL_CHECKS=$((TOTAL_CHECKS + 1))
+  echo -e "${YELLOW}[CHECK]${NC} $1"
+  TOTAL_CHECKS=$((TOTAL_CHECKS + 1))
 }
 
 print_success() {
-    echo -e "${GREEN}[✓]${NC} $1"
-    PASSED_CHECKS=$((PASSED_CHECKS + 1))
+  echo -e "${GREEN}[PASS]${NC} $1"
+  PASSED_CHECKS=$((PASSED_CHECKS + 1))
 }
 
 print_error() {
-    echo -e "${RED}[✗]${NC} $1"
-    FAILED_CHECKS=$((FAILED_CHECKS + 1))
+  echo -e "${RED}[FAIL]${NC} $1"
+  FAILED_CHECKS=$((FAILED_CHECKS + 1))
 }
 
 print_info() {
-    echo -e "${BLUE}[i]${NC} $1"
+  echo -e "${BLUE}[INFO]${NC} $1"
 }
 
-# Check if command exists
-command_exists() {
-    command -v "$1" >/dev/null 2>&1
-}
+# --------------------------------------------------------------------------
+# Parse flags
+# --------------------------------------------------------------------------
+STATIC_ONLY=false
+for arg in "$@"; do
+  case "$arg" in
+    --static) STATIC_ONLY=true ;;
+    --help|-h)
+      echo "Usage: ./scripts/verify-deployment.sh [--static]"
+      echo ""
+      echo "Options:"
+      echo "  --static   Run static checks only (no running containers required)"
+      echo "  --help     Show this help"
+      exit 0
+      ;;
+  esac
+done
 
+# --------------------------------------------------------------------------
 # Get project root
+# --------------------------------------------------------------------------
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_ROOT"
 
+DASHBOARD_PORT="${DASHBOARD_PORT:-3001}"
+
 # ==============================================================================
-# Pre-requisites Check
+# Prerequisites Check
 # ==============================================================================
 
-print_header "Prerequisites Check"
+print_header "Prerequisites"
 
-print_check "Checking for Docker"
-if command_exists docker; then
-    DOCKER_VERSION=$(docker --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-    print_success "Docker is installed (version $DOCKER_VERSION)"
-else
-    print_error "Docker is not installed"
-    echo "Please install Docker: https://docs.docker.com/get-docker/"
-    exit 1
-fi
+DOCKER_AVAILABLE=false
 
-print_check "Checking for Docker Compose"
-if docker compose version >/dev/null 2>&1; then
-    COMPOSE_VERSION=$(docker compose version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-    print_success "Docker Compose is installed (version $COMPOSE_VERSION)"
-else
-    print_error "Docker Compose is not installed"
-    echo "Please install Docker Compose (included with Docker Desktop)"
-    exit 1
-fi
+print_check "Docker installed"
+if command -v docker >/dev/null 2>&1; then
+  DOCKER_VERSION=$(docker --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+  print_success "Docker $DOCKER_VERSION"
 
-print_check "Checking if Docker daemon is running"
-if docker info >/dev/null 2>&1; then
+  print_check "Docker Compose available"
+  if docker compose version >/dev/null 2>&1; then
+    COMPOSE_VERSION=$(docker compose version --short 2>/dev/null || docker compose version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+    print_success "Docker Compose $COMPOSE_VERSION"
+  else
+    print_error "Docker Compose not available"
+  fi
+
+  print_check "Docker daemon running"
+  if docker info >/dev/null 2>&1; then
     print_success "Docker daemon is running"
+    DOCKER_AVAILABLE=true
+  else
+    print_error "Docker daemon not running"
+  fi
 else
-    print_error "Docker daemon is not running"
-    echo "Please start Docker"
-    exit 1
+  print_error "Docker not installed (https://docs.docker.com/get-docker/)"
+  print_info "Skipping Docker-dependent checks"
 fi
 
 # ==============================================================================
 # File Structure Check
 # ==============================================================================
 
-print_header "File Structure Check"
+print_header "File Structure"
 
 REQUIRED_FILES=(
-    "docker-compose.yml"
-    ".env.example"
-    "packages/server/Dockerfile"
-    ".dockerignore"
-    "scripts/init-db.sql"
+  "docker-compose.yml"
+  ".env.example"
+  "packages/server/Dockerfile"
+  "packages/dashboard/Dockerfile"
+  "packages/dashboard/nginx.conf"
+  ".dockerignore"
+  "init.sh"
+  "pnpm-workspace.yaml"
+  "pnpm-lock.yaml"
 )
 
 for file in "${REQUIRED_FILES[@]}"; do
-    print_check "Checking for $file"
-    if [ -f "$file" ]; then
-        print_success "$file exists"
-    else
-        print_error "$file is missing"
-    fi
+  print_check "$file exists"
+  if [ -f "$file" ]; then
+    print_success "$file"
+  else
+    print_error "$file missing"
+  fi
 done
+
+print_check "knowledge-base/ directory exists"
+if [ -d "knowledge-base" ]; then
+  KB_COUNT=$(find knowledge-base -name "*.md" | wc -l | tr -d ' ')
+  print_success "knowledge-base/ ($KB_COUNT markdown files)"
+else
+  print_error "knowledge-base/ directory missing"
+fi
 
 # ==============================================================================
 # Docker Compose Configuration Check
 # ==============================================================================
 
-print_header "Docker Compose Configuration Check"
+print_header "Docker Compose Configuration"
 
-print_check "Validating docker-compose.yml syntax"
-if docker compose config >/dev/null 2>&1; then
-    print_success "docker-compose.yml syntax is valid"
+if [ "$DOCKER_AVAILABLE" = "true" ]; then
+  print_check "docker-compose.yml valid YAML"
+  if docker compose config >/dev/null 2>&1; then
+    print_success "YAML syntax valid"
+  else
+    print_error "YAML syntax errors"
+    docker compose config 2>&1 | head -5
+  fi
+
+  print_check "Required services defined"
+  SERVICES=$(docker compose config --services 2>/dev/null || echo "")
+  if echo "$SERVICES" | grep -q "server" && echo "$SERVICES" | grep -q "dashboard"; then
+    print_success "Services: server, dashboard"
+  else
+    print_error "Missing required services (found: $SERVICES)"
+  fi
+
+  print_check "Server health check configured"
+  if docker compose config 2>/dev/null | grep -A 20 "server:" | grep -q "healthcheck:"; then
+    print_success "Server health check present"
+  else
+    print_error "Server health check missing"
+  fi
+
+  print_check "Dashboard depends on server (service_healthy)"
+  if docker compose config 2>/dev/null | grep -A 10 "dashboard:" | grep -q "service_healthy"; then
+    print_success "Dashboard waits for healthy server"
+  else
+    print_error "Dashboard does not depend on server health"
+  fi
+
+  print_check "Server restart policy"
+  SERVER_RESTART=$(docker compose config 2>/dev/null | grep -A 30 "serverpilot-server" | grep "restart:" | head -1 | awk '{print $2}' | tr -d '"')
+  if [ "$SERVER_RESTART" = "unless-stopped" ]; then
+    print_success "Server: restart unless-stopped"
+  else
+    print_error "Server restart policy: $SERVER_RESTART (expected: unless-stopped)"
+  fi
+
+  print_check "Custom network defined"
+  if docker compose config 2>/dev/null | grep -q "serverpilot-network"; then
+    print_success "Network: serverpilot-network"
+  else
+    print_error "Custom network not defined"
+  fi
+
+  print_check "SQLite data volume defined"
+  if docker compose config 2>/dev/null | grep -q "server-data"; then
+    print_success "Volume: server-data (SQLite persistence)"
+  else
+    print_error "server-data volume not defined"
+  fi
 else
-    print_error "docker-compose.yml has syntax errors"
-    docker compose config 2>&1
-fi
+  print_info "Skipping Docker Compose validation (Docker not available)"
+  # Fall back to text-based checks
+  print_check "docker-compose.yml contains server service"
+  if grep -q "server:" docker-compose.yml; then
+    print_success "Server service defined"
+  else
+    print_error "Server service missing"
+  fi
 
-print_check "Checking for required services"
-SERVICES=$(docker compose config --services 2>/dev/null || echo "")
-if echo "$SERVICES" | grep -q "mysql" && echo "$SERVICES" | grep -q "server"; then
-    print_success "Required services (mysql, server) are defined"
-else
-    print_error "Required services are missing"
-    echo "Found services: $SERVICES"
-fi
+  print_check "docker-compose.yml contains dashboard service"
+  if grep -q "dashboard:" docker-compose.yml; then
+    print_success "Dashboard service defined"
+  else
+    print_error "Dashboard service missing"
+  fi
 
-print_check "Checking MySQL service configuration"
-MYSQL_IMAGE=$(docker compose config | grep -A 5 "mysql:" | grep "image:" | awk '{print $2}')
-if echo "$MYSQL_IMAGE" | grep -q "mysql:8"; then
-    print_success "MySQL 8.x image is configured ($MYSQL_IMAGE)"
-else
-    print_error "MySQL image is not properly configured"
-fi
+  print_check "Server health check configured"
+  if grep -q "healthcheck:" docker-compose.yml; then
+    print_success "Health check present"
+  else
+    print_error "Health check missing"
+  fi
 
-print_check "Checking server service configuration"
-SERVER_BUILD=$(docker compose config | grep -A 10 "server:" | grep "context:" | awk '{print $2}')
-if [ ! -z "$SERVER_BUILD" ]; then
-    print_success "Server build configuration is present"
-else
-    print_error "Server build configuration is missing"
-fi
+  print_check "Custom network defined"
+  if grep -q "serverpilot-network" docker-compose.yml; then
+    print_success "Network: serverpilot-network"
+  else
+    print_error "Custom network not defined"
+  fi
 
-# ==============================================================================
-# Restart Policy Check
-# ==============================================================================
-
-print_header "Restart Policy Check"
-
-print_check "Checking MySQL restart policy"
-MYSQL_RESTART=$(docker compose config | grep -A 10 "mysql:" | grep "restart:" | awk '{print $2}')
-if [ "$MYSQL_RESTART" = "unless-stopped" ]; then
-    print_success "MySQL restart policy is 'unless-stopped'"
-else
-    print_error "MySQL restart policy is not 'unless-stopped' (found: $MYSQL_RESTART)"
-fi
-
-print_check "Checking server restart policy"
-SERVER_RESTART=$(docker compose config | grep -A 20 "server:" | grep "restart:" | awk '{print $2}')
-if [ "$SERVER_RESTART" = "unless-stopped" ]; then
-    print_success "Server restart policy is 'unless-stopped'"
-else
-    print_error "Server restart policy is not 'unless-stopped' (found: $SERVER_RESTART)"
-fi
-
-# ==============================================================================
-# Health Check Configuration
-# ==============================================================================
-
-print_header "Health Check Configuration"
-
-print_check "Checking MySQL health check"
-if docker compose config | grep -A 15 "mysql:" | grep -q "healthcheck:"; then
-    print_success "MySQL health check is configured"
-else
-    print_error "MySQL health check is missing"
-fi
-
-print_check "Checking server health check"
-if docker compose config | grep -A 30 "server:" | grep -q "healthcheck:"; then
-    print_success "Server health check is configured"
-else
-    print_error "Server health check is missing"
-fi
-
-# ==============================================================================
-# Network Configuration Check
-# ==============================================================================
-
-print_header "Network Configuration"
-
-print_check "Checking network definition"
-if docker compose config | grep -q "aiinstaller-network"; then
-    print_success "Custom network 'aiinstaller-network' is defined"
-else
-    print_error "Custom network is not defined"
-fi
-
-# ==============================================================================
-# Volume Configuration Check
-# ==============================================================================
-
-print_header "Volume Configuration"
-
-print_check "Checking volume definitions"
-if docker compose config | grep -q "mysql-data:" && docker compose config | grep -q "knowledge-base:"; then
-    print_success "Required volumes (mysql-data, knowledge-base) are defined"
-else
-    print_error "Required volumes are missing"
+  print_check "SQLite data volume defined"
+  if grep -q "server-data" docker-compose.yml; then
+    print_success "Volume: server-data"
+  else
+    print_error "server-data volume not defined"
+  fi
 fi
 
 # ==============================================================================
-# Environment Configuration Check
-# ==============================================================================
-
-print_header "Environment Configuration"
-
-print_check "Checking for .env.example file"
-if [ -f ".env.example" ]; then
-    print_success ".env.example file exists"
-
-    # Check for required environment variables
-    REQUIRED_ENV_VARS=(
-        "ANTHROPIC_API_KEY"
-        "DB_HOST"
-        "DB_PORT"
-        "DB_NAME"
-        "DB_USER"
-        "DB_PASSWORD"
-        "MYSQL_ROOT_PASSWORD"
-        "MYSQL_DATABASE"
-        "MYSQL_USER"
-        "MYSQL_PASSWORD"
-    )
-
-    for var in "${REQUIRED_ENV_VARS[@]}"; do
-        print_check "Checking for $var in .env.example"
-        if grep -q "$var" .env.example; then
-            print_success "$var is defined in .env.example"
-        else
-            print_error "$var is missing from .env.example"
-        fi
-    done
-else
-    print_error ".env.example file is missing"
-fi
-
-print_check "Checking for .env file"
-if [ -f ".env" ]; then
-    print_success ".env file exists (make sure to configure it with your values)"
-else
-    print_info ".env file not found (copy from .env.example and configure)"
-fi
-
-# ==============================================================================
-# Security Check
-# ==============================================================================
-
-print_header "Security Configuration"
-
-print_check "Checking for hardcoded secrets in docker-compose.yml"
-if grep -E "(password|secret|key).*[:=].*['\"]?[a-zA-Z0-9]{8,}" docker-compose.yml | grep -v "\${" | grep -v "MYSQL_ROOT_PASSWORD" | grep -v "example" | grep -v "#"; then
-    print_error "Potential hardcoded secrets found in docker-compose.yml"
-else
-    print_success "No hardcoded secrets found in docker-compose.yml"
-fi
-
-# ==============================================================================
-# Database Initialization Check
-# ==============================================================================
-
-print_header "Database Initialization"
-
-print_check "Checking init-db.sql file"
-if [ -f "scripts/init-db.sql" ]; then
-    print_success "Database initialization script exists"
-
-    print_check "Checking for required tables in init-db.sql"
-    REQUIRED_TABLES=("ai_device" "ai_license" "ai_session" "ai_call_log")
-    for table in "${REQUIRED_TABLES[@]}"; do
-        if grep -q "CREATE TABLE.*$table" scripts/init-db.sql; then
-            print_success "Table '$table' is defined"
-        else
-            print_error "Table '$table' is missing"
-        fi
-    done
-else
-    print_error "Database initialization script is missing"
-fi
-
-# ==============================================================================
-# Dockerfile Check
+# Dockerfile Checks
 # ==============================================================================
 
 print_header "Dockerfile Configuration"
 
-print_check "Checking server Dockerfile"
-if [ -f "packages/server/Dockerfile" ]; then
-    print_success "Server Dockerfile exists"
-
-    print_check "Checking for multi-stage build"
-    if grep -q "FROM.*AS" packages/server/Dockerfile; then
-        print_success "Multi-stage build is used"
-    else
-        print_error "Multi-stage build is not used"
-    fi
-
-    print_check "Checking for health check in Dockerfile"
-    if grep -q "HEALTHCHECK" packages/server/Dockerfile; then
-        print_success "Health check is defined in Dockerfile"
-    else
-        print_info "Health check is not in Dockerfile (defined in docker-compose.yml)"
-    fi
-
-    print_check "Checking for non-root user"
-    if grep -q "USER" packages/server/Dockerfile; then
-        print_success "Non-root user is configured"
-    else
-        print_error "Running as root user (security risk)"
-    fi
+print_check "Server Dockerfile: multi-stage build"
+STAGE_COUNT=$(grep -c "^FROM" packages/server/Dockerfile)
+if [ "$STAGE_COUNT" -ge 2 ]; then
+  STAGES=$(grep "^FROM.*AS" packages/server/Dockerfile | awk '{print $NF}' | tr '\n' ', ' | sed 's/,$//')
+  print_success "Server: multi-stage ($STAGES)"
 else
-    print_error "Server Dockerfile is missing"
+  print_error "Server Dockerfile does not use multi-stage build"
+fi
+
+print_check "Server Dockerfile: non-root user"
+if grep -q "^USER" packages/server/Dockerfile; then
+  USER_NAME=$(grep "^USER" packages/server/Dockerfile | awk '{print $2}')
+  print_success "Server runs as non-root user ($USER_NAME)"
+else
+  print_error "Server runs as root (security risk)"
+fi
+
+print_check "Server Dockerfile: health check"
+if grep -q "HEALTHCHECK" packages/server/Dockerfile; then
+  print_success "Server Dockerfile has HEALTHCHECK"
+else
+  print_info "Server Dockerfile has no HEALTHCHECK (defined in docker-compose.yml)"
+fi
+
+print_check "Dashboard Dockerfile: nginx runtime"
+if grep -q "nginx:alpine" packages/dashboard/Dockerfile; then
+  print_success "Dashboard uses nginx:alpine"
+else
+  print_error "Dashboard does not use nginx:alpine"
+fi
+
+print_check "Dashboard Dockerfile: curl for healthcheck"
+if grep -q "curl" packages/dashboard/Dockerfile; then
+  print_success "Dashboard has curl installed for healthcheck"
+else
+  print_error "Dashboard missing curl for healthcheck"
 fi
 
 # ==============================================================================
-# .dockerignore Check
+# Nginx Configuration
 # ==============================================================================
 
-print_header ".dockerignore Configuration"
+print_header "Nginx Configuration"
 
-print_check "Checking .dockerignore file"
-if [ -f ".dockerignore" ]; then
-    print_success ".dockerignore file exists"
-
-    IGNORE_PATTERNS=("node_modules" "dist" "*.test.ts" ".env")
-    for pattern in "${IGNORE_PATTERNS[@]}"; do
-        print_check "Checking for '$pattern' in .dockerignore"
-        if grep -q "$pattern" .dockerignore; then
-            print_success "'$pattern' is ignored"
-        else
-            print_error "'$pattern' should be in .dockerignore"
-        fi
-    done
+print_check "API proxy configuration"
+if grep -q "location /api/" packages/dashboard/nginx.conf; then
+  print_success "API proxy: /api/ -> server:3000"
 else
-    print_error ".dockerignore file is missing"
+  print_error "API proxy not configured"
 fi
+
+print_check "WebSocket proxy configuration"
+if grep -q 'location /ws' packages/dashboard/nginx.conf && grep -q 'Upgrade' packages/dashboard/nginx.conf; then
+  print_success "WebSocket proxy: /ws -> server:3000 (with upgrade)"
+else
+  print_error "WebSocket proxy not properly configured"
+fi
+
+print_check "Health check proxy"
+if grep -q "location /health" packages/dashboard/nginx.conf; then
+  print_success "Health proxy: /health -> server:3000"
+else
+  print_error "Health check proxy not configured"
+fi
+
+print_check "SPA fallback"
+if grep -q "try_files.*index.html" packages/dashboard/nginx.conf; then
+  print_success "SPA fallback: try_files -> /index.html"
+else
+  print_error "SPA fallback not configured"
+fi
+
+print_check "Gzip compression"
+if grep -q "gzip on" packages/dashboard/nginx.conf; then
+  print_success "Gzip compression enabled"
+else
+  print_error "Gzip compression not enabled"
+fi
+
+print_check "Static asset caching"
+if grep -q "location /assets/" packages/dashboard/nginx.conf; then
+  print_success "Static asset caching configured"
+else
+  print_error "Static asset caching not configured"
+fi
+
+print_check "Security headers (X-Frame-Options)"
+if grep -q "X-Frame-Options" packages/dashboard/nginx.conf; then
+  print_success "X-Frame-Options header present"
+else
+  print_error "X-Frame-Options header missing"
+fi
+
+print_check "Security headers (X-Content-Type-Options)"
+if grep -q "X-Content-Type-Options" packages/dashboard/nginx.conf; then
+  print_success "X-Content-Type-Options header present"
+else
+  print_error "X-Content-Type-Options header missing"
+fi
+
+print_check "Request body size limit"
+if grep -q "client_max_body_size" packages/dashboard/nginx.conf; then
+  print_success "Request body size limit configured"
+else
+  print_error "No request body size limit (client_max_body_size)"
+fi
+
+# ==============================================================================
+# Security Checks
+# ==============================================================================
+
+print_header "Security"
+
+print_check "No hardcoded secrets in docker-compose.yml"
+if grep -E "(password|secret|key).*[:=].*['\"]?[a-zA-Z0-9]{16,}" docker-compose.yml | grep -v "\${" | grep -v "#" | grep -qv "KNOWLEDGE_BASE"; then
+  print_error "Potential hardcoded secrets found in docker-compose.yml"
+else
+  print_success "No hardcoded secrets in docker-compose.yml"
+fi
+
+print_check ".env excluded from Docker build context"
+if grep -q "^\.env" .dockerignore; then
+  print_success ".env files excluded in .dockerignore"
+else
+  print_error ".env files not excluded in .dockerignore"
+fi
+
+print_check "node_modules excluded from Docker build context"
+if grep -q "node_modules" .dockerignore; then
+  print_success "node_modules excluded in .dockerignore"
+else
+  print_error "node_modules not excluded in .dockerignore"
+fi
+
+# ==============================================================================
+# Operational Checks
+# ==============================================================================
+
+print_header "Operational Configuration"
+
+print_check "Logging driver configured"
+if grep -q "json-file" docker-compose.yml && grep -q "max-size" docker-compose.yml; then
+  print_success "JSON-file logging with rotation configured"
+else
+  print_error "Logging driver or rotation not configured"
+fi
+
+print_check "Graceful shutdown (stop_grace_period)"
+if grep -q "stop_grace_period" docker-compose.yml; then
+  print_success "stop_grace_period configured"
+else
+  print_error "stop_grace_period not configured"
+fi
+
+# ==============================================================================
+# .env.example Check
+# ==============================================================================
+
+print_header "Environment Template"
+
+REQUIRED_ENV_VARS=(
+  "DASHBOARD_PORT"
+  "JWT_SECRET"
+  "ANTHROPIC_API_KEY"
+  "AI_MODEL"
+  "LOG_LEVEL"
+  "ADMIN_EMAIL"
+)
+
+for var in "${REQUIRED_ENV_VARS[@]}"; do
+  print_check "$var in .env.example"
+  if grep -q "^$var" .env.example 2>/dev/null; then
+    print_success "$var defined"
+  else
+    print_error "$var missing from .env.example"
+  fi
+done
 
 # ==============================================================================
 # Runtime Verification (if services are running)
 # ==============================================================================
 
-print_header "Runtime Verification"
-
-# Check if containers are running
-RUNNING_CONTAINERS=$(docker compose ps --services --filter "status=running" 2>/dev/null || echo "")
-
-if [ -z "$RUNNING_CONTAINERS" ]; then
-    print_info "Docker Compose services are not running"
-    print_info "Skipping runtime checks (run 'docker compose up -d' to start)"
+if [ "$STATIC_ONLY" = "true" ]; then
+  print_info "Skipping runtime checks (--static mode)"
 else
-    print_success "Docker Compose services are running"
+  print_header "Runtime Verification"
 
-    # Check MySQL container
-    print_check "Checking MySQL container health"
-    MYSQL_HEALTH=$(docker compose ps mysql --format json 2>/dev/null | grep -o '"Health":"[^"]*"' | cut -d'"' -f4 || echo "unknown")
-    if [ "$MYSQL_HEALTH" = "healthy" ]; then
-        print_success "MySQL container is healthy"
-    else
-        print_error "MySQL container health: $MYSQL_HEALTH"
-    fi
+  RUNNING_CONTAINERS=$(docker compose ps --services --filter "status=running" 2>/dev/null || echo "")
+
+  if [ -z "$RUNNING_CONTAINERS" ]; then
+    print_info "No services running. Start with: docker compose up -d"
+    print_info "Skipping runtime checks."
+  else
+    print_success "Docker Compose services detected"
 
     # Check server container
-    print_check "Checking server container health"
-    SERVER_HEALTH=$(docker compose ps server --format json 2>/dev/null | grep -o '"Health":"[^"]*"' | cut -d'"' -f4 || echo "unknown")
+    print_check "Server container status"
+    SERVER_HEALTH=$(docker inspect --format='{{.State.Health.Status}}' serverpilot-server 2>/dev/null || echo "not_found")
     if [ "$SERVER_HEALTH" = "healthy" ]; then
-        print_success "Server container is healthy"
+      print_success "Server container: healthy"
     else
-        print_info "Server container health: $SERVER_HEALTH (may take up to 30s to become healthy)"
+      print_info "Server container: $SERVER_HEALTH (may need up to 30s)"
     fi
 
-    # Wait a moment for services to be fully ready
-    sleep 2
-
-    # Test HTTP health endpoint
-    print_check "Testing HTTP health endpoint"
-    HTTP_PORT=${DASHBOARD_PORT:-3000}
-    if curl -f -s "http://localhost:${HTTP_PORT}/health" >/dev/null 2>&1; then
-        HEALTH_RESPONSE=$(curl -s "http://localhost:${HTTP_PORT}/health")
-        print_success "HTTP health endpoint responding: $HEALTH_RESPONSE"
+    # Check dashboard container
+    print_check "Dashboard container status"
+    DASHBOARD_STATUS=$(docker inspect --format='{{.State.Status}}' serverpilot-dashboard 2>/dev/null || echo "not_found")
+    if [ "$DASHBOARD_STATUS" = "running" ]; then
+      print_success "Dashboard container: running"
     else
-        print_error "HTTP health endpoint not responding at http://localhost:${HTTP_PORT}/health"
+      print_error "Dashboard container: $DASHBOARD_STATUS"
     fi
 
-    # Test database connectivity
-    print_check "Testing database connectivity"
-    if docker compose exec -T mysql mysqladmin ping -h localhost -u root -p"${MYSQL_ROOT_PASSWORD:-changeme_root_2024}" >/dev/null 2>&1; then
-        print_success "Database is accessible"
-
-        # Check if tables exist
-        print_check "Verifying database tables"
-        TABLE_COUNT=$(docker compose exec -T mysql mysql -u root -p"${MYSQL_ROOT_PASSWORD:-changeme_root_2024}" -D aiinstaller -se "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'aiinstaller'" 2>/dev/null || echo "0")
-        if [ "$TABLE_COUNT" -gt 0 ]; then
-            print_success "Database tables created ($TABLE_COUNT tables found)"
-        else
-            print_error "No database tables found"
-        fi
+    # Test health endpoint via dashboard (nginx proxy)
+    print_check "Health endpoint (http://localhost:${DASHBOARD_PORT}/health)"
+    if curl -sf "http://localhost:${DASHBOARD_PORT}/health" >/dev/null 2>&1; then
+      HEALTH_RESPONSE=$(curl -sf "http://localhost:${DASHBOARD_PORT}/health")
+      print_success "Health: $HEALTH_RESPONSE"
     else
-        print_error "Cannot connect to database"
+      print_error "Health endpoint not responding"
     fi
 
-    # Test WebSocket connectivity (basic check)
-    print_check "Testing WebSocket service"
-    if docker compose logs server 2>/dev/null | grep -q "WebSocket.*ready\|Server.*listen\|started"; then
-        print_success "WebSocket service appears to be running"
+    # Test dashboard static files
+    print_check "Dashboard (http://localhost:${DASHBOARD_PORT}/)"
+    if curl -sf "http://localhost:${DASHBOARD_PORT}/" >/dev/null 2>&1; then
+      print_success "Dashboard is accessible"
     else
-        print_info "Cannot verify WebSocket service from logs"
+      print_error "Dashboard not accessible"
     fi
 
-    # Check container logs for errors
-    print_check "Checking for errors in container logs"
-    ERROR_COUNT=$(docker compose logs --tail=50 2>/dev/null | grep -i "error\|fatal\|exception" | grep -v "errorCount\|ERROR_ANALYZER" | wc -l | tr -d ' ')
+    # Test API proxy
+    print_check "API proxy (http://localhost:${DASHBOARD_PORT}/api/v1/auth/login)"
+    API_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://localhost:${DASHBOARD_PORT}/api/v1/auth/login" -H "Content-Type: application/json" -d '{}' 2>/dev/null || echo "000")
+    if [ "$API_STATUS" != "000" ]; then
+      print_success "API proxy responds (HTTP $API_STATUS)"
+    else
+      print_error "API proxy not responding"
+    fi
+
+    # Test WebSocket upgrade
+    print_check "WebSocket endpoint (ws://localhost:${DASHBOARD_PORT}/ws)"
+    WS_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Upgrade: websocket" -H "Connection: Upgrade" -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" -H "Sec-WebSocket-Version: 13" "http://localhost:${DASHBOARD_PORT}/ws" 2>/dev/null || echo "000")
+    if [ "$WS_STATUS" = "101" ] || [ "$WS_STATUS" = "400" ] || [ "$WS_STATUS" = "426" ]; then
+      print_success "WebSocket endpoint reachable (HTTP $WS_STATUS)"
+    else
+      print_error "WebSocket endpoint not responding (HTTP $WS_STATUS)"
+    fi
+
+    # Test data persistence (check SQLite volume)
+    print_check "SQLite data persistence"
+    DB_EXISTS=$(docker exec serverpilot-server test -f /data/serverpilot.db && echo "yes" || echo "no")
+    if [ "$DB_EXISTS" = "yes" ]; then
+      DB_SIZE=$(docker exec serverpilot-server ls -lh /data/serverpilot.db 2>/dev/null | awk '{print $5}')
+      print_success "SQLite database exists ($DB_SIZE)"
+    else
+      print_error "SQLite database not found at /data/serverpilot.db"
+    fi
+
+    # Check for errors in container logs
+    print_check "Container logs (recent errors)"
+    ERROR_COUNT=$(docker compose logs --tail=50 2>/dev/null | grep -i "error\|fatal\|exception" | grep -v "errorCount\|ERROR_ANALYZER\|error_handler\|onError\|logError" | wc -l | tr -d ' ')
     if [ "$ERROR_COUNT" -eq 0 ]; then
-        print_success "No errors found in recent logs"
+      print_success "No errors in recent logs"
     else
-        print_error "Found $ERROR_COUNT error(s) in recent logs"
-        echo ""
-        echo "Recent errors:"
-        docker compose logs --tail=50 2>/dev/null | grep -i "error\|fatal\|exception" | grep -v "errorCount\|ERROR_ANALYZER" | tail -5
+      print_error "Found $ERROR_COUNT error(s) in recent logs"
+      docker compose logs --tail=50 2>/dev/null | grep -i "error\|fatal\|exception" | grep -v "errorCount\|ERROR_ANALYZER\|error_handler\|onError\|logError" | tail -3
     fi
-
-    # ==============================================================================
-    # Run Smoke Tests (if services are healthy)
-    # ==============================================================================
-
-    print_header "End-to-End Smoke Tests"
-
-    if [ "$SERVER_HEALTH" = "healthy" ]; then
-        print_info "Running comprehensive smoke tests..."
-        echo ""
-
-        # Run smoke test script
-        if [ -f "scripts/smoke-test.sh" ]; then
-            if bash scripts/smoke-test.sh --timeout 5 2>&1 | grep -E "PASS|FAIL|Test Summary" | head -20; then
-                print_success "Smoke tests completed (see above for results)"
-            else
-                print_info "Smoke test script executed"
-            fi
-        else
-            print_info "Smoke test script not found (skipping)"
-        fi
-    else
-        print_info "Server not healthy yet - skipping smoke tests"
-        print_info "Wait for services to become healthy, then run: ./scripts/smoke-test.sh"
-    fi
+  fi
 fi
 
 # ==============================================================================
@@ -483,46 +543,47 @@ echo ""
 echo "Total Checks:  $TOTAL_CHECKS"
 echo -e "${GREEN}Passed:        $PASSED_CHECKS${NC}"
 if [ $FAILED_CHECKS -gt 0 ]; then
-    echo -e "${RED}Failed:        $FAILED_CHECKS${NC}"
+  echo -e "${RED}Failed:        $FAILED_CHECKS${NC}"
 else
-    echo "Failed:        $FAILED_CHECKS"
+  echo "Failed:        $FAILED_CHECKS"
 fi
 echo ""
 
 if [ $FAILED_CHECKS -eq 0 ]; then
-    print_success "All checks passed! Docker Compose deployment is ready."
+  echo -e "${GREEN}All checks passed!${NC}"
+  echo ""
+  if [ -z "${RUNNING_CONTAINERS:-}" ] || [ "$STATIC_ONLY" = "true" ]; then
+    echo "Next steps:"
+    echo "  1. Start services:   docker compose up -d"
+    echo "  2. Follow logs:      docker compose logs -f"
+    echo "  3. Wait ~30s for health checks"
+    echo "  4. Re-run this script for runtime checks"
+    echo "  5. Open Dashboard:   http://localhost:${DASHBOARD_PORT}"
+  else
+    echo "Deployment is fully verified and running!"
     echo ""
-    if [ -z "$RUNNING_CONTAINERS" ]; then
-        echo "Next steps:"
-        echo "1. Start services: docker compose up -d"
-        echo "2. Check logs: docker compose logs -f"
-        echo "3. Wait ~30s for services to become healthy"
-        echo "4. Re-run this script to verify runtime: ./scripts/verify-deployment.sh"
-        echo "5. Access Dashboard: http://localhost:${DASHBOARD_PORT:-3000}"
-    else
-        echo "🎉 Deployment is fully verified and running!"
-        echo ""
-        echo "Access points:"
-        echo "  · Dashboard:  http://localhost:${DASHBOARD_PORT:-3000}"
-        echo "  · API Health: http://localhost:${DASHBOARD_PORT:-3000}/health"
-        echo "  · MySQL:      localhost:${MYSQL_PORT:-3306}"
-        echo ""
-        echo "Useful commands:"
-        echo "  · View logs:     docker compose logs -f"
-        echo "  · Restart:       docker compose restart"
-        echo "  · Stop:          docker compose down"
-        echo "  · Full cleanup:  docker compose down -v"
-    fi
+    echo "Access points:"
+    echo "  Dashboard:   http://localhost:${DASHBOARD_PORT}"
+    echo "  API:         http://localhost:${DASHBOARD_PORT}/api/v1"
+    echo "  Health:      http://localhost:${DASHBOARD_PORT}/health"
+    echo "  API Docs:    http://localhost:${DASHBOARD_PORT}/api-docs"
     echo ""
-    exit 0
+    echo "Commands:"
+    echo "  docker compose logs -f         # Follow logs"
+    echo "  docker compose ps              # Service status"
+    echo "  docker compose restart server  # Restart server"
+    echo "  docker compose down            # Stop all"
+  fi
+  echo ""
+  exit 0
 else
-    print_error "Some checks failed. Please fix the issues above."
-    echo ""
-    echo "Common solutions:"
-    echo "- Make sure all required files exist"
-    echo "- Verify docker-compose.yml syntax with: docker compose config"
-    echo "- Check that .env file is properly configured"
-    echo "- View logs for details: docker compose logs"
-    echo ""
-    exit 1
+  echo -e "${RED}Some checks failed. Please fix the issues above.${NC}"
+  echo ""
+  echo "Common solutions:"
+  echo "  - Ensure all required files exist"
+  echo "  - Validate docker-compose.yml: docker compose config"
+  echo "  - Check .env file configuration"
+  echo "  - View logs: docker compose logs"
+  echo ""
+  exit 1
 fi

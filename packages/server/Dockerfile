@@ -9,29 +9,7 @@
 # ==============================================================================
 
 # --------------------------------------------------------------------------
-# Stage 1: Install dependencies
-# --------------------------------------------------------------------------
-FROM node:22-alpine AS deps
-
-# Install build tools for native modules (better-sqlite3)
-RUN apk add --no-cache python3 make g++
-
-RUN corepack enable && corepack prepare pnpm@10.13.1 --activate
-
-WORKDIR /app
-
-# Copy workspace config and lockfile first for layer caching
-COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
-COPY packages/shared/package.json packages/shared/package.json
-COPY packages/server/package.json packages/server/package.json
-COPY packages/agent/package.json packages/agent/package.json
-COPY packages/dashboard/package.json packages/dashboard/package.json
-
-# Install production dependencies only
-RUN pnpm install --frozen-lockfile --prod
-
-# --------------------------------------------------------------------------
-# Stage 2: Build TypeScript
+# Stage 1: Install all dependencies and build TypeScript
 # --------------------------------------------------------------------------
 FROM node:22-alpine AS build
 
@@ -42,7 +20,7 @@ RUN corepack enable && corepack prepare pnpm@10.13.1 --activate
 
 WORKDIR /app
 
-# Copy workspace config and lockfile
+# Copy workspace config and lockfile first for layer caching
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.json ./
 COPY packages/shared/package.json packages/shared/package.json
 COPY packages/server/package.json packages/server/package.json
@@ -60,8 +38,11 @@ COPY packages/server/ packages/server/
 RUN pnpm --filter @aiinstaller/shared build && \
     pnpm --filter @aiinstaller/server build
 
+# Prune devDependencies after build to keep only production deps
+RUN pnpm prune --prod
+
 # --------------------------------------------------------------------------
-# Stage 3: Production runtime (minimal)
+# Stage 2: Production runtime (minimal)
 # --------------------------------------------------------------------------
 FROM node:22-alpine AS runtime
 
@@ -78,10 +59,10 @@ RUN mkdir -p /data && chown serverpilot:serverpilot /data
 
 WORKDIR /app
 
-# Copy production node_modules from deps stage
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/packages/shared/node_modules ./packages/shared/node_modules
-COPY --from=deps /app/packages/server/node_modules ./packages/server/node_modules
+# Copy pruned production node_modules from build stage
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/packages/shared/node_modules ./packages/shared/node_modules
+COPY --from=build /app/packages/server/node_modules ./packages/server/node_modules
 
 # Copy built output from build stage
 COPY --from=build /app/packages/shared/dist ./packages/shared/dist

@@ -179,12 +179,17 @@ cp .env.example .env
 编辑 `.env` 文件,添加你的 API Key:
 
 ```bash
-# AI 配置 (至少配置一个)
+# AI Provider 选择 (默认: claude)
+AI_PROVIDER=claude  # claude | openai | ollama | deepseek
+
+# AI 配置 (至少配置一个 API Key)
 ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxx
 # 或
 OPENAI_API_KEY=sk-xxxxxxxxxxxxx
 # 或
-OLLAMA_BASE_URL=http://localhost:11434  # 本地 Ollama
+DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxx
+# 或
+OLLAMA_BASE_URL=http://localhost:11434  # 本地 Ollama (无需 API Key)
 ```
 
 #### 完整配置选项
@@ -201,7 +206,10 @@ cat .env.example
 |-----|-------|------|-----|
 | `DASHBOARD_PORT` | 80 | 否 | Dashboard 外部访问端口 |
 | `JWT_SECRET` | `default_jwt_secret...` | 是 | **生产环境必须修改** |
+| `AI_PROVIDER` | `claude` | 否 | AI Provider: claude/openai/ollama/deepseek |
 | `ANTHROPIC_API_KEY` | (空) | 是 | Claude API Key |
+| `OPENAI_API_KEY` | (空) | 否 | OpenAI API Key (AI_PROVIDER=openai 时需要) |
+| `DEEPSEEK_API_KEY` | (空) | 否 | DeepSeek API Key (AI_PROVIDER=deepseek 时需要) |
 | `AI_MODEL` | `claude-sonnet-4-20250514` | 否 | AI 模型名称 |
 | `GITHUB_TOKEN` | (空) | 否 | GitHub API Token (文档自动抓取) |
 | `LOG_LEVEL` | `info` | 否 | 日志级别 (debug/info/warn/error) |
@@ -676,19 +684,13 @@ docker compose logs -f --tail=100
 docker compose logs > logs/serverpilot-$(date +%Y%m%d).log
 ```
 
-#### 清理旧日志
+#### 日志轮转
 
-```bash
-# Docker 会自动轮转日志,但你可以限制日志大小
-# 编辑 docker-compose.yml,添加:
-services:
-  server:
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-```
+日志轮转已在 `docker-compose.yml` 中预配置:
+- **Server**: json-file 驱动, 最大 10MB/文件, 保留 3 个文件
+- **Dashboard**: json-file 驱动, 最大 5MB/文件, 保留 3 个文件
+
+无需手动配置。如需调整限制,编辑 `docker-compose.yml` 中的 `logging.options`。
 
 ---
 
@@ -848,11 +850,14 @@ curl -fsSL https://get.aiinstaller.dev/install.sh | bash
 | 变量名 | 默认值 | 必填 | 说明 |
 |--------|-------|------|------|
 | `ANTHROPIC_API_KEY` | - | 是 | Anthropic Claude API 密钥 |
+| `OPENAI_API_KEY` | - | 否 | OpenAI API 密钥 |
+| `DEEPSEEK_API_KEY` | - | 否 | DeepSeek API 密钥 |
+| `AI_PROVIDER` | `claude` | 否 | AI Provider: claude/openai/ollama/deepseek |
 | `JWT_SECRET` | - | 是 | JWT 签名密钥 (至少 32 字符) |
-| `DASHBOARD_PORT` | `3000` | 否 | Dashboard 外部访问端口 |
+| `DASHBOARD_PORT` | `3001` | 否 | Dashboard 外部访问端口 |
 | `SERVER_PORT` | `3000` | 否 | 服务端口 |
 | `SERVER_HOST` | `0.0.0.0` | 否 | 监听地址 |
-| `NODE_ENV` | `development` | 否 | 运行环境 |
+| `NODE_ENV` | `production` | 否 | 运行环境 |
 | `AI_MODEL` | `claude-sonnet-4-20250514` | 否 | AI 模型 |
 | `AI_TIMEOUT_MS` | `30000` | 否 | AI 请求超时 (ms) |
 | `AI_MAX_RETRIES` | `3` | 否 | AI 最大重试次数 |

@@ -43,12 +43,11 @@ describe('Deployment Verification', () => {
         'Docker',
         'Docker Compose',
         'docker-compose.yml',
-        'restart policy',
+        'restart',
         'health check',
         'network',
         'volume',
         '.env',
-        'init-db.sql',
         'Dockerfile'
       ];
 
@@ -61,10 +60,8 @@ describe('Deployment Verification', () => {
       const scriptPath = join(projectRoot, 'scripts', 'verify-deployment.sh');
       const content = readFileSync(scriptPath, 'utf-8');
 
-      // Should have set -e for error handling
-      expect(content).toContain('set -e');
-
-      // Should have exit codes
+      // Script tracks pass/fail internally (no set -e) to report all results
+      // Should have exit codes for success and failure
       expect(content).toContain('exit 0');
       expect(content).toContain('exit 1');
     });
@@ -94,8 +91,9 @@ describe('Deployment Verification', () => {
         'docker-compose.yml',
         '.env.example',
         'packages/server/Dockerfile',
+        'packages/dashboard/Dockerfile',
         '.dockerignore',
-        'scripts/init-db.sql'
+        'init.sh'
       ];
 
       requiredFiles.forEach(file => {
@@ -109,10 +107,11 @@ describe('Deployment Verification', () => {
 
       const requiredEnvVars = [
         'ANTHROPIC_API_KEY',
-        'DB_HOST',
-        'DB_PORT',
-        'DB_NAME',
-        'MYSQL_ROOT_PASSWORD'
+        'JWT_SECRET',
+        'DASHBOARD_PORT',
+        'AI_MODEL',
+        'LOG_LEVEL',
+        'ADMIN_EMAIL'
       ];
 
       requiredEnvVars.forEach(envVar => {
@@ -124,8 +123,10 @@ describe('Deployment Verification', () => {
       const scriptPath = join(projectRoot, 'scripts', 'verify-deployment.sh');
       const content = readFileSync(scriptPath, 'utf-8');
 
-      expect(content).toContain('Security Configuration');
+      expect(content).toContain('Security');
       expect(content).toContain('hardcoded secrets');
+      expect(content).toContain('X-Frame-Options');
+      expect(content).toContain('X-Content-Type-Options');
     });
 
     it('should provide helpful next steps', () => {
@@ -143,8 +144,10 @@ describe('Deployment Verification', () => {
         'docker-compose.yml',
         '.env.example',
         'packages/server/Dockerfile',
+        'packages/dashboard/Dockerfile',
+        'packages/dashboard/nginx.conf',
         '.dockerignore',
-        'scripts/init-db.sql',
+        'init.sh',
         'scripts/verify-deployment.sh'
       ];
 
@@ -300,6 +303,33 @@ describe('Deployment Verification', () => {
       insecurePasswords.forEach(pwd => {
         expect(content.toLowerCase()).not.toContain(`password=${pwd}`);
       });
+    });
+  });
+
+  describe('Nginx Security Configuration', () => {
+    it('should have security headers in nginx.conf', () => {
+      const nginxPath = join(projectRoot, 'packages', 'dashboard', 'nginx.conf');
+      const content = readFileSync(nginxPath, 'utf-8');
+
+      expect(content).toContain('X-Frame-Options');
+      expect(content).toContain('X-Content-Type-Options');
+      expect(content).toContain('X-XSS-Protection');
+      expect(content).toContain('Referrer-Policy');
+    });
+
+    it('should have request body size limit', () => {
+      const nginxPath = join(projectRoot, 'packages', 'dashboard', 'nginx.conf');
+      const content = readFileSync(nginxPath, 'utf-8');
+
+      expect(content).toContain('client_max_body_size');
+    });
+
+    it('should have API proxy timeouts configured', () => {
+      const nginxPath = join(projectRoot, 'packages', 'dashboard', 'nginx.conf');
+      const content = readFileSync(nginxPath, 'utf-8');
+
+      expect(content).toContain('proxy_connect_timeout');
+      expect(content).toContain('proxy_read_timeout');
     });
   });
 
