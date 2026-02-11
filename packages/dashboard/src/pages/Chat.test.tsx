@@ -54,6 +54,8 @@ describe('Chat Page', () => {
         completedSteps: {},
         success: null,
         operationId: null,
+        startTime: null,
+        cancelled: false,
       },
     });
     useServersStore.setState({
@@ -298,6 +300,97 @@ describe('Chat Page', () => {
       });
       renderChat('/chat/srv-1');
       expect(screen.getByTestId('message-textarea')).toBeDisabled();
+    });
+
+    it('shows emergency stop button during execution', () => {
+      useChatStore.setState({
+        planStatus: 'executing',
+        currentPlan: {
+          planId: 'p1',
+          description: 'Test',
+          steps: [
+            {
+              id: 's1',
+              description: 'Install',
+              command: 'apt install nginx',
+              riskLevel: 'green',
+              timeout: 30000,
+              canRollback: false,
+            },
+          ],
+          totalRisk: 'green',
+          requiresConfirmation: true,
+        },
+        execution: {
+          activeStepId: 's1',
+          outputs: {},
+          completedSteps: {},
+          success: null,
+          operationId: null,
+          startTime: Date.now(),
+          cancelled: false,
+        },
+        messages: [
+          {
+            id: 'msg-1',
+            role: 'user',
+            content: 'Install nginx',
+            timestamp: '2025-01-01T00:00:00Z',
+          },
+        ],
+      });
+      renderChat('/chat/srv-1');
+      expect(screen.getByTestId('emergency-stop-btn')).toBeInTheDocument();
+    });
+
+    it('shows step progress indicators', () => {
+      useChatStore.setState({
+        planStatus: 'executing',
+        currentPlan: {
+          planId: 'p1',
+          description: 'Test',
+          steps: [
+            {
+              id: 's1',
+              description: 'Step one',
+              command: 'echo 1',
+              riskLevel: 'green',
+              timeout: 30000,
+              canRollback: false,
+            },
+            {
+              id: 's2',
+              description: 'Step two',
+              command: 'echo 2',
+              riskLevel: 'green',
+              timeout: 30000,
+              canRollback: false,
+            },
+          ],
+          totalRisk: 'green',
+          requiresConfirmation: true,
+        },
+        execution: {
+          activeStepId: 's1',
+          outputs: {},
+          completedSteps: {},
+          success: null,
+          operationId: null,
+          startTime: Date.now(),
+          cancelled: false,
+        },
+        messages: [
+          {
+            id: 'msg-1',
+            role: 'user',
+            content: 'Test',
+            timestamp: '2025-01-01T00:00:00Z',
+          },
+        ],
+      });
+      renderChat('/chat/srv-1');
+      expect(screen.getByTestId('step-progress-s1')).toHaveTextContent('[1/2]');
+      expect(screen.getByTestId('step-progress-s2')).toHaveTextContent('[2/2]');
     });
 
     it('uses server ID as fallback name', () => {

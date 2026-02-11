@@ -15,6 +15,7 @@ import { randomUUID } from 'node:crypto';
 import {
   ChatMessageBodySchema,
   ExecutePlanBodySchema,
+  CancelExecutionBodySchema,
 } from './schemas.js';
 import { validateBody } from '../middleware/validate.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -28,8 +29,14 @@ import { getTaskExecutor } from '../../core/task/executor.js';
 import { validateCommand, validatePlan } from '../../core/security/command-validator.js';
 import { getAuditLogger } from '../../core/security/audit-logger.js';
 import type { InstallStep } from '@aiinstaller/shared';
-import type { ChatMessageBody, ExecutePlanBody } from './schemas.js';
+import type { ChatMessageBody, ExecutePlanBody, CancelExecutionBody } from './schemas.js';
 import type { ApiEnv } from './types.js';
+
+/**
+ * Tracks active plan executions: `planId → executionId`.
+ * Used by the cancel endpoint to find and stop running executions.
+ */
+const activePlanExecutions = new Map<string, string>();
 
 const chat = new Hono<ApiEnv>();
 
@@ -257,13 +264,18 @@ chat.post('/:serverId/execute', validateBody(ExecutePlanBodySchema), async (c) =
     const executor = getTaskExecutor();
     let allSucceeded = true;
     let firstFailedStep: string | null = null;
+    let cancelled = false;
+
+    // Track this plan execution for the cancel endpoint
+    activePlanExecutions.set(body.planId, '');
 
     // Set up progress callback for real-time output
     const executionOutputMap = new Map<string, string>();
 
     executor.setProgressCallback((executionId, status, output) => {
+      // Track the current executionId so cancel endpoint can find it
+      activePlanExecutions.set(body.planId, executionId);
       if (output) {
-        // Accumulate output for this execution
         const current = executionOutputMap.get(executionId) || '';
         executionOutputMap.set(executionId, current + output);
       }
@@ -273,6 +285,14 @@ chat.post('/:serverId/execute', validateBody(ExecutePlanBodySchema), async (c) =
 
     // Execute each step sequentially
     for (const step of plan.steps) {
+      // Check if execution was cancelled between steps
+      if (!activePlanExecutions.has(body.planId)) {
+        cancelled = true;
+        allSucceeded = false;
+        firstFailedStep = step.id;
+        break;
+      }
+
       const startTime = Date.now();
 
       // Re-validate command before execution (defense-in-depth)
@@ -410,6 +430,13 @@ chat.post('/:serverId/execute', validateBody(ExecutePlanBodySchema), async (c) =
           result.operationId,
         );
 
+        if (result.error === 'Cancelled') {
+          cancelled = true;
+          allSucceeded = false;
+          firstFailedStep = step.id;
+          break;
+        }
+
         if (!result.success) {
           allSucceeded = false;
           firstFailedStep = step.id;
@@ -465,13 +492,16 @@ chat.post('/:serverId/execute', validateBody(ExecutePlanBodySchema), async (c) =
       }
     }
 
-    // Clear progress callback
+    // Clean up tracking
+    activePlanExecutions.delete(body.planId);
     executor.setProgressCallback(null);
 
     // Store operation record
-    const resultMessage = allSucceeded
-      ? `Plan executed successfully: ${plan.description}`
-      : `Plan execution failed at step ${firstFailedStep}: ${plan.description}`;
+    const resultMessage = cancelled
+      ? `Plan execution cancelled at step ${firstFailedStep}: ${plan.description}`
+      : allSucceeded
+        ? `Plan executed successfully: ${plan.description}`
+        : `Plan execution failed at step ${firstFailedStep}: ${plan.description}`;
 
     sessionMgr.addMessage(body.sessionId, 'system', resultMessage);
 
@@ -481,9 +511,45 @@ chat.post('/:serverId/execute', validateBody(ExecutePlanBodySchema), async (c) =
         success: allSucceeded,
         operationId,
         failedAtStep: firstFailedStep,
+        cancelled,
       }),
     });
   });
+});
+
+// ============================================================================
+// POST /chat/:serverId/execute/cancel — Emergency stop running execution
+// ============================================================================
+
+chat.post('/:serverId/execute/cancel', validateBody(CancelExecutionBodySchema), async (c) => {
+  const { serverId } = c.req.param();
+  const userId = c.get('userId');
+  const body = c.get('validatedBody') as CancelExecutionBody;
+
+  // Verify server exists
+  const repo = getServerRepository();
+  const server = await repo.findById(serverId, userId);
+  if (!server) {
+    throw ApiError.notFound('Server');
+  }
+
+  const executionId = activePlanExecutions.get(body.planId);
+  if (!executionId) {
+    return c.json({ success: false, message: 'No active execution found for this plan' }, 404);
+  }
+
+  const executor = getTaskExecutor();
+  const cancelled = executor.cancelExecution(executionId);
+
+  // Remove from tracking map so the step loop breaks
+  activePlanExecutions.delete(body.planId);
+
+  logger.info(
+    { operation: 'plan_cancel', serverId, planId: body.planId, executionId, userId, cancelled },
+    `Emergency stop: plan execution ${cancelled ? 'cancelled' : 'not found'}`,
+  );
+
+  return c.json({ success: cancelled });
 });
 
 // ============================================================================

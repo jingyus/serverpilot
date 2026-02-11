@@ -168,6 +168,12 @@ export const ExecutePlanBodySchema = z.object({
 });
 export type ExecutePlanBody = z.infer<typeof ExecutePlanBodySchema>;
 
+export const CancelExecutionBodySchema = z.object({
+  planId: z.string().min(1, 'Plan ID is required'),
+  sessionId: z.string().min(1, 'Session ID is required'),
+});
+export type CancelExecutionBody = z.infer<typeof CancelExecutionBodySchema>;
+
 export const ChatServerIdParamSchema = z.object({
   serverId: uuid,
 });

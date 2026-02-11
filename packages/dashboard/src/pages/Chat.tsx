@@ -42,6 +42,7 @@ export function Chat() {
     sendMessage,
     confirmPlan,
     rejectPlan,
+    emergencyStop,
     fetchSessions,
     loadSession,
     deleteSession,
@@ -188,6 +189,10 @@ export function Chat() {
                       outputs={execution.outputs}
                       completedSteps={execution.completedSteps}
                       success={execution.success}
+                      onEmergencyStop={emergencyStop}
+                      isExecuting={planStatus === 'executing'}
+                      startTime={execution.startTime}
+                      cancelled={execution.cancelled}
                     />
                   )}
 

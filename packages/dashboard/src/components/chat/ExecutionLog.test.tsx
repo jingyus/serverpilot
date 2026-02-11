@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { ExecutionLog } from './ExecutionLog';
 import type { ExecutionPlan } from '@/types/chat';
 
@@ -21,6 +21,14 @@ const mockPlan: ExecutionPlan = {
       id: 'step-2',
       description: 'Start service',
       command: 'systemctl start nginx',
+      riskLevel: 'green',
+      timeout: 15000,
+      canRollback: false,
+    },
+    {
+      id: 'step-3',
+      description: 'Enable on boot',
+      command: 'systemctl enable nginx',
       riskLevel: 'green',
       timeout: 15000,
       canRollback: false,
@@ -48,6 +56,7 @@ describe('ExecutionLog', () => {
     render(<ExecutionLog {...defaultProps} />);
     expect(screen.getByTestId('exec-step-step-1')).toBeInTheDocument();
     expect(screen.getByTestId('exec-step-step-2')).toBeInTheDocument();
+    expect(screen.getByTestId('exec-step-step-3')).toBeInTheDocument();
   });
 
   it('highlights the active step', () => {
@@ -138,5 +147,166 @@ describe('ExecutionLog', () => {
     );
     const step = screen.getByTestId('exec-step-step-1');
     expect(step).toHaveClass('border-red-200');
+  });
+
+  describe('step progress indicator', () => {
+    it('shows [X/N] for each step', () => {
+      render(<ExecutionLog {...defaultProps} />);
+      expect(screen.getByTestId('step-progress-step-1')).toHaveTextContent('[1/3]');
+      expect(screen.getByTestId('step-progress-step-2')).toHaveTextContent('[2/3]');
+      expect(screen.getByTestId('step-progress-step-3')).toHaveTextContent('[3/3]');
+    });
+  });
+
+  describe('emergency stop button', () => {
+    it('shows when executing with handler', () => {
+      const onStop = vi.fn();
+      render(
+        <ExecutionLog
+          {...defaultProps}
+          activeStepId="step-1"
+          isExecuting={true}
+          onEmergencyStop={onStop}
+        />
+      );
+      expect(screen.getByTestId('emergency-stop-btn')).toBeInTheDocument();
+    });
+
+    it('calls onEmergencyStop when clicked', () => {
+      const onStop = vi.fn();
+      render(
+        <ExecutionLog
+          {...defaultProps}
+          activeStepId="step-1"
+          isExecuting={true}
+          onEmergencyStop={onStop}
+        />
+      );
+      fireEvent.click(screen.getByTestId('emergency-stop-btn'));
+      expect(onStop).toHaveBeenCalledOnce();
+    });
+
+    it('hides when not executing', () => {
+      const onStop = vi.fn();
+      render(
+        <ExecutionLog
+          {...defaultProps}
+          success={true}
+          isExecuting={false}
+          onEmergencyStop={onStop}
+        />
+      );
+      expect(screen.queryByTestId('emergency-stop-btn')).not.toBeInTheDocument();
+    });
+
+    it('hides when no handler provided', () => {
+      render(
+        <ExecutionLog
+          {...defaultProps}
+          activeStepId="step-1"
+          isExecuting={true}
+        />
+      );
+      expect(screen.queryByTestId('emergency-stop-btn')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('cancelled state', () => {
+    it('shows Stopped badge', () => {
+      render(
+        <ExecutionLog
+          {...defaultProps}
+          success={false}
+          cancelled={true}
+        />
+      );
+      expect(screen.getByTestId('exec-result-badge')).toHaveTextContent('Stopped');
+    });
+  });
+
+  describe('execution summary', () => {
+    it('shows on success with correct counts', () => {
+      render(
+        <ExecutionLog
+          {...defaultProps}
+          success={true}
+          startTime={Date.now() - 10000}
+          completedSteps={{
+            'step-1': { exitCode: 0, duration: 3000 },
+            'step-2': { exitCode: 0, duration: 2000 },
+            'step-3': { exitCode: 0, duration: 5000 },
+          }}
+        />
+      );
+      expect(screen.getByTestId('execution-summary')).toBeInTheDocument();
+      expect(screen.getByText('Execution Complete')).toBeInTheDocument();
+      expect(screen.getByTestId('summary-success')).toHaveTextContent('3 passed');
+      expect(screen.getByTestId('summary-failed')).toHaveTextContent('0 failed');
+      expect(screen.getByTestId('summary-skipped')).toHaveTextContent('0 skipped');
+    });
+
+    it('shows on failure with failed and skipped counts', () => {
+      render(
+        <ExecutionLog
+          {...defaultProps}
+          success={false}
+          startTime={Date.now() - 5000}
+          completedSteps={{
+            'step-1': { exitCode: 0, duration: 3000 },
+            'step-2': { exitCode: 1, duration: 2000 },
+          }}
+        />
+      );
+      expect(screen.getByText('Execution Failed')).toBeInTheDocument();
+      expect(screen.getByTestId('summary-success')).toHaveTextContent('1 passed');
+      expect(screen.getByTestId('summary-failed')).toHaveTextContent('1 failed');
+      expect(screen.getByTestId('summary-skipped')).toHaveTextContent('1 skipped');
+      expect(screen.getByText(/stopped at the first failed step/)).toBeInTheDocument();
+    });
+
+    it('shows on cancellation', () => {
+      render(
+        <ExecutionLog
+          {...defaultProps}
+          success={false}
+          cancelled={true}
+          startTime={Date.now() - 3000}
+          completedSteps={{
+            'step-1': { exitCode: 0, duration: 3000 },
+          }}
+        />
+      );
+      expect(screen.getByText('Execution Stopped')).toBeInTheDocument();
+      expect(screen.getByTestId('summary-skipped')).toHaveTextContent('2 skipped');
+      expect(screen.getByText(/stopped by user/)).toBeInTheDocument();
+    });
+
+    it('hidden while in progress', () => {
+      render(
+        <ExecutionLog
+          {...defaultProps}
+          activeStepId="step-1"
+          isExecuting={true}
+        />
+      );
+      expect(screen.queryByTestId('execution-summary')).not.toBeInTheDocument();
+    });
+
+    it('shows total duration', () => {
+      render(
+        <ExecutionLog
+          {...defaultProps}
+          success={true}
+          startTime={Date.now() - 15000}
+          completedSteps={{
+            'step-1': { exitCode: 0, duration: 5000 },
+            'step-2': { exitCode: 0, duration: 5000 },
+            'step-3': { exitCode: 0, duration: 5000 },
+          }}
+        />
+      );
+      expect(screen.getByTestId('summary-duration')).toBeInTheDocument();
+      expect(screen.getByTestId('summary-duration').textContent).toMatch(/\d+s/);
+    });
   });
 });

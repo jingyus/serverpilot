@@ -24,6 +24,8 @@ interface ExecutionState {
   completedSteps: Record<string, { exitCode: number; duration: number }>;
   success: boolean | null;
   operationId: string | null;
+  startTime: number | null;
+  cancelled: boolean;
 }
 
 interface ChatState {
@@ -43,6 +45,7 @@ interface ChatState {
   sendMessage: (message: string) => void;
   confirmPlan: () => void;
   rejectPlan: () => void;
+  emergencyStop: () => Promise<void>;
   fetchSessions: (serverId: string) => Promise<void>;
   loadSession: (serverId: string, sessionId: string) => Promise<void>;
   deleteSession: (serverId: string, sessionId: string) => Promise<void>;
@@ -74,6 +77,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
     completedSteps: {},
     success: null,
     operationId: null,
+    startTime: null,
+    cancelled: false,
   },
 
   setServerId: (id) => set({ serverId: id }),
@@ -176,6 +181,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
         completedSteps: {},
         success: null,
         operationId: null,
+        startTime: Date.now(),
+        cancelled: false,
       },
     });
 
@@ -238,6 +245,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
                 success: parsed.success,
                 operationId: parsed.operationId ?? null,
                 activeStepId: null,
+                cancelled: parsed.cancelled ?? false,
               },
             }));
           } catch {
@@ -253,6 +261,37 @@ export const useChatStore = create<ChatState>((set, get) => ({
         },
       }
     );
+  },
+
+  emergencyStop: async () => {
+    const { serverId, sessionId, currentPlan } = get();
+    if (!serverId || !sessionId || !currentPlan) return;
+
+    // Abort the SSE connection first
+    activeController?.abort();
+    activeController = null;
+
+    try {
+      await apiRequest(`/chat/${serverId}/execute/cancel`, {
+        method: 'POST',
+        body: JSON.stringify({
+          planId: currentPlan.planId,
+          sessionId,
+        }),
+      });
+    } catch {
+      // Cancel API may fail if execution already completed — that's OK
+    }
+
+    set((state) => ({
+      planStatus: 'completed',
+      execution: {
+        ...state.execution,
+        success: false,
+        activeStepId: null,
+        cancelled: true,
+      },
+    }));
   },
 
   rejectPlan: () => {
@@ -334,6 +373,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
         completedSteps: {},
         success: null,
         operationId: null,
+        startTime: null,
+        cancelled: false,
       },
     });
   },

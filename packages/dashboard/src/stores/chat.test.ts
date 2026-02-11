@@ -42,6 +42,8 @@ describe('useChatStore', () => {
         completedSteps: {},
         success: null,
         operationId: null,
+        startTime: null,
+        cancelled: false,
       },
     });
     vi.clearAllMocks();
@@ -335,7 +337,7 @@ describe('useChatStore', () => {
       );
     });
 
-    it('resets execution state', () => {
+    it('resets execution state and sets startTime', () => {
       useChatStore.setState({
         serverId: 'srv-1',
         sessionId: 'sess-1',
@@ -352,6 +354,8 @@ describe('useChatStore', () => {
           completedSteps: { old: { exitCode: 0, duration: 100 } },
           success: true,
           operationId: 'old-op',
+          startTime: 1000,
+          cancelled: true,
         },
       });
 
@@ -363,6 +367,88 @@ describe('useChatStore', () => {
       expect(exec.completedSteps).toEqual({});
       expect(exec.success).toBeNull();
       expect(exec.operationId).toBeNull();
+      expect(exec.startTime).toBeTypeOf('number');
+      expect(exec.cancelled).toBe(false);
+    });
+  });
+
+  describe('emergencyStop', () => {
+    it('does nothing without required state', async () => {
+      await useChatStore.getState().emergencyStop();
+      expect(apiRequest).not.toHaveBeenCalled();
+    });
+
+    it('calls cancel API and updates state', async () => {
+      (apiRequest as Mock).mockResolvedValueOnce({ success: true });
+
+      useChatStore.setState({
+        serverId: 'srv-1',
+        sessionId: 'sess-1',
+        currentPlan: {
+          planId: 'plan-1',
+          description: 'Test',
+          steps: [],
+          totalRisk: 'green',
+          requiresConfirmation: true,
+        },
+        planStatus: 'executing',
+        execution: {
+          activeStepId: 'step-1',
+          outputs: {},
+          completedSteps: {},
+          success: null,
+          operationId: null,
+          startTime: Date.now(),
+          cancelled: false,
+        },
+      });
+
+      await useChatStore.getState().emergencyStop();
+
+      expect(apiRequest).toHaveBeenCalledWith(
+        '/chat/srv-1/execute/cancel',
+        expect.objectContaining({
+          method: 'POST',
+        })
+      );
+
+      const state = useChatStore.getState();
+      expect(state.planStatus).toBe('completed');
+      expect(state.execution.success).toBe(false);
+      expect(state.execution.cancelled).toBe(true);
+      expect(state.execution.activeStepId).toBeNull();
+    });
+
+    it('still sets cancelled state if API fails', async () => {
+      (apiRequest as Mock).mockRejectedValueOnce(new Error('Network error'));
+
+      useChatStore.setState({
+        serverId: 'srv-1',
+        sessionId: 'sess-1',
+        currentPlan: {
+          planId: 'plan-1',
+          description: 'Test',
+          steps: [],
+          totalRisk: 'green',
+          requiresConfirmation: true,
+        },
+        planStatus: 'executing',
+        execution: {
+          activeStepId: 'step-1',
+          outputs: {},
+          completedSteps: {},
+          success: null,
+          operationId: null,
+          startTime: Date.now(),
+          cancelled: false,
+        },
+      });
+
+      await useChatStore.getState().emergencyStop();
+
+      const state = useChatStore.getState();
+      expect(state.planStatus).toBe('completed');
+      expect(state.execution.cancelled).toBe(true);
     });
   });
 });
