@@ -62,7 +62,7 @@ jobs:
   docker-smoke:
     name: Docker Smoke Test
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -76,12 +76,16 @@ jobs:
           JWT_SECRET: 'ci-smoke-test-secret-key-minimum-32-chars-long'
           AI_PROVIDER: 'claude'
           LOG_LEVEL: 'warn'
+          ADMIN_EMAIL: 'admin@serverpilot.local'
+          ADMIN_PASSWORD: 'SmokeTestAdmin123!'
 
       - name: Run smoke tests
-        run: ./scripts/smoke-test.sh --wait 60 --verbose
+        run: ./scripts/smoke-test.sh --wait 90 --verbose --test-persistence
         env:
           HOST: localhost
           PORT: 3001
+          ADMIN_EMAIL: 'admin@serverpilot.local'
+          ADMIN_PASSWORD: 'SmokeTestAdmin123!'
 
       - name: Collect container logs
         if: always()

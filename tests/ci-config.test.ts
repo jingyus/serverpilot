@@ -284,6 +284,17 @@ describe('GitHub Actions CI 配置', () => {
       content = readFileSync(ciYmlPath, 'utf-8');
       expect(content).toContain('docker-smoke-logs');
     });
+
+    it('docker-smoke job 配置了管理员凭据', () => {
+      content = readFileSync(ciYmlPath, 'utf-8');
+      expect(content).toContain('ADMIN_EMAIL');
+      expect(content).toContain('ADMIN_PASSWORD');
+    });
+
+    it('docker-smoke job 启用持久化测试', () => {
+      content = readFileSync(ciYmlPath, 'utf-8');
+      expect(content).toContain('--test-persistence');
+    });
   });
 
   describe('工作流安全最佳实践', () => {

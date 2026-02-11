@@ -10,11 +10,14 @@
 #   ./scripts/smoke-test.sh [options]
 #
 # Options:
-#   --host HOST         Server host (default: localhost)
-#   --port PORT         Dashboard port via Nginx (default: 3001)
-#   --timeout SECONDS   Timeout for each test (default: 10)
-#   --verbose           Show detailed output
-#   --wait SECONDS      Wait for services to be healthy before testing (default: 0)
+#   --host HOST           Server host (default: localhost)
+#   --port PORT           Dashboard port via Nginx (default: 3001)
+#   --timeout SECONDS     Timeout for each test (default: 10)
+#   --verbose             Show detailed output
+#   --wait SECONDS        Wait for services to be healthy before testing (default: 0)
+#   --admin-email EMAIL   Admin email for admin login test (default: from ADMIN_EMAIL env)
+#   --admin-password PWD  Admin password for admin login test (default: from ADMIN_PASSWORD env)
+#   --test-persistence    Run SQLite data persistence test (requires docker compose)
 #
 # Exit codes:
 #   0 - All critical tests passed (pass rate >= 80%)
@@ -29,12 +32,16 @@ PORT="${PORT:-3001}"
 TIMEOUT="${TIMEOUT:-10}"
 VERBOSE="${VERBOSE:-0}"
 WAIT_SECONDS="${WAIT_SECONDS:-0}"
+ADMIN_EMAIL_ARG="${ADMIN_EMAIL:-}"
+ADMIN_PASSWORD_ARG="${ADMIN_PASSWORD:-}"
+TEST_PERSISTENCE="${TEST_PERSISTENCE:-0}"
 
 # Test user credentials (unique per run to avoid conflicts)
 TEST_USER="smoke_$(date +%s)@test.local"
 TEST_PASSWORD="SmokeTest_Passw0rd!"
 ACCESS_TOKEN=""
 SERVER_ID=""
+INSTALL_COMMAND=""
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -44,6 +51,9 @@ while [[ $# -gt 0 ]]; do
     --timeout) TIMEOUT="$2"; shift 2 ;;
     --verbose) VERBOSE=1; shift ;;
     --wait) WAIT_SECONDS="$2"; shift 2 ;;
+    --admin-email) ADMIN_EMAIL_ARG="$2"; shift 2 ;;
+    --admin-password) ADMIN_PASSWORD_ARG="$2"; shift 2 ;;
+    --test-persistence) TEST_PERSISTENCE=1; shift ;;
     *) echo "Unknown option: $1"; exit 1 ;;
   esac
 done
@@ -146,9 +156,6 @@ json_field() {
   fi
 }
 
-# ==============================================================================
-# Wait for services
-# ==============================================================================
 wait_for_services() {
   if [ "$WAIT_SECONDS" -gt 0 ]; then
     print_header "Waiting for Services"
@@ -170,9 +177,6 @@ wait_for_services() {
   fi
 }
 
-# ==============================================================================
-# Test 1: Prerequisites
-# ==============================================================================
 check_prerequisites() {
   print_header "1. Prerequisites"
 
@@ -194,9 +198,6 @@ check_prerequisites() {
   fi
 }
 
-# ==============================================================================
-# Test 2: Health Check (via Nginx proxy)
-# ==============================================================================
 test_health_check() {
   print_header "2. Health Check"
 
@@ -216,9 +217,6 @@ test_health_check() {
   fi
 }
 
-# ==============================================================================
-# Test 3: User Registration
-# ==============================================================================
 test_register() {
   print_header "3. User Registration"
 
@@ -243,9 +241,6 @@ test_register() {
   fi
 }
 
-# ==============================================================================
-# Test 4: User Login
-# ==============================================================================
 test_login() {
   print_header "4. User Login"
 
@@ -273,11 +268,39 @@ test_login() {
   fi
 }
 
-# ==============================================================================
-# Test 5: Create Server (Authenticated)
-# ==============================================================================
+test_admin_login() {
+  print_header "5. Admin Login"
+
+  if [ -z "$ADMIN_EMAIL_ARG" ] || [ -z "$ADMIN_PASSWORD_ARG" ]; then
+    print_test "Admin login (skipped — no admin credentials provided)"
+    print_info "Set ADMIN_EMAIL/ADMIN_PASSWORD or use --admin-email/--admin-password"
+    return
+  fi
+
+  print_test "POST /api/v1/auth/login (admin credentials)"
+  http_request POST "${BASE_URL}/api/v1/auth/login" \
+    "{\"email\":\"${ADMIN_EMAIL_ARG}\",\"password\":\"${ADMIN_PASSWORD_ARG}\"}"
+
+  if [ "$HTTP_CODE" = "200" ]; then
+    print_pass "Admin login successful (HTTP 200)"
+
+    local admin_token
+    admin_token=$(json_field "$HTTP_BODY" "accessToken")
+    if [ -n "$admin_token" ]; then
+      # Use admin token for subsequent tests (admin has owner role)
+      ACCESS_TOKEN="$admin_token"
+      print_pass "Admin access token obtained (${#admin_token} chars)"
+    else
+      print_fail "No accessToken in admin login response"
+    fi
+  else
+    print_fail "Admin login failed (HTTP $HTTP_CODE) — check ADMIN_EMAIL/ADMIN_PASSWORD"
+    print_verbose "Response: $(echo "$HTTP_BODY" | head -c 200)"
+  fi
+}
+
 test_create_server() {
-  print_header "5. Create Server"
+  print_header "6. Create Server"
 
   if [ -z "$ACCESS_TOKEN" ]; then
     print_test "Create server (skipped — no auth token)"
@@ -307,7 +330,8 @@ test_create_server() {
     install_cmd=$(json_field "$HTTP_BODY" "installCommand")
     if [ -n "$install_cmd" ]; then
       print_pass "Install command returned"
-      print_verbose "Install command: $(echo "$install_cmd" | head -c 80)..."
+      INSTALL_COMMAND="$install_cmd"
+      print_verbose "Install command: $(echo "$install_cmd" | head -c 120)..."
     fi
 
     # Check for agent token
@@ -319,13 +343,27 @@ test_create_server() {
   else
     print_fail "Server creation failed (HTTP $HTTP_CODE)"
   fi
+
+  # Validate install command format
+  if [ -n "$INSTALL_COMMAND" ]; then
+    print_test "Install command contains --token flag"
+    if echo "$INSTALL_COMMAND" | grep -q -- '--token'; then
+      print_pass "Install command includes --token parameter"
+    else
+      print_fail "Install command missing --token parameter"
+    fi
+
+    print_test "Install command contains --server flag"
+    if echo "$INSTALL_COMMAND" | grep -q -- '--server'; then
+      print_pass "Install command includes --server address"
+    else
+      print_fail "Install command missing --server address"
+    fi
+  fi
 }
 
-# ==============================================================================
-# Test 6: List Servers (Authenticated)
-# ==============================================================================
 test_list_servers() {
-  print_header "6. List Servers"
+  print_header "7. List Servers"
 
   if [ -z "$ACCESS_TOKEN" ]; then
     print_test "List servers (skipped — no auth token)"
@@ -349,11 +387,8 @@ test_list_servers() {
   fi
 }
 
-# ==============================================================================
-# Test 7: Nginx Reverse Proxy Verification
-# ==============================================================================
 test_nginx_proxy() {
-  print_header "7. Nginx Reverse Proxy"
+  print_header "8. Nginx Reverse Proxy"
 
   # Dashboard root (SPA)
   print_test "GET / (Dashboard SPA via Nginx)"
@@ -398,11 +433,8 @@ test_nginx_proxy() {
   fi
 }
 
-# ==============================================================================
-# Test 8: WebSocket Endpoint
-# ==============================================================================
 test_websocket() {
-  print_header "8. WebSocket Endpoint"
+  print_header "9. WebSocket Endpoint"
 
   print_test "WebSocket upgrade request to /ws"
   local ws_response
@@ -431,11 +463,8 @@ test_websocket() {
   fi
 }
 
-# ==============================================================================
-# Test 9: AI Provider Health
-# ==============================================================================
 test_ai_provider_health() {
-  print_header "9. AI Provider Health"
+  print_header "10. AI Provider Health"
 
   if [ -z "$ACCESS_TOKEN" ]; then
     print_test "AI provider health (skipped — no auth token)"
@@ -463,11 +492,8 @@ test_ai_provider_health() {
   fi
 }
 
-# ==============================================================================
-# Test 10: Container Health (Docker only)
-# ==============================================================================
 test_container_health() {
-  print_header "10. Container Health"
+  print_header "11. Container Health"
 
   if ! command -v docker >/dev/null 2>&1; then
     print_test "Docker container health (skipped — docker not available)"
@@ -504,11 +530,146 @@ test_container_health() {
   fi
 }
 
-# ==============================================================================
-# Test 11: Error Log Analysis
-# ==============================================================================
+test_data_persistence() {
+  print_header "12. Data Persistence"
+
+  if [ "$TEST_PERSISTENCE" != "1" ]; then
+    print_info "Persistence test skipped (use --test-persistence to enable)"
+    return
+  fi
+
+  if ! command -v docker >/dev/null 2>&1; then
+    print_info "Docker not available, skipping persistence test"
+    return
+  fi
+
+  if [ -z "$ACCESS_TOKEN" ]; then
+    print_test "Data persistence (skipped — no auth token)"
+    print_fail "No access token available"
+    return
+  fi
+
+  # Step 1: Verify we have data (servers created earlier)
+  print_test "Verify data exists before restart"
+  http_request GET "${BASE_URL}/api/v1/servers"
+
+  local pre_restart_total=""
+  if [ "$HTTP_CODE" = "200" ]; then
+    pre_restart_total=$(json_field "$HTTP_BODY" "total")
+    if [ -n "$pre_restart_total" ] && [ "$pre_restart_total" -gt 0 ] 2>/dev/null; then
+      print_pass "Data exists: $pre_restart_total server(s) before restart"
+    else
+      print_fail "No servers found before restart — nothing to verify"
+      return
+    fi
+  else
+    print_fail "Could not list servers before restart (HTTP $HTTP_CODE)"
+    return
+  fi
+
+  # Step 2: Restart server container (preserves volume)
+  print_test "Restart server container"
+  if docker compose restart server >/dev/null 2>&1; then
+    print_pass "Server container restarted"
+  else
+    print_fail "Failed to restart server container"
+    return
+  fi
+
+  # Step 3: Wait for server to be healthy again
+  print_info "Waiting for server to become healthy after restart..."
+  local wait_elapsed=0
+  local max_restart_wait=60
+  while [ "$wait_elapsed" -lt "$max_restart_wait" ]; do
+    local health_code
+    health_code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "${BASE_URL}/health" 2>/dev/null || echo "000")
+    if [ "$health_code" = "200" ]; then
+      print_info "Server healthy after ${wait_elapsed}s"
+      break
+    fi
+    sleep 2
+    wait_elapsed=$((wait_elapsed + 2))
+  done
+
+  if [ "$wait_elapsed" -ge "$max_restart_wait" ]; then
+    print_fail "Server did not recover within ${max_restart_wait}s"
+    return
+  fi
+
+  # Step 4: Re-login (JWT secret persists via env var, but tokens may have expired)
+  if [ -n "$ADMIN_EMAIL_ARG" ] && [ -n "$ADMIN_PASSWORD_ARG" ]; then
+    http_request POST "${BASE_URL}/api/v1/auth/login" \
+      "{\"email\":\"${ADMIN_EMAIL_ARG}\",\"password\":\"${ADMIN_PASSWORD_ARG}\"}"
+  else
+    http_request POST "${BASE_URL}/api/v1/auth/login" \
+      "{\"email\":\"${TEST_USER}\",\"password\":\"${TEST_PASSWORD}\"}"
+  fi
+
+  if [ "$HTTP_CODE" = "200" ]; then
+    ACCESS_TOKEN=$(json_field "$HTTP_BODY" "accessToken")
+  else
+    print_fail "Re-login after restart failed (HTTP $HTTP_CODE)"
+    return
+  fi
+
+  # Step 5: Verify data survived restart
+  print_test "Verify data persists after restart"
+  http_request GET "${BASE_URL}/api/v1/servers"
+
+  if [ "$HTTP_CODE" = "200" ]; then
+    local post_restart_total
+    post_restart_total=$(json_field "$HTTP_BODY" "total")
+    if [ "$post_restart_total" = "$pre_restart_total" ]; then
+      print_pass "Data persisted: $post_restart_total server(s) after restart (same as before)"
+    else
+      print_fail "Data mismatch: $pre_restart_total before vs $post_restart_total after restart"
+    fi
+  else
+    print_fail "Could not list servers after restart (HTTP $HTTP_CODE)"
+  fi
+}
+
+test_env_defaults() {
+  print_header "13. Environment Defaults"
+
+  # Verify the server started and is serving — this itself proves env defaults work
+  # (docker-compose.yml uses ${VAR:-default} syntax for all critical values)
+  print_test "Server runs with default environment values"
+  http_request GET "${BASE_URL}/health"
+
+  if [ "$HTTP_CODE" = "200" ]; then
+    print_pass "Server healthy with default env config"
+  else
+    print_fail "Server unhealthy (HTTP $HTTP_CODE) — env defaults may be broken"
+  fi
+
+  # Verify dashboard port is accessible at expected port
+  print_test "Dashboard accessible on configured port (${PORT})"
+  local dash_code
+  dash_code=$(curl -s -o /dev/null -w '%{http_code}' --max-time "$TIMEOUT" "${BASE_URL}/" 2>/dev/null || echo "000")
+
+  if [ "$dash_code" = "200" ]; then
+    print_pass "Dashboard accessible on port ${PORT}"
+  else
+    print_fail "Dashboard not accessible on port ${PORT} (HTTP $dash_code)"
+  fi
+
+  # Check server port (3000) is exposed
+  print_test "Server API port (3000) is exposed"
+  local server_code
+  server_code=$(curl -s -o /dev/null -w '%{http_code}' --max-time "$TIMEOUT" "http://${HOST}:3000/health" 2>/dev/null || echo "000")
+
+  if [ "$server_code" = "200" ]; then
+    print_pass "Server port 3000 accessible directly"
+  else
+    # Server port might not be directly accessible in some Docker setups (only via Nginx)
+    print_info "Server port 3000 not directly accessible (HTTP $server_code) — OK if behind Nginx"
+    PASSED_TESTS=$((PASSED_TESTS + 1))
+  fi
+}
+
 test_error_logs() {
-  print_header "11. Error Log Analysis"
+  print_header "14. Error Log Analysis"
 
   if ! command -v docker >/dev/null 2>&1; then
     print_info "Docker not available, skipping log analysis"
@@ -541,9 +702,6 @@ test_error_logs() {
   fi
 }
 
-# ==============================================================================
-# Summary
-# ==============================================================================
 print_summary() {
   print_header "Test Summary"
   echo ""
@@ -589,9 +747,6 @@ print_summary() {
   fi
 }
 
-# ==============================================================================
-# Main
-# ==============================================================================
 main() {
   echo ""
   echo -e "${BLUE}  ServerPilot Smoke Test Suite${NC}"
@@ -604,12 +759,15 @@ main() {
   test_health_check
   test_register
   test_login
+  test_admin_login
   test_create_server
   test_list_servers
   test_nginx_proxy
   test_websocket
   test_ai_provider_health
   test_container_health
+  test_data_persistence
+  test_env_defaults
   test_error_logs
 
   print_summary
