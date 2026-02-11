@@ -204,62 +204,65 @@ describe.skipIf(!changelogExists)('CHANGELOG.md - 发布说明', () => {
     });
   });
 
-  describe('v1.1.0 发布内容', () => {
-    it('应包含 v1.1.0 版本', () => {
-      expect(content).toContain('[1.1.0]');
+  describe('v0.3.0-beta 发布内容', () => {
+    it('应包含 v0.3.0-beta 版本', () => {
+      expect(content).toContain('[0.3.0-beta]');
     });
 
-    it('应包含 AI 安装计划生成功能', () => {
-      expect(content).toContain('安装计划');
+    it('应包含 Dashboard 增强功能', () => {
+      expect(content).toContain('Dashboard');
     });
 
-    it('应包含错误诊断功能', () => {
-      expect(content).toContain('错误诊断');
+    it('应包含自定义 OpenAI Provider', () => {
+      expect(content).toContain('Custom OpenAI');
     });
 
-    it('应包含认证与限流功能', () => {
-      expect(content).toContain('认证');
-      expect(content).toContain('限流');
-    });
-
-    it('应包含数据库支持', () => {
-      expect(content).toContain('MySQL');
-    });
-
-    it('应包含云部署功能', () => {
-      expect(content).toContain('Fly.io');
-    });
-
-    it('应包含官网功能', () => {
-      expect(content).toContain('VitePress');
-    });
-
-    it('应包含一键安装脚本', () => {
-      expect(content).toContain('install.sh');
-    });
-
-    it('应包含 AI 容错机制', () => {
-      expect(content).toContain('容错');
-    });
-
-    it('应包含 E2E 测试', () => {
+    it('应包含 E2E 冒烟测试', () => {
       expect(content).toContain('E2E');
-    });
-
-    it('应包含版本链接', () => {
-      expect(content).toContain(
-        '[1.1.0]: https://github.com/aiinstaller/aiinstaller/releases/tag/v1.1.0',
-      );
     });
   });
 
-  describe('v1.0.0 基线版本', () => {
-    it('应包含 v1.0.0 版本', () => {
-      expect(content).toContain('[1.0.0]');
+  describe('v0.2.0 发布内容', () => {
+    it('应包含 v0.2.0 版本', () => {
+      expect(content).toContain('[0.2.0]');
     });
 
-    it('应包含基础 C/S 架构', () => {
+    it('应包含共享安全规则', () => {
+      expect(content).toContain('Shared Security Rules');
+    });
+
+    it('应包含 AI Provider Factory', () => {
+      expect(content).toContain('AI Provider Factory');
+    });
+
+    it('应包含 CI/CD Pipeline', () => {
+      expect(content).toContain('CI/CD Pipeline');
+    });
+
+    it('应包含协议兼容性', () => {
+      expect(content).toContain('Protocol Compatibility');
+    });
+  });
+
+  describe('v0.1.0 基线版本', () => {
+    it('应包含 v0.1.0 版本', () => {
+      expect(content).toContain('[0.1.0]');
+    });
+
+    it('应包含 WebSocket 架构', () => {
       expect(content).toContain('WebSocket');
+    });
+
+    it('应包含 AI 引擎', () => {
+      expect(content).toContain('AI Engine');
+    });
+
+    it('应包含安全模块', () => {
+      expect(content).toContain('Security');
+    });
+
+    it('应包含 Docker Compose 部署', () => {
+      expect(content).toContain('Docker Compose');
     });
   });
 });
