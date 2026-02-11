@@ -12,6 +12,7 @@
 import type { InstallServer } from './server.js';
 import type {
   SessionCreateMessage,
+  SessionCompleteMessage,
   EnvReportMessage,
   StepCompleteMessage,
   StepOutputMessage,
@@ -845,6 +846,51 @@ export async function handleMetricsReport(
   }
 }
 
+/**
+ * Handle a session.complete message from the agent.
+ *
+ * Updates the session status to completed or failed based on the payload.
+ */
+export function handleSessionComplete(
+  server: InstallServer,
+  clientId: string,
+  message: SessionCompleteMessage,
+): HandlerResult {
+  try {
+    const sessionId = server.getClientSessionId(clientId);
+    if (!sessionId) {
+      logError(
+        new Error('No session found'),
+        { clientId, operation: 'session.complete' },
+        'No session found for client'
+      );
+      return { success: false, error: `No session found for client ${clientId}` };
+    }
+
+    const requestId = message.requestId ?? randomUUID();
+    const logger = createContextLogger({ requestId, sessionId, clientId });
+
+    logMessageRoute('session.complete', { requestId, sessionId, clientId }, {
+      success: message.payload.success,
+      summary: message.payload.summary,
+    });
+
+    const status = message.payload.success ? SessionStatus.COMPLETED : SessionStatus.ERROR;
+    server.updateSessionStatus(sessionId, status);
+
+    logger.info({
+      success: message.payload.success,
+      summary: message.payload.summary,
+    }, 'Session completed');
+
+    return { success: true };
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    logError(err as Error, { clientId, operation: 'session.complete' }, 'Failed to handle session complete');
+    return { success: false, error: errorMsg };
+  }
+}
+
 // ============================================================================
 // Message Router
 // ============================================================================
@@ -888,12 +934,18 @@ export async function routeMessage(
       return handleCreateSession(server, clientId, message);
     case MessageType.ENV_REPORT:
       return await handleEnvReport(server, clientId, message, aiAgent);
+    case MessageType.STEP_EXECUTE:
+      // Agent sends step.execute as a notification that it started a step.
+      // This is informational only — the server does not need to act on it.
+      return { success: true };
     case MessageType.STEP_OUTPUT:
       return handleStepOutput(server, clientId, message);
     case MessageType.STEP_COMPLETE:
       return handleStepComplete(server, clientId, message);
     case MessageType.ERROR_OCCURRED:
       return await handleErrorOccurred(server, clientId, message, aiAgent);
+    case MessageType.SESSION_COMPLETE:
+      return handleSessionComplete(server, clientId, message);
     case MessageType.SNAPSHOT_RESPONSE:
       return await handleSnapshotResponse(message);
     case MessageType.ROLLBACK_RESPONSE:

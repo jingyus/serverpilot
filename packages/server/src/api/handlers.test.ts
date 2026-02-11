@@ -1505,11 +1505,11 @@ describe('routeMessage', () => {
 
     const result = await routeMessage(server, clientId, message);
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('Unhandled message type');
+    // step.execute from agent is accepted as an informational notification
+    expect(result.success).toBe(true);
   });
 
-  it('returns failure for session.complete (not handled by router)', async () => {
+  it('handles session.complete from agent via router', async () => {
     const port = nextPort();
     server = new InstallServer({ port, heartbeatIntervalMs: 60000 });
 
@@ -1521,8 +1521,9 @@ describe('routeMessage', () => {
     ws = await connectClient(port);
     clientId = await clientIdPromise;
 
-    // Authenticate client so we test message type routing, not auth
+    // Authenticate client and create a session first
     server.authenticateClient(clientId, 'test-device', 'test-token');
+    server.createSession(clientId, { software: 'nginx' });
 
     const message = createMessage(MessageType.SESSION_COMPLETE, {
       success: true,
@@ -1531,8 +1532,7 @@ describe('routeMessage', () => {
 
     const result = await routeMessage(server, clientId, message);
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('Unhandled message type');
+    expect(result.success).toBe(true);
   });
 });
 

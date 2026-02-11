@@ -68,6 +68,18 @@ export class AuthenticatedClient extends InstallClient {
   constructor(options: AuthenticatedClientOptions) {
     super(options);
     this.authTimeoutMs = options.authTimeoutMs ?? 10000;
+
+    // Re-authenticate on reconnection
+    this.on('reconnected', () => {
+      this.authState = { authenticated: false };
+      this.authenticate().catch((err) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.authState = {
+          authenticated: false,
+          error: `Re-authentication failed: ${msg}`,
+        };
+      });
+    });
   }
 
   /**

@@ -317,12 +317,10 @@ export async function runInstall(options: CLIOptions): Promise<number> {
     client.send(envMsg);
     verbose.log('ws', 'Environment report sent to server');
 
-    // Step 5: Wait for install plan
+    // Step 5: Wait for install plan (skip empty initial plan from session.create)
     console.log(theme.info(`${options.dryRun ? '[DRY-RUN] ' : ''}Waiting for installation plan...`));
     verbose.log('plan', 'Waiting for server to generate installation plan...');
-    const planResponse = await client.waitFor('plan.receive', 60000);
-
-    const plan: InstallPlan = (planResponse as Message & { type: 'plan.receive' }).payload;
+    const plan: InstallPlan = await waitForNonEmptyPlan(client, verbose, 60000);
     console.log(displayInstallPlan(plan));
     verbose.log('plan', `Received plan with ${plan.steps.length} steps, estimated time: ${Math.round(plan.estimatedTime / 1000)}s`);
     for (const step of plan.steps) {
@@ -403,6 +401,67 @@ export async function runInstall(options: CLIOptions): Promise<number> {
     client.disconnect();
     return 1;
   }
+}
+
+/**
+ * Wait for a plan.receive message with actual steps.
+ *
+ * The server sends an initial empty plan when the session is created,
+ * then sends the real plan after analyzing the environment. This helper
+ * skips empty plans and waits for one with steps.
+ */
+async function waitForNonEmptyPlan(
+  client: AuthenticatedClient,
+  verbose: VerboseLogger,
+  timeoutMs: number,
+): Promise<InstallPlan> {
+  const deadline = Date.now() + timeoutMs;
+
+  return new Promise<InstallPlan>((resolve, reject) => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const cleanup = () => {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      client.off('message', onMessage);
+      client.off('disconnected', onDisconnect);
+      client.off('error', onError);
+    };
+
+    const onMessage = (msg: Message) => {
+      if (msg.type === 'plan.receive') {
+        const plan = (msg as Message & { type: 'plan.receive' }).payload;
+        if (plan.steps.length > 0) {
+          cleanup();
+          resolve(plan);
+        } else {
+          verbose.log('plan', 'Received empty plan (session confirmation), waiting for real plan...');
+        }
+      }
+    };
+
+    const onDisconnect = () => {
+      cleanup();
+      reject(new Error('Disconnected while waiting for installation plan'));
+    };
+
+    const onError = (error: Error) => {
+      cleanup();
+      reject(error);
+    };
+
+    const remaining = deadline - Date.now();
+    timer = setTimeout(() => {
+      cleanup();
+      reject(new Error('Timeout waiting for installation plan'));
+    }, remaining);
+
+    client.on('message', onMessage);
+    client.on('disconnected', onDisconnect);
+    client.on('error', onError);
+  });
 }
 
 /**

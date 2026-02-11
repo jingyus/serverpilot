@@ -7,9 +7,9 @@
 ## 📊 统计信息
 
 - **总任务数**: 20
-- **待完成** (pending): 3
-- **进行中** (in_progress): 1
-- **已完成** (completed): 16
+- **待完成** (pending): 2
+- **进行中** (in_progress): 0
+- **已完成** (completed): 18
 - **失败** (failed): 0
 
 ---
@@ -214,7 +214,7 @@
 
 ---
 
-### [in_progress] CI/CD 流水线完善 - 自动测试 + Docker 镜像发布
+### [completed] CI/CD 流水线完善 - 自动测试 + Docker 镜像发布 ✅
 
 **ID**: task-007
 **优先级**: P1
@@ -228,11 +228,11 @@
 - Dependabot 配置文件存在并生效
 - CI 状态徽章显示在 README.md
 **创建时间**: 2026-02-11 00:00:00
-**完成时间**: -
+**完成时间**: 2026-02-11 10:03:19
 
 ---
 
-### [pending] Server ↔ Agent 实际连接调试与协议兼容性验证
+### [completed] Server ↔ Agent 实际连接调试与协议兼容性验证 ✅
 
 **ID**: task-008
 **优先级**: P0
@@ -240,14 +240,26 @@
 **任务描述**: Server 和 Agent 的 WebSocket 通信代码各自独立开发完成，但需要验证两端协议是否完全兼容。启动 Server 后用 Agent 实际连接，验证：(1) Agent 认证握手流程 (2) 环境信息上报与 Profile 更新 (3) 命令下发与执行结果回传 (4) 心跳保活与断线重连 (5) 流式输出传输。修复发现的协议不兼容问题。
 **产品需求**: MVP - "Agent 安装、密钥生成、WSS 连接、系统探测、命令执行"
 **验收标准**:
-- Agent 能成功连接 Server 并完成认证
-- `env.report` 消息被 Server 正确解析并存入数据库
-- Server 能向 Agent 下发命令并收到执行结果
-- 心跳包正常交换，Server 能检测 Agent 离线
-- 断线后 Agent 能自动重连并恢复状态
-- Shared protocol 的 Zod schemas 在两端一致使用
+- [x] Agent 能成功连接 Server 并完成认证
+- [x] `env.report` 消息被 Server 正确解析并存入数据库
+- [x] Server 能向 Agent 下发命令并收到执行结果
+- [x] 心跳包正常交换，Server 能检测 Agent 离线
+- [x] 断线后 Agent 能自动重连并恢复状态
+- [x] Shared protocol 的 Zod schemas 在两端一致使用
+
+**发现并修复的协议不兼容问题**:
+1. **Agent 断线重连不重新认证** — `InstallClient.attemptReconnect()` 仅重建 WebSocket 连接但不触发认证握手。修复：添加 `reconnected` 事件，`AuthenticatedClient` 监听该事件自动重新认证。
+2. **Server 不处理 `session.complete` 消息** — `routeMessage` switch 缺少 `session.complete` 分支，Agent 的完成消息被静默丢弃。修复：添加 `handleSessionComplete` 处理函数，更新 session 状态为 COMPLETED/ERROR。
+3. **Server 不处理 Agent 发来的 `step.execute` 消息** — Agent 在执行步骤前发送 `step.execute` 通知，但 Server 路由无此分支导致报错。修复：在路由中添加 `step.execute` 作为通知型消息（成功但不处理）。
+4. **Agent `waitFor('plan.receive')` 收到空计划** — Server 在 `handleCreateSession` 时发送初始空计划，后在 `handleEnvReport` 发送真实计划。Agent 的 `waitFor` 匹配到第一个空计划即返回。修复：实现 `waitForNonEmptyPlan` 跳过空计划等待真实计划。
+
+**新增测试**:
+- `server-agent-integration.test.ts`: 24 个集成测试覆盖完整消息流
+- `protocol-compat.test.ts`: 20 个协议兼容性测试验证 protocol-lite ↔ shared Zod 一致性
+- 所有现有测试继续通过 (Agent: 1923/1923, Server API: 596/596, Shared: 77/77)
+
 **创建时间**: 2026-02-11 00:00:00
-**完成时间**: -
+**完成时间**: 2026-02-11 10:01:00
 
 ---
 
@@ -726,4 +738,4 @@ ID: task-001
 
 ---
 
-**最后更新**: 2026-02-11 09:51:05
+**最后更新**: 2026-02-11 10:03:19

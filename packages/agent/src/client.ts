@@ -58,6 +58,8 @@ export interface InstallClientEvents {
   reconnecting: (attempt: number, maxAttempts: number) => void;
   /** Emitted when all reconnection attempts are exhausted */
   reconnectFailed: () => void;
+  /** Emitted when reconnection succeeds (WebSocket re-established) */
+  reconnected: () => void;
 }
 
 // ============================================================================
@@ -446,7 +448,8 @@ export class InstallClient {
       this.reconnectTimer = null;
       this.establishConnection(
         () => {
-          // Reconnection succeeded
+          // Reconnection succeeded - emit reconnected event
+          this.emit('reconnected');
         },
         () => {
           // Reconnection failed, will be handled by close/error events
