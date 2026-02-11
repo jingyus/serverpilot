@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
@@ -10,6 +10,8 @@ import {
   MessageSquarePlus,
   Server,
   Trash2,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -350,6 +352,21 @@ function ServerSelector({
   );
 }
 
+function getSessionDateGroup(dateStr: string): string {
+  const date = new Date(dateStr);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const weekAgo = new Date(today);
+  weekAgo.setDate(weekAgo.getDate() - 7);
+
+  if (date >= today) return 'Today';
+  if (date >= yesterday) return 'Yesterday';
+  if (date >= weekAgo) return 'This Week';
+  return 'Older';
+}
+
 function SessionSidebar({
   sessions,
   activeSessionId,
@@ -371,8 +388,22 @@ function SessionSidebar({
   isLoading: boolean;
 }) {
   const { t } = useTranslation();
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
   if (sessions.length === 0 && !isLoading) return null;
+
+  // Group sessions by date
+  const grouped: Record<string, typeof sessions> = {};
+  for (const session of sessions) {
+    const group = getSessionDateGroup(session.createdAt);
+    (grouped[group] ??= []).push(session);
+  }
+  const groupOrder = ['Today', 'Yesterday', 'This Week', 'Older'];
+  const sortedGroups = groupOrder.filter((g) => grouped[g]?.length);
+
+  const toggleGroup = (group: string) => {
+    setCollapsedGroups((prev) => ({ ...prev, [group]: !prev[group] }));
+  };
 
   return (
     <div
@@ -390,39 +421,60 @@ function SessionSidebar({
           <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
         </div>
       ) : (
-        <div className="space-y-0.5 p-1">
-          {sessions.map((session) => (
-            <div
-              key={session.id}
-              className={cn(
-                'group flex items-center justify-between rounded-md px-2 py-1.5 text-sm',
-                'cursor-pointer hover:bg-muted',
-                session.id === activeSessionId && 'bg-muted'
-              )}
-              onClick={() => onSelect(session.id)}
-              data-testid={`session-item-${session.id}`}
-            >
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-medium">
-                  {session.lastMessage ?? t('chat.newSession')}
-                </p>
-                <p className="text-[10px] text-muted-foreground">
-                  {formatDate(session.createdAt)} &middot;{' '}
-                  {session.messageCount} msgs
-                </p>
-              </div>
+        <div className="p-1">
+          {sortedGroups.map((group) => (
+            <div key={group} data-testid={`session-group-${group}`}>
               <button
                 type="button"
-                className="ml-1 hidden shrink-0 rounded p-0.5 hover:bg-destructive/10 group-hover:block"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete(session.id);
-                }}
-                aria-label="Delete session"
-                data-testid={`delete-session-${session.id}`}
+                className="flex w-full items-center gap-1 px-2 py-1 text-[10px] font-semibold uppercase text-muted-foreground hover:text-foreground"
+                onClick={() => toggleGroup(group)}
+                data-testid={`session-group-toggle-${group}`}
               >
-                <Trash2 className="h-3 w-3 text-destructive" />
+                {collapsedGroups[group] ? (
+                  <ChevronRight className="h-3 w-3" />
+                ) : (
+                  <ChevronDown className="h-3 w-3" />
+                )}
+                {group}
               </button>
+              {!collapsedGroups[group] && (
+                <div className="space-y-0.5">
+                  {grouped[group].map((session) => (
+                    <div
+                      key={session.id}
+                      className={cn(
+                        'group flex items-center justify-between rounded-md px-2 py-1.5 text-sm',
+                        'cursor-pointer hover:bg-muted',
+                        session.id === activeSessionId && 'bg-muted'
+                      )}
+                      onClick={() => onSelect(session.id)}
+                      data-testid={`session-item-${session.id}`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-medium">
+                          {session.lastMessage ?? t('chat.newSession')}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {formatDate(session.createdAt)} &middot;{' '}
+                          {session.messageCount} msgs
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className="ml-1 hidden shrink-0 rounded p-0.5 hover:bg-destructive/10 group-hover:block"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDelete(session.id);
+                        }}
+                        aria-label="Delete session"
+                        data-testid={`delete-session-${session.id}`}
+                      >
+                        <Trash2 className="h-3 w-3 text-destructive" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </div>

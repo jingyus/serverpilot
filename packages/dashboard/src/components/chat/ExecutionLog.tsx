@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
 import {
   CheckCircle2,
   XCircle,
@@ -21,6 +21,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { formatDuration } from '@/utils/format';
+import { parseAnsi } from '@/utils/ansi';
 import type { ExecutionPlan } from '@/types/chat';
 
 interface ExecutionLogProps {
@@ -33,6 +34,50 @@ interface ExecutionLogProps {
   isExecuting?: boolean;
   startTime?: number | null;
   cancelled?: boolean;
+}
+
+function AnsiOutput({ text }: { text: string }) {
+  const segments = useMemo(() => parseAnsi(text), [text]);
+  return (
+    <>
+      {segments.map((seg, i) =>
+        seg.className ? (
+          <span key={i} className={seg.className}>{seg.text}</span>
+        ) : (
+          seg.text
+        )
+      )}
+    </>
+  );
+}
+
+function ProgressBar({
+  completed,
+  total,
+  hasFailure,
+}: {
+  completed: number;
+  total: number;
+  hasFailure: boolean;
+}) {
+  const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+  return (
+    <div className="space-y-1" data-testid="execution-progress-bar">
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <span>{completed}/{total} steps completed</span>
+        <span>{pct}%</span>
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+        <div
+          className={cn(
+            'h-full rounded-full transition-all',
+            hasFailure ? 'bg-red-500' : 'bg-green-500'
+          )}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
 }
 
 function StepLog({
@@ -127,7 +172,7 @@ function StepLog({
             className="whitespace-pre-wrap font-mono text-[10px] text-green-400 sm:text-xs"
             data-testid={`exec-output-${step.id}`}
           >
-            {output || (isActive ? 'Waiting for output...' : '')}
+            {output ? <AnsiOutput text={output} /> : (isActive ? 'Waiting for output...' : '')}
           </pre>
           {userScrolledUp && isActive && (
             <button
@@ -255,6 +300,12 @@ export function ExecutionLog({
       </CardHeader>
 
       <CardContent className="space-y-2">
+        <ProgressBar
+          completed={Object.keys(completedSteps).length}
+          total={plan.steps.length}
+          hasFailure={Object.values(completedSteps).some((s) => s.exitCode !== 0)}
+        />
+
         {plan.steps.map((step, i) => (
           <StepLog
             key={step.id}

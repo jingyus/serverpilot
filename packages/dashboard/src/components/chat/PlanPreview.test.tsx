@@ -139,4 +139,161 @@ describe('PlanPreview', () => {
     render(<PlanPreview {...defaultProps} />);
     expect(screen.getByTestId('risk-badge-green')).toBeInTheDocument();
   });
+
+  describe('risk level color indicators', () => {
+    it('applies green border for green risk plan', () => {
+      const plan: ExecutionPlan = {
+        ...mockPlan,
+        totalRisk: 'green',
+        steps: [{ ...mockPlan.steps[0], riskLevel: 'green' }],
+      };
+      render(<PlanPreview {...defaultProps} plan={plan} />);
+      const card = screen.getByTestId('plan-preview');
+      expect(card.className).toContain('border-green');
+    });
+
+    it('applies yellow border for yellow risk plan', () => {
+      render(<PlanPreview {...defaultProps} />);
+      const card = screen.getByTestId('plan-preview');
+      expect(card.className).toContain('border-yellow');
+    });
+
+    it('applies red border for red risk plan', () => {
+      const plan: ExecutionPlan = {
+        ...mockPlan,
+        totalRisk: 'red',
+        steps: [{ ...mockPlan.steps[0], riskLevel: 'red' }],
+      };
+      render(<PlanPreview {...defaultProps} plan={plan} />);
+      const card = screen.getByTestId('plan-preview');
+      expect(card.className).toContain('border-red');
+    });
+
+    it('applies animate-pulse for critical risk plan', () => {
+      const plan: ExecutionPlan = {
+        ...mockPlan,
+        totalRisk: 'critical',
+        steps: [{ ...mockPlan.steps[0], riskLevel: 'critical' }],
+      };
+      render(<PlanPreview {...defaultProps} plan={plan} />);
+      const card = screen.getByTestId('plan-preview');
+      expect(card.className).toContain('animate-pulse');
+    });
+
+    it('applies risk-colored borders on individual steps', () => {
+      const plan: ExecutionPlan = {
+        ...mockPlan,
+        totalRisk: 'red',
+        steps: [
+          { ...mockPlan.steps[0], riskLevel: 'red' },
+          { ...mockPlan.steps[1], riskLevel: 'green' },
+        ],
+      };
+      render(<PlanPreview {...defaultProps} plan={plan} />);
+      const step1 = screen.getByTestId('plan-step-step-1');
+      const step2 = screen.getByTestId('plan-step-step-2');
+      expect(step1.className).toContain('border-red');
+      expect(step2.className).toContain('border-green');
+    });
+
+    it('shows warning banner for RED risk plan', () => {
+      const plan: ExecutionPlan = {
+        ...mockPlan,
+        totalRisk: 'red',
+        steps: [{ ...mockPlan.steps[0], riskLevel: 'red' }],
+      };
+      render(<PlanPreview {...defaultProps} plan={plan} />);
+      expect(screen.getByTestId('risk-warning')).toBeInTheDocument();
+      expect(screen.getByText(/high-risk commands/)).toBeInTheDocument();
+    });
+
+    it('shows warning banner for CRITICAL risk plan', () => {
+      const plan: ExecutionPlan = {
+        ...mockPlan,
+        totalRisk: 'critical',
+        steps: [{ ...mockPlan.steps[0], riskLevel: 'critical' }],
+      };
+      render(<PlanPreview {...defaultProps} plan={plan} />);
+      expect(screen.getByTestId('risk-warning')).toBeInTheDocument();
+    });
+
+    it('does not show warning banner for green/yellow risk', () => {
+      render(<PlanPreview {...defaultProps} />);
+      expect(screen.queryByTestId('risk-warning')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('confirmation dialog for high-risk plans', () => {
+    const highRiskPlan: ExecutionPlan = {
+      planId: 'plan-hr',
+      description: 'Remove old packages',
+      steps: [
+        {
+          id: 'hr-1',
+          description: 'Remove package',
+          command: 'apt remove -y old-pkg',
+          riskLevel: 'red',
+          timeout: 30000,
+          canRollback: false,
+        },
+        {
+          id: 'hr-2',
+          description: 'Check status',
+          command: 'systemctl status app',
+          riskLevel: 'green',
+          timeout: 10000,
+          canRollback: false,
+        },
+      ],
+      totalRisk: 'red',
+      requiresConfirmation: true,
+    };
+
+    it('shows confirmation dialog when confirming high-risk plan', async () => {
+      const user = userEvent.setup();
+      const onConfirm = vi.fn();
+      render(<PlanPreview plan={highRiskPlan} onConfirm={onConfirm} onReject={vi.fn()} isExecuting={false} />);
+
+      await user.click(screen.getByTestId('plan-confirm-btn'));
+      expect(screen.getByTestId('confirm-dialog')).toBeInTheDocument();
+      expect(screen.getByText('Confirm High-Risk Execution')).toBeInTheDocument();
+      expect(onConfirm).not.toHaveBeenCalled();
+    });
+
+    it('lists only high-risk steps in confirmation dialog', async () => {
+      const user = userEvent.setup();
+      render(<PlanPreview plan={highRiskPlan} onConfirm={vi.fn()} onReject={vi.fn()} isExecuting={false} />);
+
+      await user.click(screen.getByTestId('plan-confirm-btn'));
+      expect(screen.getByTestId('confirm-step-hr-1')).toBeInTheDocument();
+      expect(screen.queryByTestId('confirm-step-hr-2')).not.toBeInTheDocument();
+    });
+
+    it('calls onConfirm after confirming in dialog', async () => {
+      const user = userEvent.setup();
+      const onConfirm = vi.fn();
+      render(<PlanPreview plan={highRiskPlan} onConfirm={onConfirm} onReject={vi.fn()} isExecuting={false} />);
+
+      await user.click(screen.getByTestId('plan-confirm-btn'));
+      await user.click(screen.getByTestId('confirm-execute-btn'));
+      expect(onConfirm).toHaveBeenCalledOnce();
+    });
+
+    it('directly confirms low-risk plan without dialog', async () => {
+      const user = userEvent.setup();
+      const onConfirm = vi.fn();
+      render(<PlanPreview {...defaultProps} onConfirm={onConfirm} />);
+
+      await user.click(screen.getByTestId('plan-confirm-btn'));
+      expect(screen.queryByTestId('confirm-dialog')).not.toBeInTheDocument();
+      expect(onConfirm).toHaveBeenCalledOnce();
+    });
+
+    it('uses destructive button variant for high-risk plans', () => {
+      render(<PlanPreview plan={highRiskPlan} onConfirm={vi.fn()} onReject={vi.fn()} isExecuting={false} />);
+      const btn = screen.getByTestId('plan-confirm-btn');
+      // destructive variant typically has specific class
+      expect(btn.className).toContain('destructive');
+    });
+  });
 });

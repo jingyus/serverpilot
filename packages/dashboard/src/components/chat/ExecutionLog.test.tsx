@@ -309,4 +309,103 @@ describe('ExecutionLog', () => {
       expect(screen.getByTestId('summary-duration').textContent).toMatch(/\d+s/);
     });
   });
+
+  describe('progress bar', () => {
+    it('renders progress bar', () => {
+      render(<ExecutionLog {...defaultProps} />);
+      expect(screen.getByTestId('execution-progress-bar')).toBeInTheDocument();
+    });
+
+    it('shows 0/3 when no steps completed', () => {
+      render(<ExecutionLog {...defaultProps} />);
+      expect(screen.getByText('0/3 steps completed')).toBeInTheDocument();
+      expect(screen.getByText('0%')).toBeInTheDocument();
+    });
+
+    it('shows progress when some steps completed', () => {
+      render(
+        <ExecutionLog
+          {...defaultProps}
+          completedSteps={{
+            'step-1': { exitCode: 0, duration: 1000 },
+            'step-2': { exitCode: 0, duration: 1000 },
+          }}
+        />
+      );
+      expect(screen.getByText('2/3 steps completed')).toBeInTheDocument();
+      expect(screen.getByText('67%')).toBeInTheDocument();
+    });
+
+    it('shows 100% when all steps completed', () => {
+      render(
+        <ExecutionLog
+          {...defaultProps}
+          success={true}
+          completedSteps={{
+            'step-1': { exitCode: 0, duration: 1000 },
+            'step-2': { exitCode: 0, duration: 1000 },
+            'step-3': { exitCode: 0, duration: 1000 },
+          }}
+        />
+      );
+      expect(screen.getByText('3/3 steps completed')).toBeInTheDocument();
+      expect(screen.getByText('100%')).toBeInTheDocument();
+    });
+
+    it('uses red color for progress bar when a step failed', () => {
+      render(
+        <ExecutionLog
+          {...defaultProps}
+          completedSteps={{
+            'step-1': { exitCode: 1, duration: 1000 },
+          }}
+        />
+      );
+      const bar = screen.getByTestId('execution-progress-bar');
+      const fill = bar.querySelector('[class*="bg-red"]');
+      expect(fill).toBeInTheDocument();
+    });
+
+    it('uses green color for progress bar when all steps pass', () => {
+      render(
+        <ExecutionLog
+          {...defaultProps}
+          completedSteps={{
+            'step-1': { exitCode: 0, duration: 1000 },
+          }}
+        />
+      );
+      const bar = screen.getByTestId('execution-progress-bar');
+      const fill = bar.querySelector('[class*="bg-green"]');
+      expect(fill).toBeInTheDocument();
+    });
+  });
+
+  describe('ANSI output rendering', () => {
+    it('renders ANSI colored output with span elements', () => {
+      render(
+        <ExecutionLog
+          {...defaultProps}
+          activeStepId="step-1"
+          outputs={{ 'step-1': '\x1b[32mSuccess\x1b[0m' }}
+        />
+      );
+      const output = screen.getByTestId('exec-output-step-1');
+      const span = output.querySelector('span.text-green-400');
+      expect(span).toBeInTheDocument();
+      expect(span?.textContent).toBe('Success');
+    });
+
+    it('renders plain text output without spans', () => {
+      render(
+        <ExecutionLog
+          {...defaultProps}
+          activeStepId="step-1"
+          outputs={{ 'step-1': 'plain text output' }}
+        />
+      );
+      const output = screen.getByTestId('exec-output-step-1');
+      expect(output.textContent).toBe('plain text output');
+    });
+  });
 });

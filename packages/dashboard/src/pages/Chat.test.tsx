@@ -432,5 +432,69 @@ describe('Chat Page', () => {
         screen.queryByTestId('session-sidebar')
       ).not.toBeInTheDocument();
     });
+
+    it('groups sessions by date (Today group)', () => {
+      useChatStore.setState({
+        sessions: [
+          {
+            id: 'sess-today',
+            serverId: 'srv-1',
+            messageCount: 2,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            lastMessage: 'Today session',
+          },
+        ],
+        fetchSessions: vi.fn() as unknown as (serverId: string) => Promise<void>,
+      });
+      renderChat('/chat/srv-1');
+      expect(screen.getByTestId('session-group-Today')).toBeInTheDocument();
+      expect(screen.getByText('Today session')).toBeInTheDocument();
+    });
+
+    it('groups sessions by date (Older group)', () => {
+      useChatStore.setState({
+        sessions: [
+          {
+            id: 'sess-old',
+            serverId: 'srv-1',
+            messageCount: 5,
+            createdAt: '2024-06-01T00:00:00Z',
+            updatedAt: '2024-06-01T00:00:00Z',
+            lastMessage: 'Old session',
+          },
+        ],
+        fetchSessions: vi.fn() as unknown as (serverId: string) => Promise<void>,
+      });
+      renderChat('/chat/srv-1');
+      expect(screen.getByTestId('session-group-Older')).toBeInTheDocument();
+      expect(screen.getByText('Old session')).toBeInTheDocument();
+    });
+
+    it('can collapse and expand a session group', async () => {
+      const user = (await import('@testing-library/user-event')).default.setup();
+      useChatStore.setState({
+        sessions: [
+          {
+            id: 'sess-collapse',
+            serverId: 'srv-1',
+            messageCount: 1,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            lastMessage: 'Collapsible session',
+          },
+        ],
+        fetchSessions: vi.fn() as unknown as (serverId: string) => Promise<void>,
+      });
+      renderChat('/chat/srv-1');
+
+      expect(screen.getByText('Collapsible session')).toBeInTheDocument();
+
+      await user.click(screen.getByTestId('session-group-toggle-Today'));
+      expect(screen.queryByText('Collapsible session')).not.toBeInTheDocument();
+
+      await user.click(screen.getByTestId('session-group-toggle-Today'));
+      expect(screen.getByText('Collapsible session')).toBeInTheDocument();
+    });
   });
 });
