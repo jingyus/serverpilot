@@ -58,3 +58,43 @@ jobs:
           name: e2e-screenshots
           path: test-results/
           retention-days: 7
+
+  docker-smoke:
+    name: Docker Smoke Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and start services
+        run: docker compose up -d --build
+        env:
+          JWT_SECRET: 'ci-smoke-test-secret-key-minimum-32-chars-long'
+          AI_PROVIDER: 'claude'
+          LOG_LEVEL: 'warn'
+
+      - name: Run smoke tests
+        run: ./scripts/smoke-test.sh --wait 60 --verbose
+        env:
+          HOST: localhost
+          PORT: 3001
+
+      - name: Collect container logs
+        if: always()
+        run: docker compose logs --tail=200 > docker-smoke-logs.txt 2>&1
+
+      - name: Upload smoke test logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: docker-smoke-logs
+          path: docker-smoke-logs.txt
+          retention-days: 7
+
+      - name: Stop services
+        if: always()
+        run: docker compose down -v

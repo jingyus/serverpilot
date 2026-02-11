@@ -405,7 +405,8 @@ describe('Docker Compose Production Deployment', () => {
         'packages/dashboard/nginx.conf',
         '.dockerignore',
         'init.sh',
-        'scripts/verify-deployment.sh'
+        'scripts/verify-deployment.sh',
+        'scripts/smoke-test.sh'
       ];
 
       requiredFiles.forEach(file => {

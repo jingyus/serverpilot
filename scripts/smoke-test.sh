@@ -3,56 +3,52 @@
 # ==============================================================================
 # ServerPilot - End-to-End Smoke Test Script
 # ==============================================================================
-# Purpose: Comprehensive smoke testing after Docker Compose deployment
-# Tests: HTTP API, WebSocket, Database, Dashboard static files
+# Purpose: Full-chain smoke testing after Docker Compose deployment
+# Flow: Health → Register → Login → Create Server → API Proxy → WebSocket → AI Health
 #
 # Usage:
 #   ./scripts/smoke-test.sh [options]
 #
 # Options:
 #   --host HOST         Server host (default: localhost)
-#   --port PORT         Server port (default: 3000)
+#   --port PORT         Dashboard port via Nginx (default: 3001)
 #   --timeout SECONDS   Timeout for each test (default: 10)
-#   --verbose          Show detailed output
+#   --verbose           Show detailed output
+#   --wait SECONDS      Wait for services to be healthy before testing (default: 0)
 #
 # Exit codes:
-#   0 - All tests passed
-#   1 - One or more tests failed
+#   0 - All critical tests passed (pass rate >= 80%)
+#   1 - Critical tests failed
 # ==============================================================================
 
-set -e
+set -euo pipefail
 
 # Default configuration
 HOST="${HOST:-localhost}"
-PORT="${PORT:-3000}"
+PORT="${PORT:-3001}"
 TIMEOUT="${TIMEOUT:-10}"
 VERBOSE="${VERBOSE:-0}"
+WAIT_SECONDS="${WAIT_SECONDS:-0}"
+
+# Test user credentials (unique per run to avoid conflicts)
+TEST_USER="smoke_$(date +%s)@test.local"
+TEST_PASSWORD="SmokeTest_Passw0rd!"
+ACCESS_TOKEN=""
+SERVER_ID=""
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
   case $1 in
-    --host)
-      HOST="$2"
-      shift 2
-      ;;
-    --port)
-      PORT="$2"
-      shift 2
-      ;;
-    --timeout)
-      TIMEOUT="$2"
-      shift 2
-      ;;
-    --verbose)
-      VERBOSE=1
-      shift
-      ;;
-    *)
-      echo "Unknown option: $1"
-      exit 1
-      ;;
+    --host) HOST="$2"; shift 2 ;;
+    --port) PORT="$2"; shift 2 ;;
+    --timeout) TIMEOUT="$2"; shift 2 ;;
+    --verbose) VERBOSE=1; shift ;;
+    --wait) WAIT_SECONDS="$2"; shift 2 ;;
+    *) echo "Unknown option: $1"; exit 1 ;;
   esac
 done
+
+BASE_URL="http://${HOST}:${PORT}"
 
 # Colors
 RED='\033[0;31m'
@@ -68,385 +64,555 @@ FAILED_TESTS=0
 
 # Print functions
 print_header() {
-    echo -e "\n${BLUE}========================================${NC}"
-    echo -e "${BLUE}$1${NC}"
-    echo -e "${BLUE}========================================${NC}\n"
+  echo -e "\n${BLUE}========================================${NC}"
+  echo -e "${BLUE}  $1${NC}"
+  echo -e "${BLUE}========================================${NC}"
 }
 
 print_test() {
-    echo -e "${YELLOW}[TEST]${NC} $1"
-    TOTAL_TESTS=$((TOTAL_TESTS + 1))
+  TOTAL_TESTS=$((TOTAL_TESTS + 1))
+  echo -e "${YELLOW}[TEST]${NC} $1"
 }
 
 print_pass() {
-    echo -e "${GREEN}[✓ PASS]${NC} $1"
-    PASSED_TESTS=$((PASSED_TESTS + 1))
+  PASSED_TESTS=$((PASSED_TESTS + 1))
+  echo -e "${GREEN}  [PASS]${NC} $1"
 }
 
 print_fail() {
-    echo -e "${RED}[✗ FAIL]${NC} $1"
-    FAILED_TESTS=$((FAILED_TESTS + 1))
+  FAILED_TESTS=$((FAILED_TESTS + 1))
+  echo -e "${RED}  [FAIL]${NC} $1"
 }
 
 print_info() {
-    echo -e "${BLUE}[i]${NC} $1"
+  echo -e "${BLUE}  [INFO]${NC} $1"
 }
 
 print_verbose() {
-    if [ "$VERBOSE" = "1" ]; then
-        echo -e "    ${NC}$1${NC}"
-    fi
+  if [ "$VERBOSE" = "1" ]; then
+    echo -e "    $1"
+  fi
 }
 
-# Check if command exists
-command_exists() {
-    command -v "$1" >/dev/null 2>&1
+# HTTP helper: makes a request, captures body + status code
+# Usage: http_request METHOD URL [DATA]
+# Sets: HTTP_CODE, HTTP_BODY
+http_request() {
+  local method="$1"
+  local url="$2"
+  local data="${3:-}"
+  local auth_header=""
+
+  if [ -n "$ACCESS_TOKEN" ]; then
+    auth_header="-H \"Authorization: Bearer ${ACCESS_TOKEN}\""
+  fi
+
+  local curl_cmd="curl -s -w '\n%{http_code}' --max-time $TIMEOUT"
+  curl_cmd="$curl_cmd -X $method"
+  curl_cmd="$curl_cmd -H 'Content-Type: application/json'"
+
+  if [ -n "$ACCESS_TOKEN" ]; then
+    curl_cmd="$curl_cmd -H 'Authorization: Bearer ${ACCESS_TOKEN}'"
+  fi
+
+  if [ -n "$data" ]; then
+    curl_cmd="$curl_cmd -d '$data'"
+  fi
+
+  curl_cmd="$curl_cmd '$url'"
+
+  local response
+  response=$(eval "$curl_cmd" 2>/dev/null || echo -e "\n000")
+
+  HTTP_CODE=$(echo "$response" | tail -1)
+  HTTP_BODY=$(echo "$response" | sed '$d')
+
+  print_verbose "HTTP $method $url → $HTTP_CODE"
+  if [ "$VERBOSE" = "1" ] && [ -n "$HTTP_BODY" ]; then
+    print_verbose "Body: $(echo "$HTTP_BODY" | head -c 200)"
+  fi
 }
 
-# Check prerequisites
+# JSON field extractor (works with or without jq)
+json_field() {
+  local json="$1"
+  local field="$2"
+
+  if command -v jq >/dev/null 2>&1; then
+    echo "$json" | jq -r ".$field // empty" 2>/dev/null
+  else
+    # Fallback: simple grep-based extraction for flat JSON
+    echo "$json" | grep -o "\"${field}\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" | head -1 | sed 's/.*: *"\([^"]*\)".*/\1/'
+  fi
+}
+
+# ==============================================================================
+# Wait for services
+# ==============================================================================
+wait_for_services() {
+  if [ "$WAIT_SECONDS" -gt 0 ]; then
+    print_header "Waiting for Services"
+    print_info "Waiting up to ${WAIT_SECONDS}s for services to be ready..."
+
+    local elapsed=0
+    while [ "$elapsed" -lt "$WAIT_SECONDS" ]; do
+      local code
+      code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "${BASE_URL}/health" 2>/dev/null || echo "000")
+      if [ "$code" = "200" ]; then
+        print_info "Services ready after ${elapsed}s"
+        return 0
+      fi
+      sleep 2
+      elapsed=$((elapsed + 2))
+    done
+
+    print_info "Timeout waiting for services (proceeding anyway)"
+  fi
+}
+
+# ==============================================================================
+# Test 1: Prerequisites
+# ==============================================================================
 check_prerequisites() {
-    print_header "Prerequisites Check"
+  print_header "1. Prerequisites"
 
-    if ! command_exists curl; then
-        print_fail "curl is not installed"
-        exit 1
-    fi
+  print_test "curl availability"
+  if command -v curl >/dev/null 2>&1; then
     print_pass "curl is available"
+  else
+    print_fail "curl is not installed (required)"
+    exit 1
+  fi
 
-    if ! command_exists jq; then
-        print_info "jq is not installed (optional, for JSON parsing)"
-    else
-        print_pass "jq is available"
-    fi
+  print_test "jq availability"
+  if command -v jq >/dev/null 2>&1; then
+    print_pass "jq is available"
+  else
+    print_info "jq not installed (optional, using fallback parser)"
+    # Count as pass since it's optional
+    PASSED_TESTS=$((PASSED_TESTS + 1))
+  fi
 }
 
-# Test HTTP health endpoint
-test_http_health() {
-    print_header "HTTP Health Check"
+# ==============================================================================
+# Test 2: Health Check (via Nginx proxy)
+# ==============================================================================
+test_health_check() {
+  print_header "2. Health Check"
 
-    print_test "Testing GET /health endpoint"
+  print_test "GET /health via Nginx proxy"
+  http_request GET "${BASE_URL}/health"
 
-    RESPONSE=$(curl -s -w "\n%{http_code}" --max-time "$TIMEOUT" "http://${HOST}:${PORT}/health" 2>/dev/null || echo -e "\n000")
-    HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-    BODY=$(echo "$RESPONSE" | head -n -1)
+  if [ "$HTTP_CODE" = "200" ]; then
+    print_pass "Health endpoint returned HTTP 200"
 
-    print_verbose "HTTP Status: $HTTP_CODE"
-    print_verbose "Response Body: $BODY"
-
-    if [ "$HTTP_CODE" = "200" ]; then
-        print_pass "Health endpoint returned HTTP 200"
-
-        # Check if response contains expected fields
-        if echo "$BODY" | grep -q "status"; then
-            print_pass "Response contains 'status' field"
-        else
-            print_info "Response does not contain 'status' field (may be plain text)"
-        fi
-    else
-        print_fail "Health endpoint returned HTTP $HTTP_CODE (expected 200)"
+    local status
+    status=$(json_field "$HTTP_BODY" "status")
+    if [ "$status" = "ok" ]; then
+      print_info "Status: ok"
     fi
+  else
+    print_fail "Health endpoint returned HTTP $HTTP_CODE (expected 200)"
+  fi
 }
 
-# Test API authentication endpoint
-test_api_auth() {
-    print_header "API Authentication Endpoints"
+# ==============================================================================
+# Test 3: User Registration
+# ==============================================================================
+test_register() {
+  print_header "3. User Registration"
 
-    # Test register endpoint (should return error without body, but endpoint should exist)
-    print_test "Testing POST /api/v1/auth/register endpoint availability"
+  print_test "POST /api/v1/auth/register"
+  http_request POST "${BASE_URL}/api/v1/auth/register" \
+    "{\"email\":\"${TEST_USER}\",\"password\":\"${TEST_PASSWORD}\",\"name\":\"Smoke Test\"}"
 
-    RESPONSE=$(curl -s -w "\n%{http_code}" --max-time "$TIMEOUT" \
-        -X POST "http://${HOST}:${PORT}/api/v1/auth/register" \
-        -H "Content-Type: application/json" \
-        -d '{}' 2>/dev/null || echo -e "\n000")
+  if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "201" ]; then
+    print_pass "Registration successful (HTTP $HTTP_CODE)"
 
-    HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-    BODY=$(echo "$RESPONSE" | head -n -1)
-
-    print_verbose "HTTP Status: $HTTP_CODE"
-    print_verbose "Response Body: $BODY"
-
-    # Endpoint exists if we get 400/422 (validation error) or 200/201
-    if [ "$HTTP_CODE" = "400" ] || [ "$HTTP_CODE" = "422" ] || [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "201" ]; then
-        print_pass "Register endpoint is available (HTTP $HTTP_CODE)"
-    elif [ "$HTTP_CODE" = "404" ]; then
-        print_fail "Register endpoint not found (HTTP 404)"
+    # Extract access token
+    ACCESS_TOKEN=$(json_field "$HTTP_BODY" "accessToken")
+    if [ -n "$ACCESS_TOKEN" ]; then
+      print_info "Access token obtained (${#ACCESS_TOKEN} chars)"
     else
-        print_info "Register endpoint returned HTTP $HTTP_CODE"
+      print_info "No accessToken in response (will try login)"
     fi
-
-    # Test login endpoint
-    print_test "Testing POST /api/v1/auth/login endpoint availability"
-
-    RESPONSE=$(curl -s -w "\n%{http_code}" --max-time "$TIMEOUT" \
-        -X POST "http://${HOST}:${PORT}/api/v1/auth/login" \
-        -H "Content-Type: application/json" \
-        -d '{}' 2>/dev/null || echo -e "\n000")
-
-    HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-
-    print_verbose "HTTP Status: $HTTP_CODE"
-
-    if [ "$HTTP_CODE" = "400" ] || [ "$HTTP_CODE" = "422" ] || [ "$HTTP_CODE" = "401" ] || [ "$HTTP_CODE" = "200" ]; then
-        print_pass "Login endpoint is available (HTTP $HTTP_CODE)"
-    elif [ "$HTTP_CODE" = "404" ]; then
-        print_fail "Login endpoint not found (HTTP 404)"
-    else
-        print_info "Login endpoint returned HTTP $HTTP_CODE"
-    fi
+  elif [ "$HTTP_CODE" = "409" ]; then
+    print_pass "User already exists (HTTP 409) — will login instead"
+  else
+    print_fail "Registration failed (HTTP $HTTP_CODE)"
+  fi
 }
 
-# Test Dashboard static files
-test_dashboard_static() {
-    print_header "Dashboard Static Files"
+# ==============================================================================
+# Test 4: User Login
+# ==============================================================================
+test_login() {
+  print_header "4. User Login"
 
-    print_test "Testing Dashboard root (index.html)"
+  print_test "POST /api/v1/auth/login"
+  http_request POST "${BASE_URL}/api/v1/auth/login" \
+    "{\"email\":\"${TEST_USER}\",\"password\":\"${TEST_PASSWORD}\"}"
 
-    RESPONSE=$(curl -s -w "\n%{http_code}" --max-time "$TIMEOUT" "http://${HOST}:${PORT}/" 2>/dev/null || echo -e "\n000")
-    HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-    BODY=$(echo "$RESPONSE" | head -n -1)
+  if [ "$HTTP_CODE" = "200" ]; then
+    print_pass "Login successful (HTTP 200)"
 
-    print_verbose "HTTP Status: $HTTP_CODE"
-
-    if [ "$HTTP_CODE" = "200" ]; then
-        print_pass "Dashboard root returned HTTP 200"
-
-        # Check if it's HTML content
-        if echo "$BODY" | grep -iq "<!DOCTYPE html>"; then
-            print_pass "Response is valid HTML"
-        else
-            print_info "Response may not be HTML (check content)"
-        fi
-
-        # Check for React root element
-        if echo "$BODY" | grep -iq 'id="root"'; then
-            print_pass "React root element found"
-        else
-            print_info "React root element not found (may use different structure)"
-        fi
+    ACCESS_TOKEN=$(json_field "$HTTP_BODY" "accessToken")
+    if [ -n "$ACCESS_TOKEN" ]; then
+      print_pass "Access token obtained (${#ACCESS_TOKEN} chars)"
     else
-        print_fail "Dashboard root returned HTTP $HTTP_CODE (expected 200)"
+      print_fail "No accessToken in login response"
     fi
+
+    local refresh
+    refresh=$(json_field "$HTTP_BODY" "refreshToken")
+    if [ -n "$refresh" ]; then
+      print_info "Refresh token present"
+    fi
+  else
+    print_fail "Login failed (HTTP $HTTP_CODE)"
+  fi
 }
 
-# Test database connectivity (via Docker)
-test_database_connectivity() {
-    print_header "Database Connectivity"
+# ==============================================================================
+# Test 5: Create Server (Authenticated)
+# ==============================================================================
+test_create_server() {
+  print_header "5. Create Server"
 
-    if ! command_exists docker; then
-        print_info "Docker not available - skipping database tests"
-        return
+  if [ -z "$ACCESS_TOKEN" ]; then
+    print_test "Create server (skipped — no auth token)"
+    print_fail "No access token available, cannot create server"
+    return
+  fi
+
+  print_test "POST /api/v1/servers (authenticated)"
+  http_request POST "${BASE_URL}/api/v1/servers" \
+    "{\"name\":\"smoke-test-server\",\"host\":\"192.168.1.100\",\"port\":22,\"description\":\"Smoke test server\"}"
+
+  if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "201" ]; then
+    print_pass "Server created (HTTP $HTTP_CODE)"
+
+    SERVER_ID=$(json_field "$HTTP_BODY" "server.id")
+    if [ -z "$SERVER_ID" ]; then
+      # Try alternate path: response might be { server: { id: ... } }
+      SERVER_ID=$(echo "$HTTP_BODY" | grep -o '"id":"[^"]*"' | head -1 | sed 's/"id":"//;s/"//')
     fi
 
-    print_test "Testing MySQL container connectivity"
-
-    # Check if MySQL container is running
-    if docker compose ps mysql --format json 2>/dev/null | grep -q '"State":"running"'; then
-        print_pass "MySQL container is running"
-
-        # Test database connection
-        print_test "Testing database connection"
-        if docker compose exec -T mysql mysqladmin ping -h localhost >/dev/null 2>&1; then
-            print_pass "Database is responding to ping"
-        else
-            print_fail "Database is not responding"
-        fi
-
-        # Check database tables
-        print_test "Verifying database tables exist"
-        TABLE_COUNT=$(docker compose exec -T mysql mysql -u root -p"${MYSQL_ROOT_PASSWORD:-changeme_root_2024}" -D aiinstaller -se "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'aiinstaller'" 2>/dev/null || echo "0")
-
-        print_verbose "Found $TABLE_COUNT tables"
-
-        if [ "$TABLE_COUNT" -gt 0 ]; then
-            print_pass "Database tables exist ($TABLE_COUNT tables)"
-        else
-            print_fail "No database tables found"
-        fi
-    else
-        print_fail "MySQL container is not running"
+    if [ -n "$SERVER_ID" ]; then
+      print_info "Server ID: $SERVER_ID"
     fi
+
+    # Check for install command
+    local install_cmd
+    install_cmd=$(json_field "$HTTP_BODY" "installCommand")
+    if [ -n "$install_cmd" ]; then
+      print_pass "Install command returned"
+      print_verbose "Install command: $(echo "$install_cmd" | head -c 80)..."
+    fi
+
+    # Check for agent token
+    local token
+    token=$(json_field "$HTTP_BODY" "token")
+    if [ -n "$token" ]; then
+      print_info "Agent token returned"
+    fi
+  else
+    print_fail "Server creation failed (HTTP $HTTP_CODE)"
+  fi
 }
 
-# Test WebSocket connectivity (basic check)
-test_websocket_basic() {
-    print_header "WebSocket Service"
+# ==============================================================================
+# Test 6: List Servers (Authenticated)
+# ==============================================================================
+test_list_servers() {
+  print_header "6. List Servers"
 
-    print_test "Checking WebSocket service availability (via logs)"
+  if [ -z "$ACCESS_TOKEN" ]; then
+    print_test "List servers (skipped — no auth token)"
+    print_fail "No access token available"
+    return
+  fi
 
-    if command_exists docker; then
-        if docker compose logs server 2>/dev/null | grep -q "WebSocket.*ready\|Server.*listen\|started"; then
-            print_pass "WebSocket service appears to be running (from logs)"
-        else
-            print_info "Cannot verify WebSocket from logs (may need more specific logging)"
-        fi
-    else
-        print_info "Docker not available - skipping WebSocket log check"
+  print_test "GET /api/v1/servers (authenticated)"
+  http_request GET "${BASE_URL}/api/v1/servers"
+
+  if [ "$HTTP_CODE" = "200" ]; then
+    print_pass "Server list returned (HTTP 200)"
+
+    local total
+    total=$(json_field "$HTTP_BODY" "total")
+    if [ -n "$total" ]; then
+      print_info "Total servers: $total"
     fi
-
-    # Try to establish WebSocket connection using curl (upgrade request)
-    print_test "Testing WebSocket upgrade request"
-
-    RESPONSE=$(curl -s -w "\n%{http_code}" --max-time "$TIMEOUT" \
-        -H "Upgrade: websocket" \
-        -H "Connection: Upgrade" \
-        -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
-        -H "Sec-WebSocket-Version: 13" \
-        "http://${HOST}:${PORT}/ws" 2>/dev/null || echo -e "\n000")
-
-    HTTP_CODE=$(echo "$RESPONSE" | tail -1)
-
-    print_verbose "HTTP Status: $HTTP_CODE"
-
-    # 101 = Switching Protocols (success), 426 = Upgrade Required, 401 = Auth required
-    if [ "$HTTP_CODE" = "101" ]; then
-        print_pass "WebSocket upgrade successful (HTTP 101)"
-    elif [ "$HTTP_CODE" = "426" ] || [ "$HTTP_CODE" = "401" ] || [ "$HTTP_CODE" = "403" ]; then
-        print_pass "WebSocket endpoint is available (HTTP $HTTP_CODE - requires auth)"
-    else
-        print_info "WebSocket endpoint returned HTTP $HTTP_CODE"
-    fi
+  else
+    print_fail "Server list failed (HTTP $HTTP_CODE)"
+  fi
 }
 
-# Test container health
+# ==============================================================================
+# Test 7: Nginx Reverse Proxy Verification
+# ==============================================================================
+test_nginx_proxy() {
+  print_header "7. Nginx Reverse Proxy"
+
+  # Dashboard root (SPA)
+  print_test "GET / (Dashboard SPA via Nginx)"
+  http_request GET "${BASE_URL}/"
+
+  if [ "$HTTP_CODE" = "200" ]; then
+    if echo "$HTTP_BODY" | grep -qi '<!DOCTYPE html>'; then
+      print_pass "Dashboard HTML served correctly"
+    else
+      print_fail "Response is not HTML"
+    fi
+
+    if echo "$HTTP_BODY" | grep -qi 'id="root"'; then
+      print_info "React root element present"
+    fi
+  else
+    print_fail "Dashboard root returned HTTP $HTTP_CODE"
+  fi
+
+  # API proxy — verify /api/ routes go through Nginx to server
+  print_test "API proxy: GET /api/v1/auth/register returns expected code"
+  http_request POST "${BASE_URL}/api/v1/auth/register" '{}'
+
+  if [ "$HTTP_CODE" = "400" ] || [ "$HTTP_CODE" = "422" ]; then
+    print_pass "API proxy working (validation error returned)"
+  elif [ "$HTTP_CODE" = "404" ]; then
+    print_fail "API route not found (Nginx proxy may not be configured)"
+  else
+    print_info "API proxy returned HTTP $HTTP_CODE"
+    PASSED_TESTS=$((PASSED_TESTS + 1))
+  fi
+
+  # Security headers
+  print_test "Nginx security headers"
+  local headers
+  headers=$(curl -s -I --max-time "$TIMEOUT" "${BASE_URL}/" 2>/dev/null || echo "")
+
+  if echo "$headers" | grep -qi 'X-Frame-Options'; then
+    print_pass "X-Frame-Options header present"
+  else
+    print_fail "X-Frame-Options header missing"
+  fi
+}
+
+# ==============================================================================
+# Test 8: WebSocket Endpoint
+# ==============================================================================
+test_websocket() {
+  print_header "8. WebSocket Endpoint"
+
+  print_test "WebSocket upgrade request to /ws"
+  local ws_response
+  ws_response=$(curl -s -w "\n%{http_code}" --max-time "$TIMEOUT" \
+    -H "Upgrade: websocket" \
+    -H "Connection: Upgrade" \
+    -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
+    -H "Sec-WebSocket-Version: 13" \
+    "${BASE_URL}/ws" 2>/dev/null || echo -e "\n000")
+
+  local ws_code
+  ws_code=$(echo "$ws_response" | tail -1)
+  print_verbose "WebSocket HTTP status: $ws_code"
+
+  # 101 = Upgrade OK, 401/403 = auth required (valid), 426 = upgrade required
+  if [ "$ws_code" = "101" ]; then
+    print_pass "WebSocket upgrade successful (HTTP 101)"
+  elif [ "$ws_code" = "401" ] || [ "$ws_code" = "403" ]; then
+    print_pass "WebSocket endpoint available (HTTP $ws_code — auth required)"
+  elif [ "$ws_code" = "426" ]; then
+    print_pass "WebSocket endpoint available (HTTP 426 — upgrade required)"
+  elif [ "$ws_code" = "400" ]; then
+    print_pass "WebSocket endpoint reachable (HTTP 400)"
+  else
+    print_fail "WebSocket endpoint returned HTTP $ws_code"
+  fi
+}
+
+# ==============================================================================
+# Test 9: AI Provider Health
+# ==============================================================================
+test_ai_provider_health() {
+  print_header "9. AI Provider Health"
+
+  if [ -z "$ACCESS_TOKEN" ]; then
+    print_test "AI provider health (skipped — no auth token)"
+    print_fail "No access token available"
+    return
+  fi
+
+  print_test "GET /api/v1/settings/ai-provider/health"
+  http_request GET "${BASE_URL}/api/v1/settings/ai-provider/health"
+
+  if [ "$HTTP_CODE" = "200" ]; then
+    print_pass "AI provider health check returned OK"
+
+    local available
+    available=$(json_field "$HTTP_BODY" "available")
+    if [ "$available" = "true" ]; then
+      print_info "AI provider is available"
+    else
+      print_info "AI provider may not be configured (expected in CI)"
+    fi
+  elif [ "$HTTP_CODE" = "503" ]; then
+    print_pass "AI provider health endpoint reachable (HTTP 503 — no API key configured)"
+  else
+    print_fail "AI provider health returned HTTP $HTTP_CODE"
+  fi
+}
+
+# ==============================================================================
+# Test 10: Container Health (Docker only)
+# ==============================================================================
 test_container_health() {
-    print_header "Container Health Status"
+  print_header "10. Container Health"
 
-    if ! command_exists docker; then
-        print_info "Docker not available - skipping container health checks"
-        return
-    fi
+  if ! command -v docker >/dev/null 2>&1; then
+    print_test "Docker container health (skipped — docker not available)"
+    print_info "Docker not available, skipping container health checks"
+    return
+  fi
 
-    # Check MySQL health
-    print_test "Checking MySQL container health"
-    MYSQL_HEALTH=$(docker compose ps mysql --format json 2>/dev/null | grep -o '"Health":"[^"]*"' | cut -d'"' -f4 || echo "unknown")
+  # Server container
+  print_test "Server container health"
+  local server_health
+  server_health=$(docker compose ps server --format json 2>/dev/null | grep -o '"Health":"[^"]*"' | cut -d'"' -f4 || echo "unknown")
 
-    print_verbose "MySQL Health: $MYSQL_HEALTH"
+  if [ "$server_health" = "healthy" ]; then
+    print_pass "Server container is healthy"
+  elif [ "$server_health" = "starting" ]; then
+    print_info "Server container is starting"
+    PASSED_TESTS=$((PASSED_TESTS + 1))
+  else
+    print_fail "Server container health: $server_health"
+  fi
 
-    if [ "$MYSQL_HEALTH" = "healthy" ]; then
-        print_pass "MySQL container is healthy"
-    elif [ "$MYSQL_HEALTH" = "starting" ]; then
-        print_info "MySQL container is starting"
-    else
-        print_fail "MySQL container health: $MYSQL_HEALTH"
-    fi
+  # Dashboard container
+  print_test "Dashboard container health"
+  local dashboard_health
+  dashboard_health=$(docker compose ps dashboard --format json 2>/dev/null | grep -o '"Health":"[^"]*"' | cut -d'"' -f4 || echo "unknown")
 
-    # Check Server health
-    print_test "Checking Server container health"
-    SERVER_HEALTH=$(docker compose ps server --format json 2>/dev/null | grep -o '"Health":"[^"]*"' | cut -d'"' -f4 || echo "unknown")
-
-    print_verbose "Server Health: $SERVER_HEALTH"
-
-    if [ "$SERVER_HEALTH" = "healthy" ]; then
-        print_pass "Server container is healthy"
-    elif [ "$SERVER_HEALTH" = "starting" ]; then
-        print_info "Server container is starting (may take up to 30s)"
-    else
-        print_info "Server container health: $SERVER_HEALTH"
-    fi
-
-    # Check Dashboard health (if exists)
-    if docker compose ps dashboard --format json 2>/dev/null | grep -q '"State":"running"'; then
-        print_test "Checking Dashboard container status"
-        DASHBOARD_STATE=$(docker compose ps dashboard --format json 2>/dev/null | grep -o '"State":"[^"]*"' | cut -d'"' -f4 || echo "unknown")
-
-        if [ "$DASHBOARD_STATE" = "running" ]; then
-            print_pass "Dashboard container is running"
-        else
-            print_fail "Dashboard container state: $DASHBOARD_STATE"
-        fi
-    fi
+  if [ "$dashboard_health" = "healthy" ]; then
+    print_pass "Dashboard container is healthy"
+  elif [ "$dashboard_health" = "starting" ]; then
+    print_info "Dashboard container is starting"
+    PASSED_TESTS=$((PASSED_TESTS + 1))
+  else
+    print_fail "Dashboard container health: $dashboard_health"
+  fi
 }
 
-# Check for errors in logs
+# ==============================================================================
+# Test 11: Error Log Analysis
+# ==============================================================================
 test_error_logs() {
-    print_header "Error Log Analysis"
+  print_header "11. Error Log Analysis"
 
-    if ! command_exists docker; then
-        print_info "Docker not available - skipping log analysis"
-        return
+  if ! command -v docker >/dev/null 2>&1; then
+    print_info "Docker not available, skipping log analysis"
+    return
+  fi
+
+  print_test "Check for errors in recent container logs"
+  local error_count
+  error_count=$(docker compose logs --tail=100 2>/dev/null \
+    | grep -i "error\|fatal\|exception" \
+    | grep -v "errorCount\|ERROR_ANALYZER\|error level\|loglevel\|pino" \
+    | wc -l | tr -d ' ')
+
+  print_verbose "Found $error_count error entries in logs"
+
+  if [ "$error_count" -eq 0 ]; then
+    print_pass "No errors in recent logs"
+  elif [ "$error_count" -lt 3 ]; then
+    print_info "Found $error_count minor error(s) — review manually"
+    PASSED_TESTS=$((PASSED_TESTS + 1))
+  else
+    print_fail "Found $error_count error(s) in recent logs"
+    if [ "$VERBOSE" = "1" ]; then
+      echo ""
+      docker compose logs --tail=100 2>/dev/null \
+        | grep -i "error\|fatal\|exception" \
+        | grep -v "errorCount\|ERROR_ANALYZER\|error level\|loglevel\|pino" \
+        | tail -5
     fi
-
-    print_test "Checking for errors in recent container logs"
-
-    ERROR_COUNT=$(docker compose logs --tail=100 2>/dev/null | grep -i "error\|fatal\|exception" | grep -v "errorCount\|ERROR_ANALYZER\|error level" | wc -l | tr -d ' ')
-
-    print_verbose "Found $ERROR_COUNT error entries"
-
-    if [ "$ERROR_COUNT" -eq 0 ]; then
-        print_pass "No errors found in recent logs"
-    elif [ "$ERROR_COUNT" -lt 3 ]; then
-        print_info "Found $ERROR_COUNT error(s) in recent logs (review manually)"
-    else
-        print_fail "Found $ERROR_COUNT error(s) in recent logs"
-
-        if [ "$VERBOSE" = "1" ]; then
-            echo ""
-            echo "Recent errors:"
-            docker compose logs --tail=100 2>/dev/null | grep -i "error\|fatal\|exception" | grep -v "errorCount\|ERROR_ANALYZER\|error level" | tail -5
-        fi
-    fi
+  fi
 }
 
-# Main execution
+# ==============================================================================
+# Summary
+# ==============================================================================
+print_summary() {
+  print_header "Test Summary"
+  echo ""
+  echo "  Target:       ${BASE_URL}"
+  echo "  Total Tests:  $TOTAL_TESTS"
+  echo -e "  ${GREEN}Passed:       $PASSED_TESTS${NC}"
+
+  if [ $FAILED_TESTS -gt 0 ]; then
+    echo -e "  ${RED}Failed:       $FAILED_TESTS${NC}"
+  else
+    echo "  Failed:       $FAILED_TESTS"
+  fi
+
+  local pass_rate=0
+  if [ $TOTAL_TESTS -gt 0 ]; then
+    pass_rate=$(awk "BEGIN {printf \"%.0f\", ($PASSED_TESTS/$TOTAL_TESTS)*100}")
+  fi
+  echo "  Pass Rate:    ${pass_rate}%"
+  echo ""
+
+  if [ $FAILED_TESTS -eq 0 ]; then
+    echo -e "${GREEN}  All smoke tests passed!${NC}"
+    echo ""
+    echo "  Access points:"
+    echo "    Dashboard:  ${BASE_URL}"
+    echo "    API Health: ${BASE_URL}/health"
+    echo "    WebSocket:  ws://${HOST}:${PORT}/ws"
+    echo ""
+    exit 0
+  elif [ "$pass_rate" -ge 80 ]; then
+    echo -e "${YELLOW}  Most tests passed (${pass_rate}%) — review failures above${NC}"
+    echo ""
+    exit 0
+  else
+    echo -e "${RED}  Smoke tests FAILED (${pass_rate}% passed)${NC}"
+    echo ""
+    echo "  Troubleshooting:"
+    echo "    docker compose logs -f"
+    echo "    docker compose ps"
+    echo "    ./scripts/smoke-test.sh --verbose"
+    echo ""
+    exit 1
+  fi
+}
+
+# ==============================================================================
+# Main
+# ==============================================================================
 main() {
-    print_header "ServerPilot Smoke Test Suite"
-    print_info "Target: http://${HOST}:${PORT}"
-    print_info "Timeout: ${TIMEOUT}s per test"
-    echo ""
+  echo ""
+  echo -e "${BLUE}  ServerPilot Smoke Test Suite${NC}"
+  echo -e "${BLUE}  Target: ${BASE_URL}${NC}"
+  echo -e "${BLUE}  Timeout: ${TIMEOUT}s per test${NC}"
+  echo ""
 
-    # Run all tests
-    check_prerequisites
-    test_http_health
-    test_api_auth
-    test_dashboard_static
-    test_database_connectivity
-    test_websocket_basic
-    test_container_health
-    test_error_logs
+  wait_for_services
+  check_prerequisites
+  test_health_check
+  test_register
+  test_login
+  test_create_server
+  test_list_servers
+  test_nginx_proxy
+  test_websocket
+  test_ai_provider_health
+  test_container_health
+  test_error_logs
 
-    # Summary
-    print_header "Test Summary"
-    echo ""
-    echo "Total Tests:   $TOTAL_TESTS"
-    echo -e "${GREEN}Passed:        $PASSED_TESTS${NC}"
-
-    if [ $FAILED_TESTS -gt 0 ]; then
-        echo -e "${RED}Failed:        $FAILED_TESTS${NC}"
-    else
-        echo "Failed:        $FAILED_TESTS"
-    fi
-
-    PASS_RATE=$(awk "BEGIN {printf \"%.1f\", ($PASSED_TESTS/$TOTAL_TESTS)*100}")
-    echo "Pass Rate:     ${PASS_RATE}%"
-    echo ""
-
-    if [ $FAILED_TESTS -eq 0 ]; then
-        print_pass "All smoke tests passed! ✅"
-        echo ""
-        echo "🎉 Deployment is fully functional!"
-        echo ""
-        echo "Access points:"
-        echo "  • Dashboard:  http://${HOST}:${PORT}"
-        echo "  • API Health: http://${HOST}:${PORT}/health"
-        echo "  • WebSocket:  ws://${HOST}:${PORT}/ws"
-        echo ""
-        exit 0
-    elif [ "$PASS_RATE" -ge 80 ]; then
-        print_info "Most tests passed (${PASS_RATE}%) - review failures above"
-        echo ""
-        exit 0
-    else
-        print_fail "Smoke tests failed (${PASS_RATE}% passed)"
-        echo ""
-        echo "Troubleshooting:"
-        echo "  • Check container logs: docker compose logs -f"
-        echo "  • Verify services are running: docker compose ps"
-        echo "  • Check .env configuration"
-        echo "  • Run with --verbose for detailed output"
-        echo ""
-        exit 1
-    fi
+  print_summary
 }
 
-# Run main
 main

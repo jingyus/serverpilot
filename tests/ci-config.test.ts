@@ -253,6 +253,37 @@ describe('GitHub Actions CI 配置', () => {
       expect(concurrency).toBeDefined();
       expect(concurrency['cancel-in-progress']).toBe(true);
     });
+
+    it('包含 docker-smoke job', () => {
+      content = readFileSync(ciYmlPath, 'utf-8');
+      config = parseYaml(content);
+      const jobs = config.jobs as Record<string, unknown>;
+      expect(jobs['docker-smoke']).toBeDefined();
+    });
+
+    it('docker-smoke job 配置了超时时间', () => {
+      content = readFileSync(ciYmlPath, 'utf-8');
+      config = parseYaml(content);
+      const jobs = config.jobs as Record<string, unknown>;
+      const smoke = jobs['docker-smoke'] as Record<string, unknown>;
+      expect(smoke['timeout-minutes']).toBeDefined();
+    });
+
+    it('docker-smoke job 使用 docker compose', () => {
+      content = readFileSync(ciYmlPath, 'utf-8');
+      expect(content).toContain('docker compose up');
+      expect(content).toContain('docker compose down');
+    });
+
+    it('docker-smoke job 运行冒烟测试脚本', () => {
+      content = readFileSync(ciYmlPath, 'utf-8');
+      expect(content).toContain('smoke-test.sh');
+    });
+
+    it('docker-smoke job 收集容器日志', () => {
+      content = readFileSync(ciYmlPath, 'utf-8');
+      expect(content).toContain('docker-smoke-logs');
+    });
   });
 
   describe('工作流安全最佳实践', () => {
