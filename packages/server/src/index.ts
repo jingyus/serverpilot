@@ -30,6 +30,7 @@ import { getTaskExecutor } from './core/task/executor.js';
 import { getTaskScheduler } from './core/task/scheduler.js';
 import { initAgentConnector } from './core/agent/agent-connector.js';
 import { InstallAIAgent } from './ai/agent.js';
+import { getActiveProvider, resolveProviderFromEnv, setActiveProvider } from './ai/providers/provider-factory.js';
 import { initLogger, logger, logConnectionEvent, logError } from './utils/logger.js';
 import { getMemoryMonitor } from './utils/memory-monitor.js';
 import { getAlertEvaluator } from './core/alert/alert-evaluator.js';
@@ -86,6 +87,8 @@ export interface ServerConfig {
     /** Maximum retry attempts */
     maxRetries?: number;
   };
+  /** AI provider type (claude, openai, ollama, deepseek) */
+  aiProvider?: string;
   /** Knowledge base configuration */
   knowledgeBase?: {
     /** GitHub API token for fetching docs */
@@ -126,7 +129,10 @@ export function loadConfig(): ServerConfig {
     jwtSecret,
   };
 
-  // Load AI configuration if API key is present
+  // Load AI provider type
+  serverConfig.aiProvider = process.env.AI_PROVIDER ?? 'claude';
+
+  // Load AI configuration if API key is present (for InstallAIAgent / Claude)
   if (process.env.ANTHROPIC_API_KEY) {
     serverConfig.ai = {
       apiKey: process.env.ANTHROPIC_API_KEY,
@@ -173,7 +179,7 @@ export function createServer(serverConfig: ServerConfig): InstallServer {
 
   const server = new InstallServer(options);
 
-  // Create AI agent if configuration is provided
+  // Create AI agent if configuration is provided (for WebSocket install flows)
   let aiAgent: InstallAIAgent | undefined;
   if (serverConfig.ai) {
     aiAgent = new InstallAIAgent(serverConfig.ai);
@@ -185,6 +191,24 @@ export function createServer(serverConfig: ServerConfig): InstallServer {
     logger.warn({
       operation: 'initialization',
     }, 'AI agent not initialized - ANTHROPIC_API_KEY not configured');
+  }
+
+  // Initialize the generic AI provider (for chat and other routes)
+  const providerConfig = resolveProviderFromEnv();
+  if (providerConfig) {
+    try {
+      setActiveProvider(providerConfig);
+    } catch (err) {
+      logger.warn({
+        operation: 'initialization',
+        provider: providerConfig.provider,
+        error: err instanceof Error ? err.message : String(err),
+      }, `AI provider ${providerConfig.provider} initialization failed`);
+    }
+  } else {
+    logger.warn({
+      operation: 'initialization',
+    }, 'No AI provider configured - set AI_PROVIDER and corresponding API key');
   }
 
   // Initialize services that depend on the server instance

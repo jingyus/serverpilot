@@ -34,7 +34,7 @@ export const users = sqliteTable('users', {
 
 /** AI Provider configuration stored as JSON */
 export interface UserSettingsAIProvider {
-  provider: 'claude' | 'openai' | 'ollama';
+  provider: 'claude' | 'openai' | 'ollama' | 'deepseek';
   apiKey?: string;
   model?: string;
   baseUrl?: string;

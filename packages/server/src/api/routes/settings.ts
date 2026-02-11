@@ -21,6 +21,14 @@ import { requireAuth } from '../middleware/auth.js';
 import { ApiError } from '../middleware/error-handler.js';
 import { getSettingsRepository } from '../../db/repositories/settings-repository.js';
 import { getUserRepository } from '../../db/repositories/user-repository.js';
+import {
+  getActiveProvider,
+  setActiveProvider,
+  checkProviderHealth,
+} from '../../ai/providers/provider-factory.js';
+import type { AIProviderType } from '../../ai/providers/provider-factory.js';
+import { refreshChatAIAgent } from './chat-ai.js';
+import { logger } from '../../utils/logger.js';
 
 import type {
   UpdateAIProviderBody,
@@ -84,6 +92,27 @@ settings.put('/ai-provider', validateBody(UpdateAIProviderBodySchema), async (c)
   let userSettings = await settingsRepo.findByUserId(userId);
   if (!userSettings) {
     userSettings = await settingsRepo.create({ userId });
+  }
+
+  // Try to switch the active provider (validates config)
+  try {
+    setActiveProvider({
+      provider: body.provider as AIProviderType,
+      apiKey: body.apiKey,
+      model: body.model,
+      baseUrl: body.baseUrl,
+    });
+
+    // Reset the chat agent so it picks up the new provider
+    refreshChatAIAgent();
+
+    logger.info(
+      { operation: 'settings_ai_switch', provider: body.provider, userId },
+      `AI provider switched to ${body.provider}`,
+    );
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw ApiError.badRequest(`Failed to initialize provider "${body.provider}": ${msg}`);
   }
 
   // Update AI provider settings
@@ -242,6 +271,24 @@ settings.put('/knowledge-base', validateBody(UpdateKnowledgeBaseBodySchema), asy
     notifications: updated.notifications,
     knowledgeBase: updated.knowledgeBase,
   });
+});
+
+// ============================================================================
+// GET /settings/ai-provider/health — Check current AI provider availability
+// ============================================================================
+
+settings.get('/ai-provider/health', async (c) => {
+  const provider = getActiveProvider();
+  if (!provider) {
+    return c.json({
+      provider: null,
+      available: false,
+      error: 'No AI provider configured',
+    });
+  }
+
+  const health = await checkProviderHealth(provider);
+  return c.json(health);
 });
 
 export { settings };

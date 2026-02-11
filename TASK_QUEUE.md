@@ -6,10 +6,10 @@
 
 ## 📊 统计信息
 
-- **总任务数**: 20
-- **待完成** (pending): 0
+- **总任务数**: 30
+- **待完成** (pending): 9
 - **进行中** (in_progress): 0
-- **已完成** (completed): 20
+- **已完成** (completed): 21
 - **失败** (failed): 0
 
 ---
@@ -17,6 +17,134 @@
 ## 📋 任务列表
 
 <!-- 任务将由 AI 自动生成和更新 -->
+### [completed] AI Provider 动态选择与工厂模式 ✅
+
+**ID**: task-010
+**优先级**: P0
+**模块路径**: packages/server/src/ai/providers/
+**任务描述**: 实现 AI Provider 工厂模式和动态选择机制。当前 server 硬编码使用 Claude (InstallAIAgent)，但已实现 OpenAI、Ollama、DeepSeek 三个 provider。需要：1) 创建 `provider-factory.ts` 工厂函数，根据配置/环境变量选择 provider；2) 在 `index.ts` 入口和 `chat.ts` 路由中替换硬编码的 Claude 为工厂创建；3) 支持 Settings API 动态切换 provider；4) 添加 provider 健康检查（调用 `isAvailable()`）
+**产品需求**: MVP 要求 "Claude + OpenAI + Ollama (三选一)"，当前仅 Claude 可用
+**验收标准**: 1) 通过环境变量 `AI_PROVIDER=openai|ollama|deepseek|claude` 可切换 provider；2) Dashboard Settings 页面切换 provider 后立即生效；3) 不可用的 provider 显示错误提示；4) 单元测试覆盖工厂创建和切换逻辑
+**创建时间**: 2026-02-11 00:00:00
+**完成时间**: 2026-02-11 10:38:52
+
+---
+
+### [pending] Dashboard Settings 页面 - AI Provider 切换联调
+
+**ID**: task-011
+**优先级**: P0
+**模块路径**: packages/dashboard/src/pages/Settings.tsx, packages/dashboard/src/stores/settings.ts
+**任务描述**: Dashboard Settings 页面已有 AI Provider 配置 UI，但需要与后端 Provider 工厂联调：1) 调用 Settings API 保存 provider 选择；2) 显示当前 provider 连接状态（调用 health check API）；3) 切换 provider 时提供 API Key 输入（Claude/OpenAI/DeepSeek 需要 key，Ollama 不需要）；4) 切换成功后刷新 Chat 页面的 AI 连接
+**产品需求**: Dashboard "基本监控、对话界面" - 用户需要能选择和配置 AI Provider
+**验收标准**: 1) Settings 页面可选择 4 种 provider；2) 保存后 Chat 功能使用新 provider；3) API Key 输入有基本验证；4) Ollama 显示本地连接地址配置
+**创建时间**: 2026-02-11 00:00:00
+**完成时间**: -
+
+---
+
+### [pending] 端到端集成测试 - 完整对话运维流程
+
+**ID**: task-012
+**优先级**: P0
+**模块路径**: packages/server/tests/e2e/
+**任务描述**: 编写端到端集成测试覆盖完整对话运维流程：1) 启动 Server（mock AI provider）；2) Agent WebSocket 连接 + 认证；3) Dashboard API 发送对话消息；4) AI 生成执行计划；5) 用户确认执行；6) Agent 接收命令并执行；7) 结果通过 SSE 流回 Dashboard。需要 mock AI 返回固定的安装计划，验证整个链路数据流正确
+**产品需求**: MVP 核心闭环 "自部署 → 安装 Agent → 连接 → 对话运维"
+**验收标准**: 1) E2E 测试覆盖 chat→plan→execute→result 完整流程；2) 测试可在 CI 中运行（无外部依赖）；3) 验证 SSE 事件顺序正确；4) 验证 Agent 收到正确命令并返回结果
+**创建时间**: 2026-02-11 00:00:00
+**完成时间**: -
+
+---
+
+### [pending] Docker Compose 一键部署验证与优化
+
+**ID**: task-013
+**优先级**: P0
+**模块路径**: docker-compose.yml, packages/server/Dockerfile, packages/dashboard/Dockerfile
+**任务描述**: 验证并优化 Docker Compose 部署流程：1) 从零开始执行 `docker compose up`，确认所有服务正常启动；2) 验证 Dashboard → Server API 代理（Nginx 反向代理）正常；3) 验证 WebSocket 连接通过 Nginx 代理正常；4) 验证 SQLite 数据持久化（volume 挂载）；5) 验证 health check 正确运行；6) 优化启动顺序（depends_on + healthcheck）；7) 编写 `scripts/verify-deployment.sh` 自动化验证脚本
+**产品需求**: 部署方式 "docker compose up 一键自部署"
+**验收标准**: 1) `docker compose up -d` 在全新环境成功启动；2) Dashboard 可通过浏览器访问；3) API 和 WebSocket 代理正常；4) 重启后数据不丢失；5) verify-deployment.sh 自动验证各端点可达
+**创建时间**: 2026-02-11 00:00:00
+**完成时间**: -
+
+---
+
+### [pending] 知识库内容扩充 - 达到 10+ 常见软件覆盖
+
+**ID**: task-014
+**优先级**: P1
+**模块路径**: knowledge-base/
+**任务描述**: 当前知识库覆盖 6 种软件（docker, mysql, nginx, nodejs, postgresql, redis），MVP 要求 10+。需要新增：1) python/ - Python 安装配置；2) php/ - PHP + PHP-FPM 配置；3) mongodb/ - MongoDB 安装运维；4) certbot/ - Let's Encrypt SSL 证书；5) pm2/ - Node.js 进程管理。每种软件包含 installation.md、configuration.md、troubleshooting.md 三个文档，覆盖 Ubuntu/CentOS/Debian/macOS 平台
+**产品需求**: 知识库 "内置知识库 (10+ 常见软件) + RAG 检索注入"
+**验收标准**: 1) knowledge-base/ 下有 11+ 软件目录；2) 每个目录包含 3 个标准文档；3) 文档质量：每篇包含多平台安装步骤和常见问题；4) RAG 检索能正确命中新增文档
+**创建时间**: 2026-02-11 00:00:00
+**完成时间**: -
+
+---
+
+### [pending] 安全白皮书与架构文档
+
+**ID**: task-015
+**优先级**: P1
+**模块路径**: docs/
+**任务描述**: 编写开源发布所需的安全白皮书和架构文档：1) `docs/SECURITY.md` - 五层纵深防御架构详细说明、命令分级制度、参数审计机制、Agent 权限模型、数据安全措施；2) `docs/ARCHITECTURE.md` - 系统架构图、模块职责、数据流、通信协议概要；3) 更新 README.md 添加安全架构链接。这些文档面向开源社区，帮助用户理解系统安全设计
+**产品需求**: Phase 3 "安全白皮书 - 五层防御架构说明"
+**验收标准**: 1) SECURITY.md 清晰描述 5 层安全机制；2) ARCHITECTURE.md 包含架构图和模块说明；3) 文档语言为英文（面向国际社区）；4) 无敏感信息泄露
+**创建时间**: 2026-02-11 00:00:00
+**完成时间**: -
+
+---
+
+### [pending] CONTRIBUTING.md 贡献指南与开发环境搭建
+
+**ID**: task-016
+**优先级**: P1
+**模块路径**: CONTRIBUTING.md, docs/
+**任务描述**: 编写开源贡献指南：1) `CONTRIBUTING.md` - 开发环境搭建步骤、代码规范摘要、PR 提交流程、Issue 模板；2) `.github/ISSUE_TEMPLATE/` - bug_report.md 和 feature_request.md 模板；3) `.github/PULL_REQUEST_TEMPLATE.md` - PR 模板；4) 知识库贡献指南 - 如何添加新软件的知识文档
+**产品需求**: Phase 3 "贡献指南 CONTRIBUTING.md" + "知识库贡献指南"
+**验收标准**: 1) 新开发者按 CONTRIBUTING.md 可搭建开发环境；2) Issue/PR 模板可用；3) 知识库贡献流程清晰；4) 包含行为准则 (Code of Conduct)
+**创建时间**: 2026-02-11 00:00:00
+**完成时间**: -
+
+---
+
+### [pending] CI/CD 流水线完善 - 测试覆盖率门禁
+
+**ID**: task-017
+**优先级**: P1
+**模块路径**: .github/workflows/
+**任务描述**: 现有 CI 流水线已有基础（ci.yml, test.yml, docker-publish.yml），但需要增强：1) 在 test.yml 中添加覆盖率门禁（整体 ≥80%，安全模块 ≥95%）；2) 添加 PR 检查：lint + typecheck + test 必须全部通过才能合并；3) 优化 CI 速度（pnpm store 缓存）；4) 添加 Dashboard 构建检查（Vite build 不能有 error）；5) 修复已知的 timeout 测试问题或标记为 skip
+**产品需求**: Phase 3 "CI/CD 流水线 - GitHub Actions"
+**验收标准**: 1) PR 触发自动检查（lint + type + test + build）；2) 覆盖率低于阈值时 CI 失败；3) CI 运行时间 < 5 分钟；4) 无 flaky test
+**创建时间**: 2026-02-11 00:00:00
+**完成时间**: -
+
+---
+
+### [pending] Agent 安装脚本完善与多平台验证
+
+**ID**: task-018
+**优先级**: P1
+**模块路径**: scripts/install.sh, packages/agent/
+**任务描述**: 完善 Agent 安装脚本供开源用户使用：1) 验证 `scripts/install.sh` 在 Ubuntu 22.04/24.04 和 CentOS 9 上可正常运行；2) 安装脚本应自动下载对应平台的 Agent 二进制；3) 添加 systemd service 文件自动配置（`/etc/systemd/system/serverpilot-agent.service`）；4) 支持 `--uninstall` 参数卸载 Agent；5) 安装后自动启动并验证连接
+**产品需求**: Phase 3 "一键安装脚本 - curl | bash 安装"
+**验收标准**: 1) `curl -fsSL ... | bash -s -- --server wss://example.com` 一行命令完成安装；2) Agent 作为 systemd service 运行；3) 安装日志清晰易读；4) 卸载命令完整清理
+**创建时间**: 2026-02-11 00:00:00
+**完成时间**: -
+
+---
+
+### [pending] Docker Hub / GHCR 镜像发布与版本标签
+
+**ID**: task-019
+**优先级**: P2
+**模块路径**: .github/workflows/docker-publish.yml
+**任务描述**: 完善 Docker 镜像发布流程：1) 验证 `docker-publish.yml` 正确推送到 GHCR；2) 添加 Docker Hub 同步发布；3) 镜像标签策略：`latest`、`v0.1.0`（语义化版本）、`sha-xxxxx`（commit hash）；4) 添加多架构支持（linux/amd64 + linux/arm64）；5) 更新 README 中的 Docker 拉取命令
+**产品需求**: Phase 3 "Docker Hub 发布 - 官方镜像"
+**验收标准**: 1) `docker pull ghcr.io/xxx/serverpilot-server:latest` 可用；2) 支持 amd64 和 arm64 架构；3) 镜像大小：server < 200MB, dashboard < 50MB；4) 版本标签正确
+**创建时间**: 2026-02-11 00:00:00
+**完成时间**: -
+
 ### [completed] 填充内置知识库内容 ✅
 
 **ID**: task-001
@@ -774,4 +902,4 @@ ID: task-001
 
 ---
 
-**最后更新**: 2026-02-11 10:21:47
+**最后更新**: 2026-02-11 10:38:52

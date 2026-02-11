@@ -76,7 +76,7 @@ chat.post('/:serverId', validateBody(ChatMessageBodySchema), async (c) => {
       await stream.writeSSE({
         event: 'message',
         data: JSON.stringify({
-          content: 'AI service is not configured. Please set ANTHROPIC_API_KEY.',
+          content: 'AI service is not configured. Please set AI_PROVIDER and the corresponding API key (e.g. ANTHROPIC_API_KEY, OPENAI_API_KEY).',
         }),
       });
       await stream.writeSSE({

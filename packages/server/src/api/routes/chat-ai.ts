@@ -5,13 +5,15 @@
  *
  * Provides a conversational interface to the AI that can generate
  * both text responses and structured install plans from user messages.
+ * Supports multiple AI providers via the provider factory.
  *
  * @module api/routes/chat-ai
  */
 
-import Anthropic from '@anthropic-ai/sdk';
 import { InstallPlanSchema } from '@aiinstaller/shared';
 import type { InstallPlan } from '@aiinstaller/shared';
+import type { AIProviderInterface } from '../../ai/providers/base.js';
+import { getActiveProvider } from '../../ai/providers/provider-factory.js';
 import { logger } from '../../utils/logger.js';
 
 // ============================================================================
@@ -64,14 +66,10 @@ For general questions or discussions that don't require execution, just respond 
 Always be concise, security-aware, and explain risks clearly.`;
 
 export class ChatAIAgent {
-  private readonly client: Anthropic;
-  private readonly model: string;
-  private readonly timeoutMs: number;
+  private readonly provider: AIProviderInterface;
 
-  constructor(options: { apiKey: string; model?: string; timeoutMs?: number }) {
-    this.client = new Anthropic({ apiKey: options.apiKey });
-    this.model = options.model ?? 'claude-sonnet-4-20250514';
-    this.timeoutMs = options.timeoutMs ?? 60000;
+  constructor(provider: AIProviderInterface) {
+    this.provider = provider;
   }
 
   /**
@@ -90,38 +88,38 @@ export class ChatAIAgent {
       ? `${serverContext}\n\nConversation history:\n${conversationHistory}\n\nUser: ${message}`
       : `${serverContext}\n\nUser: ${message}`;
 
-    let accumulated = '';
-
-    const stream = this.client.messages.stream(
+    const result = await this.provider.stream(
       {
-        model: this.model,
-        max_tokens: 4096,
-        system: SYSTEM_PROMPT,
         messages: [{ role: 'user', content: userPrompt }],
+        system: SYSTEM_PROMPT,
+        maxTokens: 4096,
       },
-      { timeout: this.timeoutMs },
+      {
+        onToken: (token) => {
+          if (callbacks?.onToken) {
+            const cbResult = callbacks.onToken(token);
+            if (cbResult && typeof (cbResult as Promise<void>).catch === 'function') {
+              (cbResult as Promise<void>).catch((err) => {
+                logger.error(
+                  { operation: 'chat_stream_token_error', error: String(err) },
+                  'Token callback error',
+                );
+              });
+            }
+          }
+        },
+      },
     );
 
-    stream.on('text', (delta: string) => {
-      accumulated += delta;
-      // Fire token callback (may be async, but we don't await during event)
-      if (callbacks?.onToken) {
-        const result = callbacks.onToken(delta);
-        if (result && typeof (result as Promise<void>).catch === 'function') {
-          (result as Promise<void>).catch((err) => {
-            logger.error({ operation: 'chat_stream_token_error', error: String(err) }, 'Token callback error');
-          });
-        }
-      }
-    });
-
-    await stream.finalMessage();
+    if (!result.success) {
+      throw new Error(result.error ?? 'AI streaming request failed');
+    }
 
     // Extract plan from response if present
-    const plan = this.extractPlan(accumulated);
+    const plan = this.extractPlan(result.content);
 
     return {
-      text: accumulated,
+      text: result.content,
       plan,
     };
   }
@@ -155,24 +153,33 @@ export class ChatAIAgent {
 
 let _agent: ChatAIAgent | null = null;
 
-export function initChatAIAgent(options: {
-  apiKey: string;
-  model?: string;
-  timeoutMs?: number;
-}): ChatAIAgent {
-  _agent = new ChatAIAgent(options);
+/**
+ * Initialize the chat AI agent with a specific provider.
+ */
+export function initChatAIAgent(provider: AIProviderInterface): ChatAIAgent {
+  _agent = new ChatAIAgent(provider);
   return _agent;
 }
 
+/**
+ * Get the chat AI agent, lazily initializing from the active provider.
+ */
 export function getChatAIAgent(): ChatAIAgent | null {
-  // Lazy init from environment if not explicitly set
-  if (!_agent && process.env.ANTHROPIC_API_KEY) {
-    _agent = new ChatAIAgent({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-      model: process.env.AI_MODEL,
-    });
+  if (!_agent) {
+    const provider = getActiveProvider();
+    if (provider) {
+      _agent = new ChatAIAgent(provider);
+    }
   }
   return _agent;
+}
+
+/**
+ * Reinitialize the chat AI agent with the current active provider.
+ * Called after provider switch to ensure chat uses the new provider.
+ */
+export function refreshChatAIAgent(): void {
+  _agent = null;
 }
 
 /** Reset for testing */
