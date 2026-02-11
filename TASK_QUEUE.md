@@ -7,9 +7,9 @@
 ## 📊 统计信息
 
 - **总任务数**: 30
-- **待完成** (pending): 1
+- **待完成** (pending): 0
 - **进行中** (in_progress): 0
-- **已完成** (completed): 28
+- **已完成** (completed): 29
 - **失败** (failed): 1
 
 ---
@@ -177,7 +177,7 @@
 
 ---
 
-### [pending] Docker Hub / GHCR 镜像发布与版本标签
+### [completed] Docker Hub / GHCR 镜像发布与版本标签 ✅
 
 **ID**: task-019
 **优先级**: P2
@@ -186,7 +186,7 @@
 **产品需求**: Phase 3 "Docker Hub 发布 - 官方镜像"
 **验收标准**: 1) `docker pull ghcr.io/xxx/serverpilot-server:latest` 可用；2) 支持 amd64 和 arm64 架构；3) 镜像大小：server < 200MB, dashboard < 50MB；4) 版本标签正确
 **创建时间**: 2026-02-11 00:00:00
-**完成时间**: -
+**完成时间**: 2026-02-11 13:17:48
 
 ### [completed] 填充内置知识库内容 ✅
 
@@ -945,4 +945,4 @@ ID: task-001
 
 ---
 
-**最后更新**: 2026-02-11 13:12:05
+**最后更新**: 2026-02-11 13:17:48

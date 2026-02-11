@@ -97,6 +97,33 @@ docker compose logs server | grep -i "password"
 
 > 如需配置 AI 功能，运行引导式初始化：`./init.sh`
 
+### Docker 镜像
+
+镜像同时发布到 Docker Hub 和 GitHub Container Registry，支持 `linux/amd64` 和 `linux/arm64` 架构。
+
+**Docker Hub:**
+
+```bash
+docker pull serverpilot/server:latest
+docker pull serverpilot/dashboard:latest
+```
+
+**GitHub Container Registry:**
+
+```bash
+docker pull ghcr.io/your-org/serverpilot/server:latest
+docker pull ghcr.io/your-org/serverpilot/dashboard:latest
+```
+
+**版本标签说明:**
+
+| 标签格式 | 示例 | 说明 |
+|---------|------|------|
+| `latest` | `serverpilot/server:latest` | 最新的 master 分支构建 |
+| `{version}` | `serverpilot/server:0.1.0` | 语义化版本（推荐生产使用） |
+| `{major}.{minor}` | `serverpilot/server:0.1` | 主次版本号 |
+| `sha-{hash}` | `serverpilot/server:sha-a1b2c3d` | Git commit hash |
+
 ### 本地开发
 
 ```bash
