@@ -73,6 +73,23 @@ describe('.env.example 环境变量模板', () => {
       expect(envVars.has('AI_MAX_RETRIES')).toBe(true);
       expect(Number(envVars.get('AI_MAX_RETRIES'))).toBeGreaterThanOrEqual(1);
     });
+
+    it('AI_PROVIDER 说明应包含 custom-openai', () => {
+      expect(content).toContain('custom-openai');
+    });
+
+    it('应包含 CUSTOM_OPENAI_BASE_URL', () => {
+      expect(envVars.has('CUSTOM_OPENAI_BASE_URL')).toBe(true);
+    });
+
+    it('应包含 CUSTOM_OPENAI_API_KEY', () => {
+      expect(envVars.has('CUSTOM_OPENAI_API_KEY')).toBe(true);
+    });
+
+    it('Custom OpenAI 段应包含 OneAPI/LiteLLM 示例 URL', () => {
+      expect(content).toMatch(/oneapi/i);
+      expect(content).toMatch(/litellm/i);
+    });
   });
 
   describe('WebSocket 配置', () => {
