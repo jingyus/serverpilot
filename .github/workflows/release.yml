@@ -17,6 +17,7 @@ jobs:
   test:
     name: Pre-release Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 8
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -46,6 +47,7 @@ jobs:
     name: Build Agent (${{ matrix.name }})
     needs: test
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -167,6 +169,7 @@ jobs:
     name: Create GitHub Release
     needs: [build-agent-binary, docker-release]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout
@@ -185,34 +188,47 @@ jobs:
           done
           ls -la release-assets/
 
+      - name: Extract CHANGELOG notes
+        id: changelog
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          # Extract notes between the version heading and the next heading
+          NOTES=$(sed -n "/^## \[${VERSION}\]/,/^## \[/{/^## \[${VERSION}\]/d;/^## \[/d;p;}" CHANGELOG.md)
+          # Trim leading/trailing blank lines
+          NOTES=$(echo "$NOTES" | sed '/./,$!d' | sed -e :a -e '/^\n*$/{$d;N;ba}')
+          # Write to file for the release action
+          echo "$NOTES" > release-notes-changelog.md
+
       - name: Generate release notes
         run: |
-          VERSION="${GITHUB_REF_NAME}"
-          cat > release-notes.md << 'EOF'
-          ## Docker Images
-
-          ```bash
-          docker pull ghcr.io/REPO/server:VERSION
-          docker pull ghcr.io/REPO/dashboard:VERSION
-          ```
-
-          ## Agent Binaries
-
-          | Platform | Architecture | File |
-          |----------|-------------|------|
-          | Linux | x64 | `install-agent-linux-x64` |
-          | Linux | arm64 | `install-agent-linux-arm64` |
-          | macOS | arm64 (Apple Silicon) | `install-agent-darwin-arm64` |
-          | macOS | x64 (Intel) | `install-agent-darwin-x64` |
-
-          ## Quick Start
-
-          ```bash
-          docker compose up -d
-          ```
-          EOF
-          sed -i "s|REPO|${{ github.repository }}|g" release-notes.md
-          sed -i "s|VERSION|${VERSION#v}|g" release-notes.md
+          VERSION="${GITHUB_REF_NAME#v}"
+          {
+            cat release-notes-changelog.md
+            echo ""
+            echo "---"
+            echo ""
+            echo "## Docker Images"
+            echo ""
+            echo '```bash'
+            echo "docker pull ghcr.io/${{ github.repository }}/server:${VERSION}"
+            echo "docker pull ghcr.io/${{ github.repository }}/dashboard:${VERSION}"
+            echo '```'
+            echo ""
+            echo "## Agent Binaries"
+            echo ""
+            echo "| Platform | Architecture | File |"
+            echo "|----------|-------------|------|"
+            echo "| Linux | x64 | \`install-agent-linux-x64\` |"
+            echo "| Linux | arm64 | \`install-agent-linux-arm64\` |"
+            echo "| macOS | arm64 (Apple Silicon) | \`install-agent-darwin-arm64\` |"
+            echo "| macOS | x64 (Intel) | \`install-agent-darwin-x64\` |"
+            echo ""
+            echo "## Quick Start"
+            echo ""
+            echo '```bash'
+            echo "docker compose up -d"
+            echo '```'
+          } > release-notes.md
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -221,4 +237,3 @@ jobs:
           body_path: release-notes.md
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
-          generate_release_notes: true

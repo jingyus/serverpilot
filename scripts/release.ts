@@ -1,17 +1,19 @@
-#!/usr/bin/env bun
+#!/usr/bin/env tsx
 /**
- * Release Publishing Module
+ * ServerPilot Release Script
  *
  * Manages the full release lifecycle:
- * 1. Create a Git tag for the release version
- * 2. Generate and publish Release Notes from CHANGELOG.md
- * 3. Update the website announcement banner
+ * 1. Validate version and working tree state
+ * 2. Update version in all package.json files
+ * 3. Append version entry to CHANGELOG.md (from [Unreleased])
+ * 4. Create a Git tag
+ * 5. Create a GitHub Release (triggers release.yml workflow)
  *
  * Usage:
- *   bun scripts/release.ts v1.1.0                    # Full release
- *   bun scripts/release.ts v1.1.0 --dry-run          # Preview without executing
- *   bun scripts/release.ts v1.1.0 --skip-tag         # Skip git tag creation
- *   bun scripts/release.ts v1.1.0 --skip-gh-release  # Skip GitHub release
+ *   pnpm release v0.3.0                      # Full release
+ *   pnpm release v0.3.0 --dry-run            # Preview without executing
+ *   pnpm release v0.3.0 --skip-tag           # Skip git tag creation
+ *   pnpm release v0.3.0 --skip-gh-release    # Skip GitHub release
  */
 
 import { execSync } from 'node:child_process';
@@ -23,9 +25,9 @@ import path from 'node:path';
 // ============================================================================
 
 export interface ReleaseInfo {
-  /** Version tag (e.g. "v1.1.0") */
+  /** Version tag (e.g. "v0.3.0") */
   tag: string;
-  /** Version without v prefix (e.g. "1.1.0") */
+  /** Version without v prefix (e.g. "0.3.0") */
   version: string;
   /** Release title */
   title: string;
@@ -49,7 +51,7 @@ export interface ReleaseResult {
 }
 
 export interface ReleaseOptions {
-  /** Version tag (e.g. "v1.1.0") */
+  /** Version tag (e.g. "v0.3.0") */
   tag: string;
   /** Dry run mode - preview without executing */
   dryRun: boolean;
@@ -68,8 +70,15 @@ export interface ReleaseOptions {
 const DEFAULT_ROOT_DIR = path.resolve(import.meta.dirname, '..');
 
 const CHANGELOG_PATH = 'CHANGELOG.md';
-const WEBSITE_CONFIG_PATH = 'packages/website/docs/.vitepress/config.ts';
-const WEBSITE_INDEX_PATH = 'packages/website/docs/index.md';
+
+/** All package.json files to update version in */
+const PACKAGE_JSON_PATHS = [
+  'package.json',
+  'packages/server/package.json',
+  'packages/agent/package.json',
+  'packages/dashboard/package.json',
+  'packages/shared/package.json',
+];
 
 // ============================================================================
 // Version Parsing
@@ -90,7 +99,7 @@ export function extractVersion(tag: string): string {
 }
 
 /**
- * Validate a semantic version string (e.g. "1.1.0" or "v1.1.0").
+ * Validate a semantic version string (e.g. "0.3.0" or "v0.3.0").
  */
 export function isValidSemver(version: string): boolean {
   const v = extractVersion(version);
@@ -98,7 +107,7 @@ export function isValidSemver(version: string): boolean {
 }
 
 // ============================================================================
-// CHANGELOG Parsing
+// CHANGELOG Parsing & Updating
 // ============================================================================
 
 /**
@@ -110,10 +119,10 @@ export function extractReleaseNotes(changelogContent: string, version: string): 
   const lines = changelogContent.split('\n');
 
   let capturing = false;
-  let notes: string[] = [];
+  const notes: string[] = [];
 
   for (const line of lines) {
-    // Match the version heading: ## [1.1.0] or ## [1.1.0] - 2026-02-08
+    // Match the version heading: ## [0.3.0] or ## [0.3.0] - 2026-02-08
     if (line.match(new RegExp(`^## \\[${escapeRegex(v)}\\]`))) {
       capturing = true;
       continue;
@@ -155,6 +164,72 @@ export function extractReleaseDate(changelogContent: string, version: string): s
 }
 
 /**
+ * Stamp the [Unreleased] section in CHANGELOG with the new version and today's date.
+ * Moves content from [Unreleased] to a new version heading and adds a fresh [Unreleased] section.
+ */
+export function stampChangelog(changelogContent: string, version: string): string {
+  const v = extractVersion(version);
+  const today = new Date().toISOString().split('T')[0];
+
+  // Find the [Unreleased] heading
+  const unreleasedRegex = /^## \[Unreleased\]\s*$/m;
+  if (!unreleasedRegex.test(changelogContent)) {
+    return changelogContent;
+  }
+
+  // Replace [Unreleased] heading with new version, and add a fresh [Unreleased] above
+  const updated = changelogContent.replace(
+    unreleasedRegex,
+    `## [Unreleased]\n\n## [${v}] - ${today}`,
+  );
+
+  return updated;
+}
+
+/**
+ * Update the comparison links at the bottom of CHANGELOG.
+ * Adds a link for the new version and updates the [Unreleased] link.
+ */
+export function updateChangelogLinks(
+  changelogContent: string,
+  version: string,
+  repoUrl: string,
+): string {
+  const v = extractVersion(version);
+
+  // Update [Unreleased] comparison link
+  const unreleasedLinkRegex = /^\[Unreleased\]:\s+.+$/m;
+  let updated = changelogContent;
+
+  if (unreleasedLinkRegex.test(updated)) {
+    updated = updated.replace(
+      unreleasedLinkRegex,
+      `[Unreleased]: ${repoUrl}/compare/v${v}...HEAD`,
+    );
+  }
+
+  // Add new version comparison link before the first existing version link (if not already present)
+  const versionLinkRegex = new RegExp(`^\\[${escapeRegex(v)}\\]:`, 'm');
+  if (!versionLinkRegex.test(updated)) {
+    // Find the previous version by looking at existing version links
+    const existingLinks = updated.match(/^\[\d+\.\d+\.\d+[^\]]*\]:\s+.+$/gm);
+    if (existingLinks && existingLinks.length > 0) {
+      // Extract the previous version from the first link
+      const prevMatch = existingLinks[0].match(/^\[([^\]]+)\]/);
+      const prevVersion = prevMatch ? prevMatch[1] : null;
+
+      if (prevVersion) {
+        const newLink = `[${v}]: ${repoUrl}/compare/v${prevVersion}...v${v}`;
+        // Insert before the first version link
+        updated = updated.replace(existingLinks[0], `${newLink}\n${existingLinks[0]}`);
+      }
+    }
+  }
+
+  return updated;
+}
+
+/**
  * Build a ReleaseInfo object from CHANGELOG content and version tag.
  */
 export function buildReleaseInfo(changelogContent: string, tag: string): ReleaseInfo {
@@ -166,14 +241,55 @@ export function buildReleaseInfo(changelogContent: string, tag: string): Release
   return {
     tag: normalizedTag,
     version,
-    title: `v${version} - AI Installer MVP`,
+    title: `ServerPilot v${version}`,
     notes,
     date,
   };
 }
 
 // ============================================================================
-// Git Tag
+// Version Bumping
+// ============================================================================
+
+/**
+ * Update the version field in a package.json file content.
+ */
+export function updatePackageVersion(packageJsonContent: string, version: string): string {
+  const v = extractVersion(version);
+  return packageJsonContent.replace(
+    /"version":\s*"[^"]*"/,
+    `"version": "${v}"`,
+  );
+}
+
+/**
+ * Read and update all package.json files to the new version.
+ * Returns the list of files that were updated.
+ */
+export function bumpVersions(version: string, rootDir: string, dryRun: boolean): string[] {
+  const v = extractVersion(version);
+  const updated: string[] = [];
+
+  for (const relPath of PACKAGE_JSON_PATHS) {
+    const absPath = path.join(rootDir, relPath);
+    if (!fs.existsSync(absPath)) continue;
+
+    const content = fs.readFileSync(absPath, 'utf-8');
+    const newContent = updatePackageVersion(content, v);
+
+    if (content !== newContent) {
+      if (!dryRun) {
+        fs.writeFileSync(absPath, newContent, 'utf-8');
+      }
+      updated.push(relPath);
+    }
+  }
+
+  return updated;
+}
+
+// ============================================================================
+// Git Operations
 // ============================================================================
 
 /**
@@ -181,7 +297,6 @@ export function buildReleaseInfo(changelogContent: string, tag: string): Release
  */
 export function tagExists(tag: string, rootDir: string = DEFAULT_ROOT_DIR): boolean {
   try {
-    execSync(`git tag -l "${tag}"`, { cwd: rootDir, stdio: 'pipe', encoding: 'utf-8' });
     const output = execSync(`git tag -l "${tag}"`, { cwd: rootDir, stdio: 'pipe', encoding: 'utf-8' }).trim();
     return output === tag;
   } catch {
@@ -196,66 +311,79 @@ export function createTag(tag: string, message: string, rootDir: string = DEFAUL
   execSync(`git tag -a "${tag}" -m "${message}"`, { cwd: rootDir, stdio: 'pipe' });
 }
 
-// ============================================================================
-// Website Announcement
-// ============================================================================
-
 /**
- * Generate the VitePress announcement bar configuration snippet.
+ * Check if git working tree is clean (no uncommitted changes).
  */
-export function generateAnnouncementConfig(release: ReleaseInfo): string {
-  return `\n    announcement: {\n      content: 'v${release.version} \u5df2\u53d1\u5e03\uff01AI \u667a\u80fd\u5b89\u88c5\u8ba1\u5212 + \u9519\u8bef\u8bca\u65ad\u4fee\u590d <a href="/download">\u7acb\u5373\u4e0b\u8f7d</a>',\n      link: '/download'\n    },`;
+export function isWorkingTreeClean(rootDir: string = DEFAULT_ROOT_DIR): boolean {
+  try {
+    const output = execSync('git status --porcelain', { cwd: rootDir, stdio: 'pipe', encoding: 'utf-8' }).trim();
+    return output === '';
+  } catch {
+    return false;
+  }
 }
 
 /**
- * Update VitePress config.ts to include an announcement banner.
- * Inserts the announcement config into the themeConfig section.
+ * Get the repository URL from git remote.
  */
-export function updateWebsiteAnnouncement(
-  configContent: string,
-  release: ReleaseInfo,
-): string {
-  // Check if announcement already exists
-  if (configContent.includes('announcement:')) {
-    // Replace existing announcement
-    const updated = configContent.replace(
-      /\n\s*announcement:\s*\{[^}]*\},?/,
-      generateAnnouncementConfig(release),
-    );
-    return updated;
+export function getRepoUrl(rootDir: string = DEFAULT_ROOT_DIR): string {
+  try {
+    const remote = execSync('git remote get-url origin', { cwd: rootDir, stdio: 'pipe', encoding: 'utf-8' }).trim();
+    // Convert SSH URL to HTTPS
+    return remote
+      .replace(/^git@github\.com:/, 'https://github.com/')
+      .replace(/\.git$/, '');
+  } catch {
+    return 'https://github.com/jingjinbao/ServerPilot';
+  }
+}
+
+// ============================================================================
+// License Verification
+// ============================================================================
+
+/** Expected license mapping for Open Core model */
+export const EXPECTED_LICENSES: Record<string, string> = {
+  'packages/agent/package.json': 'Apache-2.0',
+  'packages/server/package.json': 'AGPL-3.0',
+  'packages/dashboard/package.json': 'AGPL-3.0',
+  'packages/shared/package.json': 'MIT',
+};
+
+/**
+ * Verify that all packages have the correct license in their package.json.
+ */
+export function verifyLicenses(rootDir: string): { valid: boolean; issues: string[] } {
+  const issues: string[] = [];
+
+  for (const [relPath, expectedLicense] of Object.entries(EXPECTED_LICENSES)) {
+    const absPath = path.join(rootDir, relPath);
+    if (!fs.existsSync(absPath)) {
+      issues.push(`${relPath}: file not found`);
+      continue;
+    }
+
+    const content = JSON.parse(fs.readFileSync(absPath, 'utf-8'));
+    if (content.license !== expectedLicense) {
+      issues.push(`${relPath}: expected "${expectedLicense}", found "${content.license}"`);
+    }
   }
 
-  // Insert announcement after themeConfig: {
-  const insertPoint = 'themeConfig: {';
-  const idx = configContent.indexOf(insertPoint);
-  if (idx === -1) {
-    return configContent;
+  // Check LICENSE files exist
+  const licenseFiles = [
+    'packages/agent/LICENSE',
+    'packages/server/LICENSE',
+    'packages/dashboard/LICENSE',
+    'packages/shared/LICENSE',
+  ];
+
+  for (const relPath of licenseFiles) {
+    if (!fs.existsSync(path.join(rootDir, relPath))) {
+      issues.push(`${relPath}: LICENSE file not found`);
+    }
   }
 
-  const insertPos = idx + insertPoint.length;
-  return configContent.slice(0, insertPos) +
-    generateAnnouncementConfig(release) +
-    configContent.slice(insertPos);
-}
-
-/**
- * Generate the release announcement badge for the homepage hero section.
- */
-export function generateHeroAnnouncement(release: ReleaseInfo): string {
-  return `  tagline: v${release.version} \u5df2\u53d1\u5e03 - \u8ba9\u8f6f\u4ef6\u5b89\u88c5\u53d8\u5f97\u7b80\u5355\u3001\u667a\u80fd\u3001\u53ef\u9760`;
-}
-
-/**
- * Update the homepage tagline to reflect the new release.
- */
-export function updateHomepageTagline(
-  indexContent: string,
-  release: ReleaseInfo,
-): string {
-  return indexContent.replace(
-    /^\s*tagline:.*$/m,
-    generateHeroAnnouncement(release),
-  );
+  return { valid: issues.length === 0, issues };
 }
 
 // ============================================================================
@@ -269,12 +397,13 @@ export function executeRelease(options: ReleaseOptions): ReleaseResult {
   const steps: ReleaseStep[] = [];
   const { tag, dryRun, skipTag, skipGhRelease, rootDir } = options;
   const normalizedTag = normalizeTag(tag);
+  const version = extractVersion(tag);
 
   // Validate version
   if (!isValidSemver(tag)) {
     return {
       success: false,
-      release: { tag: normalizedTag, version: extractVersion(tag), title: '', notes: '', date: '' },
+      release: { tag: normalizedTag, version, title: '', notes: '', date: '' },
       steps: [{ name: 'Validate version', status: 'failed', message: `Invalid semver: ${tag}` }],
     };
   }
@@ -284,7 +413,7 @@ export function executeRelease(options: ReleaseOptions): ReleaseResult {
   if (!fs.existsSync(changelogPath)) {
     return {
       success: false,
-      release: { tag: normalizedTag, version: extractVersion(tag), title: '', notes: '', date: '' },
+      release: { tag: normalizedTag, version, title: '', notes: '', date: '' },
       steps: [{ name: 'Read CHANGELOG', status: 'failed', message: 'CHANGELOG.md not found' }],
     };
   }
@@ -307,7 +436,39 @@ export function executeRelease(options: ReleaseOptions): ReleaseResult {
     message: `Extracted ${release.notes.split('\n').length} lines of release notes`,
   });
 
-  // Step 1: Create git tag
+  // Step 1: Verify licenses
+  const licenseCheck = verifyLicenses(rootDir);
+  if (!licenseCheck.valid) {
+    steps.push({
+      name: 'Verify licenses',
+      status: 'failed',
+      message: `License issues: ${licenseCheck.issues.join('; ')}`,
+    });
+    return { success: false, release, steps };
+  }
+  steps.push({
+    name: 'Verify licenses',
+    status: 'success',
+    message: 'All package licenses verified (Agent: Apache-2.0, Server/Dashboard: AGPL-3.0, Shared: MIT)',
+  });
+
+  // Step 2: Bump versions in package.json files
+  if (dryRun) {
+    steps.push({
+      name: 'Bump versions',
+      status: 'skipped',
+      message: `[dry-run] Would update version to ${version} in ${PACKAGE_JSON_PATHS.length} package.json files`,
+    });
+  } else {
+    const updated = bumpVersions(version, rootDir, false);
+    steps.push({
+      name: 'Bump versions',
+      status: 'success',
+      message: `Updated version to ${version} in ${updated.length} files: ${updated.join(', ')}`,
+    });
+  }
+
+  // Step 3: Create git tag
   if (skipTag) {
     steps.push({ name: 'Create git tag', status: 'skipped', message: 'Skipped by --skip-tag' });
   } else if (dryRun) {
@@ -317,7 +478,7 @@ export function executeRelease(options: ReleaseOptions): ReleaseResult {
       steps.push({ name: 'Create git tag', status: 'skipped', message: `Tag ${normalizedTag} already exists` });
     } else {
       try {
-        createTag(normalizedTag, `Release ${release.version}`, rootDir);
+        createTag(normalizedTag, `Release ${version}`, rootDir);
         steps.push({ name: 'Create git tag', status: 'success', message: `Created tag ${normalizedTag}` });
       } catch (err) {
         steps.push({
@@ -330,7 +491,7 @@ export function executeRelease(options: ReleaseOptions): ReleaseResult {
     }
   }
 
-  // Step 2: Create GitHub Release
+  // Step 4: Create GitHub Release
   let releaseUrl: string | undefined;
   if (skipGhRelease) {
     steps.push({ name: 'Create GitHub release', status: 'skipped', message: 'Skipped by --skip-gh-release' });
@@ -361,56 +522,6 @@ export function executeRelease(options: ReleaseOptions): ReleaseResult {
         message: `Failed to create release: ${err instanceof Error ? err.message : String(err)}`,
       });
       return { success: false, release, steps };
-    }
-  }
-
-  // Step 3: Update website announcement
-  const configPath = path.join(rootDir, WEBSITE_CONFIG_PATH);
-  if (!fs.existsSync(configPath)) {
-    steps.push({ name: 'Update website announcement', status: 'skipped', message: 'VitePress config not found' });
-  } else if (dryRun) {
-    steps.push({
-      name: 'Update website announcement',
-      status: 'skipped',
-      message: `[dry-run] Would add announcement banner for v${release.version}`,
-    });
-  } else {
-    try {
-      const configContent = fs.readFileSync(configPath, 'utf-8');
-      const updatedConfig = updateWebsiteAnnouncement(configContent, release);
-      fs.writeFileSync(configPath, updatedConfig, 'utf-8');
-      steps.push({ name: 'Update website announcement', status: 'success', message: 'Announcement banner added to VitePress config' });
-    } catch (err) {
-      steps.push({
-        name: 'Update website announcement',
-        status: 'failed',
-        message: `Failed to update config: ${err instanceof Error ? err.message : String(err)}`,
-      });
-    }
-  }
-
-  // Step 4: Update homepage tagline
-  const indexPath = path.join(rootDir, WEBSITE_INDEX_PATH);
-  if (!fs.existsSync(indexPath)) {
-    steps.push({ name: 'Update homepage tagline', status: 'skipped', message: 'Homepage index.md not found' });
-  } else if (dryRun) {
-    steps.push({
-      name: 'Update homepage tagline',
-      status: 'skipped',
-      message: `[dry-run] Would update tagline to include v${release.version}`,
-    });
-  } else {
-    try {
-      const indexContent = fs.readFileSync(indexPath, 'utf-8');
-      const updatedIndex = updateHomepageTagline(indexContent, release);
-      fs.writeFileSync(indexPath, updatedIndex, 'utf-8');
-      steps.push({ name: 'Update homepage tagline', status: 'success', message: 'Homepage tagline updated' });
-    } catch (err) {
-      steps.push({
-        name: 'Update homepage tagline',
-        status: 'failed',
-        message: `Failed to update homepage: ${err instanceof Error ? err.message : String(err)}`,
-      });
     }
   }
 
@@ -452,7 +563,7 @@ export function parseReleaseArgs(argv: string[]): ReleaseOptions {
   }
 
   if (!tag) {
-    throw new Error('Version tag is required. Usage: bun scripts/release.ts v1.1.0');
+    throw new Error('Version tag is required. Usage: pnpm release v0.3.0');
   }
 
   return {
@@ -478,8 +589,8 @@ function escapeRegex(str: string): string {
 
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(import.meta.filename);
 if (isMain) {
-  console.log('AI Installer - Release Publisher');
-  console.log('================================\n');
+  console.log('ServerPilot - Release Publisher');
+  console.log('===============================\n');
 
   try {
     const options = parseReleaseArgs(process.argv);
