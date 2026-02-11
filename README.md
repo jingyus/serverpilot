@@ -1,5 +1,10 @@
 # ServerPilot
 
+[![CI](https://github.com/your-org/ServerPilot/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/ServerPilot/actions/workflows/ci.yml)
+[![Test](https://github.com/your-org/ServerPilot/actions/workflows/test.yml/badge.svg)](https://github.com/your-org/ServerPilot/actions/workflows/test.yml)
+[![Docker Publish](https://github.com/your-org/ServerPilot/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/your-org/ServerPilot/actions/workflows/docker-publish.yml)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+
 > AI 驱动的智能服务器运维平台 — 跟 AI 聊天就能管服务器
 
 **一句话描述**: 宝塔面板的 AI 时代替代品。同样一行命令安装，但用 AI 对话取代表单点击，用开源透明取代闭源黑盒。

@@ -42,7 +42,8 @@ INTERVAL=30            # 循环间隔（秒）
 MAX_ITERATIONS=1000    # 最大迭代次数
 ANALYZE_TIMEOUT=3600   # 分析阶段超时（60分钟）
 EXECUTE_TIMEOUT=3600   # 执行阶段超时（60分钟）
-MAX_RETRIES=3          # 单任务最大重试次数
+MAX_RETRIES=3          # 单任务单轮最大重试次数
+MAX_TASK_FAILURES=3    # 同一任务跨轮次最大失败次数（超过后自动跳过）
 BATCH_SIZE=5           # 每次生成任务数量
 
 # Token 使用统计和成本控制
@@ -576,14 +577,29 @@ check_and_generate_tasks() {
     completed="${completed:-0}"
     failed="${failed:-0}"
 
-    if [ "$pending" -eq 0 ] && [ "$in_progress" -eq 0 ]; then
-        log_info "任务队列为空，开始批量生成任务..."
-        run_claude_batch_generate
-        return $?
-    else
+    # 有待执行或进行中的任务 → 直接继续
+    if [ "$pending" -gt 0 ] || [ "$in_progress" -gt 0 ]; then
         log_info "任务队列状态: 总计 $total | 待完成 $pending | 进行中 $in_progress | 已完成 $completed | 失败 $failed"
         return 0
     fi
+
+    # 没有 pending 也没有 in_progress，但有 failed → 尝试重试
+    if [ "$failed" -gt 0 ]; then
+        local retryable=$(count_retryable_failed_tasks "$TASK_QUEUE" "$MAX_TASK_FAILURES")
+        if [ "$retryable" -gt 0 ]; then
+            log_info "发现 $retryable 个可重试的失败任务（失败次数 < $MAX_TASK_FAILURES），自动重置为 pending..."
+            retry_eligible_failed_tasks "$TASK_QUEUE" "$MAX_TASK_FAILURES"
+            return 0
+        else
+            log_warning "所有失败任务均已超过重试上限 ($MAX_TASK_FAILURES 次)"
+            log_info "跳过失败任务，开始生成新任务..."
+        fi
+    fi
+
+    # 无任何可执行任务 → 批量生成新任务
+    log_info "任务队列为空，开始批量生成任务..."
+    run_claude_batch_generate
+    return $?
 }
 
 # 运行Claude分析任务（带超时）
@@ -1034,6 +1050,35 @@ show_progress() {
 
 # 主函数
 main() {
+    # 处理命令行参数
+    case "${1:-}" in
+        --reset-failures)
+            log_info "重置所有失败任务..."
+            reset_failed_tasks "$TASK_QUEUE"
+            log_success "已重置所有失败任务为 pending 状态"
+            show_failure_summary
+            exit 0
+            ;;
+        --show-failures)
+            show_failure_summary
+            exit 0
+            ;;
+        --help|-h)
+            echo "用法: $0 [选项]"
+            echo ""
+            echo "选项:"
+            echo "  --reset-failures  重置所有失败任务为 pending 状态"
+            echo "  --show-failures   显示失败任务统计"
+            echo "  --help, -h        显示帮助信息"
+            echo ""
+            echo "配置:"
+            echo "  MAX_RETRIES=$MAX_RETRIES        单轮最大重试次数"
+            echo "  MAX_TASK_FAILURES=$MAX_TASK_FAILURES   跨轮次最大失败次数"
+            echo "  INTERVAL=$INTERVAL           循环间隔（秒）"
+            exit 0
+            ;;
+    esac
+
     echo ""
     echo -e "${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${CYAN}║       ServerPilot AI 自循环开发系统                          ║${NC}"
@@ -1067,6 +1112,7 @@ main() {
     log_info "产品方案目录: $PRODUCT_GUIDE"
     log_info "开发标准: $DEV_STANDARD"
     log_info "循环间隔: ${INTERVAL}秒"
+    log_info "单轮重试: ${MAX_RETRIES}次 | 跨轮失败上限: ${MAX_TASK_FAILURES}次"
     log_info "按 Ctrl+C 可随时停止"
     echo ""
 
@@ -1090,25 +1136,48 @@ main() {
             continue
         fi
 
-        # 步骤2: 从队列获取下一个任务
-        local task_content=$(get_next_task "$TASK_QUEUE")
+        # 步骤2: 从队列获取下一个任务（自动跳过超过失败上限的任务）
+        local task_content=$(get_next_task "$TASK_QUEUE" "$MAX_TASK_FAILURES")
 
         if [ -z "$task_content" ]; then
-            log_warning "任务队列为空，等待下一轮重新生成"
+            # 区分"无任务"和"全部失败"
+            local stats=$(get_task_stats "$TASK_QUEUE")
+            read _total _pending _in_progress _completed _failed <<< "$stats"
+            if [ "${_failed:-0}" -gt 0 ] && [ "${_pending:-0}" -eq 0 ]; then
+                log_warning "所有待执行任务均已失败，无可执行任务"
+                log_info "使用 '$0 --reset-failures' 可重置失败任务重新尝试"
+                show_failure_summary
+            else
+                log_warning "任务队列为空，等待下一轮重新生成"
+            fi
             sleep $INTERVAL
             continue
         fi
 
-        # 提取任务信息
-        local task_id=$(echo "$task_content" | grep "^\*\*ID\*\*:" | cut -d':' -f2- | xargs)
+        # 提取任务信息（使用更宽容的匹配模式）
+        local task_id=$(echo "$task_content" | grep '\*\*ID\*\*:' | head -1 | sed 's/.*\*\*ID\*\*:[[:space:]]*//' | xargs)
         local task_title=$(echo "$task_content" | head -1 | sed 's/^### \[pending\] //')
         local task_name="${task_title}"
+
+        if [ -z "$task_id" ]; then
+            log_warning "无法提取任务 ID，使用任务标题作为标识: $task_name"
+        fi
+
+        # 显示失败历史（如果有）
+        local prev_failures=$(get_failure_count "$task_id")
+        if [ "$prev_failures" -gt 0 ]; then
+            log_warning "任务 $task_id 此前已失败 $prev_failures 次 (上限: $MAX_TASK_FAILURES)"
+        fi
 
         log_task "第 $iteration 轮: $task_name (ID: $task_id)"
         show_progress $iteration "${YELLOW}执行中: $task_name${NC}"
 
-        # 标记任务为进行中
-        mark_task_in_progress "$TASK_QUEUE" "$task_id"
+        # 标记任务为进行中（传入 task_id 精确定位）
+        if ! mark_task_in_progress "$TASK_QUEUE" "$task_id"; then
+            log_error "无法标记任务为进行中，跳过本轮"
+            sleep $INTERVAL
+            continue
+        fi
 
         # 将任务内容写入 TASK_FILE 供执行使用
         echo "$task_content" > "$TASK_FILE"

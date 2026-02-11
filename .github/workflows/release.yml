@@ -1,0 +1,206 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  test:
+    name: Pre-release Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Type check
+        run: pnpm typecheck
+
+      - name: Run tests
+        run: pnpm test
+
+  build-agent-binary:
+    name: Build Agent (${{ matrix.name }})
+    needs: test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: linux-x64
+            target: bun-linux-x64
+          - os: ubuntu-latest
+            name: linux-arm64
+            target: bun-linux-arm64
+          - os: macos-latest
+            name: darwin-arm64
+            target: bun-darwin-arm64
+          - os: macos-13
+            name: darwin-x64
+            target: bun-darwin-x64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Agent binary
+        run: bun scripts/build-binary.ts --target ${{ matrix.target }}
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-${{ matrix.name }}
+          path: packages/agent/dist/bin/install-agent-*
+          retention-days: 1
+
+  docker-release:
+    name: Publish Docker Images
+    needs: test
+    runs-on: ubuntu-latest
+    env:
+      REGISTRY: ghcr.io
+      SERVER_IMAGE: ${{ github.repository }}/server
+      DASHBOARD_IMAGE: ${{ github.repository }}/dashboard
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push Server image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: packages/server/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.SERVER_IMAGE }}:${{ steps.version.outputs.version }}
+            ${{ env.REGISTRY }}/${{ env.SERVER_IMAGE }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push Dashboard image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: packages/dashboard/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.DASHBOARD_IMAGE }}:${{ steps.version.outputs.version }}
+            ${{ env.REGISTRY }}/${{ env.DASHBOARD_IMAGE }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  create-release:
+    name: Create GitHub Release
+    needs: [build-agent-binary, docker-release]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release-assets
+          for dir in artifacts/agent-*; do
+            cp "$dir"/* release-assets/ 2>/dev/null || true
+          done
+          ls -la release-assets/
+
+      - name: Generate release notes
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          cat > release-notes.md << 'EOF'
+          ## Docker Images
+
+          ```bash
+          docker pull ghcr.io/REPO/server:VERSION
+          docker pull ghcr.io/REPO/dashboard:VERSION
+          ```
+
+          ## Agent Binaries
+
+          | Platform | Architecture | File |
+          |----------|-------------|------|
+          | Linux | x64 | `install-agent-linux-x64` |
+          | Linux | arm64 | `install-agent-linux-arm64` |
+          | macOS | arm64 (Apple Silicon) | `install-agent-darwin-arm64` |
+          | macOS | x64 (Intel) | `install-agent-darwin-x64` |
+
+          ## Quick Start
+
+          ```bash
+          docker compose up -d
+          ```
+          EOF
+          sed -i "s|REPO|${{ github.repository }}|g" release-notes.md
+          sed -i "s|VERSION|${VERSION#v}|g" release-notes.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*
+          body_path: release-notes.md
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
