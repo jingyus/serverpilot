@@ -8,6 +8,7 @@ import {
   ListChecks,
   History,
   Bell,
+  Shield,
   Settings,
   LogOut,
   ChevronLeft,
@@ -36,6 +37,7 @@ const navItems: NavItem[] = [
   { to: '/tasks', label: 'Tasks', icon: ListChecks },
   { to: '/operations', label: 'Operations', icon: History },
   { to: '/alerts', label: 'Alerts', icon: Bell },
+  { to: '/audit-log', label: 'Audit Log', icon: Shield },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
 

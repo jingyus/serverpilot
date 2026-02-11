@@ -190,3 +190,56 @@ export interface UpdateAlertRuleInput {
   emailRecipients?: string[];
   cooldownMinutes?: number;
 }
+
+// ── Audit Log Types ──
+
+export const AuditRiskLevelSchema = z.enum([
+  'green',
+  'yellow',
+  'red',
+  'critical',
+  'forbidden',
+]);
+export type AuditRiskLevel = z.infer<typeof AuditRiskLevelSchema>;
+
+export const ValidationActionSchema = z.enum([
+  'allowed',
+  'blocked',
+  'requires_confirmation',
+]);
+export type ValidationAction = z.infer<typeof ValidationActionSchema>;
+
+export const ExecutionResultSchema = z.enum([
+  'success',
+  'failed',
+  'timeout',
+  'pending',
+  'skipped',
+]);
+export type ExecutionResult = z.infer<typeof ExecutionResultSchema>;
+
+export const AuditLogEntrySchema = z.object({
+  id: z.string(),
+  serverId: z.string(),
+  userId: z.string(),
+  sessionId: z.string().nullable(),
+  command: z.string(),
+  riskLevel: AuditRiskLevelSchema,
+  reason: z.string(),
+  matchedPattern: z.string().nullable(),
+  action: ValidationActionSchema,
+  auditWarnings: z.array(z.string()),
+  auditBlockers: z.array(z.string()),
+  executionResult: ExecutionResultSchema.nullable(),
+  operationId: z.string().nullable(),
+  createdAt: z.string(),
+});
+export type AuditLogEntry = z.infer<typeof AuditLogEntrySchema>;
+
+export const AuditLogsResponseSchema = z.object({
+  logs: z.array(AuditLogEntrySchema),
+  total: z.number(),
+  limit: z.number(),
+  offset: z.number(),
+});
+export type AuditLogsResponse = z.infer<typeof AuditLogsResponseSchema>;
