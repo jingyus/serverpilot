@@ -69,15 +69,17 @@ For general questions or discussions that don't require execution, just respond 
 Always be concise, security-aware, and explain risks clearly.`;
 
 /**
- * Build the full system prompt with optional server profile context.
+ * Build the full system prompt with optional server profile and knowledge context.
  *
  * When profile context is provided, it is appended to the base prompt
  * so the AI is aware of the server's environment, installed software,
- * and any user-specified notes or caveats.
+ * and any user-specified notes or caveats. Knowledge context (from RAG
+ * search) provides relevant documentation snippets.
  */
 export function buildSystemPrompt(
   profileContext?: string,
   caveats?: string[],
+  knowledgeContext?: string,
 ): string {
   const parts = [BASE_SYSTEM_PROMPT];
 
@@ -87,6 +89,10 @@ export function buildSystemPrompt(
 
   if (caveats && caveats.length > 0) {
     parts.push('## Important Caveats\n' + caveats.map((c) => `- ${c}`).join('\n'));
+  }
+
+  if (knowledgeContext) {
+    parts.push(knowledgeContext);
   }
 
   return parts.join('\n\n');
@@ -111,6 +117,7 @@ export class ChatAIAgent {
    * @param callbacks - Optional streaming callbacks
    * @param profileContext - Rich server profile context for system prompt
    * @param caveats - One-line cautions about existing software/services
+   * @param knowledgeContext - RAG knowledge base context for system prompt
    */
   async chat(
     message: string,
@@ -119,8 +126,9 @@ export class ChatAIAgent {
     callbacks?: ChatStreamCallbacks,
     profileContext?: string,
     caveats?: string[],
+    knowledgeContext?: string,
   ): Promise<ChatResult> {
-    const systemPrompt = buildSystemPrompt(profileContext, caveats);
+    const systemPrompt = buildSystemPrompt(profileContext, caveats, knowledgeContext);
     const profileTokens = profileContext ? estimateTokens(profileContext) : 0;
 
     const userPrompt = conversationHistory

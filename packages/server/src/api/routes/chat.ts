@@ -26,6 +26,7 @@ import { getServerRepository } from '../../db/repositories/server-repository.js'
 import { getProfileManager } from '../../core/profile/manager.js';
 import { buildProfileContext, buildProfileCaveats } from '../../ai/profile-context.js';
 import { getChatAIAgent } from './chat-ai.js';
+import { getRagPipeline } from '../../knowledge/rag-pipeline.js';
 import { logger } from '../../utils/logger.js';
 import { findConnectedAgent } from '../../core/agent/agent-connector.js';
 import { getTaskExecutor } from '../../core/task/executor.js';
@@ -120,6 +121,26 @@ chat.post('/:serverId', requirePermission('chat:use'), validateBody(ChatMessageB
         `Profile context: ${profileCtx.estimatedTokens} tokens, ${profileCtx.includedSections.length} sections`,
       );
 
+      // Search knowledge base for relevant context (RAG)
+      let knowledgeContext: string | undefined;
+      const ragPipeline = getRagPipeline();
+      if (ragPipeline) {
+        const ragResult = await ragPipeline.search(body.message);
+        if (ragResult.hasResults) {
+          knowledgeContext = ragResult.contextText;
+          logger.debug(
+            {
+              operation: 'rag_context_inject',
+              serverId,
+              resultCount: ragResult.resultCount,
+              estimatedTokens: ragResult.estimatedTokens,
+              durationMs: ragResult.durationMs,
+            },
+            `RAG context: ${ragResult.resultCount} results, ${ragResult.estimatedTokens} tokens, ${ragResult.durationMs}ms`,
+          );
+        }
+      }
+
       // Stream AI response
       let fullResponse = '';
 
@@ -138,6 +159,7 @@ chat.post('/:serverId', requirePermission('chat:use'), validateBody(ChatMessageB
         },
         profileCtx.text,
         caveats,
+        knowledgeContext,
       );
 
       // If AI generated a plan, validate and send it as a plan event

@@ -6,10 +6,10 @@
 
 ## 📊 统计信息
 
-- **总任务数**: 66
-- **待完成** (pending): 0
+- **总任务数**: 76
+- **待完成** (pending): 9
 - **进行中** (in_progress): 0
-- **已完成** (completed): 66
+- **已完成** (completed): 67
 - **失败** (failed): 0
 
 ---
@@ -17,6 +17,182 @@
 ## 📋 任务列表
 
 <!-- 任务将由 AI 自动生成和更新 -->
+### [completed] 知识库 RAG 接入 AI 对话流 — 相似度检索 + 上下文注入 ✅
+
+**ID**: task-054
+**优先级**: P0
+**模块路径**: packages/server/src/api/routes/chat.ts, packages/server/src/knowledge/
+**任务描述**: 当前 AI 对话流（chat.ts）仅注入了服务器档案 Profile，但从未调用知识库检索。`knowledge/context-enhancer.ts`、`knowledge/similarity-search.ts`、`knowledge/vector-store.ts` 等模块已完整实现，但未在对话路由中使用。需要：1) 在 chat.ts 的对话处理流程中，根据用户消息调用知识库相似度检索；2) 将检索到的相关文档片段通过 `enhancePromptWithContext()` 注入到 system prompt 中；3) 合理管理 token 预算（profile context 已占 20%，知识库上下文应限制在额外 15% 以内）；4) 当知识库为空或检索失败时优雅降级（不影响正常对话）。这是 MVP 产品方案中"内置知识库加载 + RAG 检索 + Prompt 注入"的核心需求。
+**产品需求**: 产品方案 MVP 范围 — "内置知识库 (10+ 常见软件) + RAG 检索注入"；产品方案 6.1 AI 对话引擎 — 知识库上下文增强
+**验收标准**:
+- 用户发送 "安装 nginx" 时，AI 回复中包含来自 knowledge-base/nginx/ 的最佳实践
+- 知识库检索结果作为 system prompt 一部分传给 AI（可通过日志或测试验证）
+- 知识库为空时对话正常工作（不报错）
+- 知识库检索延迟 < 200ms（不显著拖慢对话响应）
+- 新增至少 10 个测试覆盖 RAG 集成路径
+**创建时间**: 2026-02-12 02:26:34
+**完成时间**: 2026-02-12 02:39:32
+
+---
+
+### [pending] Docker Compose 端到端冒烟测试 — 验证自部署闭环
+
+**ID**: task-055
+**优先级**: P0
+**模块路径**: docker-compose.yml, packages/server/Dockerfile, packages/dashboard/Dockerfile, tests/
+**任务描述**: 开源用户的第一体验是 `docker compose up`，但当前缺少端到端冒烟测试验证整个部署流程。需要：1) 编写脚本/测试验证 docker compose up 后 server 健康检查通过、dashboard 可访问；2) 验证 server ↔ dashboard 通信（API 代理）正常；3) 验证默认 admin 账户可登录；4) 验证 Agent 安装命令生成正确（含正确的 server 地址）；5) 验证 SQLite 数据持久化（volume mount 生效）；6) 验证环境变量默认值合理（不设 .env 也能启动）。可使用 scripts/smoke-test.sh 扩展或新建测试。
+**产品需求**: 产品方案 MVP — "docker compose up 一键自部署"；产品方案 12.3 开源发布准备
+**验收标准**:
+- `docker compose build && docker compose up -d` 后所有服务健康检查 pass
+- 默认端口（3000 server, 5173 dashboard）可访问
+- 无 .env 文件时也能正常启动（使用内置默认值）
+- Admin 登录 → 添加服务器 → 获取安装命令 流程通畅
+- 测试可在 CI 环境中运行（需要 Docker）
+**创建时间**: 2026-02-12 02:26:34
+**完成时间**: -
+
+---
+
+### [pending] AI 对话质量增强 — 错误自动诊断与修复建议闭环
+
+**ID**: task-056
+**优先级**: P0
+**模块路径**: packages/server/src/ai/error-analyzer.ts, packages/server/src/core/task/executor.ts, packages/server/src/api/routes/chat.ts
+**任务描述**: 产品方案 6.3 描述了"故障诊断场景"：当命令执行失败时，AI 应自动分析错误输出并给出修复建议。当前 `error-analyzer.ts` 已实现错误分析逻辑，但需要验证在实际执行流中是否正确串联。需要：1) 验证 executor.ts 中命令失败后是否触发 error-analyzer；2) 确保 AI 收到失败结果后自动生成诊断和修复方案（不需要用户再次提问）；3) 修复方案应考虑服务器档案（如 OS 类型、已安装软件）；4) 在 SSE 流中正确推送诊断结果给前端；5) 补充测试覆盖错误 → 诊断 → 修复建议的完整路径。
+**产品需求**: 产品方案 6.3 故障诊断场景 — "AI 实时诊断，自动给出修复方案"
+**验收标准**:
+- 命令执行 exitCode != 0 时，自动触发 AI 错误分析
+- 诊断结果通过 SSE 推送到前端 Chat 界面
+- 修复建议中的命令考虑目标服务器环境（如 apt vs yum）
+- 新增 >= 8 个测试覆盖错误诊断闭环
+**创建时间**: 2026-02-12 02:26:34
+**完成时间**: -
+
+---
+
+### [pending] 开源版单租户模式简化 — 去除不必要的多租户复杂度
+
+**ID**: task-057
+**优先级**: P1
+**模块路径**: packages/server/src/api/middleware/tenant.ts, packages/server/src/api/routes/
+**任务描述**: AI 开发约束明确"开源版为单租户（owner 即管理员）"，但当前代码中 requireTenant 中间件在所有路由上启用，对开源版自部署用户增加了不必要的复杂度（用户注册后还需要创建 tenant）。需要：1) 在非 CLOUD_MODE 下自动为首个注册用户创建默认 tenant 并关联；2) 简化首次使用流程：注册 → 自动成为 owner → 无需手动创建组织；3) 确保 requireTenant 在单租户模式下透明工作（不要求用户感知 tenant 概念）；4) 验证现有 API 在单租户模式下全部正常。
+**产品需求**: AI 开发约束 1.1 — "开源版：单租户（owner 即管理员）"
+**验收标准**:
+- 新用户注册后立即可用（无需额外设置 tenant）
+- 所有 API 在默认（非 CLOUD_MODE）下正常工作
+- 不影响 CLOUD_MODE 下的多租户行为
+- 现有测试全部通过
+- 新增 >= 5 个测试覆盖单租户自动化流程
+**创建时间**: 2026-02-12 02:26:34
+**完成时间**: -
+
+---
+
+### [pending] Dashboard Chat 界面交互优化 — 计划预览与执行确认 UX
+
+**ID**: task-058
+**优先级**: P1
+**模块路径**: packages/dashboard/src/pages/Chat.tsx, packages/dashboard/src/components/chat/
+**任务描述**: Chat 页面是用户核心交互入口，当前功能完整但交互体验可优化。需要：1) 计划预览卡片增加风险等级色彩标识（GREEN=绿色边框, YELLOW=黄色, RED=红色, CRITICAL=红色闪烁）；2) 执行确认对话框中显示每步命令的风险等级和影响说明；3) 执行过程中的 step 进度显示优化（当前/总步数、预计耗时）；4) 命令输出支持 ANSI 颜色渲染（很多 CLI 工具输出带颜色）；5) 对话历史支持按会话分组折叠。不引入新依赖，使用现有 Tailwind + Shadcn/ui。
+**产品需求**: 产品方案 5.2 日常使用场景 — 对话交互体验；产品方案 6.2 安装软件场景 — 计划展示与确认
+**验收标准**:
+- 计划卡片显示每步命令的风险等级色彩标识
+- RED 及以上级别有明确的警告提示
+- 执行进度条显示当前步骤 / 总步数
+- ANSI 转义序列正确渲染为颜色（或 strip 掉）
+- 现有 Chat 测试通过 + 新增 >= 6 个测试
+**创建时间**: 2026-02-12 02:26:34
+**完成时间**: -
+
+---
+
+### [pending] 服务器分组管理 — API + Dashboard UI 实现
+
+**ID**: task-059
+**优先级**: P2
+**模块路径**: packages/server/src/api/routes/servers.ts, packages/server/src/db/repositories/server-repository.ts, packages/dashboard/src/pages/Servers.tsx
+**任务描述**: 数据库迁移 `0009_server_groups.sql` 已为 servers 表添加 group 列，但缺少 API 和 UI。需要：1) Server API 扩展：GET /servers 支持 ?group= 过滤，PUT /servers/:id 支持更新 group 字段；2) 新增 GET /server-groups 返回所有分组（去重 distinct）；3) Dashboard Servers 页面增加分组筛选下拉和分组视图切换（列表/分组卡片）；4) 添加服务器时可选择分组（可新建）；5) 支持拖拽或批量修改分组。保持轻量，不需要独立的 groups 表。
+**产品需求**: 产品方案 v1.5 批量操作 + 服务器分组 的基础能力
+**验收标准**:
+- GET /servers?group=production 返回指定分组服务器
+- Dashboard 可按分组筛选和查看服务器
+- 新建/编辑服务器时可设置分组
+- 分组名支持中英文
+- 新增 >= 10 个测试（API + Dashboard）
+**创建时间**: 2026-02-12 02:26:34
+**完成时间**: -
+
+---
+
+### [pending] 开源发布最终检查 — LICENSE/README/CHANGELOG/安装文档审查
+
+**ID**: task-060
+**优先级**: P1
+**模块路径**: README.md, LICENSE, CHANGELOG.md, CONTRIBUTING.md, docs/
+**任务描述**: Phase 3 开源发布已完成 90%，需要最终审查。需要：1) README.md 检查：快速开始步骤是否准确（docker compose up 命令、.env 配置说明）、截图/GIF 演示、badges（CI/License/Docker）；2) CHANGELOG.md 更新至当前版本的所有变更；3) CONTRIBUTING.md 验证开发环境搭建步骤可复现；4) LICENSE (AGPL-3.0) 头部版权信息完整；5) docs/DEPLOY.md 自部署指南与实际 docker-compose.yml 一致；6) .env.example 所有变量都有中英文注释。重点确保新用户第一次 clone 后能成功跑起来。
+**产品需求**: 产品方案 12.3 v0.3 开源发布 — 文档完善
+**验收标准**:
+- 新用户按 README 步骤可在 5 分钟内启动服务
+- CHANGELOG 覆盖所有 Phase 1-3 功能
+- CONTRIBUTING 开发环境搭建步骤可复现（pnpm install → pnpm dev → pnpm test 全通过）
+- 所有外部链接有效（无 404）
+- badges 状态正确
+**创建时间**: 2026-02-12 02:26:34
+**完成时间**: -
+
+---
+
+### [pending] Agent 连接状态实时同步 — 断线检测 + Dashboard 状态更新
+
+**ID**: task-061
+**优先级**: P1
+**模块路径**: packages/server/src/api/server.ts, packages/server/src/api/handlers.ts, packages/dashboard/src/stores/servers.ts, packages/dashboard/src/pages/Servers.tsx
+**任务描述**: 当 Agent 断线时，Dashboard 服务器列表中的状态应实时更新为 offline。需要验证和完善：1) WebSocket server 断线检测是否及时（心跳超时阈值是否合理，建议 30s 无心跳 → offline）；2) 断线事件是否通过某种机制（SSE/轮询）推送到 Dashboard；3) Dashboard Servers 页面状态标识是否实时变化（不需要手动刷新）；4) Agent 重连后状态自动恢复为 online；5) 断线时已触发的 webhook 通知（agent.disconnected）是否正常。聚焦验证和修复现有实现的连通性。
+**产品需求**: 产品方案 4.5 断线容错 — Agent 断线检测与恢复
+**验收标准**:
+- Agent 进程被 kill 后 ≤ 45s Dashboard 显示 offline
+- Agent 重新启动后 ≤ 10s Dashboard 显示 online
+- 断线期间 Chat 对该服务器发消息有明确提示"服务器离线"
+- webhook agent.disconnected 事件正常触发
+- 新增 >= 5 个测试覆盖断线/重连场景
+**创建时间**: 2026-02-12 02:26:34
+**完成时间**: -
+
+---
+
+### [pending] 全局测试稳定性与覆盖率提升 — 修复 flaky tests + 补充边界用例
+
+**ID**: task-062
+**优先级**: P0
+**模块路径**: packages/server/src/, packages/dashboard/src/, tests/
+**任务描述**: 开源发布前需确保测试套件稳定。需要：1) 运行完整测试套件 `pnpm test`，记录所有失败/跳过的测试；2) 修复因环境依赖、时序竞争导致的 flaky tests；3) 检查已知的 pre-existing 失败（scripts/release.test.ts, tests/deployment-doc.test.ts）是否需要修复或标记为 skip with reason；4) 确保代码覆盖率达到 80% 整体阈值（运行 `pnpm test:coverage`）；5) 补充安全模块边界用例（特别是命令注入尝试、路径遍历等攻击场景）。
+**产品需求**: 开发标准 六、测试标准 — 整体覆盖率 ≥ 80%
+**验收标准**:
+- `pnpm test` 全部通过（或已知问题标记 skip with 注释说明）
+- `pnpm test:coverage` 达到 80% 整体覆盖率
+- 无 flaky test（连续运行 3 次全部通过）
+- 安全模块覆盖率 >= 95%
+**创建时间**: 2026-02-12 02:26:34
+**完成时间**: -
+
+---
+
+### [pending] 内置知识库质量验证与补全 — 确保 10+ 软件文档准确可用
+
+**ID**: task-063
+**优先级**: P1
+**模块路径**: knowledge-base/, packages/server/src/knowledge/loader.ts
+**任务描述**: knowledge-base/ 目录已有 11 个技术栈（nginx, mysql, docker, nodejs, postgresql, redis, python, php, mongodb, certbot, pm2）各 3 篇文档（共 33 篇）。需要：1) 验证所有 33 篇文档的命令在 Ubuntu 22.04/24.04 和 Debian 12 上准确（版本号、包名、配置路径）；2) 确保文档格式统一（标题结构、代码块标注语言）；3) 验证 knowledge loader 能正确加载所有文档并建立向量索引；4) 补充常见故障排查内容（如 nginx 502、mysql 连接拒绝等高频问题）；5) 确保与 task-054 RAG 集成后检索结果质量合格。
+**产品需求**: 产品方案 MVP — "内置知识库 (10+ 常见软件)"
+**验收标准**:
+- 33 篇文档中的安装命令在 Ubuntu 22.04 上验证通过
+- 文档格式统一（每篇有 ## 安装, ## 配置, ## 故障排查 三节）
+- knowledge loader 加载无报错，索引成功建立
+- 针对 "安装 nginx" 类查询返回相关度 >= 0.7 的文档片段
+- 每个技术栈至少有 3 个常见故障排查场景
+**创建时间**: 2026-02-12 02:26:34
+**完成时间**: -
+
 ### [completed] Dashboard 响应式布局适配（移动端/平板） ✅
 
 **ID**: task-044
@@ -1527,4 +1703,4 @@ ID: task-001
 
 ---
 
-**最后更新**: 2026-02-12 02:21:03
+**最后更新**: 2026-02-12 02:39:32

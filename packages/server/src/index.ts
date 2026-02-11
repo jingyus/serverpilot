@@ -40,6 +40,7 @@ import { getMemoryMonitor } from './utils/memory-monitor.js';
 import { getAlertEvaluator } from './core/alert/alert-evaluator.js';
 import { createEmailNotifier } from './core/alert/email-notifier.js';
 import { createDocAutoFetcher, type DocAutoFetcher } from './knowledge/doc-auto-fetcher.js';
+import { initRagPipeline } from './knowledge/rag-pipeline.js';
 import { startMetricsCleanupScheduler, stopMetricsCleanupScheduler } from './core/metrics-cleanup-scheduler.js';
 import { getWebhookDispatcher } from './core/webhook/dispatcher.js';
 
@@ -463,6 +464,14 @@ export async function startServer(): Promise<InstallServer> {
       'Documentation auto-fetcher started',
     );
   }
+
+  // Initialize the RAG pipeline for knowledge-augmented chat
+  const ragPipeline = initRagPipeline(process.cwd());
+  // Warm up the pipeline in the background (non-blocking)
+  ragPipeline.search('test').catch(() => {
+    // Initialization errors are logged inside RAGPipeline — no action needed
+  });
+  logger.info({ operation: 'startup' }, 'RAG pipeline initialized');
 
   // Start the metrics cleanup scheduler
   startMetricsCleanupScheduler();
