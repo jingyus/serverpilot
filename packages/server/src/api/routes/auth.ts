@@ -10,11 +10,14 @@
  */
 
 import { Hono } from 'hono';
+import { eq } from 'drizzle-orm';
 import { LoginBodySchema, RegisterBodySchema, RefreshTokenBodySchema } from './schemas.js';
 import { validateBody } from '../middleware/validate.js';
 import { ApiError } from '../middleware/error-handler.js';
 import { generateTokens, verifyToken } from '../middleware/auth.js';
 import { getUserRepository } from '../../db/repositories/user-repository.js';
+import { getDatabase } from '../../db/connection.js';
+import { users } from '../../db/schema.js';
 import { hashPassword, verifyPassword } from '../../utils/password.js';
 import type { LoginBody, RegisterBody, RefreshTokenBody } from './schemas.js';
 import type { ApiEnv } from './types.js';
@@ -44,6 +47,21 @@ auth.post('/register', validateBody(RegisterBodySchema), async (c) => {
     passwordHash,
     name: body.name,
   });
+
+  // Open-source single-tenant mode: promote users appropriately.
+  // First user becomes owner; subsequent users become admin
+  // (in self-hosted mode, the operator controls who can register).
+  try {
+    const db = getDatabase();
+    const userCount = db.select().from(users).limit(2).all().length;
+    if (userCount <= 1) {
+      db.update(users).set({ role: 'owner' }).where(eq(users.id, user.id)).run();
+    } else {
+      db.update(users).set({ role: 'admin' }).where(eq(users.id, user.id)).run();
+    }
+  } catch {
+    // Database may not be available in unit tests using InMemoryUserRepository
+  }
 
   // Generate tokens
   const tokens = await generateTokens(user.id);

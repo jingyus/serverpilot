@@ -28,9 +28,24 @@ interface AuthState {
   restoreSession: () => void;
 }
 
+// Eagerly hydrate auth state from localStorage so that MainLayout
+// does not flash a redirect to /login on page reload.
+function hydrateAuth(): { user: User | null; isAuthenticated: boolean } {
+  try {
+    const token = localStorage.getItem('auth_token');
+    const userJson = localStorage.getItem('auth_user');
+    if (token && userJson) {
+      return { user: JSON.parse(userJson) as User, isAuthenticated: true };
+    }
+  } catch { /* ignore */ }
+  return { user: null, isAuthenticated: false };
+}
+
+const initialAuth = hydrateAuth();
+
 export const useAuthStore = create<AuthState>((set) => ({
-  user: null,
-  isAuthenticated: false,
+  user: initialAuth.user,
+  isAuthenticated: initialAuth.isAuthenticated,
   isLoading: false,
   error: null,
 

@@ -50,6 +50,8 @@ export default defineConfig({
         WS_REQUIRE_AUTH: 'false',
         LOG_LEVEL: 'warn',
         SERVER_PORT: '3000',
+        SKIP_SEED_ADMIN: 'true',
+        RATE_LIMIT_DISABLED: 'true',
       },
     },
     {

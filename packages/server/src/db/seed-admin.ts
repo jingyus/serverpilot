@@ -11,6 +11,7 @@
  */
 
 import { randomBytes } from 'node:crypto';
+import { eq } from 'drizzle-orm';
 
 import { hashPassword } from '../utils/password.js';
 import { getUserRepository } from './repositories/user-repository.js';
@@ -29,6 +30,12 @@ const DEFAULT_ADMIN_NAME = 'Admin';
  * to stdout so the operator can copy it.
  */
 export async function seedDefaultAdmin(): Promise<void> {
+  // Allow skipping seed (useful for E2E tests where first registered user becomes owner)
+  if (process.env.SKIP_SEED_ADMIN === 'true') {
+    logger.debug({ operation: 'seed' }, 'SKIP_SEED_ADMIN=true, skipping admin seed');
+    return;
+  }
+
   const db = getDatabase();
 
   // Check if any users exist
@@ -50,13 +57,16 @@ export async function seedDefaultAdmin(): Promise<void> {
   const repo = getUserRepository();
   const passwordHash = await hashPassword(password);
 
-  await repo.create({
+  const user = await repo.create({
     email,
     passwordHash,
     name: DEFAULT_ADMIN_NAME,
   });
 
-  logger.info({ operation: 'seed', email }, 'Default admin account created');
+  // Promote the seeded admin to owner role
+  db.update(users).set({ role: 'owner' }).where(eq(users.id, user.id)).run();
+
+  logger.info({ operation: 'seed', email }, 'Default admin account created with owner role');
 
   if (generated) {
     // Print credentials prominently so operator can see them in docker logs

@@ -462,6 +462,17 @@ export function createTables(db?: DrizzleDB): void {
     CREATE INDEX IF NOT EXISTS invitations_status_idx ON invitations(status);
     CREATE INDEX IF NOT EXISTS invitations_expires_at_idx ON invitations(expires_at);
 
+    CREATE TABLE IF NOT EXISTS user_settings (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+      ai_provider TEXT NOT NULL,
+      notifications TEXT NOT NULL,
+      knowledge_base TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS user_settings_user_id_idx ON user_settings(user_id);
+
     CREATE TABLE IF NOT EXISTS doc_source_history (
       id TEXT PRIMARY KEY,
       source_id TEXT NOT NULL REFERENCES doc_sources(id) ON DELETE CASCADE,

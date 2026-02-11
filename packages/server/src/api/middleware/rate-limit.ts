@@ -241,6 +241,12 @@ export function createRateLimitMiddleware(
   store.start(cfg.cleanupIntervalMs, cfg.windowMs * 2);
 
   return async function rateLimit(c: Context<ApiEnv>, next: Next): Promise<Response | void> {
+    // Allow disabling rate limiting via env (E2E tests)
+    if (process.env.RATE_LIMIT_DISABLED === 'true') {
+      await next();
+      return;
+    }
+
     // Use the current global store (allows test resets)
     const currentStore = getRateLimitStore();
     const path = c.req.path;

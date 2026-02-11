@@ -106,35 +106,46 @@ export async function createServer(
   return {
     id: json.server.id,
     name: json.server.name,
-    agentToken: json.server.agentToken,
+    agentToken: json.token,
   };
 }
 
-/** Set auth token in localStorage so the dashboard recognizes the session */
+/**
+ * Set auth tokens in the browser so the dashboard recognizes the session.
+ *
+ * Uses `addInitScript` so that localStorage is populated BEFORE the app's
+ * JavaScript initialises on any subsequent navigation. This avoids the race
+ * where MainLayout renders with `isAuthenticated=false` and redirects to
+ * /login before the `restoreSession` useEffect can run.
+ *
+ * Usage: call setAuthInBrowser, then navigate to the target page.
+ * The page must already be on the same origin (e.g. after `page.goto('/login')`).
+ */
 export async function setAuthInBrowser(
   page: import('@playwright/test').Page,
   user: TestUser,
 ): Promise<void> {
+  const userJson = JSON.stringify({ id: user.id, email: user.email, name: user.name });
+
+  // Set localStorage now (page must be on same origin)
   await page.evaluate(
-    ({ accessToken, refreshToken, user: u }) => {
-      const state = {
-        state: {
-          user: u,
-          accessToken,
-          refreshToken,
-          isAuthenticated: true,
-          isLoading: false,
-          error: null,
-        },
-        version: 0,
-      };
-      localStorage.setItem('auth-storage', JSON.stringify(state));
+    ({ accessToken, refreshToken, uj }) => {
+      localStorage.setItem('auth_token', accessToken);
+      localStorage.setItem('refresh_token', refreshToken);
+      localStorage.setItem('auth_user', uj);
     },
-    {
-      accessToken: user.accessToken,
-      refreshToken: user.refreshToken,
-      user: { id: user.id, email: user.email, name: user.name },
+    { accessToken: user.accessToken, refreshToken: user.refreshToken, uj: userJson },
+  );
+
+  // Also register an init script so localStorage is re-set BEFORE page JS
+  // runs on the next navigation (avoids the isAuthenticated=false race).
+  await page.addInitScript(
+    ({ accessToken, refreshToken, uj }) => {
+      localStorage.setItem('auth_token', accessToken);
+      localStorage.setItem('refresh_token', refreshToken);
+      localStorage.setItem('auth_user', uj);
     },
+    { accessToken: user.accessToken, refreshToken: user.refreshToken, uj: userJson },
   );
 }
 
