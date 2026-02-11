@@ -7,9 +7,9 @@
 ## 📊 统计信息
 
 - **总任务数**: 30
-- **待完成** (pending): 8
+- **待完成** (pending): 7
 - **进行中** (in_progress): 0
-- **已完成** (completed): 22
+- **已完成** (completed): 23
 - **失败** (failed): 0
 
 ---
@@ -43,16 +43,35 @@
 
 ---
 
-### [pending] 端到端集成测试 - 完整对话运维流程
+### [completed] 端到端集成测试 - 完整对话运维流程 ✅
 
 **ID**: task-012
 **优先级**: P0
-**模块路径**: packages/server/tests/e2e/
+**模块路径**: tests/e2e-chat-ops-flow.test.ts
 **任务描述**: 编写端到端集成测试覆盖完整对话运维流程：1) 启动 Server（mock AI provider）；2) Agent WebSocket 连接 + 认证；3) Dashboard API 发送对话消息；4) AI 生成执行计划；5) 用户确认执行；6) Agent 接收命令并执行；7) 结果通过 SSE 流回 Dashboard。需要 mock AI 返回固定的安装计划，验证整个链路数据流正确
 **产品需求**: MVP 核心闭环 "自部署 → 安装 Agent → 连接 → 对话运维"
 **验收标准**: 1) E2E 测试覆盖 chat→plan→execute→result 完整流程；2) 测试可在 CI 中运行（无外部依赖）；3) 验证 SSE 事件顺序正确；4) 验证 Agent 收到正确命令并返回结果
+
+**实现内容**:
+- ✅ 新增 `tests/e2e-chat-ops-flow.test.ts`，7 个集成测试用例
+- ✅ 真实 HTTP + WebSocket 服务器（in-memory SQLite，mock AI provider）
+- ✅ Agent WebSocket 连接 + 认证握手验证
+- ✅ Chat SSE 流式响应：AI 回复 + 执行计划解析
+- ✅ 完整 chat→plan→execute→result 闭环：Agent 接收命令并返回执行结果
+- ✅ 失败场景：Agent step 失败时停止执行并报告错误
+- ✅ 无 Agent 连接时返回错误 SSE
+- ✅ SSE 事件顺序验证（step_start < output < step_complete，chat: message < plan < complete）
+- ✅ Agent 收到的命令验证（apt-get update, apt-get install -y nginx）
+- ✅ 所有外部依赖 mock（DeviceClient, rate-limiter, snapshot, rollback）
+
+**测试覆盖率**:
+- E2E 测试: 7/7 通过 (100%)
+- 执行时间: ~813ms
+- 全量测试（根目录）: 9252/9252 通过, 220 文件
+- Dashboard 测试: 774/774 通过, 52 文件
+
 **创建时间**: 2026-02-11 00:00:00
-**完成时间**: -
+**完成时间**: 2026-02-11 11:20:00
 
 ---
 
@@ -902,4 +921,4 @@ ID: task-001
 
 ---
 
-**最后更新**: 2026-02-11 10:45:46
+**最后更新**: 2026-02-11 11:22:25
