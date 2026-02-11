@@ -337,4 +337,4 @@ By contributing to ServerPilot, you agree that your contributions will be licens
 
 ---
 
-Questions? Open a [Discussion](https://github.com/ServerPilot/ServerPilot/discussions) or reach out to the maintainers.
+Questions? Open a [Discussion](https://github.com/jingjinbao/ServerPilot/discussions) or reach out to the maintainers.

@@ -134,10 +134,10 @@ git branch -d feat/autorun-dev-20260210
 
 ```bash
 # GitHub
-git remote add origin https://github.com/your-org/serverpilot.git
+git remote add origin https://github.com/jingjinbao/serverpilot.git
 
 # 或使用 SSH
-git remote add origin git@github.com:your-org/serverpilot.git
+git remote add origin git@github.com:jingjinbao/serverpilot.git
 ```
 
 ### 验证配置
@@ -145,8 +145,8 @@ git remote add origin git@github.com:your-org/serverpilot.git
 ```bash
 git remote -v
 # 输出:
-# origin  https://github.com/your-org/serverpilot.git (fetch)
-# origin  https://github.com/your-org/serverpilot.git (push)
+# origin  https://github.com/jingjinbao/serverpilot.git (fetch)
+# origin  https://github.com/jingjinbao/serverpilot.git (push)
 ```
 
 ### 自动推送
@@ -239,7 +239,7 @@ fatal: Authentication failed
 1. **使用 HTTPS + Token**
 ```bash
 # GitHub: Settings → Developer settings → Personal access tokens
-git remote set-url origin https://<TOKEN>@github.com/your-org/serverpilot.git
+git remote set-url origin https://<TOKEN>@github.com/jingjinbao/serverpilot.git
 ```
 
 2. **使用 SSH**
@@ -251,7 +251,7 @@ ssh-keygen -t ed25519 -C "your@email.com"
 cat ~/.ssh/id_ed25519.pub
 
 # 修改远程 URL
-git remote set-url origin git@github.com:your-org/serverpilot.git
+git remote set-url origin git@github.com:jingjinbao/serverpilot.git
 ```
 
 ### 合并冲突

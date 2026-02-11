@@ -40,7 +40,7 @@
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/your-org/ServerPilot.git
+git clone https://github.com/jingjinbao/ServerPilot.git
 cd ServerPilot
 
 # 2. 运行初始化脚本 (自动引导配置并启动)
@@ -51,7 +51,7 @@ cd ServerPilot
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/your-org/ServerPilot.git
+git clone https://github.com/jingjinbao/ServerPilot.git
 cd ServerPilot
 
 # 2. (可选) 配置环境变量
@@ -158,7 +158,7 @@ docker compose version
 ### 2. 克隆项目
 
 ```bash
-git clone https://github.com/your-org/ServerPilot.git
+git clone https://github.com/jingjinbao/ServerPilot.git
 cd ServerPilot
 ```
 

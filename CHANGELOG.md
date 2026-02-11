@@ -102,7 +102,7 @@ Phase 1: MVP Core Loop — Initial release
 - Task queue detection and generation logic
 - Task ID extraction and token statistics accuracy
 
-[Unreleased]: https://github.com/your-org/ServerPilot/compare/v0.3.0-beta...HEAD
-[0.3.0-beta]: https://github.com/your-org/ServerPilot/compare/v0.2.0...v0.3.0-beta
-[0.2.0]: https://github.com/your-org/ServerPilot/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/your-org/ServerPilot/releases/tag/v0.1.0
+[Unreleased]: https://github.com/jingjinbao/ServerPilot/compare/v0.3.0-beta...HEAD
+[0.3.0-beta]: https://github.com/jingjinbao/ServerPilot/compare/v0.2.0...v0.3.0-beta
+[0.2.0]: https://github.com/jingjinbao/ServerPilot/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/jingjinbao/ServerPilot/releases/tag/v0.1.0

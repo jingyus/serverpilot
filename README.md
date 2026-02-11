@@ -9,11 +9,11 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/your-org/ServerPilot/actions/workflows/ci.yml"><img src="https://github.com/your-org/ServerPilot/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/your-org/ServerPilot/actions/workflows/test.yml"><img src="https://github.com/your-org/ServerPilot/actions/workflows/test.yml/badge.svg" alt="Test"></a>
-  <a href="https://github.com/your-org/ServerPilot/actions/workflows/docker-publish.yml"><img src="https://github.com/your-org/ServerPilot/actions/workflows/docker-publish.yml/badge.svg" alt="Docker"></a>
+  <a href="https://github.com/jingjinbao/ServerPilot/actions/workflows/ci.yml"><img src="https://github.com/jingjinbao/ServerPilot/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/jingjinbao/ServerPilot/actions/workflows/test.yml"><img src="https://github.com/jingjinbao/ServerPilot/actions/workflows/test.yml/badge.svg" alt="Test"></a>
+  <a href="https://github.com/jingjinbao/ServerPilot/actions/workflows/docker-publish.yml"><img src="https://github.com/jingjinbao/ServerPilot/actions/workflows/docker-publish.yml/badge.svg" alt="Docker"></a>
   <a href="https://www.gnu.org/licenses/agpl-3.0"><img src="https://img.shields.io/badge/License-AGPL_v3-blue.svg" alt="License: AGPL v3"></a>
-  <a href="https://github.com/your-org/ServerPilot/releases"><img src="https://img.shields.io/github/v/release/your-org/ServerPilot?include_prereleases" alt="Release"></a>
+  <a href="https://github.com/jingjinbao/ServerPilot/releases"><img src="https://img.shields.io/github/v/release/jingjinbao/ServerPilot?include_prereleases" alt="Release"></a>
 </p>
 
 ---
@@ -32,7 +32,7 @@ ServerPilot: 用户 → 对话 AI → AI 生成计划 → 用户确认 → Agent
 ## 功能特性
 
 - **AI 对话运维** — 用自然语言描述需求，AI 自动生成执行计划并完成操作
-- **多 AI 模型支持** — Claude / OpenAI / DeepSeek / Ollama，可选自带 Key 或本地模型
+- **多 AI 模型支持** — Claude / OpenAI / DeepSeek / Ollama / Custom OpenAI 兼容接口（OneAPI / LiteLLM / Azure），自带 Key 或本地模型
 - **五级安全防护** — 命令分级审核 + 参数审计 + 操作快照 + 紧急终止 + 完整审计日志
 - **服务器档案** — AI 记住每台服务器的环境、软件、配置，上下文精准不出错
 - **内置知识库** — 覆盖 Nginx / MySQL / Docker / Node.js / PostgreSQL / Redis 等常见技术栈
@@ -78,7 +78,7 @@ ServerPilot: 用户 → 对话 AI → AI 生成计划 → 用户确认 → Agent
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/your-org/ServerPilot.git
+git clone https://github.com/jingjinbao/ServerPilot.git
 cd ServerPilot
 
 # 2. 一键启动（零配置，开箱即用）
@@ -111,8 +111,8 @@ docker pull serverpilot/dashboard:latest
 **GitHub Container Registry:**
 
 ```bash
-docker pull ghcr.io/your-org/serverpilot/server:latest
-docker pull ghcr.io/your-org/serverpilot/dashboard:latest
+docker pull ghcr.io/jingjinbao/serverpilot/server:latest
+docker pull ghcr.io/jingjinbao/serverpilot/dashboard:latest
 ```
 
 **版本标签说明:**
@@ -140,6 +140,29 @@ pnpm test
 bun scripts/build-binary.ts
 ```
 
+### AI Provider 配置
+
+ServerPilot 支持多种 AI 模型提供商，通过环境变量选择：
+
+| Provider | 环境变量 | 说明 |
+|----------|---------|------|
+| Claude (默认) | `AI_PROVIDER=claude` `ANTHROPIC_API_KEY=sk-...` | Anthropic Claude，Tier 1 |
+| OpenAI | `AI_PROVIDER=openai` `OPENAI_API_KEY=sk-...` | GPT-4o 等，Tier 2 |
+| DeepSeek | `AI_PROVIDER=deepseek` `DEEPSEEK_API_KEY=sk-...` | DeepSeek Chat，Tier 2 |
+| Ollama | `AI_PROVIDER=ollama` | 本地模型，Tier 3 |
+| **Custom OpenAI** | `AI_PROVIDER=custom-openai` | 兼容 OpenAI 接口的第三方服务 |
+
+**Custom OpenAI 兼容接口** 支持 OneAPI / LiteLLM / Azure OpenAI 等任何提供标准 `/v1/chat/completions` 端点的服务：
+
+```bash
+AI_PROVIDER=custom-openai
+CUSTOM_OPENAI_API_KEY=sk-your-api-key
+CUSTOM_OPENAI_BASE_URL=https://your-api.example.com/v1
+AI_MODEL=gpt-4o  # 可选，按你的服务支持的模型名
+```
+
+也可以在 Dashboard 的设置页面中动态切换 Provider，无需重启服务。
+
 ## 技术栈
 
 | 组件 | 技术 | 许可证 |
@@ -148,7 +171,7 @@ bun scripts/build-binary.ts
 | **Agent** | TypeScript · Bun (编译为单一二进制) | Apache-2.0 |
 | **Dashboard** | React 18 · Vite 5 · Tailwind CSS · Zustand · React Router 6 | AGPL-3.0 |
 | **Shared** | Zod 协议验证 | MIT |
-| **AI Provider** | Claude / OpenAI / DeepSeek / Ollama | - |
+| **AI Provider** | Claude / OpenAI / DeepSeek / Ollama / Custom OpenAI 兼容 | - |
 | **部署** | Docker Compose · GitHub Actions CI/CD | - |
 
 ## 与其他工具对比
@@ -248,7 +271,7 @@ pnpm lint && pnpm typecheck && pnpm test
 ### Key Features
 
 - **AI-Driven Operations** — Describe what you need in natural language; AI generates and executes the plan
-- **Multi-Model Support** — Claude, OpenAI, DeepSeek, Ollama — bring your own API key or use local models
+- **Multi-Model Support** — Claude, OpenAI, DeepSeek, Ollama, Custom OpenAI Compatible (OneAPI / LiteLLM / Azure) — bring your own API key or use local models
 - **5-Layer Security** — Command classification, parameter auditing, pre-op snapshots, kill switch, audit trail
 - **Self-Growing Knowledge Base** — Built-in docs for common stacks + automatic doc fetching from GitHub/websites
 - **Lightweight Agent** — Single binary, <50MB, <1% CPU overhead
@@ -256,7 +279,7 @@ pnpm lint && pnpm typecheck && pnpm test
 ### Quick Start
 
 ```bash
-git clone https://github.com/your-org/ServerPilot.git
+git clone https://github.com/jingjinbao/ServerPilot.git
 cd ServerPilot
 docker compose up -d
 # Open http://localhost:3001
