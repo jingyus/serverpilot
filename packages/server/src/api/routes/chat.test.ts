@@ -100,6 +100,13 @@ vi.mock('../../core/security/audit-logger.js', () => ({
   })),
 }));
 
+vi.mock('../../core/profile/manager.js', () => ({
+  getProfileManager: vi.fn(() => ({
+    getProfile: vi.fn(async () => null),
+  })),
+  _resetProfileManager: vi.fn(),
+}));
+
 // ============================================================================
 // Test Setup
 // ============================================================================

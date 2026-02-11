@@ -23,6 +23,8 @@ import { resolveRole, requirePermission } from '../middleware/rbac.js';
 import { ApiError } from '../middleware/error-handler.js';
 import { getSessionManager } from '../../core/session/manager.js';
 import { getServerRepository } from '../../db/repositories/server-repository.js';
+import { getProfileManager } from '../../core/profile/manager.js';
+import { buildProfileContext, buildProfileCaveats } from '../../ai/profile-context.js';
 import { getChatAIAgent } from './chat-ai.js';
 import { logger } from '../../utils/logger.js';
 import { findConnectedAgent } from '../../core/agent/agent-connector.js';
@@ -71,8 +73,13 @@ chat.post('/:serverId', requirePermission('chat:use'), validateBody(ChatMessageB
     `Chat message received for server ${server.name}`,
   );
 
-  // Get server profile for environment context
-  const profile = await repo.getProfile(serverId, userId);
+  // Get full server profile via ProfileManager for rich AI context
+  const profileMgr = getProfileManager();
+  const fullProfile = await profileMgr.getProfile(serverId, userId);
+
+  // Build structured profile context with token budget management
+  const profileCtx = buildProfileContext(fullProfile, server.name);
+  const caveats = buildProfileCaveats(fullProfile);
 
   return streamSSE(c, async (stream) => {
     // Send sessionId to client so it can track the conversation
@@ -98,16 +105,27 @@ chat.post('/:serverId', requirePermission('chat:use'), validateBody(ChatMessageB
 
     try {
       const conversationContext = sessionMgr.buildContext(session.id);
-      const profileContext = profile
-        ? `Server: ${server.name}\nOS: ${profile.osInfo?.platform ?? 'unknown'} ${profile.osInfo?.version ?? ''}\n`
-        : `Server: ${server.name}\n`;
+      const serverLabel = `Server: ${server.name}`;
+
+      logger.debug(
+        {
+          operation: 'profile_context_inject',
+          serverId,
+          estimatedTokens: profileCtx.estimatedTokens,
+          wasTrimmed: profileCtx.wasTrimmed,
+          includedSections: profileCtx.includedSections,
+          omittedSections: profileCtx.omittedSections,
+          caveatsCount: caveats.length,
+        },
+        `Profile context: ${profileCtx.estimatedTokens} tokens, ${profileCtx.includedSections.length} sections`,
+      );
 
       // Stream AI response
       let fullResponse = '';
 
       const result = await agent.chat(
         body.message,
-        profileContext,
+        serverLabel,
         conversationContext,
         {
           onToken: async (token) => {
@@ -118,6 +136,8 @@ chat.post('/:serverId', requirePermission('chat:use'), validateBody(ChatMessageB
             });
           },
         },
+        profileCtx.text,
+        caveats,
       );
 
       // If AI generated a plan, validate and send it as a plan event

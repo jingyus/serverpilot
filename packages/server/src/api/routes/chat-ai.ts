@@ -14,6 +14,7 @@ import { InstallPlanSchema } from '@aiinstaller/shared';
 import type { InstallPlan } from '@aiinstaller/shared';
 import type { AIProviderInterface } from '../../ai/providers/base.js';
 import { getActiveProvider } from '../../ai/providers/provider-factory.js';
+import { estimateTokens } from '../../ai/profile-context.js';
 import { logger } from '../../utils/logger.js';
 
 // ============================================================================
@@ -27,13 +28,15 @@ export interface ChatStreamCallbacks {
 export interface ChatResult {
   text: string;
   plan: (InstallPlan & { description?: string }) | null;
+  /** Estimated token usage for profile context portion */
+  profileTokens?: number;
 }
 
 // ============================================================================
 // ChatAIAgent
 // ============================================================================
 
-const SYSTEM_PROMPT = `You are ServerPilot, an AI DevOps assistant that helps users manage servers.
+const BASE_SYSTEM_PROMPT = `You are ServerPilot, an AI DevOps assistant that helps users manage servers.
 
 When users ask to install, configure, or manage software on their servers, you should:
 1. Analyze the request and the server environment
@@ -65,6 +68,30 @@ When generating a plan, output it in a JSON block marked with \`\`\`json-plan ma
 For general questions or discussions that don't require execution, just respond conversationally.
 Always be concise, security-aware, and explain risks clearly.`;
 
+/**
+ * Build the full system prompt with optional server profile context.
+ *
+ * When profile context is provided, it is appended to the base prompt
+ * so the AI is aware of the server's environment, installed software,
+ * and any user-specified notes or caveats.
+ */
+export function buildSystemPrompt(
+  profileContext?: string,
+  caveats?: string[],
+): string {
+  const parts = [BASE_SYSTEM_PROMPT];
+
+  if (profileContext) {
+    parts.push(profileContext);
+  }
+
+  if (caveats && caveats.length > 0) {
+    parts.push('## Important Caveats\n' + caveats.map((c) => `- ${c}`).join('\n'));
+  }
+
+  return parts.join('\n\n');
+}
+
 export class ChatAIAgent {
   private readonly provider: AIProviderInterface;
 
@@ -77,13 +104,25 @@ export class ChatAIAgent {
    *
    * Parses the AI response for embedded plan JSON blocks. If found,
    * the plan is extracted and returned separately from the text.
+   *
+   * @param message - User message
+   * @param serverContext - Minimal server identifier (e.g. "Server: web-01")
+   * @param conversationHistory - Formatted conversation history
+   * @param callbacks - Optional streaming callbacks
+   * @param profileContext - Rich server profile context for system prompt
+   * @param caveats - One-line cautions about existing software/services
    */
   async chat(
     message: string,
     serverContext: string,
     conversationHistory: string,
     callbacks?: ChatStreamCallbacks,
+    profileContext?: string,
+    caveats?: string[],
   ): Promise<ChatResult> {
+    const systemPrompt = buildSystemPrompt(profileContext, caveats);
+    const profileTokens = profileContext ? estimateTokens(profileContext) : 0;
+
     const userPrompt = conversationHistory
       ? `${serverContext}\n\nConversation history:\n${conversationHistory}\n\nUser: ${message}`
       : `${serverContext}\n\nUser: ${message}`;
@@ -91,7 +130,7 @@ export class ChatAIAgent {
     const result = await this.provider.stream(
       {
         messages: [{ role: 'user', content: userPrompt }],
-        system: SYSTEM_PROMPT,
+        system: systemPrompt,
         maxTokens: 4096,
       },
       {
@@ -121,6 +160,7 @@ export class ChatAIAgent {
     return {
       text: result.content,
       plan,
+      profileTokens,
     };
   }
 
