@@ -23,6 +23,7 @@ import { InstallServer } from './api/server.js';
 import type { InstallServerOptions } from './api/server.js';
 import { routeMessage } from './api/handlers.js';
 import { createApiApp } from './api/routes/index.js';
+import { warnWildcardCorsInProduction } from './api/middleware/cors-config.js';
 import { initJwtConfig } from './api/middleware/auth.js';
 import { initDatabase, closeDatabase, createTables } from './db/connection.js';
 import { resolveDbType, initDatabaseFromEnv, closeDatabaseConnection } from './db/db-factory.js';
@@ -412,6 +413,7 @@ export async function startServer(): Promise<InstallServer> {
 
   // 3. Create Hono REST API
   const apiApp = createApiApp();
+  warnWildcardCorsInProduction(process.env.NODE_ENV, process.env.CORS_ORIGIN);
   logger.info({ operation: 'startup' }, 'REST API created');
 
   // 4. Create WebSocket server (message routing, services)

@@ -82,7 +82,7 @@ describe('Not Found', () => {
 // ============================================================================
 
 describe('CORS', () => {
-  it('should include CORS headers in response', async () => {
+  it('should include CORS headers in response (default wildcard)', async () => {
     const res = await req('/health');
     expect(res.headers.get('access-control-allow-origin')).toBe('*');
   });
@@ -98,6 +98,53 @@ describe('CORS', () => {
     });
     expect(res.status).toBe(204);
     expect(res.headers.get('access-control-allow-methods')).toContain('POST');
+  });
+
+  it('should restrict origin when CORS_ORIGIN is set to a specific domain', async () => {
+    const original = process.env.CORS_ORIGIN;
+    process.env.CORS_ORIGIN = 'https://my-dashboard.example.com';
+    try {
+      const restrictedApp = createApiApp();
+      const res = await restrictedApp.request('/health', {
+        headers: { Origin: 'https://my-dashboard.example.com' },
+      });
+      expect(res.headers.get('access-control-allow-origin')).toBe('https://my-dashboard.example.com');
+    } finally {
+      if (original === undefined) delete process.env.CORS_ORIGIN;
+      else process.env.CORS_ORIGIN = original;
+    }
+  });
+
+  it('should allow one of multiple configured origins', async () => {
+    const original = process.env.CORS_ORIGIN;
+    process.env.CORS_ORIGIN = 'https://app.example.com,https://admin.example.com';
+    try {
+      const multiApp = createApiApp();
+      const res = await multiApp.request('/health', {
+        headers: { Origin: 'https://admin.example.com' },
+      });
+      expect(res.headers.get('access-control-allow-origin')).toBe('https://admin.example.com');
+    } finally {
+      if (original === undefined) delete process.env.CORS_ORIGIN;
+      else process.env.CORS_ORIGIN = original;
+    }
+  });
+
+  it('should not set origin header for disallowed origin with multi-origin config', async () => {
+    const original = process.env.CORS_ORIGIN;
+    process.env.CORS_ORIGIN = 'https://app.example.com';
+    try {
+      const restrictedApp = createApiApp();
+      const res = await restrictedApp.request('/health', {
+        headers: { Origin: 'https://evil.example.com' },
+      });
+      // Hono cors middleware does not set the header for non-matching origins
+      const originHeader = res.headers.get('access-control-allow-origin');
+      expect(originHeader).not.toBe('https://evil.example.com');
+    } finally {
+      if (original === undefined) delete process.env.CORS_ORIGIN;
+      else process.env.CORS_ORIGIN = original;
+    }
   });
 });
 

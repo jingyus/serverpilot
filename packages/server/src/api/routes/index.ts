@@ -13,6 +13,8 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { requestId } from 'hono/request-id';
 
+import { parseCorsOrigins, buildCorsOrigin } from '../middleware/cors-config.js';
+
 import { auth } from './auth.js';
 import { authGitHub } from './auth-github.js';
 import { servers } from './servers.js';
@@ -54,8 +56,10 @@ export function createApiApp(): Hono<ApiEnv> {
   // Global middleware
   // --------------------------------------------------------------------------
 
+  const corsOrigins = parseCorsOrigins(process.env.CORS_ORIGIN);
+
   app.use('*', cors({
-    origin: '*',
+    origin: buildCorsOrigin(corsOrigins),
     allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'Authorization'],
     exposeHeaders: ['X-Request-Id', 'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset', 'Retry-After'],
