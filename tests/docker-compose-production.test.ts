@@ -276,13 +276,15 @@ describe('Docker Compose Production Deployment', () => {
   });
 
   describe('Port Configuration', () => {
-    it('should not expose server port externally (accessed via Nginx reverse proxy)', () => {
+    it('should expose server port for agent WebSocket connections', () => {
       const content = readFileSync(dockerComposePath, 'utf-8');
       const config = parseYaml(content);
 
-      // Server port is NOT exposed externally; it's only accessible internally on port 3000
-      // Dashboard (Nginx) reverse proxies to the server
-      expect(config.services.server.ports).toBeUndefined();
+      // Server port is exposed for agent WebSocket connections (ws://host:3000)
+      // Dashboard (Nginx) also reverse proxies API/WS for browser access
+      expect(config.services.server.ports).toBeDefined();
+      const portMapping = config.services.server.ports[0];
+      expect(portMapping).toContain('3000');
     });
 
     it('should expose dashboard port with DASHBOARD_PORT environment variable', () => {

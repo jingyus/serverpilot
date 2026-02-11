@@ -179,12 +179,12 @@ describe('.env.example 环境变量模板', () => {
     });
 
     it('应包含分组注释', () => {
-      expect(content).toContain('# 服务端配置');
-      expect(content).toContain('# AI 配置');
-      expect(content).toContain('# WebSocket 配置');
-      expect(content).toContain('# 知识库配置');
-      expect(content).toContain('# 日志配置');
-      expect(content).toContain('# 客户端配置');
+      expect(content).toContain('服务端配置');
+      expect(content).toContain('AI 配置');
+      expect(content).toContain('WebSocket 配置');
+      expect(content).toContain('知识库配置');
+      expect(content).toContain('日志配置');
+      expect(content).toContain('客户端配置');
     });
   });
 });

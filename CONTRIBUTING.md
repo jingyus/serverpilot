@@ -59,7 +59,7 @@ pnpm dev
 | Variable | Required | Description |
 | --- | --- | --- |
 | `JWT_SECRET` | No | Secret for JWT tokens (auto-generated if not set) |
-| `AI_PROVIDER` | No | AI provider: `claude`, `openai`, `ollama`, `deepseek` (default: `claude`) |
+| `AI_PROVIDER` | No | AI provider: `claude`, `openai`, `deepseek`, `ollama`, `custom-openai` (default: `claude`) |
 | `ANTHROPIC_API_KEY` | If using Claude | Anthropic API key |
 | `OPENAI_API_KEY` | If using OpenAI | OpenAI API key |
 | `DEEPSEEK_API_KEY` | If using DeepSeek | DeepSeek API key |
@@ -274,10 +274,6 @@ pnpm test:e2e
 
 The knowledge base (`knowledge-base/`) powers ServerPilot's AI assistant with information about common software installation, configuration, and troubleshooting.
 
-See [Knowledge Base Contribution Guide](docs/knowledge-base-contributing.md) for detailed instructions on adding or updating knowledge base entries.
-
-### Quick Overview
-
 Each software entry is a directory under `knowledge-base/` containing:
 
 ```
@@ -286,6 +282,8 @@ knowledge-base/<software>/
 ├── configuration.md     # Common configuration patterns
 └── troubleshooting.md   # Common issues and solutions
 ```
+
+Follow the existing entries as examples when adding new software documentation.
 
 ## Submitting Changes
 

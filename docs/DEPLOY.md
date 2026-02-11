@@ -39,8 +39,8 @@ docker compose logs server
 
 ### 访问
 
-- **Dashboard**: http://localhost:80 (可通过 `DASHBOARD_PORT` 修改)
-- **API**: http://localhost:80/api/v1 (通过 Nginx 反向代理)
+- **Dashboard**: http://localhost:3001 (可通过 `DASHBOARD_PORT` 修改)
+- **API**: http://localhost:3001/api/v1 (通过 Nginx 反向代理)
 
 ## 架构
 
@@ -48,7 +48,7 @@ docker compose logs server
                     ┌───────────────────┐
                     │    浏览器/客户端     │
                     └─────────┬─────────┘
-                              │ :80
+                              │ :3001
                     ┌─────────▼─────────┐
                     │  Dashboard (Nginx) │
                     │  - 静态文件服务      │
@@ -72,13 +72,19 @@ docker compose logs server
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `DASHBOARD_PORT` | `80` | Dashboard 外部端口 |
+| `DASHBOARD_PORT` | `3001` | Dashboard 外部端口 |
 | `JWT_SECRET` | 自动生成 | JWT 签名密钥（至少32字符） |
 | `ANTHROPIC_API_KEY` | 空 | Claude AI API Key（可选） |
 | `AI_MODEL` | `claude-sonnet-4-20250514` | AI 模型 |
 | `LOG_LEVEL` | `info` | 日志级别 |
 | `ADMIN_EMAIL` | `admin@serverpilot.local` | 默认管理员邮箱 |
 | `ADMIN_PASSWORD` | 自动生成 | 默认管理员密码 |
+| `OPENAI_API_KEY` | 空 | OpenAI API Key（AI_PROVIDER=openai 时） |
+| `DEEPSEEK_API_KEY` | 空 | DeepSeek API Key（AI_PROVIDER=deepseek 时） |
+| `CUSTOM_OPENAI_BASE_URL` | 空 | OpenAI 兼容 API 地址（AI_PROVIDER=custom-openai 时） |
+| `CUSTOM_OPENAI_API_KEY` | 空 | OpenAI 兼容 API Key（AI_PROVIDER=custom-openai 时） |
+| `GITHUB_OAUTH_CLIENT_ID` | 空 | GitHub OAuth 登录 Client ID |
+| `GITHUB_OAUTH_CLIENT_SECRET` | 空 | GitHub OAuth 登录 Client Secret |
 
 完整变量列表见 `.env.example`。
 
@@ -150,7 +156,7 @@ pnpm dev          # 启动所有开发服务
 Server 提供 `/health` 端点：
 
 ```bash
-curl http://localhost/health
+curl http://localhost:3001/health
 # {"status":"ok","timestamp":1707654321000}
 ```
 
