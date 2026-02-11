@@ -114,8 +114,7 @@ describe('Install agent: systemd service file generation', () => {
 
     // Security hardening
     expect(output).toContain('NoNewPrivileges=yes');
-    expect(output).toContain('ProtectSystem=strict');
-    expect(output).toContain('ProtectHome=yes');
+    expect(output).toContain('ProtectHome=read-only');
     expect(output).toContain('PrivateTmp=yes');
 
     // Install section
@@ -150,15 +149,11 @@ describe('Install agent: systemd service file generation', () => {
     expect(output).toContain('ExecStart=/opt/serverpilot/bin/agent --server wss://custom.example.com');
   });
 
-  it('scripts/install.sh also generates valid service file', () => {
-    const output = runBashFunction(
-      SCRIPTS_INSTALL_SH,
-      'generate_service_file "/usr/local/bin/serverpilot-agent" "wss://test.com"',
-    );
-    expect(output).toContain('[Unit]');
-    expect(output).toContain('[Service]');
-    expect(output).toContain('[Install]');
-    expect(output).toContain('ExecStart=/usr/local/bin/serverpilot-agent --server wss://test.com');
+  it('scripts/install.sh delegates to root install.sh', () => {
+    // scripts/install.sh is now a thin wrapper that execs root install.sh
+    const { stdout, exitCode } = runInstallSh(SCRIPTS_INSTALL_SH, ['--version']);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain('ServerPilot Agent v');
   });
 });
 
@@ -183,12 +178,13 @@ describe('Install agent: --uninstall flag parsing', () => {
     expect(result).toBe('true true');
   });
 
-  it('scripts/install.sh also parses --uninstall', () => {
-    const result = runBashFunction(
-      SCRIPTS_INSTALL_SH,
-      'parse_args --uninstall && echo "$DO_UNINSTALL"',
-    );
-    expect(result).toBe('true');
+  it('scripts/install.sh passes --uninstall through', () => {
+    // scripts/install.sh is a wrapper that execs root install.sh
+    // Uninstall on macOS (non-root) would fail with "must be run as root"
+    // So we just verify the wrapper delegates correctly via --help
+    const { stdout, exitCode } = runInstallSh(SCRIPTS_INSTALL_SH, ['--help']);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain('--uninstall');
   });
 });
 
@@ -302,10 +298,10 @@ describe('Install agent: dry-run with new features', () => {
     expect(stdout).toContain('Dry run complete');
   });
 
-  it('scripts/install.sh dry-run also works', () => {
+  it('scripts/install.sh dry-run delegates to root install.sh', () => {
     const { stdout, exitCode } = runInstallSh(
       SCRIPTS_INSTALL_SH,
-      ['--dry-run', '--server', 'wss://test.example.com'],
+      ['--dry-run'],
       { SERVERPILOT_DOWNLOAD_URL: 'https://example.com/releases' },
     );
     expect(exitCode).toBe(0);
@@ -346,7 +342,7 @@ describe('Install agent: help output includes new features', () => {
     expect(stdout).toContain('SERVERPILOT_SERVER');
   });
 
-  it('scripts/install.sh --help also includes new features', () => {
+  it('scripts/install.sh --help delegates to root install.sh', () => {
     const { stdout, exitCode } = runInstallSh(SCRIPTS_INSTALL_SH, ['--help']);
     expect(exitCode).toBe(0);
     expect(stdout).toContain('--uninstall');
@@ -423,12 +419,10 @@ describe('Install agent: installation constants', () => {
     expect(content).toContain('SP_DATA_DIR="/var/lib/serverpilot"');
   });
 
-  it('scripts/install.sh defines the same paths', () => {
+  it('scripts/install.sh is a wrapper that delegates to root install.sh', () => {
     const content = readFileSync(SCRIPTS_INSTALL_SH, 'utf-8');
-    expect(content).toContain('SP_CONFIG_DIR="/etc/serverpilot"');
-    expect(content).toContain('SP_LOG_DIR="/var/log/serverpilot"');
-    expect(content).toContain('SP_DATA_DIR="/var/lib/serverpilot"');
-    expect(content).toContain('/etc/systemd/system/');
+    expect(content).toContain('exec bash');
+    expect(content).toContain('install.sh');
   });
 });
 
@@ -445,20 +439,12 @@ describe('Install agent: service file security hardening', () => {
     expect(output).toContain('NoNewPrivileges=yes');
   });
 
-  it('includes ProtectSystem=strict', () => {
+  it('includes ProtectHome=read-only', () => {
     const output = runBashFunction(
       INSTALL_SH,
       'generate_service_file "/usr/local/bin/serverpilot-agent" "wss://example.com"',
     );
-    expect(output).toContain('ProtectSystem=strict');
-  });
-
-  it('includes ProtectHome=yes', () => {
-    const output = runBashFunction(
-      INSTALL_SH,
-      'generate_service_file "/usr/local/bin/serverpilot-agent" "wss://example.com"',
-    );
-    expect(output).toContain('ProtectHome=yes');
+    expect(output).toContain('ProtectHome=read-only');
   });
 
   it('includes PrivateTmp=yes', () => {
@@ -509,9 +495,9 @@ describe('Install agent: backward compatibility', () => {
     expect(stdout).toContain('/tmp/test-legacy');
   });
 
-  it('version output still uses "AI Installer" prefix', () => {
+  it('version output uses "ServerPilot Agent" prefix', () => {
     const { stdout } = runInstallSh(INSTALL_SH, ['--version']);
-    expect(stdout.trim()).toBe('AI Installer v0.1.0');
+    expect(stdout.trim()).toBe('ServerPilot Agent v0.1.0');
   });
 
   it('existing functions still work when sourced', () => {

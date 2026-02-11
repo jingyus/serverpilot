@@ -61,9 +61,9 @@ export interface ReleaseConfig {
 // ============================================================================
 
 export const DEFAULT_RELEASE_CONFIG: ReleaseConfig = {
-  owner: 'aiinstaller',
-  repo: 'aiinstaller',
-  binaryPrefix: 'aiinstaller',
+  owner: 'serverpilot',
+  repo: 'serverpilot',
+  binaryPrefix: 'install-agent',
 };
 
 export const GITHUB_RELEASES_BASE = 'https://github.com';

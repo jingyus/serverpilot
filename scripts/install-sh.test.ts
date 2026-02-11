@@ -11,6 +11,8 @@
  * - Dry-run mode
  * - Error handling for unsupported platforms
  * - Rollback / cleanup on failure
+ * - Package manager detection
+ * - Uninstall option
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
@@ -88,7 +90,7 @@ describe('--version', () => {
   it('prints version string and exits 0', () => {
     const { stdout, exitCode } = runInstallSh(['--version']);
     expect(exitCode).toBe(0);
-    expect(stdout).toContain('AI Installer v0.1.0');
+    expect(stdout).toContain('ServerPilot Agent v0.1.0');
   });
 });
 
@@ -103,12 +105,13 @@ describe('--help', () => {
     expect(stdout).toContain('--yes');
     expect(stdout).toContain('--version');
     expect(stdout).toContain('--help');
+    expect(stdout).toContain('--uninstall');
   });
 
   it('mentions environment variables', () => {
     const { stdout } = runInstallSh(['--help']);
-    expect(stdout).toContain('AIINSTALLER_SERVER');
-    expect(stdout).toContain('AIINSTALLER_DOWNLOAD_URL');
+    expect(stdout).toContain('SERVERPILOT_SERVER');
+    expect(stdout).toContain('SERVERPILOT_DOWNLOAD_URL');
   });
 });
 
@@ -147,6 +150,20 @@ describe('detect_arch', () => {
     } else if (uname === 'aarch64' || uname === 'arm64') {
       expect(arch).toBe('arm64');
     }
+  });
+});
+
+describe('detect_distro', () => {
+  it('returns a non-empty string', () => {
+    const distro = runBashFunction('detect_distro');
+    expect(distro.length).toBeGreaterThan(0);
+  });
+});
+
+describe('detect_pkg_manager', () => {
+  it('returns a known package manager or unknown', () => {
+    const pm = runBashFunction('detect_pkg_manager');
+    expect(['apt', 'dnf', 'yum', 'apk', 'brew', 'unknown']).toContain(pm);
   });
 });
 
@@ -197,20 +214,35 @@ describe('get_checksum_tool', () => {
 describe('parse_args', () => {
   it('sets default server URL', () => {
     const url = runBashFunction('parse_args && echo "$SERVER_URL"');
-    expect(url).toBe('wss://api.aiinstaller.dev');
+    expect(url).toBe('wss://api.serverpilot.dev');
   });
 
-  it('respects AIINSTALLER_SERVER env var', () => {
+  it('respects SERVERPILOT_SERVER env var', () => {
     const url = runBashFunction('parse_args && echo "$SERVER_URL"', {
-      AIINSTALLER_SERVER: 'wss://custom.example.com',
+      SERVERPILOT_SERVER: 'wss://custom.example.com',
     });
     expect(url).toBe('wss://custom.example.com');
+  });
+
+  it('respects legacy AIINSTALLER_SERVER env var', () => {
+    const url = runBashFunction('parse_args && echo "$SERVER_URL"', {
+      AIINSTALLER_SERVER: 'wss://legacy.example.com',
+    });
+    expect(url).toBe('wss://legacy.example.com');
+  });
+
+  it('SERVERPILOT_SERVER takes precedence over AIINSTALLER_SERVER', () => {
+    const url = runBashFunction('parse_args && echo "$SERVER_URL"', {
+      SERVERPILOT_SERVER: 'wss://new.example.com',
+      AIINSTALLER_SERVER: 'wss://old.example.com',
+    });
+    expect(url).toBe('wss://new.example.com');
   });
 
   it('--server overrides env var', () => {
     const url = runBashFunction(
       'parse_args --server wss://cli-override.example.com && echo "$SERVER_URL"',
-      { AIINSTALLER_SERVER: 'wss://env.example.com' },
+      { SERVERPILOT_SERVER: 'wss://env.example.com' },
     );
     expect(url).toBe('wss://cli-override.example.com');
   });
@@ -240,6 +272,11 @@ describe('parse_args', () => {
     expect(val).toBe('true');
   });
 
+  it('sets DO_UNINSTALL to true with --uninstall', () => {
+    const val = runBashFunction('parse_args --uninstall && echo "$DO_UNINSTALL"');
+    expect(val).toBe('true');
+  });
+
   it('accumulates AGENT_ARGS', () => {
     const val = runBashFunction(
       'parse_args --dry-run --verbose --yes && echo "${AGENT_ARGS[@]}"',
@@ -257,7 +294,7 @@ describe('parse_args', () => {
 describe('dry-run mode', () => {
   it('prints download URL and exits without downloading', () => {
     const { stdout, exitCode } = runInstallSh(['--dry-run'], {
-      AIINSTALLER_DOWNLOAD_URL: 'https://example.com/releases',
+      SERVERPILOT_DOWNLOAD_URL: 'https://example.com/releases',
     });
     expect(exitCode).toBe(0);
     expect(stdout).toContain('[dry-run]');
@@ -267,12 +304,54 @@ describe('dry-run mode', () => {
 
   it('works with --verbose flag', () => {
     const { stdout, exitCode } = runInstallSh(['--dry-run', '--verbose'], {
-      AIINSTALLER_DOWNLOAD_URL: 'https://example.com/releases',
+      SERVERPILOT_DOWNLOAD_URL: 'https://example.com/releases',
     });
     expect(exitCode).toBe(0);
-    expect(stdout).toContain('Download tool:');
     expect(stdout).toContain('Server URL:');
+    expect(stdout).toContain('Install dir:');
     expect(stdout).toContain('Temp directory:');
+  });
+
+  it('shows download URL from default GitHub releases', () => {
+    const { stdout, exitCode } = runInstallSh(['--dry-run']);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain('serverpilot/serverpilot/releases');
+  });
+});
+
+// ============================================================================
+// systemd service generation
+// ============================================================================
+
+describe('generate_service_file', () => {
+  it('generates valid systemd service content', () => {
+    const content = runBashFunction(
+      'generate_service_file /usr/local/bin/serverpilot-agent wss://example.com',
+    );
+    expect(content).toContain('[Unit]');
+    expect(content).toContain('[Service]');
+    expect(content).toContain('[Install]');
+    expect(content).toContain('ExecStart=/usr/local/bin/serverpilot-agent --server wss://example.com');
+    expect(content).toContain('User=root');
+    expect(content).toContain('Restart=always');
+    expect(content).toContain('WantedBy=multi-user.target');
+    expect(content).toContain('NoNewPrivileges=yes');
+    expect(content).toContain('ProtectHome=read-only');
+    expect(content).toContain('PrivateTmp=yes');
+  });
+
+  it('includes correct documentation URL', () => {
+    const content = runBashFunction(
+      'generate_service_file /usr/local/bin/serverpilot-agent wss://example.com',
+    );
+    expect(content).toContain('github.com/serverpilot/serverpilot');
+  });
+
+  it('uses serverpilot-agent as syslog identifier', () => {
+    const content = runBashFunction(
+      'generate_service_file /usr/local/bin/serverpilot-agent wss://example.com',
+    );
+    expect(content).toContain('SyslogIdentifier=serverpilot-agent');
   });
 });
 
@@ -289,7 +368,7 @@ describe('error handling', () => {
 
   it('fails gracefully when download URL is unreachable', () => {
     const { exitCode } = runInstallSh([], {
-      AIINSTALLER_DOWNLOAD_URL: 'https://localhost:19999/nonexistent',
+      SERVERPILOT_DOWNLOAD_URL: 'https://localhost:19999/nonexistent',
     });
     // Should fail with non-zero exit code because download fails
     expect(exitCode).not.toBe(0);
@@ -305,5 +384,46 @@ describe('NO_COLOR support', () => {
     const { stdout } = runInstallSh(['--version'], { NO_COLOR: '1' });
     // Should not contain ANSI escape codes
     expect(stdout).not.toMatch(/\x1b\[/);
+  });
+});
+
+// ============================================================================
+// Constants verification
+// ============================================================================
+
+describe('constants', () => {
+  it('SP_VERSION is 0.1.0', () => {
+    const version = runBashFunction('echo "$SP_VERSION"');
+    expect(version).toBe('0.1.0');
+  });
+
+  it('SP_BINARY_NAME is serverpilot-agent', () => {
+    const name = runBashFunction('echo "$SP_BINARY_NAME"');
+    expect(name).toBe('serverpilot-agent');
+  });
+
+  it('SP_DOWNLOAD_BINARY_NAME is install-agent', () => {
+    const name = runBashFunction('echo "$SP_DOWNLOAD_BINARY_NAME"');
+    expect(name).toBe('install-agent');
+  });
+
+  it('default download URL uses serverpilot/serverpilot repo', () => {
+    const url = runBashFunction('echo "$SP_BASE_DOWNLOAD_URL"');
+    expect(url).toContain('github.com/serverpilot/serverpilot');
+  });
+
+  it('default server URL uses serverpilot.dev', () => {
+    const url = runBashFunction('echo "$SP_DEFAULT_SERVER_URL"');
+    expect(url).toBe('wss://api.serverpilot.dev');
+  });
+
+  it('service name is serverpilot-agent', () => {
+    const name = runBashFunction('echo "$SP_SERVICE_NAME"');
+    expect(name).toBe('serverpilot-agent');
+  });
+
+  it('config dir is /etc/serverpilot', () => {
+    const dir = runBashFunction('echo "$SP_CONFIG_DIR"');
+    expect(dir).toBe('/etc/serverpilot');
   });
 });

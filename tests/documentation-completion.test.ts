@@ -19,11 +19,11 @@ const changelogExists = fs.existsSync(path.join(ROOT_DIR, 'CHANGELOG.md'));
 const websiteDir = path.join(ROOT_DIR, 'packages', 'website', 'docs');
 const websiteExists = fs.existsSync(websiteDir);
 
-// Note: These tests are specific to AI Installer project
-// For ServerPilot, many of these will be skipped until the README is updated
-const isAIInstallerProject = fs.readFileSync(path.join(ROOT_DIR, 'README.md'), 'utf-8').includes('get.aiinstaller.dev');
+// Note: These tests are specific to ServerPilot project
+// Many of these will be skipped until the README is updated
+const isServerPilotProject = fs.readFileSync(path.join(ROOT_DIR, 'README.md'), 'utf-8').includes('get.serverpilot.dev');
 
-describe.skipIf(!isAIInstallerProject)('README.md - 正式安装命令', () => {
+describe.skipIf(!isServerPilotProject)('README.md - 正式安装命令', () => {
   const readmePath = path.join(ROOT_DIR, 'README.md');
   const content = fs.readFileSync(readmePath, 'utf-8');
 
@@ -46,25 +46,25 @@ describe.skipIf(!isAIInstallerProject)('README.md - 正式安装命令', () => {
   describe('正式安装命令', () => {
     it('应包含一键安装脚本命令', () => {
       expect(content).toContain('curl -fsSL');
-      expect(content).toContain('get.aiinstaller.dev');
+      expect(content).toContain('get.serverpilot.dev');
     });
 
     it('应包含所有平台的下载链接', () => {
-      expect(content).toContain('aiinstaller-darwin-arm64');
-      expect(content).toContain('aiinstaller-darwin-x64');
-      expect(content).toContain('aiinstaller-linux-x64');
-      expect(content).toContain('aiinstaller-linux-arm64');
-      expect(content).toContain('aiinstaller-win-x64.exe');
+      expect(content).toContain('install-agent-darwin-arm64');
+      expect(content).toContain('install-agent-darwin-x64');
+      expect(content).toContain('install-agent-linux-x64');
+      expect(content).toContain('install-agent-linux-arm64');
+      expect(content).toContain('install-agent-win-x64.exe');
     });
 
     it('下载链接应指向 GitHub Releases', () => {
       expect(content).toContain(
-        'https://github.com/aiinstaller/aiinstaller/releases/latest/download/',
+        'https://github.com/serverpilot/serverpilot/releases/latest/download/',
       );
     });
 
     it('应包含使用方法示例', () => {
-      expect(content).toContain('aiinstaller openclaw');
+      expect(content).toContain('install-agent openclaw');
     });
 
     it('应包含 --dry-run 选项说明', () => {
@@ -76,7 +76,7 @@ describe.skipIf(!isAIInstallerProject)('README.md - 正式安装命令', () => {
     });
 
     it('应包含 WSS 服务器地址', () => {
-      expect(content).toContain('wss://api.aiinstaller.dev');
+      expect(content).toContain('wss://api.serverpilot.dev');
     });
   });
 
@@ -283,10 +283,10 @@ describe.skipIf(!websiteExists)('官网文档 - 链接一致性', () => {
 
     it('GitHub 链接应指向正确仓库', () => {
       const content = fs.readFileSync(indexPath, 'utf-8');
-      // All GitHub references should use aiinstaller/aiinstaller
+      // All GitHub references should use serverpilot/serverpilot
       const githubLinks = content.match(/github\.com\/[^/\s)]+\/[^/\s)]+/g) || [];
       for (const link of githubLinks) {
-        expect(link).toBe('github.com/aiinstaller/aiinstaller');
+        expect(link).toBe('github.com/serverpilot/serverpilot');
       }
     });
   });
@@ -300,17 +300,17 @@ describe.skipIf(!websiteExists)('官网文档 - 链接一致性', () => {
 
     it('应包含所有平台的下载链接', () => {
       const content = fs.readFileSync(downloadPath, 'utf-8');
-      expect(content).toContain('aiinstaller-darwin-arm64');
-      expect(content).toContain('aiinstaller-darwin-x64');
-      expect(content).toContain('aiinstaller-linux-x64');
-      expect(content).toContain('aiinstaller-linux-arm64');
-      expect(content).toContain('aiinstaller-win-x64.exe');
+      expect(content).toContain('install-agent-darwin-arm64');
+      expect(content).toContain('install-agent-darwin-x64');
+      expect(content).toContain('install-agent-linux-x64');
+      expect(content).toContain('install-agent-linux-arm64');
+      expect(content).toContain('install-agent-win-x64.exe');
     });
 
     it('下载链接应指向 GitHub Releases', () => {
       const content = fs.readFileSync(downloadPath, 'utf-8');
       expect(content).toContain(
-        'https://github.com/aiinstaller/aiinstaller/releases/latest/download/',
+        'https://github.com/serverpilot/serverpilot/releases/latest/download/',
       );
     });
 
@@ -338,11 +338,11 @@ describe.skipIf(!websiteExists)('官网文档 - 链接一致性', () => {
       );
 
       const binaryNames = [
-        'aiinstaller-darwin-arm64',
-        'aiinstaller-darwin-x64',
-        'aiinstaller-linux-x64',
-        'aiinstaller-linux-arm64',
-        'aiinstaller-win-x64.exe',
+        'install-agent-darwin-arm64',
+        'install-agent-darwin-x64',
+        'install-agent-linux-x64',
+        'install-agent-linux-arm64',
+        'install-agent-win-x64.exe',
       ];
 
       for (const name of binaryNames) {

@@ -10,7 +10,7 @@
  * 6. The agent can connect to a server, receive a plan, and execute steps
  *
  * The one-click command:
- *   curl -fsSL https://get.aiinstaller.dev/install.sh | bash
+ *   curl -fsSL https://get.serverpilot.dev/install.sh | bash
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -150,7 +150,7 @@ describe('One-click install: download tool availability', () => {
 describe('One-click install: dry-run mode', () => {
   it('exits 0 and prints preview in dry-run mode', () => {
     const { stdout, exitCode } = runInstallSh(['--dry-run'], {
-      AIINSTALLER_DOWNLOAD_URL: 'https://example.com/releases',
+      SERVERPILOT_DOWNLOAD_URL: 'https://example.com/releases',
     });
     expect(exitCode).toBe(0);
     expect(stdout).toContain('[dry-run]');
@@ -159,22 +159,22 @@ describe('One-click install: dry-run mode', () => {
 
   it('shows the download URL that would be used', () => {
     const { stdout } = runInstallSh(['--dry-run'], {
-      AIINSTALLER_DOWNLOAD_URL: 'https://example.com/releases',
+      SERVERPILOT_DOWNLOAD_URL: 'https://example.com/releases',
     });
     expect(stdout).toContain('https://example.com/releases');
   });
 
   it('shows platform detection result', () => {
     const { stdout } = runInstallSh(['--dry-run'], {
-      AIINSTALLER_DOWNLOAD_URL: 'https://example.com/releases',
+      SERVERPILOT_DOWNLOAD_URL: 'https://example.com/releases',
     });
-    expect(stdout).toContain('Detected platform:');
+    expect(stdout).toContain('Platform detection');
   });
 
   it('does not actually download anything', () => {
     // Use an unreachable URL; if it tried to download, it would fail
     const { exitCode } = runInstallSh(['--dry-run'], {
-      AIINSTALLER_DOWNLOAD_URL: 'https://localhost:19999/does-not-exist',
+      SERVERPILOT_DOWNLOAD_URL: 'https://localhost:19999/does-not-exist',
     });
     expect(exitCode).toBe(0);
   });
@@ -188,7 +188,7 @@ describe('One-click install: CLI argument handling', () => {
   it('--version prints version and exits 0', () => {
     const { stdout, exitCode } = runInstallSh(['--version']);
     expect(exitCode).toBe(0);
-    expect(stdout).toContain('AI Installer v');
+    expect(stdout).toContain('ServerPilot Agent v');
   });
 
   it('--help prints usage info and exits 0', () => {
@@ -208,9 +208,9 @@ describe('One-click install: CLI argument handling', () => {
     expect(url).toBe('wss://custom.example.com');
   });
 
-  it('AIINSTALLER_SERVER env var is respected', () => {
+  it('SERVERPILOT_SERVER env var is respected', () => {
     const url = runBashFunction('parse_args && echo "$SERVER_URL"', {
-      AIINSTALLER_SERVER: 'wss://env.example.com',
+      SERVERPILOT_SERVER: 'wss://env.example.com',
     });
     expect(url).toBe('wss://env.example.com');
   });
@@ -251,12 +251,12 @@ describe('One-click install: agent CLI integration', () => {
     const { parseArgs } = await import('../packages/agent/src/index.js');
     const opts = parseArgs([
       'node', 'index.js',
-      '--server', 'wss://api.aiinstaller.dev',
+      '--server', 'wss://api.serverpilot.dev',
       '--dry-run',
       '--verbose',
       '--yes',
     ]);
-    expect(opts.serverUrl).toBe('wss://api.aiinstaller.dev');
+    expect(opts.serverUrl).toBe('wss://api.serverpilot.dev');
     expect(opts.dryRun).toBe(true);
     expect(opts.verbose).toBe(true);
     expect(opts.yes).toBe(true);
@@ -328,13 +328,13 @@ describe('One-click install: environment detection', () => {
 describe('One-click install: end-to-end flow validation', () => {
   it('install.sh dry-run shows the complete flow: detect → download → run', () => {
     const { stdout, exitCode } = runInstallSh(['--dry-run', '--verbose'], {
-      AIINSTALLER_DOWNLOAD_URL: 'https://github.com/aiinstaller/aiinstaller/releases/latest/download',
+      SERVERPILOT_DOWNLOAD_URL: 'https://github.com/serverpilot/serverpilot/releases/latest/download',
     });
 
     expect(exitCode).toBe(0);
 
     // Step 1: Platform detection
-    expect(stdout).toContain('Detected platform:');
+    expect(stdout).toContain('Platform detection');
 
     // Step 2: Download tool detection
     expect(stdout).toContain('Download tool:');
@@ -355,7 +355,7 @@ describe('One-click install: end-to-end flow validation', () => {
 
   it('install.sh constructs correct GitHub Releases download URL', () => {
     const { stdout } = runInstallSh(['--dry-run'], {
-      AIINSTALLER_DOWNLOAD_URL: 'https://github.com/aiinstaller/aiinstaller/releases/latest/download',
+      SERVERPILOT_DOWNLOAD_URL: 'https://github.com/serverpilot/serverpilot/releases/latest/download',
     });
 
     const os = runBashFunction('detect_os');
@@ -363,12 +363,12 @@ describe('One-click install: end-to-end flow validation', () => {
     const expectedFilename = `install-agent-${os}-${arch}`;
 
     expect(stdout).toContain(expectedFilename);
-    expect(stdout).toContain('github.com/aiinstaller/aiinstaller/releases');
+    expect(stdout).toContain('github.com/serverpilot/serverpilot/releases');
   });
 
-  it('default server URL is wss://api.aiinstaller.dev', () => {
+  it('default server URL is wss://api.serverpilot.dev', () => {
     const { stdout } = runInstallSh(['--dry-run', '--verbose']);
-    expect(stdout).toContain('wss://api.aiinstaller.dev');
+    expect(stdout).toContain('wss://api.serverpilot.dev');
   });
 
   it('supports custom server URL via --server flag', () => {
@@ -404,7 +404,7 @@ describe('One-click install: end-to-end flow validation', () => {
 describe('One-click install: error handling', () => {
   it('gracefully fails when binary URL is unreachable', () => {
     const { exitCode } = runInstallSh([], {
-      AIINSTALLER_DOWNLOAD_URL: 'https://localhost:19999/nonexistent',
+      SERVERPILOT_DOWNLOAD_URL: 'https://localhost:19999/nonexistent',
     });
     expect(exitCode).not.toBe(0);
   });
@@ -442,6 +442,6 @@ describe('One-click install: terminal compatibility', () => {
 
   it('version output is clean without color codes', () => {
     const { stdout } = runInstallSh(['--version'], { NO_COLOR: '1' });
-    expect(stdout.trim()).toBe('AI Installer v0.1.0');
+    expect(stdout.trim()).toBe('ServerPilot Agent v0.1.0');
   });
 });

@@ -57,9 +57,9 @@ const vitepressConfigExists = fs.existsSync(path.join(ROOT_DIR, 'packages/websit
 
 describe('Constants', () => {
   it('DEFAULT_RELEASE_CONFIG should have owner and repo', () => {
-    expect(DEFAULT_RELEASE_CONFIG.owner).toBe('aiinstaller');
-    expect(DEFAULT_RELEASE_CONFIG.repo).toBe('aiinstaller');
-    expect(DEFAULT_RELEASE_CONFIG.binaryPrefix).toBe('aiinstaller');
+    expect(DEFAULT_RELEASE_CONFIG.owner).toBe('serverpilot');
+    expect(DEFAULT_RELEASE_CONFIG.repo).toBe('serverpilot');
+    expect(DEFAULT_RELEASE_CONFIG.binaryPrefix).toBe('install-agent');
   });
 
   it('GITHUB_RELEASES_BASE should be GitHub URL', () => {
@@ -101,23 +101,23 @@ describe('Constants', () => {
 
 describe('getBinaryFilename()', () => {
   it('should generate macOS arm64 filename', () => {
-    expect(getBinaryFilename('darwin', 'arm64')).toBe('aiinstaller-darwin-arm64');
+    expect(getBinaryFilename('darwin', 'arm64')).toBe('install-agent-darwin-arm64');
   });
 
   it('should generate macOS x64 filename', () => {
-    expect(getBinaryFilename('darwin', 'x64')).toBe('aiinstaller-darwin-x64');
+    expect(getBinaryFilename('darwin', 'x64')).toBe('install-agent-darwin-x64');
   });
 
   it('should generate Linux x64 filename', () => {
-    expect(getBinaryFilename('linux', 'x64')).toBe('aiinstaller-linux-x64');
+    expect(getBinaryFilename('linux', 'x64')).toBe('install-agent-linux-x64');
   });
 
   it('should generate Linux arm64 filename', () => {
-    expect(getBinaryFilename('linux', 'arm64')).toBe('aiinstaller-linux-arm64');
+    expect(getBinaryFilename('linux', 'arm64')).toBe('install-agent-linux-arm64');
   });
 
   it('should generate Windows filename with .exe', () => {
-    expect(getBinaryFilename('win', 'x64')).toBe('aiinstaller-win-x64.exe');
+    expect(getBinaryFilename('win', 'x64')).toBe('install-agent-win-x64.exe');
   });
 
   it('should use custom prefix', () => {
@@ -137,7 +137,7 @@ describe('getBinaryFilename()', () => {
 describe('getReleasesPageUrl()', () => {
   it('should return correct URL with default config', () => {
     const url = getReleasesPageUrl();
-    expect(url).toBe('https://github.com/aiinstaller/aiinstaller/releases');
+    expect(url).toBe('https://github.com/serverpilot/serverpilot/releases');
   });
 
   it('should use custom config', () => {
@@ -148,9 +148,9 @@ describe('getReleasesPageUrl()', () => {
 
 describe('getLatestDownloadUrl()', () => {
   it('should return correct latest download URL', () => {
-    const url = getLatestDownloadUrl('aiinstaller-darwin-arm64');
+    const url = getLatestDownloadUrl('install-agent-darwin-arm64');
     expect(url).toBe(
-      'https://github.com/aiinstaller/aiinstaller/releases/latest/download/aiinstaller-darwin-arm64',
+      'https://github.com/serverpilot/serverpilot/releases/latest/download/install-agent-darwin-arm64',
     );
   });
 
@@ -166,21 +166,21 @@ describe('getLatestDownloadUrl()', () => {
 
 describe('getVersionDownloadUrl()', () => {
   it('should return correct versioned URL with v prefix', () => {
-    const url = getVersionDownloadUrl('aiinstaller-darwin-arm64', 'v1.0.0');
+    const url = getVersionDownloadUrl('install-agent-darwin-arm64', 'v1.0.0');
     expect(url).toBe(
-      'https://github.com/aiinstaller/aiinstaller/releases/download/v1.0.0/aiinstaller-darwin-arm64',
+      'https://github.com/serverpilot/serverpilot/releases/download/v1.0.0/install-agent-darwin-arm64',
     );
   });
 
   it('should auto-add v prefix if missing', () => {
-    const url = getVersionDownloadUrl('aiinstaller-darwin-arm64', '1.0.0');
+    const url = getVersionDownloadUrl('install-agent-darwin-arm64', '1.0.0');
     expect(url).toBe(
-      'https://github.com/aiinstaller/aiinstaller/releases/download/v1.0.0/aiinstaller-darwin-arm64',
+      'https://github.com/serverpilot/serverpilot/releases/download/v1.0.0/install-agent-darwin-arm64',
     );
   });
 
   it('should not double v prefix', () => {
-    const url = getVersionDownloadUrl('aiinstaller-darwin-arm64', 'v2.0.0');
+    const url = getVersionDownloadUrl('install-agent-darwin-arm64', 'v2.0.0');
     expect(url).toContain('/v2.0.0/');
     expect(url).not.toContain('/vv2.0.0/');
   });
@@ -201,7 +201,7 @@ describe('buildAssetList()', () => {
     const macArm = assets.find((a) => a.platform === 'darwin' && a.arch === 'arm64');
     expect(macArm).toBeDefined();
     expect(macArm!.platformName).toBe('macOS');
-    expect(macArm!.filename).toBe('aiinstaller-darwin-arm64');
+    expect(macArm!.filename).toBe('install-agent-darwin-arm64');
   });
 
   it('should include Windows x64 asset', () => {
@@ -451,11 +451,11 @@ describe('generateAllPlatformsMarkdown()', () => {
 
   it('should include all binary download links', () => {
     const md = generateAllPlatformsMarkdown();
-    expect(md).toContain('aiinstaller-darwin-arm64');
-    expect(md).toContain('aiinstaller-darwin-x64');
-    expect(md).toContain('aiinstaller-linux-x64');
-    expect(md).toContain('aiinstaller-linux-arm64');
-    expect(md).toContain('aiinstaller-win-x64.exe');
+    expect(md).toContain('install-agent-darwin-arm64');
+    expect(md).toContain('install-agent-darwin-x64');
+    expect(md).toContain('install-agent-linux-x64');
+    expect(md).toContain('install-agent-linux-arm64');
+    expect(md).toContain('install-agent-win-x64.exe');
   });
 });
 
@@ -527,7 +527,7 @@ describe.skipIf(!downloadPageExists)('Integration: download page', () => {
     : '';
 
   it('should contain GitHub Releases download links', () => {
-    expect(downloadPage).toContain('github.com/aiinstaller/aiinstaller/releases');
+    expect(downloadPage).toContain('github.com/serverpilot/serverpilot/releases');
   });
 
   it('should not contain placeholder username', () => {
@@ -535,11 +535,11 @@ describe.skipIf(!downloadPageExists)('Integration: download page', () => {
   });
 
   it('should have download links for all platforms', () => {
-    expect(downloadPage).toContain('aiinstaller-darwin-arm64');
-    expect(downloadPage).toContain('aiinstaller-darwin-x64');
-    expect(downloadPage).toContain('aiinstaller-linux-x64');
-    expect(downloadPage).toContain('aiinstaller-linux-arm64');
-    expect(downloadPage).toContain('aiinstaller-win-x64.exe');
+    expect(downloadPage).toContain('install-agent-darwin-arm64');
+    expect(downloadPage).toContain('install-agent-darwin-x64');
+    expect(downloadPage).toContain('install-agent-linux-x64');
+    expect(downloadPage).toContain('install-agent-linux-arm64');
+    expect(downloadPage).toContain('install-agent-win-x64.exe');
   });
 
   it('should have latest download URLs', () => {
@@ -575,7 +575,7 @@ describe.skipIf(!gettingStartedExists)('Integration: getting-started page', () =
   });
 
   it('should contain correct GitHub Releases links', () => {
-    expect(gettingStarted).toContain('github.com/aiinstaller/aiinstaller/releases');
+    expect(gettingStarted).toContain('github.com/serverpilot/serverpilot/releases');
   });
 });
 
@@ -592,6 +592,6 @@ describe.skipIf(!vitepressConfigExists)('Integration: VitePress config', () => {
   });
 
   it('should have correct GitHub link', () => {
-    expect(config).toContain('github.com/aiinstaller/aiinstaller');
+    expect(config).toContain('github.com/serverpilot/serverpilot');
   });
 });

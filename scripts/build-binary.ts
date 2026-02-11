@@ -407,8 +407,8 @@ export function parseBuildArgs(argv: string[]): BuildOptions {
 
 const isMain = process.argv[1] && resolve(process.argv[1]) === __filename;
 if (isMain) {
-  console.log('AI Installer Agent - Binary Build');
-  console.log('=================================\n');
+  console.log('ServerPilot Agent - Binary Build');
+  console.log('================================\n');
 
   try {
     const options = parseBuildArgs(process.argv);
