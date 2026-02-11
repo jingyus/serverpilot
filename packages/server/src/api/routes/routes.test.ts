@@ -7,9 +7,10 @@
  * and middleware integration using Hono's built-in test utilities.
  */
 
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import type { Hono } from 'hono';
 import { createApiApp } from './index.js';
+import { _resetRateLimitStore } from '../middleware/rate-limit.js';
 import type { ApiEnv } from './types.js';
 
 // ============================================================================
@@ -20,6 +21,10 @@ let app: Hono<ApiEnv>;
 
 beforeAll(() => {
   app = createApiApp();
+});
+
+beforeEach(() => {
+  _resetRateLimitStore();
 });
 
 /** Helper to create a test request and return the response */

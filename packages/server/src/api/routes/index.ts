@@ -32,6 +32,7 @@ import { membersRoute } from './members.js';
 import { teamRoute } from './team.js';
 import { openapi } from './openapi.js';
 import { onError, onNotFound } from '../middleware/error-handler.js';
+import { createRateLimitMiddleware } from '../middleware/rate-limit.js';
 import type { ApiEnv } from './types.js';
 
 // ============================================================================
@@ -57,11 +58,13 @@ export function createApiApp(): Hono<ApiEnv> {
     origin: '*',
     allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'Authorization'],
-    exposeHeaders: ['X-Request-Id'],
+    exposeHeaders: ['X-Request-Id', 'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset', 'Retry-After'],
     maxAge: 86400,
   }));
 
   app.use('*', requestId());
+
+  app.use('/api/v1/*', createRateLimitMiddleware());
 
   // --------------------------------------------------------------------------
   // Health check (outside /api/v1 for load balancer probes)
