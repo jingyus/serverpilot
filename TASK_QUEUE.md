@@ -7,9 +7,9 @@
 ## 📊 统计信息
 
 - **总任务数**: 20
-- **待完成** (pending): 2
+- **待完成** (pending): 1
 - **进行中** (in_progress): 0
-- **已完成** (completed): 18
+- **已完成** (completed): 19
 - **失败** (failed): 0
 
 ---
@@ -263,7 +263,7 @@
 
 ---
 
-### [pending] Dashboard ↔ Server API 联调与错误处理优化
+### [completed] Dashboard ↔ Server API 联调与错误处理优化 ✅
 
 **ID**: task-009
 **优先级**: P0
@@ -271,14 +271,33 @@
 **任务描述**: Dashboard 的 API Client 和 Zustand Stores 已实现，Server 的 REST API 也已完成，但两端需要实际联调确认：(1) 所有 API 端点的请求/响应格式匹配 (2) JWT Token 刷新机制正常工作 (3) SSE 流式对话在浏览器中正确渲染 (4) WebSocket 实时通知在 Dashboard 正确展示 (5) 错误码和错误消息在 Dashboard 上有友好的提示。
 **产品需求**: MVP Dashboard - "服务器列表、密钥连接、基本监控、对话界面"
 **验收标准**:
-- 登录/注册/Token 刷新正常
-- 服务器列表页正确展示服务器状态（在线/离线）
-- 对话页面 SSE 流式消息正确逐字显示
-- 计划预览组件正确渲染步骤和风险等级
-- API 错误（401/403/500）在 Dashboard 有友好提示
-- WebSocket 连接状态在 UI 上有指示
+- [x] 登录/注册/Token 刷新正常
+- [x] 服务器列表页正确展示服务器状态（在线/离线）
+- [x] 对话页面 SSE 流式消息正确逐字显示
+- [x] 计划预览组件正确渲染步骤和风险等级
+- [x] API 错误（401/403/500）在 Dashboard 有友好提示
+- [x] WebSocket 连接状态在 UI 上有指示
+
+**实现内容**:
+- ✅ Auth 响应格式对齐：Dashboard 改用 `accessToken`/`refreshToken` (原来错误使用 `token`)
+- ✅ JWT Token 自动刷新机制：API client 在 401 时自动尝试 refresh，失败时触发 `auth:logout` 事件
+- ✅ SSE 连接 401 自动刷新：SSE streaming 也支持 token 过期后自动刷新重试
+- ✅ Server 列表响应格式对齐：添加 `total` 字段，POST 创建服务器返回 `{ server, token, installCommand }`
+- ✅ Task 创建/更新响应解包修复：`{ task: Task }` 包装格式正确解包
+- ✅ Operations stats 响应解包修复：`{ stats: Stats }` 包装格式正确解包
+- ✅ 用户友好错误消息：根据错误码映射中文友好提示 (UNAUTHORIZED/FORBIDDEN/RATE_LIMITED 等)
+- ✅ WebSocket 连接状态指示器：Header 显示连接状态 (Connected/Connecting/Reconnecting/Disconnected)
+- ✅ 新增 API client 单元测试：token refresh、401 处理、错误消息映射
+- ✅ 新增 ConnectionStatus 组件测试：4 种连接状态渲染测试
+- ✅ 更新 Header 测试：包含连接状态指示器验证
+
+**测试覆盖率**:
+- Dashboard: 52 test files, 761 tests 全部通过
+- Server routes: 67 tests 全部通过
+- TypeScript 编译：0 错误
+
 **创建时间**: 2026-02-11 00:00:00
-**完成时间**: -
+**完成时间**: 2026-02-11 10:15:00
 
 ---
 
@@ -738,4 +757,4 @@ ID: task-001
 
 ---
 
-**最后更新**: 2026-02-11 10:03:19
+**最后更新**: 2026-02-11 10:16:14

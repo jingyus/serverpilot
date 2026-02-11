@@ -13,6 +13,18 @@ export class ApiError extends Error {
   }
 }
 
+/** User-friendly error messages by error code */
+const ERROR_MESSAGES: Record<string, string> = {
+  UNAUTHORIZED: 'Session expired, please log in again',
+  FORBIDDEN: 'You do not have permission to perform this action',
+  NOT_FOUND: 'The requested resource was not found',
+  VALIDATION_ERROR: 'Invalid input, please check your data',
+  RATE_LIMITED: 'Too many requests, please try again later',
+  SERVER_OFFLINE: 'Server is offline, cannot process request',
+  AI_UNAVAILABLE: 'AI service is temporarily unavailable',
+  INTERNAL_ERROR: 'An unexpected error occurred, please try again',
+};
+
 function getToken(): string | null {
   return localStorage.getItem('auth_token');
 }
@@ -23,6 +35,54 @@ export function setToken(token: string): void {
 
 export function clearToken(): void {
   localStorage.removeItem('auth_token');
+}
+
+function getRefreshToken(): string | null {
+  return localStorage.getItem('refresh_token');
+}
+
+// Prevent multiple concurrent refresh attempts
+let refreshPromise: Promise<boolean> | null = null;
+
+interface RefreshResponse {
+  accessToken: string;
+  refreshToken: string;
+}
+
+async function refreshAccessToken(): Promise<boolean> {
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) return false;
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken }),
+    });
+
+    if (!response.ok) return false;
+
+    const data = (await response.json()) as RefreshResponse;
+    setToken(data.accessToken);
+    localStorage.setItem('refresh_token', data.refreshToken);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Attempt token refresh, deduplicating concurrent calls. */
+function tryRefresh(): Promise<boolean> {
+  if (!refreshPromise) {
+    refreshPromise = refreshAccessToken().finally(() => {
+      refreshPromise = null;
+    });
+  }
+  return refreshPromise;
+}
+
+function friendlyMessage(code: string, fallback: string): string {
+  return ERROR_MESSAGES[code] ?? fallback;
 }
 
 export async function apiRequest<T>(
@@ -39,19 +99,41 @@ export async function apiRequest<T>(
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  let response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
     headers,
   });
 
+  // On 401, attempt token refresh and retry once
+  if (response.status === 401 && !path.startsWith('/auth/')) {
+    const refreshed = await tryRefresh();
+    if (refreshed) {
+      const newToken = getToken();
+      if (newToken) {
+        headers['Authorization'] = `Bearer ${newToken}`;
+      }
+      response = await fetch(`${API_BASE_URL}${path}`, {
+        ...options,
+        headers,
+      });
+    }
+  }
+
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     const error = body.error ?? {};
-    throw new ApiError(
-      response.status,
-      error.code ?? 'UNKNOWN_ERROR',
-      error.message ?? `Request failed with status ${response.status}`
-    );
+    const code = error.code ?? 'UNKNOWN_ERROR';
+    const message = error.message ?? `Request failed with status ${response.status}`;
+
+    // Force logout on persistent auth failure
+    if (response.status === 401 && !path.startsWith('/auth/')) {
+      clearToken();
+      localStorage.removeItem('refresh_token');
+      localStorage.removeItem('auth_user');
+      window.dispatchEvent(new CustomEvent('auth:logout'));
+    }
+
+    throw new ApiError(response.status, code, friendlyMessage(code, message));
   }
 
   return response.json() as Promise<T>;

@@ -204,7 +204,7 @@ describe('useOperationsStore', () => {
   describe('fetchStats', () => {
     it('fetches stats successfully', async () => {
       const { apiRequest } = await import('@/api/client');
-      vi.mocked(apiRequest).mockResolvedValueOnce(mockStats);
+      vi.mocked(apiRequest).mockResolvedValueOnce({ stats: mockStats });
 
       await useOperationsStore.getState().fetchStats();
 
@@ -226,7 +226,7 @@ describe('useOperationsStore', () => {
       const promise = useOperationsStore.getState().fetchStats();
       expect(useOperationsStore.getState().isLoadingStats).toBe(true);
 
-      resolvePromise!(mockStats);
+      resolvePromise!({ stats: mockStats });
       await promise;
       expect(useOperationsStore.getState().isLoadingStats).toBe(false);
     });
@@ -257,7 +257,7 @@ describe('useOperationsStore', () => {
 
     it('includes serverId in stats query when filtered', async () => {
       const { apiRequest } = await import('@/api/client');
-      vi.mocked(apiRequest).mockResolvedValueOnce(mockStats);
+      vi.mocked(apiRequest).mockResolvedValueOnce({ stats: mockStats });
 
       useOperationsStore.setState({
         filters: {

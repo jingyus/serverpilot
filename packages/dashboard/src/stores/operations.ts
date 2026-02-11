@@ -101,10 +101,10 @@ export const useOperationsStore = create<OperationsState>((set, get) => ({
       const params = filters.serverId
         ? `?serverId=${filters.serverId}`
         : '';
-      const data = await apiRequest<OperationStats>(
+      const data = await apiRequest<{ stats: OperationStats }>(
         `/operations/stats${params}`
       );
-      set({ stats: data, isLoadingStats: false });
+      set({ stats: data.stats, isLoadingStats: false });
     } catch (err) {
       const message =
         err instanceof ApiError ? err.message : 'Failed to load stats';

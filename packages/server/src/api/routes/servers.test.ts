@@ -159,11 +159,15 @@ describe('POST /api/v1/servers', () => {
     );
   });
 
-  it('should return agentToken on creation', async () => {
+  it('should return token and installCommand on creation', async () => {
     const res = await jsonPost('/api/v1/servers', { name: 'web-02' }, tokenA);
     const body = await res.json();
-    expect(body.server.agentToken).toBeDefined();
-    expect(body.server.agentToken).toMatch(/^sp_[0-9a-f]{64}$/);
+    expect(body.token).toBeDefined();
+    expect(body.token).toMatch(/^sp_[0-9a-f]{64}$/);
+    expect(body.installCommand).toBeDefined();
+    expect(body.installCommand).toContain(body.token);
+    // agentToken should NOT be on the public server object
+    expect(body.server.agentToken).toBeUndefined();
   });
 
   it('should create server with tags', async () => {

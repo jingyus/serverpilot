@@ -74,11 +74,11 @@ export const useTasksStore = create<TasksState>((set, get) => ({
   createTask: async (input) => {
     set({ isSubmitting: true, error: null });
     try {
-      const task = await apiRequest<Task>('/tasks', {
+      const data = await apiRequest<{ task: Task }>('/tasks', {
         method: 'POST',
         body: JSON.stringify(input),
       });
-      set({ tasks: [...get().tasks, task], total: get().total + 1, isSubmitting: false });
+      set({ tasks: [...get().tasks, data.task], total: get().total + 1, isSubmitting: false });
     } catch (err) {
       const message =
         err instanceof ApiError ? err.message : 'Failed to create task';
@@ -90,12 +90,12 @@ export const useTasksStore = create<TasksState>((set, get) => ({
   updateTask: async (id, input) => {
     set({ isSubmitting: true, error: null });
     try {
-      const updated = await apiRequest<Task>(`/tasks/${id}`, {
+      const data = await apiRequest<{ task: Task }>(`/tasks/${id}`, {
         method: 'PATCH',
         body: JSON.stringify(input),
       });
       set({
-        tasks: get().tasks.map((t) => (t.id === id ? updated : t)),
+        tasks: get().tasks.map((t) => (t.id === id ? data.task : t)),
         isSubmitting: false,
       });
     } catch (err) {

@@ -12,6 +12,62 @@ export interface SSECallbacks {
   onError?: (error: Error) => void;
 }
 
+async function tryRefreshToken(): Promise<string | null> {
+  const refreshToken = localStorage.getItem('refresh_token');
+  if (!refreshToken) return null;
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken }),
+    });
+    if (!response.ok) return null;
+
+    const data = (await response.json()) as { accessToken: string; refreshToken: string };
+    localStorage.setItem('auth_token', data.accessToken);
+    localStorage.setItem('refresh_token', data.refreshToken);
+    return data.accessToken;
+  } catch {
+    return null;
+  }
+}
+
+async function sseRequest(
+  path: string,
+  body: Record<string, unknown>,
+  controller: AbortController,
+  token: string | null,
+): Promise<Response> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+    signal: controller.signal,
+  });
+
+  // On 401, attempt token refresh and retry once
+  if (response.status === 401) {
+    const newToken = await tryRefreshToken();
+    if (newToken) {
+      return fetch(`${API_BASE_URL}${path}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${newToken}`,
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+    }
+  }
+
+  return response;
+}
+
 export function createSSEConnection(
   path: string,
   body: Record<string, unknown>,
@@ -20,15 +76,7 @@ export function createSSEConnection(
   const controller = new AbortController();
   const token = localStorage.getItem('auth_token');
 
-  fetch(`${API_BASE_URL}${path}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify(body),
-    signal: controller.signal,
-  })
+  sseRequest(path, body, controller, token)
     .then(async (response) => {
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));
@@ -60,7 +108,7 @@ export function createSSEConnection(
             currentEvent = line.slice(7).trim();
           } else if (line.startsWith('data: ')) {
             const data = line.slice(6);
-            dispatchEvent(currentEvent, data, callbacks);
+            dispatchSSEEvent(currentEvent, data, callbacks);
           } else if (line === '') {
             currentEvent = 'message';
           }
@@ -77,7 +125,7 @@ export function createSSEConnection(
   return controller;
 }
 
-function dispatchEvent(
+function dispatchSSEEvent(
   event: string,
   data: string,
   callbacks: SSECallbacks

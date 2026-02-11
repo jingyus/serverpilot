@@ -64,7 +64,7 @@ servers.get('/', async (c) => {
   const repo = getServerRepository();
 
   const list = await repo.findAllByUserId(userId);
-  return c.json({ servers: list.map(toPublicServer) });
+  return c.json({ servers: list.map(toPublicServer), total: list.length });
 });
 
 // ============================================================================
@@ -87,8 +87,17 @@ servers.post('/', validateBody(CreateServerBodySchema), async (c) => {
     `Server created: ${server.name}`,
   );
 
-  // Return full server including agentToken (only time it's exposed)
-  return c.json({ server }, 201);
+  // Return server with install details (agentToken exposed only at creation)
+  const host = c.req.header('host') ?? 'localhost:3000';
+  const protocol = c.req.header('x-forwarded-proto') ?? 'http';
+  const wsUrl = `${protocol === 'https' ? 'wss' : 'ws'}://${host}`;
+  const installCommand = `curl -fsSL ${protocol}://${host}/install.sh | bash -s -- --token ${server.agentToken} --server ${wsUrl}`;
+
+  return c.json({
+    server: toPublicServer(server),
+    token: server.agentToken,
+    installCommand,
+  }, 201);
 });
 
 // ============================================================================

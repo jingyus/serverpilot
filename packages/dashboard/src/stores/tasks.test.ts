@@ -169,7 +169,7 @@ describe('useTasksStore', () => {
     it('creates task successfully', async () => {
       const { apiRequest } = await import('@/api/client');
       const newTask = { ...mockTasks[0], id: 'task-3', name: 'New Task' };
-      vi.mocked(apiRequest).mockResolvedValueOnce(newTask);
+      vi.mocked(apiRequest).mockResolvedValueOnce({ task: newTask });
 
       await useTasksStore.getState().createTask({
         name: 'New Task',
@@ -211,7 +211,7 @@ describe('useTasksStore', () => {
       });
       expect(useTasksStore.getState().isSubmitting).toBe(true);
 
-      resolvePromise!(mockTasks[0]);
+      resolvePromise!({ task: mockTasks[0] });
       await promise;
       expect(useTasksStore.getState().isSubmitting).toBe(false);
     });
@@ -243,7 +243,7 @@ describe('useTasksStore', () => {
       useTasksStore.setState({ tasks: [...mockTasks], total: 2 });
 
       const updated = { ...mockTasks[0], name: 'Updated Name' };
-      vi.mocked(apiRequest).mockResolvedValueOnce(updated);
+      vi.mocked(apiRequest).mockResolvedValueOnce({ task: updated });
 
       await useTasksStore.getState().updateTask('task-1', { name: 'Updated Name' });
 

@@ -7,6 +7,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Header } from './Header';
 import { useAuthStore } from '@/stores/auth';
 import { useUiStore } from '@/stores/ui';
+import { useWebSocketStore } from '@/stores/websocket';
 
 function renderHeader(route = '/dashboard') {
   return render(
@@ -26,6 +27,7 @@ describe('Header', () => {
       error: null,
     });
     useUiStore.setState({ sidebarCollapsed: false });
+    useWebSocketStore.setState({ status: 'connected' });
   });
 
   describe('page title', () => {
@@ -123,6 +125,25 @@ describe('Header', () => {
       expect(
         screen.getByRole('button', { name: 'Notifications' }),
       ).toBeInTheDocument();
+    });
+  });
+
+  describe('connection status', () => {
+    it('shows connection indicator', () => {
+      renderHeader();
+      expect(screen.getByTestId('connection-indicator')).toBeInTheDocument();
+    });
+
+    it('shows connected status', () => {
+      useWebSocketStore.setState({ status: 'connected' });
+      renderHeader();
+      expect(screen.getByText('Connected')).toBeInTheDocument();
+    });
+
+    it('shows disconnected status', () => {
+      useWebSocketStore.setState({ status: 'disconnected' });
+      renderHeader();
+      expect(screen.getByText('Disconnected')).toBeInTheDocument();
     });
   });
 });

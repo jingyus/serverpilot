@@ -4,6 +4,7 @@ import { useLocation } from 'react-router-dom';
 import { Menu, Bell } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth';
 import { useUiStore } from '@/stores/ui';
+import { ConnectionStatus } from '@/components/common/ConnectionStatus';
 
 const pageTitles: Record<string, string> = {
   '/dashboard': 'Dashboard',
@@ -45,6 +46,8 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-2 sm:gap-3">
+        <ConnectionStatus />
+
         <button
           type="button"
           aria-label="Notifications"

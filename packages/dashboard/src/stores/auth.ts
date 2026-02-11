@@ -11,7 +11,8 @@ export interface User {
 }
 
 interface AuthResponse {
-  token: string;
+  accessToken: string;
+  refreshToken: string;
   user: User;
 }
 
@@ -40,7 +41,8 @@ export const useAuthStore = create<AuthState>((set) => ({
         method: 'POST',
         body: JSON.stringify({ email, password }),
       });
-      setToken(data.token);
+      setToken(data.accessToken);
+      localStorage.setItem('refresh_token', data.refreshToken);
       localStorage.setItem('auth_user', JSON.stringify(data.user));
       set({ user: data.user, isAuthenticated: true, isLoading: false });
     } catch (err) {
@@ -60,7 +62,8 @@ export const useAuthStore = create<AuthState>((set) => ({
         method: 'POST',
         body: JSON.stringify({ email, password, name }),
       });
-      setToken(data.token);
+      setToken(data.accessToken);
+      localStorage.setItem('refresh_token', data.refreshToken);
       localStorage.setItem('auth_user', JSON.stringify(data.user));
       set({ user: data.user, isAuthenticated: true, isLoading: false });
     } catch (err) {
@@ -75,6 +78,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   logout: () => {
     clearToken();
+    localStorage.removeItem('refresh_token');
     localStorage.removeItem('auth_user');
     set({ user: null, isAuthenticated: false, error: null });
   },
@@ -93,5 +97,10 @@ export const useAuthStore = create<AuthState>((set) => ({
         localStorage.removeItem('auth_user');
       }
     }
+
+    // Listen for forced logout from token refresh failure
+    window.addEventListener('auth:logout', () => {
+      set({ user: null, isAuthenticated: false, error: 'Session expired, please log in again' });
+    });
   },
 }));
