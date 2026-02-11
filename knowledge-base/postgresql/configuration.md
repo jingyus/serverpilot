@@ -1,6 +1,10 @@
 # PostgreSQL 常用配置模板
 
-## 主配置文件 postgresql.conf
+## 配置
+
+以下为 PostgreSQL 常用配置模板和调优参数。
+
+### 主配置文件 postgresql.conf
 
 ### 连接与认证
 

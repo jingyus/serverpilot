@@ -1,6 +1,10 @@
 # Node.js 常用配置与运行优化
 
-## package.json 配置
+## 配置
+
+以下为 Node.js 项目常用配置和运行优化方案。
+
+### package.json 配置
 
 ### 基础 package.json 模板
 

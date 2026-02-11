@@ -1,6 +1,10 @@
 # MongoDB 常用配置模板
 
-## 主配置文件
+## 配置
+
+以下为 MongoDB 常用配置模板和运维方案。
+
+### 主配置文件
 
 ```yaml
 # /etc/mongod.conf

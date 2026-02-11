@@ -1,6 +1,10 @@
 # Redis 常用配置模板
 
-## 基础配置
+## 配置
+
+以下为 Redis 常用配置模板和调优参数。
+
+### 基础配置
 
 ```conf
 # /etc/redis/redis.conf

@@ -1,6 +1,10 @@
 # Docker 常用配置与 Compose 模板
 
-## Dockerfile 最佳实践
+## 配置
+
+以下为 Docker 常用配置模板和 Compose 最佳实践。
+
+### Dockerfile 最佳实践
 
 ### Node.js 应用 Dockerfile
 

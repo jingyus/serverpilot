@@ -1,6 +1,6 @@
 # Certbot 安装指南
 
-## 概述
+## 安装
 
 Certbot 是 Let's Encrypt 官方推荐的 ACME 客户端，用于自动获取和续期免费 SSL/TLS 证书。支持 Nginx、Apache 等 Web 服务器的自动配置，以及 DNS 验证方式获取通配符证书。
 

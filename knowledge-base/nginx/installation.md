@@ -1,6 +1,6 @@
 # Nginx 安装指南
 
-## 概述
+## 安装
 
 Nginx 是高性能的 HTTP 和反向代理服务器，广泛用于 Web 服务、负载均衡和反向代理。
 
@@ -30,11 +30,11 @@ sudo systemctl status nginx
 # 安装依赖
 sudo apt install -y curl gnupg2 ca-certificates lsb-release
 
-# 添加官方 APT 仓库
-echo "deb http://nginx.org/packages/ubuntu $(lsb_release -cs) nginx" | sudo tee /etc/apt/sources.list.d/nginx.list
+# 导入签名密钥（使用 signed-by 方式，apt-key 已弃用）
+curl -fsSL https://nginx.org/keys/nginx_signing.key | sudo gpg --dearmor -o /usr/share/keyrings/nginx-archive-keyring.gpg
 
-# 导入签名密钥
-curl -fsSL https://nginx.org/keys/nginx_signing.key | sudo apt-key add -
+# 添加官方 APT 仓库
+echo "deb [signed-by=/usr/share/keyrings/nginx-archive-keyring.gpg] http://nginx.org/packages/ubuntu $(lsb_release -cs) nginx" | sudo tee /etc/apt/sources.list.d/nginx.list
 
 # 更新并安装
 sudo apt update

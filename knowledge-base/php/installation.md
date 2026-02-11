@@ -1,6 +1,6 @@
 # PHP 安装指南
 
-## 概述
+## 安装
 
 PHP 是广泛使用的服务器端脚本语言，主要用于 Web 开发。生产环境推荐使用 PHP 8.1+ 版本，配合 PHP-FPM 作为 FastCGI 进程管理器，与 Nginx 或 Apache 配合使用。
 

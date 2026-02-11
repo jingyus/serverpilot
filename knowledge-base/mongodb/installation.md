@@ -1,6 +1,6 @@
 # MongoDB 安装指南
 
-## 概述
+## 安装
 
 MongoDB 是面向文档的 NoSQL 数据库，使用 JSON 风格的 BSON 文档存储数据。适用于需要灵活 Schema、高并发读写和水平扩展的场景。生产环境推荐使用 MongoDB 7.0+ 版本。
 

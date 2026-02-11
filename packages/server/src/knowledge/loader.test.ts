@@ -734,18 +734,18 @@ describe('KnowledgeBase', () => {
       'knowledge-base',
     );
 
-    it('should load all 18 knowledge base documents', () => {
+    it('should load all 33 knowledge base documents', () => {
       const kb = new KnowledgeBase({ baseDir: realKBDir });
       const count = kb.loadDocuments();
-      expect(count).toBeGreaterThanOrEqual(18);
+      expect(count).toBe(33);
     });
 
-    it('should have all 6 technology categories', () => {
+    it('should have all 11 technology categories', () => {
       const kb = new KnowledgeBase({ baseDir: realKBDir });
       kb.loadDocuments();
 
       const categories = new Set(kb.getDocuments().map((d) => d.category));
-      for (const cat of ['nginx', 'mysql', 'docker', 'nodejs', 'postgresql', 'redis']) {
+      for (const cat of ['nginx', 'mysql', 'docker', 'nodejs', 'postgresql', 'redis', 'python', 'php', 'mongodb', 'certbot', 'pm2']) {
         expect(categories.has(cat)).toBe(true);
       }
     });

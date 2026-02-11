@@ -1,6 +1,6 @@
 # Node.js 安装指南
 
-## 概述
+## 安装
 
 Node.js 是基于 Chrome V8 引擎的 JavaScript 运行时，用于构建高性能服务端应用。推荐使用 LTS（长期支持）版本用于生产环境。
 

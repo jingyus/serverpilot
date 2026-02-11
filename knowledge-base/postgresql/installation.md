@@ -1,6 +1,6 @@
 # PostgreSQL 安装指南
 
-## 概述
+## 安装
 
 PostgreSQL 是功能最强大的开源关系型数据库，支持复杂查询、事务、JSON、全文搜索等高级特性。
 
@@ -24,11 +24,11 @@ sudo -u postgres psql -c "SELECT version();"
 ### 安装指定版本（官方仓库）
 
 ```bash
-# 添加 PostgreSQL 官方仓库
-sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+# 导入签名密钥（使用 signed-by 方式，apt-key 已弃用）
+curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /usr/share/keyrings/pgdg-archive-keyring.gpg
 
-# 导入签名密钥
-wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+# 添加 PostgreSQL 官方仓库
+echo "deb [signed-by=/usr/share/keyrings/pgdg-archive-keyring.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
 
 # 更新并安装指定版本
 sudo apt update

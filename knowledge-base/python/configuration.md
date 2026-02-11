@@ -1,6 +1,10 @@
 # Python 常用配置模板
 
-## pip 配置
+## 配置
+
+以下为 Python 项目常用配置模板和部署方案。
+
+### pip 配置
 
 ```ini
 # ~/.config/pip/pip.conf (Linux/macOS)

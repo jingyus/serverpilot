@@ -1,6 +1,10 @@
 # PM2 常用配置模板
 
-## ecosystem.config.js 配置
+## 配置
+
+以下为 PM2 常用配置模板和进程管理方案。
+
+### ecosystem.config.js 配置
 
 ### 基础配置
 

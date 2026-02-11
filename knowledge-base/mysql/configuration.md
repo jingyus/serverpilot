@@ -1,6 +1,10 @@
 # MySQL 常用配置模板
 
-## 基础配置文件
+## 配置
+
+以下为 MySQL 常用配置模板和调优参数。
+
+### 基础配置文件
 
 ```ini
 # /etc/mysql/my.cnf 或 /etc/my.cnf

@@ -1,6 +1,10 @@
 # PHP 常用配置模板
 
-## php.ini 生产配置
+## 配置
+
+以下为 PHP 常用配置模板和 FPM 调优方案。
+
+### php.ini 生产配置
 
 ```ini
 ; /etc/php/8.3/fpm/php.ini - 生产环境关键配置
