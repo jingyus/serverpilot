@@ -329,7 +329,7 @@ export type ScrapeDocBody = z.infer<typeof ScrapeDocBodySchema>;
 // ============================================================================
 
 /** AI Provider type */
-const aiProvider = z.enum(['claude', 'openai', 'ollama', 'deepseek']);
+const aiProvider = z.enum(['claude', 'openai', 'ollama', 'deepseek', 'custom-openai']);
 
 /** Update AI Provider configuration */
 export const UpdateAIProviderBodySchema = z.object({

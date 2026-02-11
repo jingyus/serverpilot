@@ -3,7 +3,7 @@
 import { create } from 'zustand';
 import { apiRequest, ApiError } from '@/api/client';
 
-export type AIProvider = 'claude' | 'openai' | 'ollama' | 'deepseek';
+export type AIProvider = 'claude' | 'openai' | 'ollama' | 'deepseek' | 'custom-openai';
 
 export interface AIProviderConfig {
   provider: AIProvider;

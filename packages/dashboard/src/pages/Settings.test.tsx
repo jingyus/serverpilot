@@ -124,12 +124,12 @@ describe('Settings', () => {
     expect(modelInput.value).toBe('claude-3-opus-20240229');
   });
 
-  it('should list all 4 AI providers including DeepSeek', () => {
+  it('should list all 5 AI providers including custom-openai', () => {
     render(<Settings />);
 
     const providerSelect = screen.getByLabelText('Provider') as HTMLSelectElement;
     const options = Array.from(providerSelect.options).map((o) => o.value);
-    expect(options).toEqual(['claude', 'openai', 'deepseek', 'ollama']);
+    expect(options).toEqual(['claude', 'openai', 'deepseek', 'ollama', 'custom-openai']);
   });
 
   it('should populate user profile form with existing settings', () => {

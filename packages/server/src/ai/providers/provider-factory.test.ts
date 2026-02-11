@@ -22,6 +22,7 @@ import { ClaudeProvider } from './claude.js';
 import { OpenAIProvider } from './openai.js';
 import { OllamaProvider } from './ollama.js';
 import { DeepSeekProvider } from './deepseek.js';
+import { CustomOpenAIProvider } from './custom-openai.js';
 import type { AIProviderInterface } from './base.js';
 
 // ============================================================================
@@ -103,6 +104,18 @@ describe('createProvider', () => {
     });
     expect(provider).toBeInstanceOf(DeepSeekProvider);
     expect(provider.name).toBe('deepseek');
+    expect(provider.tier).toBe(2);
+  });
+
+  it('should create a Custom OpenAI provider', () => {
+    const provider = createProvider({
+      provider: 'custom-openai',
+      apiKey: 'sk-custom-test',
+      baseUrl: 'https://oneapi.example.com/v1',
+      model: 'gpt-4o',
+    });
+    expect(provider).toBeInstanceOf(CustomOpenAIProvider);
+    expect(provider.name).toBe('custom-openai');
     expect(provider.tier).toBe(2);
   });
 
@@ -285,6 +298,41 @@ describe('resolveProviderFromEnv', () => {
     const config = resolveProviderFromEnv();
     expect(config!.baseUrl).toBe('http://192.168.1.100:11434');
   });
+
+  it('should resolve custom-openai from env', () => {
+    restore = setEnv({
+      AI_PROVIDER: 'custom-openai',
+      CUSTOM_OPENAI_API_KEY: 'sk-custom',
+      CUSTOM_OPENAI_BASE_URL: 'https://oneapi.example.com/v1',
+      AI_MODEL: 'gpt-4o',
+    });
+    const config = resolveProviderFromEnv();
+    expect(config).not.toBeNull();
+    expect(config!.provider).toBe('custom-openai');
+    expect(config!.apiKey).toBe('sk-custom');
+    expect(config!.baseUrl).toBe('https://oneapi.example.com/v1');
+    expect(config!.model).toBe('gpt-4o');
+  });
+
+  it('should return null when custom-openai API key is missing', () => {
+    restore = setEnv({
+      AI_PROVIDER: 'custom-openai',
+      CUSTOM_OPENAI_API_KEY: undefined,
+      CUSTOM_OPENAI_BASE_URL: 'https://oneapi.example.com/v1',
+    });
+    const config = resolveProviderFromEnv();
+    expect(config).toBeNull();
+  });
+
+  it('should return null when custom-openai base URL is missing', () => {
+    restore = setEnv({
+      AI_PROVIDER: 'custom-openai',
+      CUSTOM_OPENAI_API_KEY: 'sk-custom',
+      CUSTOM_OPENAI_BASE_URL: undefined,
+    });
+    const config = resolveProviderFromEnv();
+    expect(config).toBeNull();
+  });
 });
 
 // ============================================================================
@@ -463,6 +511,20 @@ describe('provider switching', () => {
     setActiveProvider({ provider: 'claude', apiKey: 'sk-claude-test' });
     expect(getActiveProvider()!.name).toBe('claude');
     expect(getActiveProvider()!.tier).toBe(1);
+  });
+
+  it('should switch to custom-openai provider', () => {
+    setActiveProvider({ provider: 'ollama' });
+    expect(getActiveProvider()!.name).toBe('ollama');
+
+    setActiveProvider({
+      provider: 'custom-openai',
+      apiKey: 'sk-custom',
+      baseUrl: 'https://oneapi.example.com/v1',
+      model: 'gpt-4o',
+    });
+    expect(getActiveProvider()!.name).toBe('custom-openai');
+    expect(getActiveProvider()!.tier).toBe(2);
   });
 
   it('should reject invalid config during switch', () => {

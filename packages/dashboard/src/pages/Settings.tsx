@@ -29,12 +29,13 @@ const AI_PROVIDERS: { value: AIProvider; label: string; description: string }[] 
   { value: 'openai', label: 'OpenAI (GPT)', description: 'Versatile and widely supported' },
   { value: 'deepseek', label: 'DeepSeek', description: 'Cost-effective with strong coding ability' },
   { value: 'ollama', label: 'Ollama (Local)', description: 'Run models locally for privacy' },
+  { value: 'custom-openai', label: 'Custom OpenAI Compatible', description: 'OneAPI / LiteLLM / Azure' },
 ];
 
 /** Providers that require an API key */
-const PROVIDERS_REQUIRING_KEY: AIProvider[] = ['claude', 'openai', 'deepseek'];
+const PROVIDERS_REQUIRING_KEY: AIProvider[] = ['claude', 'openai', 'deepseek', 'custom-openai'];
 /** Providers that support a custom base URL */
-const PROVIDERS_WITH_BASE_URL: AIProvider[] = ['openai', 'deepseek', 'ollama'];
+const PROVIDERS_WITH_BASE_URL: AIProvider[] = ['openai', 'deepseek', 'ollama', 'custom-openai'];
 
 function getModelPlaceholder(provider: AIProvider): string {
   switch (provider) {
@@ -42,6 +43,7 @@ function getModelPlaceholder(provider: AIProvider): string {
     case 'openai': return 'gpt-4';
     case 'deepseek': return 'deepseek-chat';
     case 'ollama': return 'llama3';
+    case 'custom-openai': return 'gpt-4o / deepseek-chat / ...';
   }
 }
 
@@ -50,6 +52,7 @@ function getBaseUrlPlaceholder(provider: AIProvider): string {
     case 'ollama': return 'http://localhost:11434';
     case 'deepseek': return 'https://api.deepseek.com';
     case 'openai': return 'https://api.openai.com/v1';
+    case 'custom-openai': return 'https://your-api.example.com/v1';
     default: return '';
   }
 }
@@ -138,6 +141,17 @@ export function Settings() {
     if (PROVIDERS_REQUIRING_KEY.includes(aiProvider) && !apiKey.trim()) {
       useSettingsStore.setState({ error: `API key is required for ${aiProvider}` });
       return;
+    }
+    // custom-openai requires Base URL and Model
+    if (aiProvider === 'custom-openai') {
+      if (!baseUrl.trim()) {
+        useSettingsStore.setState({ error: 'Base URL is required for Custom OpenAI Compatible provider' });
+        return;
+      }
+      if (!model.trim()) {
+        useSettingsStore.setState({ error: 'Model name is required for Custom OpenAI Compatible provider' });
+        return;
+      }
     }
     try {
       await updateAIProvider({
@@ -314,7 +328,9 @@ export function Settings() {
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="model">Model (optional)</Label>
+            <Label htmlFor="model">
+              Model{aiProvider === 'custom-openai' ? '' : ' (optional)'}
+            </Label>
             <Input
               id="model"
               value={model}
@@ -326,7 +342,7 @@ export function Settings() {
           {PROVIDERS_WITH_BASE_URL.includes(aiProvider) && (
             <div className="space-y-2">
               <Label htmlFor="base-url">
-                Base URL{aiProvider === 'ollama' ? '' : ' (optional)'}
+                Base URL{(aiProvider === 'ollama' || aiProvider === 'custom-openai') ? '' : ' (optional)'}
               </Label>
               <Input
                 id="base-url"

@@ -20,6 +20,8 @@ import { OllamaProvider } from './ollama.js';
 import type { OllamaConfig } from './ollama.js';
 import { DeepSeekProvider } from './deepseek.js';
 import type { DeepSeekConfig } from './deepseek.js';
+import { CustomOpenAIProvider } from './custom-openai.js';
+import type { CustomOpenAIConfig } from './custom-openai.js';
 import { logger } from '../../utils/logger.js';
 
 // ============================================================================
@@ -27,7 +29,7 @@ import { logger } from '../../utils/logger.js';
 // ============================================================================
 
 /** Supported provider names */
-export type AIProviderType = 'claude' | 'openai' | 'ollama' | 'deepseek';
+export type AIProviderType = 'claude' | 'openai' | 'ollama' | 'deepseek' | 'custom-openai';
 
 /** Provider-specific configuration options */
 export interface ProviderFactoryConfig {
@@ -100,6 +102,16 @@ export function createProvider(config: ProviderFactoryConfig): AIProviderInterfa
         timeoutMs: config.timeoutMs,
       };
       return new DeepSeekProvider(deepseekConfig);
+    }
+
+    case 'custom-openai': {
+      const customConfig: CustomOpenAIConfig = {
+        baseUrl: config.baseUrl ?? '',
+        apiKey: config.apiKey ?? '',
+        model: config.model ?? '',
+        timeoutMs: config.timeoutMs,
+      };
+      return new CustomOpenAIProvider(customConfig);
     }
 
     default:
@@ -178,6 +190,13 @@ function resolveProviderConfig(provider: AIProviderType): ProviderFactoryConfig 
         timeoutMs,
       };
 
+    case 'custom-openai': {
+      const apiKey = process.env.CUSTOM_OPENAI_API_KEY;
+      const baseUrl = process.env.CUSTOM_OPENAI_BASE_URL;
+      if (!apiKey || !baseUrl) return null;
+      return { provider, apiKey, model, baseUrl, timeoutMs };
+    }
+
     default:
       return null;
   }
@@ -212,7 +231,7 @@ export async function checkProviderHealth(
 }
 
 function isValidProviderType(value: string): value is AIProviderType {
-  return ['claude', 'openai', 'ollama', 'deepseek'].includes(value);
+  return ['claude', 'openai', 'ollama', 'deepseek', 'custom-openai'].includes(value);
 }
 
 // ============================================================================

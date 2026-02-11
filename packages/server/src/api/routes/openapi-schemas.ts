@@ -439,7 +439,7 @@ export const DocSourceStatusResponseSchema = z.object({
 
 export const SettingsResponseSchema = z.object({
   aiProvider: z.object({
-    provider: z.enum(['claude', 'openai', 'ollama']).openapi({ example: 'claude' }),
+    provider: z.enum(['claude', 'openai', 'ollama', 'deepseek', 'custom-openai']).openapi({ example: 'claude' }),
     model: z.string().openapi({ example: 'claude-sonnet-4-5-20250929' }),
     baseUrl: z.string().nullable().openapi({ example: null }),
   }),
