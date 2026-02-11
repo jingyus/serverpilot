@@ -42,6 +42,7 @@ INTERVAL=30            # 循环间隔（秒）
 MAX_ITERATIONS=1000    # 最大迭代次数
 ANALYZE_TIMEOUT=3600   # 分析阶段超时（60分钟）
 EXECUTE_TIMEOUT=3600   # 执行阶段超时（60分钟）
+NO_OUTPUT_TIMEOUT=3600 # 无输出超时（秒）— claude -p 是最终一次性输出，需要与执行超时一致
 MAX_RETRIES=3          # 单任务单轮最大重试次数
 MAX_TASK_FAILURES=3    # 同一任务跨轮次最大失败次数（超过后自动跳过）
 BATCH_SIZE=5           # 每次生成任务数量
@@ -626,7 +627,7 @@ run_claude_analyze() {
     local check_interval=10
     local last_size=0
     local no_progress_count=0
-    local max_no_progress=180  # 30分钟无输出视为卡死 (180 * 10秒)
+    local max_no_progress=$((NO_OUTPUT_TIMEOUT / check_interval))  # 无输出超时
 
     while kill -0 $claude_pid 2>/dev/null; do
         sleep $check_interval
@@ -638,7 +639,7 @@ run_claude_analyze() {
             if [ "$current_size" -eq "$last_size" ]; then
                 no_progress_count=$((no_progress_count + 1))
                 if [ $no_progress_count -ge $max_no_progress ]; then
-                    log_error "进程无响应超过30分钟，可能已卡死，强制终止..."
+                    log_error "进程无输出超过 $((NO_OUTPUT_TIMEOUT / 60)) 分钟，强制终止..."
                     pkill -TERM -P $claude_pid 2>/dev/null || true
                     sleep 2
                     pkill -KILL -P $claude_pid 2>/dev/null || true
@@ -735,7 +736,7 @@ run_claude_execute() {
     local check_interval=10
     local last_size=0
     local no_progress_count=0
-    local max_no_progress=180  # 30分钟无输出视为卡死 (180 * 10秒)
+    local max_no_progress=$((NO_OUTPUT_TIMEOUT / check_interval))  # 无输出超时
 
     while kill -0 $claude_pid 2>/dev/null; do
         sleep $check_interval
@@ -747,7 +748,7 @@ run_claude_execute() {
             if [ "$current_size" -eq "$last_size" ]; then
                 no_progress_count=$((no_progress_count + 1))
                 if [ $no_progress_count -ge $max_no_progress ]; then
-                    log_error "进程无响应超过30分钟，可能已卡死，强制终止..."
+                    log_error "进程无输出超过 $((NO_OUTPUT_TIMEOUT / 60)) 分钟，强制终止..."
                     pkill -TERM -P $claude_pid 2>/dev/null || true
                     sleep 2
                     pkill -KILL -P $claude_pid 2>/dev/null || true
@@ -1042,7 +1043,7 @@ show_progress() {
     echo -e "  当前时间: ${BLUE}$current_time${NC}"
     echo -e "  当前轮次: ${PURPLE}$iteration${NC}"
     echo -e "  状态: $status"
-    echo -e "  超时设置: 分析 $((ANALYZE_TIMEOUT/60))分钟 / 执行 $((EXECUTE_TIMEOUT/60))分钟"
+    echo -e "  超时设置: 分析 $((ANALYZE_TIMEOUT/60))分钟 / 执行 $((EXECUTE_TIMEOUT/60))分钟 / 无输出 $((NO_OUTPUT_TIMEOUT/60))分钟"
     echo -e "  日志文件: $LOG_FILE"
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""

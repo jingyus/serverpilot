@@ -146,8 +146,8 @@ jobs:
       - name: Run tests with coverage
         run: pnpm test:coverage
 
-      - name: Run Dashboard tests
-        run: pnpm --filter @aiinstaller/dashboard test
+      - name: Run Dashboard tests with coverage
+        run: pnpm --filter @aiinstaller/dashboard test -- --coverage
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4

@@ -159,7 +159,7 @@ app.get('/aggregated', requirePermission('metrics:read'), async (c) => {
  * - 24h: 10 minute buckets (144 points)
  * - 7d: 1 hour buckets (168 points)
  */
-function getBucketSize(range: MetricsRange): number {
+export function getBucketSize(range: MetricsRange): number {
   switch (range) {
     case '1h':
       return 60 * 1000; // 1 minute
@@ -175,7 +175,7 @@ function getBucketSize(range: MetricsRange): number {
  *
  * Calculates average, min, and max for each metric per bucket.
  */
-function aggregateMetrics(
+export function aggregateMetrics(
   metrics: Array<{
     id: string;
     serverId: string;
@@ -234,7 +234,7 @@ function aggregateMetrics(
 /**
  * Calculate average, min, and max for an array of numbers.
  */
-function calculateStats(values: number[]): { avg: number; min: number; max: number } {
+export function calculateStats(values: number[]): { avg: number; min: number; max: number } {
   if (values.length === 0) {
     return { avg: 0, min: 0, max: 0 };
   }
