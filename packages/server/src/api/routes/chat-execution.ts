@@ -198,6 +198,29 @@ export function _resetActiveExecutions(): void {
   activePlanExecutions.clear();
 }
 
+/** @internal Test helper — inject a pending step decision directly. */
+export function _setPendingDecision(
+  planId: string,
+  stepId: string,
+  resolve: (decision: 'allow' | 'allow_all' | 'reject') => void,
+  timer: ReturnType<typeof setTimeout>,
+): void {
+  pendingDecisions.set(`${planId}:${stepId}`, { resolve, timer });
+}
+
+/** @internal Test helper — clear all pending decisions. */
+export function _resetPendingDecisions(): void {
+  for (const pending of pendingDecisions.values()) {
+    clearTimeout(pending.timer);
+  }
+  pendingDecisions.clear();
+}
+
+/** @internal Test helper — check if a decision is pending. */
+export function _hasPendingDecision(planId: string, stepId: string): boolean {
+  return pendingDecisions.has(`${planId}:${stepId}`);
+}
+
 // ============================================================================
 // Plan Building
 // ============================================================================

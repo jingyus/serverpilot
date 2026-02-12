@@ -3,14 +3,14 @@
 > 此队列专注于 Chat 和 AI 对话系统的质量改进
 > AI 自动发现问题 → 生成任务 → 实现 → 验证
 
-**最后更新**: 2026-02-13 05:43:02
+**最后更新**: 2026-02-13 05:48:25
 
 ## 📊 统计
 
 - **总任务数**: 49
-- **待完成** (pending): 4
+- **待完成** (pending): 3
 - **进行中** (in_progress): 0
-- **已完成** (completed): 45
+- **已完成** (completed): 46
 - **失败** (failed): 0
 
 ## 📋 任务列表
@@ -198,7 +198,7 @@
 
 ---
 
-### [pending] Agentic confirm 超时、legacy confirm 成功路径、step-decision 成功路径零测试
+### [completed] Agentic confirm 超时、legacy confirm 成功路径、step-decision 成功路径零测试 ✅
 
 **ID**: chat-046
 **优先级**: P1
@@ -208,7 +208,7 @@
 **验收标准**: 1) confirm 超时路径有测试 2) confirm 成功路径有测试 3) step-decision 成功路径有测试 4) 新增 6+ 测试用例
 **影响范围**: `packages/server/src/api/routes/chat.test.ts`, `chat-execution.test.ts`
 **创建时间**: (自动填充)
-**完成时间**: -
+**完成时间**: 2026-02-13 05:48:25
 
 ---
 

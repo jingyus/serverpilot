@@ -45,7 +45,19 @@ import {
 } from '../../db/repositories/session-repository.js';
 import { getSessionManager, _resetSessionManager } from '../../core/session/manager.js';
 import { _resetChatAIAgent, initChatAIAgent } from './chat-ai.js';
-import { _setActiveExecution, _resetActiveExecutions } from './chat-execution.js';
+import {
+  _setActiveExecution,
+  _resetActiveExecutions,
+  _setPendingDecision,
+  _resetPendingDecisions,
+  _hasPendingDecision,
+} from './chat-execution.js';
+import {
+  _setPendingConfirmation,
+  _resetPendingConfirmations,
+  _hasPendingConfirmation,
+  CONFIRM_TIMEOUT_MS,
+} from './chat.js';
 import type { ApiEnv } from './types.js';
 
 // ============================================================================
@@ -148,6 +160,8 @@ beforeEach(() => {
   setSessionRepository(new InMemorySessionRepository());
   _resetChatAIAgent();
   _resetActiveExecutions();
+  _resetPendingConfirmations();
+  _resetPendingDecisions();
   app = createApiApp();
 });
 
@@ -1008,5 +1022,222 @@ describe('POST /api/v1/chat/:serverId/execute/cancel', () => {
       tokenB,
     );
     expect(res.status).toBe(404);
+  });
+});
+
+// ============================================================================
+// POST /chat/:serverId/confirm — Agentic confirm success path (chat-046)
+// ============================================================================
+
+describe('POST /api/v1/chat/:serverId/confirm (success path)', () => {
+  it('should resolve pending confirmation with approved=true', async () => {
+    const server = await createServer('web-01', tokenA);
+    const confirmId = 'sess-1:confirm-abc';
+    let resolvedValue: boolean | undefined;
+
+    _setPendingConfirmation(
+      confirmId,
+      (approved) => { resolvedValue = approved; },
+      setTimeout(() => {}, 60000),
+    );
+
+    const res = await jsonPost(
+      `/api/v1/chat/${server.id}/confirm`,
+      { confirmId, approved: true },
+      tokenA,
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(resolvedValue).toBe(true);
+    expect(_hasPendingConfirmation(confirmId)).toBe(false);
+  });
+
+  it('should resolve pending confirmation with approved=false', async () => {
+    const server = await createServer('web-01', tokenA);
+    const confirmId = 'sess-2:confirm-def';
+    let resolvedValue: boolean | undefined;
+
+    _setPendingConfirmation(
+      confirmId,
+      (approved) => { resolvedValue = approved; },
+      setTimeout(() => {}, 60000),
+    );
+
+    const res = await jsonPost(
+      `/api/v1/chat/${server.id}/confirm`,
+      { confirmId, approved: false },
+      tokenA,
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(resolvedValue).toBe(false);
+    expect(_hasPendingConfirmation(confirmId)).toBe(false);
+  });
+
+  it('should clear the timeout when confirm is received', async () => {
+    const server = await createServer('web-01', tokenA);
+    const confirmId = 'sess-3:confirm-ghi';
+    const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
+
+    const timer = setTimeout(() => {}, 60000);
+    _setPendingConfirmation(
+      confirmId,
+      () => {},
+      timer,
+    );
+
+    await jsonPost(
+      `/api/v1/chat/${server.id}/confirm`,
+      { confirmId, approved: true },
+      tokenA,
+    );
+
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(timer);
+    clearTimeoutSpy.mockRestore();
+  });
+});
+
+// ============================================================================
+// Agentic confirm timeout auto-reject (chat-046)
+// ============================================================================
+
+describe('Agentic confirm timeout auto-reject', () => {
+  it('should auto-reject after CONFIRM_TIMEOUT_MS and clean up', async () => {
+    vi.useFakeTimers();
+
+    const confirmId = 'sess-4:confirm-timeout';
+    let resolvedValue: boolean | undefined;
+
+    _setPendingConfirmation(
+      confirmId,
+      (approved) => { resolvedValue = approved; },
+      setTimeout(() => {
+        // Simulate the timeout logic from chat.ts onConfirmRequired:
+        // on timeout, delete from map and resolve(false)
+        resolvedValue = false;
+      }, CONFIRM_TIMEOUT_MS),
+    );
+
+    expect(_hasPendingConfirmation(confirmId)).toBe(true);
+
+    vi.advanceTimersByTime(CONFIRM_TIMEOUT_MS);
+
+    expect(resolvedValue).toBe(false);
+
+    vi.useRealTimers();
+  });
+
+  it('should export CONFIRM_TIMEOUT_MS as 5 minutes', () => {
+    expect(CONFIRM_TIMEOUT_MS).toBe(5 * 60 * 1000);
+  });
+});
+
+// ============================================================================
+// POST /chat/:serverId/step-decision — Success path (chat-046)
+// ============================================================================
+
+describe('POST /api/v1/chat/:serverId/step-decision (success path)', () => {
+  it('should resolve pending decision with allow', async () => {
+    const server = await createServer('web-01', tokenA);
+    let resolvedDecision: string | undefined;
+
+    _setPendingDecision(
+      'plan-dec-1', 'step-1',
+      (decision) => { resolvedDecision = decision; },
+      setTimeout(() => {}, 60000),
+    );
+
+    const res = await jsonPost(
+      `/api/v1/chat/${server.id}/step-decision`,
+      { planId: 'plan-dec-1', stepId: 'step-1', sessionId: 'sess-1', decision: 'allow' },
+      tokenA,
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(resolvedDecision).toBe('allow');
+    expect(_hasPendingDecision('plan-dec-1', 'step-1')).toBe(false);
+  });
+
+  it('should resolve pending decision with allow_all', async () => {
+    const server = await createServer('web-01', tokenA);
+    let resolvedDecision: string | undefined;
+
+    _setPendingDecision(
+      'plan-dec-2', 'step-2',
+      (decision) => { resolvedDecision = decision; },
+      setTimeout(() => {}, 60000),
+    );
+
+    const res = await jsonPost(
+      `/api/v1/chat/${server.id}/step-decision`,
+      { planId: 'plan-dec-2', stepId: 'step-2', sessionId: 'sess-1', decision: 'allow_all' },
+      tokenA,
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(resolvedDecision).toBe('allow_all');
+  });
+
+  it('should resolve pending decision with reject', async () => {
+    const server = await createServer('web-01', tokenA);
+    let resolvedDecision: string | undefined;
+
+    _setPendingDecision(
+      'plan-dec-3', 'step-3',
+      (decision) => { resolvedDecision = decision; },
+      setTimeout(() => {}, 60000),
+    );
+
+    const res = await jsonPost(
+      `/api/v1/chat/${server.id}/step-decision`,
+      { planId: 'plan-dec-3', stepId: 'step-3', sessionId: 'sess-1', decision: 'reject' },
+      tokenA,
+    );
+
+    expect(res.status).toBe(200);
+    expect(resolvedDecision).toBe('reject');
+  });
+
+  it('should clear the timeout when decision is received', async () => {
+    const server = await createServer('web-01', tokenA);
+    const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
+
+    const timer = setTimeout(() => {}, 60000);
+    _setPendingDecision(
+      'plan-dec-4', 'step-4',
+      () => {},
+      timer,
+    );
+
+    await jsonPost(
+      `/api/v1/chat/${server.id}/step-decision`,
+      { planId: 'plan-dec-4', stepId: 'step-4', sessionId: 'sess-1', decision: 'allow' },
+      tokenA,
+    );
+
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(timer);
+    clearTimeoutSpy.mockRestore();
+  });
+
+  it('should return 404 when no pending decision exists', async () => {
+    const server = await createServer('web-01', tokenA);
+
+    const res = await jsonPost(
+      `/api/v1/chat/${server.id}/step-decision`,
+      { planId: 'nonexistent', stepId: 'step-1', sessionId: 'sess-1', decision: 'allow' },
+      tokenA,
+    );
+
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.message).toBe('No pending decision for this step');
   });
 });

@@ -510,3 +510,28 @@ chat.delete('/:serverId/sessions/:sessionId', requirePermission('chat:use'), asy
 });
 
 export { chat };
+
+/** @internal Test helper — inject a pending confirmation directly. */
+export function _setPendingConfirmation(
+  confirmId: string,
+  resolve: (approved: boolean) => void,
+  timer: ReturnType<typeof setTimeout>,
+): void {
+  pendingConfirmations.set(confirmId, { resolve, timer });
+}
+
+/** @internal Test helper — clear all pending confirmations. */
+export function _resetPendingConfirmations(): void {
+  for (const pending of pendingConfirmations.values()) {
+    clearTimeout(pending.timer);
+  }
+  pendingConfirmations.clear();
+}
+
+/** @internal Test helper — check if a confirmation is pending. */
+export function _hasPendingConfirmation(confirmId: string): boolean {
+  return pendingConfirmations.has(confirmId);
+}
+
+/** @internal Exported for testing. */
+export { CONFIRM_TIMEOUT_MS };

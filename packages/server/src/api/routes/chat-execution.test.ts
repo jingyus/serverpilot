@@ -69,6 +69,9 @@ import {
   removeActiveExecution,
   _setActiveExecution,
   _resetActiveExecutions,
+  _setPendingDecision,
+  _resetPendingDecisions,
+  _hasPendingDecision,
   executePlanSteps,
   STEP_DECISION_TIMEOUT_MS,
   resolveStepDecision,
@@ -79,6 +82,7 @@ import { validateCommand } from '../../core/security/command-validator.js';
 
 beforeEach(() => {
   _resetActiveExecutions();
+  _resetPendingDecisions();
   vi.clearAllMocks();
 });
 
@@ -498,5 +502,72 @@ describe('step_confirm timeout sends SSE event (chat-039)', () => {
 
     const timeoutEvent = sseEvents.find((e) => e.event === 'step_decision_timeout');
     expect(timeoutEvent).toBeUndefined();
+  });
+});
+
+// ============================================================================
+// resolveStepDecision — success path (chat-046)
+// ============================================================================
+
+describe('resolveStepDecision success path', () => {
+  it('should resolve pending decision and return true', () => {
+    let resolvedDecision: string | undefined;
+
+    _setPendingDecision(
+      'plan-x', 'step-1',
+      (decision) => { resolvedDecision = decision; },
+      setTimeout(() => {}, 60000),
+    );
+
+    const found = resolveStepDecision('plan-x', 'step-1', 'allow');
+    expect(found).toBe(true);
+    expect(resolvedDecision).toBe('allow');
+    expect(_hasPendingDecision('plan-x', 'step-1')).toBe(false);
+  });
+
+  it('should clear the timeout when resolving', () => {
+    const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
+    const timer = setTimeout(() => {}, 60000);
+
+    _setPendingDecision(
+      'plan-y', 'step-2',
+      () => {},
+      timer,
+    );
+
+    resolveStepDecision('plan-y', 'step-2', 'allow_all');
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(timer);
+    clearTimeoutSpy.mockRestore();
+  });
+
+  it('should return false when no pending decision exists', () => {
+    const found = resolveStepDecision('no-plan', 'no-step', 'reject');
+    expect(found).toBe(false);
+  });
+
+  it('should handle allow_all decision correctly', () => {
+    let resolvedDecision: string | undefined;
+
+    _setPendingDecision(
+      'plan-z', 'step-3',
+      (decision) => { resolvedDecision = decision; },
+      setTimeout(() => {}, 60000),
+    );
+
+    resolveStepDecision('plan-z', 'step-3', 'allow_all');
+    expect(resolvedDecision).toBe('allow_all');
+  });
+
+  it('should handle reject decision correctly', () => {
+    let resolvedDecision: string | undefined;
+
+    _setPendingDecision(
+      'plan-w', 'step-4',
+      (decision) => { resolvedDecision = decision; },
+      setTimeout(() => {}, 60000),
+    );
+
+    resolveStepDecision('plan-w', 'step-4', 'reject');
+    expect(resolvedDecision).toBe('reject');
   });
 });

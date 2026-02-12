@@ -1,12 +1,12 @@
-### [pending] ChatAIAgent.chat() 重试逻辑和 chatWithFallback() 零测试覆盖
+### [pending] Agentic confirm 超时、legacy confirm 成功路径、step-decision 成功路径零测试
 
-**ID**: chat-045
+**ID**: chat-046
 **优先级**: P1
-**模块路径**: packages/server/src/api/routes/chat-ai.ts
-**发现的问题**: `ChatAIAgent.chat()` 的重试循环（第 219-276 行）包含错误分类、退避延迟、`notifyRetry` 回调、`ChatRetryExhaustedError`，但**无任何测试**。`chatWithFallback()`（第 282-323 行）包含 fallback provider 解析、provider 切换、fallback 失败处理，也**无任何测试**。`resolveFallbackProvider()`（第 440-454 行）和 `resolveFallbackConfig()`（第 457-481 行）同样无测试。这是 AI 调用链的核心可靠性机制。
-**改进方案**: 新增 `chat-ai.test.ts` 测试文件，覆盖：1) chat() 正常响应 2) chat() 重试（transient error → success） 3) chat() 重试耗尽 → ChatRetryExhaustedError 4) chatWithFallback() 成功切换 5) chatWithFallback() 无可用 fallback 6) extractPlan() 正规化 7) resolveFallbackProvider() 遍历优先级。
-**验收标准**: 1) 新增 15+ 测试用例 2) chat-ai.ts 核心路径覆盖率 > 80% 3) 所有 retry/fallback 场景有测试 4) Mock AI provider 不实际调用 API
-**影响范围**: 新文件 `packages/server/src/api/routes/chat-ai.test.ts`
+**模块路径**: packages/server/src/api/routes/chat.ts, chat-execution.ts
+**发现的问题**: 三个关键用户交互流程缺少测试：1) `chat.ts` 第 141-144 行 — agentic confirm 的 5 分钟超时 auto-reject（`setTimeout` → `resolve(false)`），仅测了 404 路径 2) `chat.ts` POST confirm 路由第 336-351 行的成功路径（找到 pending → clearTimeout → resolve → delete）从未被测试 3) `chat-execution.ts` POST step-decision 第 140-152 行 `resolveStepDecision()` 成功路径未被测试。
+**改进方案**: 在 `chat.test.ts` 中补充：1) 设置 pending confirmation → 等待超时 → 验证 resolve(false) 2) 设置 pending confirmation → POST confirm → 验证 resolve(true) + 清理 3) 在 `chat-execution.test.ts` 中补充 waitForStepDecision + resolveStepDecision 集成测试。
+**验收标准**: 1) confirm 超时路径有测试 2) confirm 成功路径有测试 3) step-decision 成功路径有测试 4) 新增 6+ 测试用例
+**影响范围**: `packages/server/src/api/routes/chat.test.ts`, `chat-execution.test.ts`
 **创建时间**: (自动填充)
 **完成时间**: -
 
