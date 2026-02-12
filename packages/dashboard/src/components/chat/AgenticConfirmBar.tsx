@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
 import { useEffect, useState } from 'react';
+import { AlertTriangle, Check, X } from 'lucide-react';
+
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+import { RISK_CONFIG } from '@/types/chat';
 import type { AgenticConfirm } from '@/stores/chat';
 
 interface AgenticConfirmBarProps {
@@ -9,24 +14,11 @@ interface AgenticConfirmBarProps {
   onReject: () => void;
 }
 
-const RISK_COLORS: Record<string, string> = {
-  yellow: 'bg-yellow-100 border-yellow-400 text-yellow-800',
-  red: 'bg-orange-100 border-orange-400 text-orange-800',
-  critical: 'bg-red-100 border-red-400 text-red-800',
-};
-
-const RISK_LABELS: Record<string, string> = {
-  yellow: 'YELLOW',
-  red: 'RED',
-  critical: 'CRITICAL',
-};
-
 /** Timeout (ms) to wait for confirmId before showing an error */
 const CONFIRM_ID_TIMEOUT_MS = 5000;
 
 export function AgenticConfirmBar({ confirm, onApprove, onReject }: AgenticConfirmBarProps) {
-  const colorClass = RISK_COLORS[confirm.riskLevel] ?? RISK_COLORS.yellow;
-  const label = RISK_LABELS[confirm.riskLevel] ?? confirm.riskLevel.toUpperCase();
+  const risk = RISK_CONFIG[confirm.riskLevel as keyof typeof RISK_CONFIG] ?? RISK_CONFIG.yellow;
   const ready = !!confirm.confirmId;
 
   const [timedOut, setTimedOut] = useState(false);
@@ -42,43 +34,63 @@ export function AgenticConfirmBar({ confirm, onApprove, onReject }: AgenticConfi
   }, [ready]);
 
   return (
-    <div className={`border rounded-lg p-4 mx-4 mb-4 ${colorClass}`}>
-      <div className="flex items-center gap-2 mb-2">
-        <span className="text-lg">&#9888;</span>
-        <span className="font-semibold">
-          {confirm.description}
-        </span>
-        <span className="text-xs font-mono px-2 py-0.5 rounded bg-white/50">
-          {label}
-        </span>
-      </div>
-      <div className="font-mono text-sm bg-white/30 rounded px-3 py-1.5 mb-3">
-        $ {confirm.command}
-      </div>
-      {timedOut && (
-        <div className="text-sm mb-2 text-red-700" data-testid="confirm-timeout-error">
-          Unable to receive confirmation ID from server. Please try again.
-        </div>
+    <div
+      className={cn(
+        'mx-2 rounded-lg border-2 p-3 sm:mx-4 sm:p-4',
+        risk.borderColor,
+        risk.bgColor,
       )}
-      <div className="flex gap-3">
-        <button
-          onClick={onApprove}
-          disabled={!ready}
-          aria-disabled={!ready}
-          className={`px-4 py-1.5 text-white rounded text-sm font-medium ${
-            ready
-              ? 'bg-green-600 hover:bg-green-700'
-              : 'bg-green-400 cursor-not-allowed'
-          }`}
-        >
-          {ready ? 'Allow' : 'Waiting...'}
-        </button>
-        <button
-          onClick={onReject}
-          className="px-4 py-1.5 bg-gray-500 text-white rounded hover:bg-gray-600 text-sm font-medium"
-        >
-          Reject
-        </button>
+      data-testid="agentic-confirm-bar"
+    >
+      <div className="flex items-start gap-2 sm:gap-3">
+        <AlertTriangle className={cn('mt-0.5 h-5 w-5 shrink-0', risk.color)} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className={cn('text-sm font-semibold', risk.color)}>
+              {risk.label}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {confirm.description}
+            </span>
+          </div>
+
+          <div className="mt-1.5 rounded bg-gray-900 px-2.5 py-1.5 sm:px-3 sm:py-2">
+            <code className="font-mono text-xs text-green-400 sm:text-sm">
+              $ {confirm.command}
+            </code>
+          </div>
+
+          {timedOut && (
+            <div className="mt-2 text-sm text-red-700" data-testid="agentic-confirm-timeout-error">
+              Unable to receive confirmation ID from server. Please try again.
+            </div>
+          )}
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="default"
+              onClick={onApprove}
+              disabled={!ready}
+              data-testid="agentic-allow-btn"
+              className="gap-1.5"
+            >
+              <Check className="h-3.5 w-3.5" />
+              {ready ? 'Allow' : 'Waiting...'}
+            </Button>
+
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={onReject}
+              data-testid="agentic-reject-btn"
+              className="gap-1.5 text-destructive hover:text-destructive"
+            >
+              <X className="h-3.5 w-3.5" />
+              Reject
+            </Button>
+          </div>
+        </div>
       </div>
     </div>
   );

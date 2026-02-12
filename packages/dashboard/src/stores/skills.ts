@@ -40,10 +40,14 @@ interface SkillsState {
   clearError: () => void;
 }
 
+let streamHandle: { abort: () => void } | null = null;
+
 export const useSkillsStore = create<SkillsState>((set, get) => ({
   skills: [],
   available: [],
   executions: [],
+  executionEvents: [],
+  isStreaming: false,
   isLoading: false,
   error: null,
 
@@ -159,6 +163,50 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
       const message = err instanceof ApiError ? err.message : 'Failed to load executions';
       set({ error: message, isLoading: false });
     }
+  },
+
+  startExecutionStream: (executionId: string) => {
+    // Stop any existing stream
+    get().stopExecutionStream();
+
+    set({ executionEvents: [], isStreaming: true });
+
+    streamHandle = createSkillExecutionSSE(executionId, {
+      onStep: (data) => {
+        try {
+          const event = JSON.parse(data) as SkillExecutionEvent;
+          set({ executionEvents: [...get().executionEvents, event] });
+        } catch { /* ignore parse errors */ }
+      },
+      onLog: (data) => {
+        try {
+          const event = JSON.parse(data) as SkillExecutionEvent;
+          set({ executionEvents: [...get().executionEvents, event] });
+        } catch { /* ignore parse errors */ }
+      },
+      onCompleted: (data) => {
+        try {
+          const event = JSON.parse(data) as SkillExecutionEvent;
+          set({
+            executionEvents: [...get().executionEvents, event],
+            isStreaming: false,
+          });
+        } catch { /* ignore parse errors */ }
+        streamHandle = null;
+      },
+      onError: (error) => {
+        set({ error: error.message, isStreaming: false });
+        streamHandle = null;
+      },
+    });
+  },
+
+  stopExecutionStream: () => {
+    if (streamHandle) {
+      streamHandle.abort();
+      streamHandle = null;
+    }
+    set({ isStreaming: false });
   },
 
   clearError: () => set({ error: null }),

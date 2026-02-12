@@ -1,18 +1,25 @@
-### [pending] scrollToBottom 在流式输出中每个 chunk 触发 — 造成滚动卡顿
+### [pending] AgenticConfirmBar 组件质量低于其他 Chat 组件 — 缺测试、缺 testid、风格不一致
 
-**ID**: chat-014
+**ID**: chat-015
 **优先级**: P2
-**模块路径**: packages/dashboard/src/pages/Chat.tsx
-**发现的问题**: `Chat.tsx:93-95` 的 `useEffect` 依赖 `streamingContent` 变化触发 `scrollToBottom()`。流式输出时 `streamingContent` 每秒更新几十次（每个 SSE token chunk），每次都调用 `scrollIntoView({ behavior: 'smooth' })`。平滑滚动动画会堆叠，在长消息渲染时造成明显的视觉卡顿和 CPU 浪费。
+**模块路径**: packages/dashboard/src/components/chat/AgenticConfirmBar.tsx
+**发现的问题**: 
+1. 无测试文件 — 其他所有 Chat 组件（ChatMessage、MessageInput、PlanPreview、ExecutionLog、MarkdownRenderer）都有对应 `.test.tsx`，唯独 `AgenticConfirmBar` 没有
+2. 无 `data-testid` 属性 — `StepConfirmBar` 有 `data-testid="step-confirm-bar"`、`step-allow-btn` 等，`AgenticConfirmBar` 一个都没有
+3. 使用原生 `<button>` 而非项目通用 `<Button>` 组件（其他组件均使用 `@/components/ui/button`）
+4. 使用字符串拼接 `${colorClass}` 而非 `cn()` 工具函数（AgenticConfirmBar.tsx:28）
+5. 使用 HTML 实体 `&#9888;` 而非 Lucide 图标（其他组件均使用 lucide-react 图标）
 **改进方案**: 
-1. 流式输出中使用 `behavior: 'auto'`（瞬时滚动）而非 `'smooth'`
-2. 或对 `scrollToBottom` 添加 `throttle`（如 100ms），避免高频触发
-3. 仅在 `messages.length` 变化时使用 `'smooth'`（新消息到达），`streamingContent` 变化时使用 `'auto'`
+1. 创建 `AgenticConfirmBar.test.tsx`，覆盖渲染、Allow 点击、Reject 点击、不同风险等级样式
+2. 添加 `data-testid="agentic-confirm-bar"`、`agentic-allow-btn`、`agentic-reject-btn`
+3. 替换原生 `<button>` 为 `<Button>` 组件
+4. 使用 `cn()` 替换字符串拼接
+5. 使用 `AlertTriangle` 图标替换 `&#9888;`
 **验收标准**: 
-- 流式输出时页面滚动流畅无卡顿
-- 新消息到达时仍有平滑滚动效果
-- 长消息（>2000 字符）流式输出时 CPU 使用率明显降低
-**影响范围**: packages/dashboard/src/pages/Chat.tsx
+- `AgenticConfirmBar.test.tsx` 至少 8 个测试用例
+- 所有 `data-testid` 与 StepConfirmBar 命名风格一致
+- 视觉风格与其他 Chat 组件统一
+**影响范围**: packages/dashboard/src/components/chat/AgenticConfirmBar.tsx, packages/dashboard/src/components/chat/AgenticConfirmBar.test.tsx (新)
 **创建时间**: (自动填充)
 **完成时间**: -
 

@@ -23,19 +23,34 @@ describe('AgenticConfirmBar', () => {
     onReject: vi.fn(),
   };
 
-  it('renders command, description, and risk label', () => {
+  it('renders with agentic-confirm-bar testid', () => {
+    render(<AgenticConfirmBar {...defaultProps} />);
+
+    expect(screen.getByTestId('agentic-confirm-bar')).toBeInTheDocument();
+  });
+
+  it('renders command, description, and risk label from RISK_CONFIG', () => {
     render(<AgenticConfirmBar {...defaultProps} />);
 
     expect(screen.getByText('Install nginx web server')).toBeInTheDocument();
     expect(screen.getByText('$ apt install nginx')).toBeInTheDocument();
-    expect(screen.getByText('YELLOW')).toBeInTheDocument();
+    expect(screen.getByText('Caution')).toBeInTheDocument();
   });
 
   it('renders Allow button enabled when confirmId is present', () => {
     render(<AgenticConfirmBar {...defaultProps} />);
 
-    const allowBtn = screen.getByRole('button', { name: 'Allow' });
+    const allowBtn = screen.getByTestId('agentic-allow-btn');
     expect(allowBtn).toBeEnabled();
+    expect(allowBtn).toHaveTextContent('Allow');
+  });
+
+  it('renders Reject button with testid', () => {
+    render(<AgenticConfirmBar {...defaultProps} />);
+
+    const rejectBtn = screen.getByTestId('agentic-reject-btn');
+    expect(rejectBtn).toBeEnabled();
+    expect(rejectBtn).toHaveTextContent('Reject');
   });
 
   it('calls onApprove when Allow is clicked', async () => {
@@ -43,7 +58,7 @@ describe('AgenticConfirmBar', () => {
     const onApprove = vi.fn();
     render(<AgenticConfirmBar {...defaultProps} onApprove={onApprove} />);
 
-    await user.click(screen.getByRole('button', { name: 'Allow' }));
+    await user.click(screen.getByTestId('agentic-allow-btn'));
     expect(onApprove).toHaveBeenCalledOnce();
   });
 
@@ -52,7 +67,7 @@ describe('AgenticConfirmBar', () => {
     const onReject = vi.fn();
     render(<AgenticConfirmBar {...defaultProps} onReject={onReject} />);
 
-    await user.click(screen.getByRole('button', { name: 'Reject' }));
+    await user.click(screen.getByTestId('agentic-reject-btn'));
     expect(onReject).toHaveBeenCalledOnce();
   });
 
@@ -64,8 +79,9 @@ describe('AgenticConfirmBar', () => {
       />,
     );
 
-    const waitingBtn = screen.getByRole('button', { name: 'Waiting...' });
-    expect(waitingBtn).toBeDisabled();
+    const allowBtn = screen.getByTestId('agentic-allow-btn');
+    expect(allowBtn).toBeDisabled();
+    expect(allowBtn).toHaveTextContent('Waiting...');
   });
 
   it('does not call onApprove when clicking disabled Waiting button', async () => {
@@ -79,7 +95,7 @@ describe('AgenticConfirmBar', () => {
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: 'Waiting...' }));
+    await user.click(screen.getByTestId('agentic-allow-btn'));
     expect(onApprove).not.toHaveBeenCalled();
   });
 
@@ -91,7 +107,7 @@ describe('AgenticConfirmBar', () => {
       />,
     );
 
-    expect(screen.getByRole('button', { name: 'Reject' })).toBeEnabled();
+    expect(screen.getByTestId('agentic-reject-btn')).toBeEnabled();
   });
 
   it('shows timeout error after 5 seconds when confirmId stays empty', () => {
@@ -103,16 +119,14 @@ describe('AgenticConfirmBar', () => {
       />,
     );
 
-    // No error initially
-    expect(screen.queryByTestId('confirm-timeout-error')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('agentic-confirm-timeout-error')).not.toBeInTheDocument();
 
-    // Advance 5 seconds
     act(() => {
       vi.advanceTimersByTime(5000);
     });
 
-    expect(screen.getByTestId('confirm-timeout-error')).toBeInTheDocument();
-    expect(screen.getByTestId('confirm-timeout-error').textContent).toContain(
+    expect(screen.getByTestId('agentic-confirm-timeout-error')).toBeInTheDocument();
+    expect(screen.getByTestId('agentic-confirm-timeout-error').textContent).toContain(
       'Unable to receive confirmation ID',
     );
 
@@ -127,11 +141,11 @@ describe('AgenticConfirmBar', () => {
       vi.advanceTimersByTime(10000);
     });
 
-    expect(screen.queryByTestId('confirm-timeout-error')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('agentic-confirm-timeout-error')).not.toBeInTheDocument();
     vi.useRealTimers();
   });
 
-  it('renders correct color classes for red risk level', () => {
+  it('renders "Dangerous" label for red risk level', () => {
     render(
       <AgenticConfirmBar
         {...defaultProps}
@@ -139,10 +153,10 @@ describe('AgenticConfirmBar', () => {
       />,
     );
 
-    expect(screen.getByText('RED')).toBeInTheDocument();
+    expect(screen.getByText('Dangerous')).toBeInTheDocument();
   });
 
-  it('renders correct color classes for critical risk level', () => {
+  it('renders "Critical" label for critical risk level', () => {
     render(
       <AgenticConfirmBar
         {...defaultProps}
@@ -150,6 +164,17 @@ describe('AgenticConfirmBar', () => {
       />,
     );
 
-    expect(screen.getByText('CRITICAL')).toBeInTheDocument();
+    expect(screen.getByText('Critical')).toBeInTheDocument();
+  });
+
+  it('falls back to yellow config for unknown risk level', () => {
+    render(
+      <AgenticConfirmBar
+        {...defaultProps}
+        confirm={makeConfirm({ riskLevel: 'unknown-level' })}
+      />,
+    );
+
+    expect(screen.getByText('Caution')).toBeInTheDocument();
   });
 });
