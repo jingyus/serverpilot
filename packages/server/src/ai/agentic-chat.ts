@@ -4,15 +4,19 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import type { SSEStreamingApi } from 'hono/streaming';
-import { z } from 'zod';
-import { classifyCommand, RiskLevel } from '@aiinstaller/shared';
+import { RiskLevel } from '@aiinstaller/shared';
 import { getTaskExecutor } from '../core/task/executor.js';
 import { findConnectedAgent } from '../core/agent/agent-connector.js';
 import { validateCommand } from '../core/security/command-validator.js';
 import { getAuditLogger } from '../core/security/audit-logger.js';
-import { buildProfileContext, buildProfileCaveats, estimateTokens } from './profile-context.js';
-import { getRagPipeline } from '../knowledge/rag-pipeline.js';
 import { logger } from '../utils/logger.js';
+import { TOOLS, ExecuteCommandInputSchema, ReadFileInputSchema, ListFilesInputSchema } from './agentic-tools.js';
+import { buildFullSystemPrompt } from './agentic-prompts.js';
+import { trimMessagesIfNeeded } from './agentic-message-utils.js';
+
+// Re-export extracted symbols for backward compatibility
+export { ExecuteCommandInputSchema, ReadFileInputSchema, ListFilesInputSchema } from './agentic-tools.js';
+export { estimateMessagesTokens, trimMessagesIfNeeded, type TrimResult } from './agentic-message-utils.js';
 
 // Constants
 
@@ -24,98 +28,6 @@ const MAX_MESSAGES_TOKENS = 150_000;
 
 /** Default model */
 const DEFAULT_MODEL = 'claude-sonnet-4-20250514';
-
-// Tool Definitions
-
-const TOOLS: Anthropic.Tool[] = [
-  {
-    name: 'execute_command',
-    description:
-      'Execute a shell command on the target server. ' +
-      'The command runs in /bin/sh. ' +
-      'Use this for all server operations: checking status, installing software, reading configs, etc. ' +
-      'Output (stdout + stderr) is returned. ' +
-      'IMPORTANT: Commands are security-classified. ' +
-      'Read-only commands (ls, cat, df, ps, etc.) execute instantly. ' +
-      'Modification commands (apt install, systemctl restart, etc.) may require user approval.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        command: {
-          type: 'string',
-          description: 'The shell command to execute',
-        },
-        description: {
-          type: 'string',
-          description: 'Brief description of what this command does (for audit logging)',
-        },
-        timeout_seconds: {
-          type: 'number',
-          description: 'Timeout in seconds (default: 30, max: 600)',
-        },
-      },
-      required: ['command', 'description'],
-    },
-  },
-  {
-    name: 'read_file',
-    description:
-      'Read the contents of a file on the server. ' +
-      'Shortcut for cat that handles large files by reading first/last lines.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        path: {
-          type: 'string',
-          description: 'Absolute file path to read',
-        },
-        max_lines: {
-          type: 'number',
-          description: 'Maximum lines to read (default: 200). For large files, reads first and last portions.',
-        },
-      },
-      required: ['path'],
-    },
-  },
-  {
-    name: 'list_files',
-    description:
-      'List files and directories at a given path. ' +
-      'Returns file names, sizes, and permissions.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        path: {
-          type: 'string',
-          description: 'Directory path to list (default: current directory)',
-        },
-        show_hidden: {
-          type: 'boolean',
-          description: 'Include hidden files (default: false)',
-        },
-      },
-      required: ['path'],
-    },
-  },
-];
-
-// Tool Input Schemas (runtime validation for AI-returned inputs)
-
-export const ExecuteCommandInputSchema = z.object({
-  command: z.string().min(1, 'command must be a non-empty string'),
-  description: z.string().min(1, 'description must be a non-empty string'),
-  timeout_seconds: z.number().optional(),
-});
-
-export const ReadFileInputSchema = z.object({
-  path: z.string().min(1, 'path must be a non-empty string'),
-  max_lines: z.number().optional(),
-});
-
-export const ListFilesInputSchema = z.object({
-  path: z.string().min(1, 'path must be a non-empty string'),
-  show_hidden: z.boolean().optional(),
-});
 
 /** Shared abort flag — set by onAbort / writeSSE failure, read at every async boundary. */
 interface AbortState { aborted: boolean }
@@ -198,7 +110,7 @@ export class AgenticChatEngine {
     });
 
     // Build system prompt with profile + knowledge context
-    const systemPrompt = await this.buildFullSystemPrompt(
+    const systemPrompt = await buildFullSystemPrompt(
       userMessage, serverProfile, serverName,
     );
 
@@ -628,59 +540,6 @@ export class AgenticChatEngine {
     );
   }
 
-  /**
-   * Build the full system prompt with profile context and knowledge base.
-   */
-  private async buildFullSystemPrompt(
-    userMessage: string,
-    serverProfile?: unknown,
-    serverName?: string,
-  ): Promise<string> {
-    // Profile context
-    let profileContext: string | undefined;
-    let caveats: string[] | undefined;
-
-    if (serverProfile) {
-      const profileResult = buildProfileContext(
-        serverProfile as Parameters<typeof buildProfileContext>[0],
-        serverName ?? 'server',
-      );
-      profileContext = profileResult.text;
-      caveats = buildProfileCaveats(
-        serverProfile as Parameters<typeof buildProfileCaveats>[0],
-      );
-    }
-
-    // Knowledge context via RAG
-    let knowledgeContext: string | undefined;
-    try {
-      const pipeline = getRagPipeline();
-      if (pipeline?.isReady()) {
-        const ragResult = await pipeline.search(userMessage);
-        if (ragResult.hasResults) {
-          knowledgeContext = ragResult.contextText;
-        }
-      }
-    } catch (err) {
-      logger.warn(
-        { operation: 'rag_search', error: String(err) },
-        'RAG search failed, continuing without knowledge context',
-      );
-    }
-
-    // Combine base system prompt + profile + knowledge
-    const basePrompt = buildAgenticSystemPrompt();
-    const parts = [basePrompt];
-
-    if (profileContext) parts.push(profileContext);
-    if (caveats?.length) {
-      parts.push('## Important Caveats\n' + caveats.map((c) => `- ${c}`).join('\n'));
-    }
-    if (knowledgeContext) parts.push(knowledgeContext);
-
-    return parts.join('\n\n');
-  }
-
   /** Write SSE event; on failure sets abort.aborted immediately. */
   private async writeSSE(
     stream: SSEStreamingApi,
@@ -699,130 +558,6 @@ export class AgenticChatEngine {
   private shellEscape(s: string): string {
     return `'${s.replace(/'/g, "'\\''")}'`;
   }
-}
-
-// System Prompt (Agentic Mode)
-
-function buildAgenticSystemPrompt(): string {
-  return `You are ServerPilot, an autonomous AI DevOps agent that manages servers.
-You operate like an experienced sysadmin with SSH access — directly executing commands and adapting based on results.
-
-## How You Work
-- You have tools to execute commands, read files, and list directories on the target server.
-- When a user asks you to do something, TAKE ACTION immediately. Don't just describe what you would do.
-- Execute commands to gather information, then use those results to make decisions.
-- If a command fails, analyze the error and try an alternative approach automatically.
-- You can make multiple tool calls in sequence — check → diagnose → fix → verify.
-
-## Communication Style
-- Be concise. Show what you're doing, not what you're about to do.
-- After executing commands, briefly explain the results in context.
-- Use Chinese for all user-facing text (the user speaks Chinese).
-- Don't show raw command strings unless relevant to the explanation.
-
-## Security
-- Read-only commands execute instantly (no confirmation needed).
-- Commands that modify the system may require user approval — the system handles this automatically.
-- Some dangerous commands are blocked by security policy — if blocked, try a safer alternative.
-- NEVER try to bypass security restrictions or use sudo to circumvent blocks.
-
-## Best Practices
-- Always verify the OS and package manager before installing software.
-- Check if software is already installed before attempting installation.
-- After making changes, verify they took effect.
-- If something fails, check logs and system state before retrying.`;
-}
-
-// Message trimming
-
-/** Extract text from a content block for token estimation. */
-function extractBlockText(block: Record<string, unknown>): string {
-  if ('text' in block && typeof block.text === 'string') {
-    return block.text;
-  }
-  if ('content' in block && typeof block.content === 'string') {
-    return block.content;
-  }
-  // tool_use input or other structured data — serialize for estimation
-  return JSON.stringify(block);
-}
-
-/** Estimate total token count of the messages array (CJK-aware). */
-export function estimateMessagesTokens(messages: Anthropic.MessageParam[]): number {
-  let tokens = 0;
-  for (const msg of messages) {
-    if (typeof msg.content === 'string') {
-      tokens += estimateTokens(msg.content);
-    } else if (Array.isArray(msg.content)) {
-      for (const block of msg.content) {
-        const text = extractBlockText(block as Record<string, unknown>);
-        tokens += estimateTokens(text);
-      }
-    }
-  }
-  return tokens;
-}
-
-/** Result of a trim operation, or null if no trimming occurred. */
-export interface TrimResult {
-  removedMessages: number;
-  removedTokens: number;
-}
-
-/**
- * Trim messages in-place if over token budget, keeping first message and newest pairs.
- * After trimming, injects a context-loss notice into the first user message so the AI
- * model is aware that earlier tool results and conversation turns were removed.
- * Returns a TrimResult if trimming occurred, or null otherwise.
- */
-export function trimMessagesIfNeeded(
-  messages: Anthropic.MessageParam[],
-  maxTokens: number,
-): TrimResult | null {
-  if (messages.length <= 3) return null; // first user + one turn pair minimum
-
-  const tokensBefore = estimateMessagesTokens(messages);
-  if (tokensBefore <= maxTokens) return null;
-
-  const lengthBefore = messages.length;
-
-  // Remove pairs from index 1 (after the first user message) until under budget.
-  // Each "pair" is an assistant message + a user message (tool results).
-  // Recalculate total after each splice to avoid cumulative estimation drift.
-  while (messages.length > 3) {
-    messages.splice(1, 2);
-    if (estimateMessagesTokens(messages) <= maxTokens) break;
-  }
-
-  const tokensAfter = estimateMessagesTokens(messages);
-  const removedMessages = lengthBefore - messages.length;
-  const removedTokens = tokensBefore - tokensAfter;
-
-  // Inject context-loss notice into the first user message so the model
-  // knows earlier conversation context was truncated.
-  const removedTokensK = Math.round(removedTokens / 1000);
-  const notice =
-    `[System: Earlier conversation context was trimmed to fit the context window. ` +
-    `${removedMessages} messages (~${removedTokensK}K tokens) were removed. ` +
-    `Recent tool results and file contents from those turns are no longer available. ` +
-    `If you need information from earlier steps, re-read the relevant files.]`;
-
-  const firstMsg = messages[0];
-  if (typeof firstMsg.content === 'string') {
-    messages[0] = { role: 'user', content: firstMsg.content + '\n\n' + notice };
-  } else if (Array.isArray(firstMsg.content)) {
-    messages[0] = {
-      role: 'user',
-      content: [...firstMsg.content, { type: 'text' as const, text: notice }],
-    };
-  }
-
-  logger.debug(
-    { operation: 'trim_messages', removedMessages, removedTokens, remainingMessages: messages.length, remainingTokens: tokensAfter },
-    `Trimmed ${removedMessages} messages (~${removedTokensK}K tokens) from conversation context`,
-  );
-
-  return { removedMessages, removedTokens };
 }
 
 // Singleton

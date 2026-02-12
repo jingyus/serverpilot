@@ -97,6 +97,52 @@ prompt: |
   await writeFile(join(dir, 'skill.yaml'), yaml, 'utf-8');
 }
 
+/** Write a skill.yaml with requires constraints (os, commands, agent). */
+export async function writeRequiresSkillYaml(
+  dir: string,
+  opts: {
+    name?: string;
+    os?: string[];
+    commands?: string[];
+    agent?: string;
+  } = {},
+): Promise<void> {
+  const name = opts.name ?? 'requires-skill';
+  const requiresLines: string[] = [];
+  if (opts.os) {
+    requiresLines.push(`  os: [${opts.os.join(', ')}]`);
+  }
+  if (opts.commands) {
+    requiresLines.push(`  commands: [${opts.commands.join(', ')}]`);
+  }
+  if (opts.agent) {
+    requiresLines.push(`  agent: "${opts.agent}"`);
+  }
+
+  const requiresBlock = requiresLines.length > 0
+    ? `\nrequires:\n${requiresLines.join('\n')}\n`
+    : '';
+
+  const yaml = `kind: skill
+version: "1.0"
+
+metadata:
+  name: ${name}
+  displayName: "Requires Skill"
+  version: "1.0.0"
+
+triggers:
+  - type: manual
+
+tools:
+  - shell
+${requiresBlock}
+prompt: |
+  This skill has requirements. It must be at least 50 characters long to pass validation.
+`;
+  await writeFile(join(dir, 'skill.yaml'), yaml, 'utf-8');
+}
+
 /** Write a skill.yaml with server_scope: all or tagged. */
 export async function writeBatchSkillYaml(
   dir: string,

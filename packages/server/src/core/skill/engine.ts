@@ -15,6 +15,7 @@ import {
   checkRequirements,
   type ScannedSkill,
   type TemplateVars,
+  type RequirementCheckResult,
 } from './loader.js';
 import {
   getSkillRepository,
@@ -469,6 +470,30 @@ export class SkillEngine {
 
   async expirePendingConfirmations(): Promise<number> {
     return this.confirmationManager.expirePendingConfirmations();
+  }
+
+  /**
+   * Check skill requirements against the target server's profile.
+   * Agent version is not yet available in the protocol, so it passes null
+   * which causes a graceful degradation to a warning.
+   */
+  private async checkSkillRequirements(
+    manifest: SkillManifest,
+    serverId: string,
+    userId: string,
+  ): Promise<RequirementCheckResult> {
+    let serverProfile = null;
+    try {
+      const serverRepo = getServerRepository();
+      serverProfile = await serverRepo.getProfile(serverId, userId);
+    } catch {
+      // Profile may not be available — checkRequirements handles null gracefully
+    }
+
+    // Agent version not yet reported via protocol — pass null to degrade to warning
+    const agentVersion: string | null = null;
+
+    return checkRequirements(manifest.requires, serverProfile, agentVersion);
   }
 
   /** Build server-related template variables from the server repository. */

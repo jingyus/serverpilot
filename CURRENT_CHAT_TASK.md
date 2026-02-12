@@ -1,12 +1,12 @@
-### [pending] Legacy 模式 RAG 搜索异常未捕获 — ragPipeline.search() 可能抛出未处理错误
+### [pending] agentic-chat.ts 超出 800 行硬限制 — 844 行需要拆分
 
-**ID**: chat-052
+**ID**: chat-053
 **优先级**: P0
-**模块路径**: packages/server/src/api/routes/chat.ts
-**发现的问题**: chat.ts 第 208-216 行的 RAG 搜索逻辑没有 try/catch 包裹。`ragPipeline.search(body.message!)` 如果抛出异常（如向量存储损坏、内存不足），错误会直接传播到上层 try/catch（第 202-314 行），导致整个 AI 对话请求失败，用户看到通用错误消息而非优雅降级。对比 agentic-chat.ts 第 656-669 行有完整的 try/catch 包裹 RAG 搜索，这里是遗漏。
-**改进方案**: 为 RAG 搜索添加 try/catch，失败时记录 warn 日志并继续执行（knowledgeContext 保持 undefined），实现与 agentic 模式一致的优雅降级。
-**验收标准**: (1) RAG 搜索失败不阻断 AI 对话; (2) 失败时有 warn 级别日志; (3) 对话正常继续（无知识库上下文）; (4) 单元测试覆盖 RAG 异常场景
-**影响范围**: packages/server/src/api/routes/chat.ts
+**模块路径**: packages/server/src/ai/agentic-chat.ts
+**发现的问题**: agentic-chat.ts 当前 844 行，超出 800 行硬限制 44 行。文件包含：(1) 工具定义和 Schema（第 30-119 行，约 90 行）; (2) AgenticChatEngine 类（第 163-702 行，约 540 行）; (3) buildAgenticSystemPrompt 函数（第 704-734 行，约 30 行）; (4) 消息裁剪工具函数（第 736-826 行，约 90 行）; (5) 单例管理（第 828-843 行）。
+**改进方案**: 将以下部分提取到独立文件：(1) `agentic-tools.ts` — 工具定义、输入 Schema（ExecuteCommandInputSchema 等）; (2) `agentic-prompts.ts` — buildAgenticSystemPrompt 函数; (3) `agentic-message-utils.ts` — extractBlockText、estimateMessageTokens、trimMessagesIfNeeded。主文件保留 AgenticChatEngine 类和单例管理，约 550 行。
+**验收标准**: (1) agentic-chat.ts 降至 600 行以内; (2) 拆分后的文件各不超过 200 行; (3) 所有现有测试通过; (4) 导入路径正确
+**影响范围**: packages/server/src/ai/agentic-chat.ts, 新文件 agentic-tools.ts, agentic-prompts.ts, agentic-message-utils.ts
 **创建时间**: (自动填充)
 **完成时间**: -
 
