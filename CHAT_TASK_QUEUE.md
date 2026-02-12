@@ -3,14 +3,14 @@
 > 此队列专注于 Chat 和 AI 对话系统的质量改进
 > AI 自动发现问题 → 生成任务 → 实现 → 验证
 
-**最后更新**: 2026-02-13 04:35:35
+**最后更新**: 2026-02-13 04:39:26
 
 ## 📊 统计
 
 - **总任务数**: 49
 - **待完成** (pending): 11
-- **进行中** (in_progress): 1
-- **已完成** (completed): 37
+- **进行中** (in_progress): 0
+- **已完成** (completed): 38
 - **失败** (failed): 0
 
 ## 📋 任务列表
@@ -86,7 +86,7 @@
 
 ---
 
-### [in_progress] addMessage 在 cache eviction 后抛异常 — 高并发下用户丢消息
+### [completed] addMessage 在 cache eviction 后抛异常 — 高并发下用户丢消息 ✅
 
 **ID**: chat-038
 **优先级**: P1
@@ -96,7 +96,7 @@
 **验收标准**: 1) cache miss 时自动 reload，用户无感知 2) 消息不再丢失 3) 新增测试：evict session 后 addMessage 仍成功 4) 日志记录 reload 事件
 **影响范围**: `packages/server/src/core/session/manager.ts`
 **创建时间**: (自动填充)
-**完成时间**: -
+**完成时间**: 2026-02-13 04:39:26
 
 ---
 
