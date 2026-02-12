@@ -47,6 +47,7 @@ vi.mock('../knowledge/rag-pipeline.js', () => ({
 import {
   trimMessagesIfNeeded, estimateMessagesTokens, AgenticChatEngine,
   ExecuteCommandInputSchema, ReadFileInputSchema, ListFilesInputSchema,
+  type TrimResult,
 } from './agentic-chat.js';
 
 function makeMessage(role: 'user' | 'assistant', content: string): Anthropic.MessageParam {
@@ -206,8 +207,8 @@ describe('trimMessagesIfNeeded', () => {
     expect(messages.length).toBeLessThan(21);
     // Should keep at least 3 (first user + one pair)
     expect(messages.length).toBeGreaterThanOrEqual(3);
-    // First message should be preserved
-    expect(messages[0].content).toBe('Initial user question');
+    // First message should be preserved (with context-loss notice appended)
+    expect(typeof messages[0].content === 'string' && messages[0].content).toContain('Initial user question');
     // Last messages should be the most recent pair
     const lastMsg = messages[messages.length - 1];
     expect(typeof lastMsg.content === 'string' && lastMsg.content).toContain('Tool result 9');
@@ -218,7 +219,8 @@ describe('trimMessagesIfNeeded', () => {
     trimMessagesIfNeeded(messages, 500);
 
     expect(messages[0].role).toBe('user');
-    expect(messages[0].content).toBe('Initial user question');
+    // Original text preserved (with context-loss notice appended)
+    expect(typeof messages[0].content === 'string' && messages[0].content).toContain('Initial user question');
   });
 
   it('should maintain alternating user/assistant structure', () => {
@@ -316,8 +318,8 @@ describe('trimMessagesIfNeeded — CJK conversations', () => {
     // After trimming, the actual token count should be within budget
     const actualTokens = estimateMessagesTokens(messages);
     expect(actualTokens).toBeLessThanOrEqual(150_000);
-    // First message preserved
-    expect(messages[0].content).toBe('请帮我在服务器上安装并配置 Nginx 反向代理');
+    // First message preserved (with context-loss notice appended if trimmed)
+    expect(typeof messages[0].content === 'string' && messages[0].content).toContain('请帮我在服务器上安装并配置 Nginx 反向代理');
   });
 
   it('should produce consistent results (no cumulative drift)', () => {
@@ -385,7 +387,109 @@ describe('trimMessagesIfNeeded — recalculation accuracy', () => {
 
     const freshEstimate = estimateMessagesTokens(messages);
     expect(freshEstimate).toBeLessThanOrEqual(budget);
-    expect(messages[0].content).toBe('帮我检查 Nginx 配置');
+    expect(typeof messages[0].content === 'string' && messages[0].content).toContain('帮我检查 Nginx 配置');
+  });
+});
+
+// ============================================================================
+// trimMessagesIfNeeded — context-loss notice & return value
+// ============================================================================
+
+describe('trimMessagesIfNeeded — context-loss notice', () => {
+  it('should return null when no trimming occurs', () => {
+    const messages = [
+      makeMessage('user', 'Hello'),
+      makeMessage('assistant', 'Hi'),
+      makeMessage('user', 'Thanks'),
+    ];
+    const result = trimMessagesIfNeeded(messages, 100000);
+    expect(result).toBeNull();
+  });
+
+  it('should return TrimResult with counts when trimming occurs', () => {
+    const messages = makeLargeMessages(10, 1000);
+    const result = trimMessagesIfNeeded(messages, 2000);
+
+    expect(result).not.toBeNull();
+    expect(result!.removedMessages).toBeGreaterThan(0);
+    expect(result!.removedTokens).toBeGreaterThan(0);
+  });
+
+  it('should inject context-loss notice into string first message after trim', () => {
+    const messages = makeLargeMessages(10, 1000);
+    trimMessagesIfNeeded(messages, 2000);
+
+    const firstContent = messages[0].content;
+    expect(typeof firstContent).toBe('string');
+    expect(firstContent as string).toContain('[System: Earlier conversation context was trimmed');
+    expect(firstContent as string).toContain('messages');
+    expect(firstContent as string).toContain('tokens) were removed');
+    expect(firstContent as string).toContain('re-read the relevant files');
+  });
+
+  it('should inject context-loss notice into array first message after trim', () => {
+    // Build messages with structured content in the first user message
+    const messages: Anthropic.MessageParam[] = [
+      {
+        role: 'user',
+        content: [{ type: 'text' as const, text: 'Initial structured query' }],
+      },
+    ];
+    for (let i = 0; i < 10; i++) {
+      messages.push(makeMessage('assistant', 'a'.repeat(1000)));
+      messages.push(makeMessage('user', 'b'.repeat(1000)));
+    }
+
+    trimMessagesIfNeeded(messages, 2000);
+
+    const firstContent = messages[0].content;
+    expect(Array.isArray(firstContent)).toBe(true);
+    const blocks = firstContent as Array<{ type: string; text?: string }>;
+    // Original block preserved
+    expect(blocks[0].text).toBe('Initial structured query');
+    // Notice appended as new text block
+    const lastBlock = blocks[blocks.length - 1];
+    expect(lastBlock.type).toBe('text');
+    expect(lastBlock.text).toContain('[System: Earlier conversation context was trimmed');
+  });
+
+  it('should not inject notice when no trimming needed', () => {
+    const messages = [
+      makeMessage('user', 'Hello'),
+      makeMessage('assistant', 'Hi'),
+      makeMessage('user', 'Thanks'),
+    ];
+    trimMessagesIfNeeded(messages, 100000);
+
+    // Content should be unchanged
+    expect(messages[0].content).toBe('Hello');
+  });
+
+  it('should include accurate removed message count in notice', () => {
+    const messages = makeLargeMessages(10, 1000);
+    const lengthBefore = messages.length;
+
+    const result = trimMessagesIfNeeded(messages, 2000);
+    const lengthAfter = messages.length;
+
+    const expectedRemoved = lengthBefore - lengthAfter;
+    expect(result!.removedMessages).toBe(expectedRemoved);
+
+    // Notice text should contain the count
+    const notice = messages[0].content as string;
+    expect(notice).toContain(`${expectedRemoved} messages`);
+  });
+
+  it('should return null for ≤3 messages even if over budget', () => {
+    const messages = [
+      makeMessage('user', 'x'.repeat(50000)),
+      makeMessage('assistant', 'y'.repeat(50000)),
+      makeMessage('user', 'z'.repeat(50000)),
+    ];
+    const result = trimMessagesIfNeeded(messages, 1);
+    expect(result).toBeNull();
+    // Content should be unchanged (no notice injected)
+    expect(messages[0].content).toBe('x'.repeat(50000));
   });
 });
 

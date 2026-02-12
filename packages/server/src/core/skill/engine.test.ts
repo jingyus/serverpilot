@@ -22,7 +22,7 @@ import {
   setServerRepository,
   _resetServerRepository,
 } from '../../db/repositories/server-repository.js';
-import type { SkillRunParams } from './types.js';
+import type { SkillRunParams, BatchExecutionResult, SkillExecutionResult } from './types.js';
 import { SkillRunner } from './runner.js';
 
 // Mock SkillRunner to avoid AI provider dependency in engine tests
@@ -1404,5 +1404,313 @@ describe('SkillEngine full lifecycle', () => {
     await engine.uninstall(skill.id);
     expect(await engine.getInstalled(skill.id)).toBeNull();
     expect(await engine.getExecutions(skill.id)).toHaveLength(0);
+  });
+});
+
+// ============================================================================
+// Batch Execution (server_scope: 'all' / 'tagged')
+// ============================================================================
+
+describe('SkillEngine batch execution (server_scope)', () => {
+  /** Write a skill.yaml with server_scope: all */
+  async function writeBatchSkillYaml(
+    dir: string,
+    opts: { name?: string; scope?: 'all' | 'tagged' } = {},
+  ): Promise<void> {
+    const name = opts.name ?? 'batch-skill';
+    const scope = opts.scope ?? 'all';
+    const yaml = `kind: skill
+version: "1.0"
+
+metadata:
+  name: ${name}
+  displayName: "Batch Skill"
+  version: "1.0.0"
+
+triggers:
+  - type: manual
+
+tools:
+  - shell
+
+constraints:
+  server_scope: ${scope}
+
+prompt: |
+  Run a batch check across all servers. This prompt is long enough to pass the minimum 50 chars requirement.
+`;
+    await writeFile(join(dir, 'skill.yaml'), yaml, 'utf-8');
+  }
+
+  function isBatchResult(r: SkillExecutionResult | BatchExecutionResult): r is BatchExecutionResult {
+    return 'batchId' in r;
+  }
+
+  it('should execute on all user servers when server_scope is "all"', async () => {
+    const skillDir = await createTempDir('batch-skill-');
+    await writeBatchSkillYaml(skillDir);
+
+    // Create 3 servers for user-1
+    await serverRepo.create({ name: 'srv-1', userId: 'user-1' });
+    await serverRepo.create({ name: 'srv-2', userId: 'user-1' });
+    await serverRepo.create({ name: 'srv-3', userId: 'user-1' });
+
+    const skill = await engine.install('user-1', skillDir, 'local');
+    await engine.updateStatus(skill.id, 'enabled');
+
+    const result = await engine.execute({
+      skillId: skill.id,
+      serverId: 'placeholder',
+      userId: 'user-1',
+      triggerType: 'manual',
+    });
+
+    expect(isBatchResult(result)).toBe(true);
+    const batch = result as BatchExecutionResult;
+    expect(batch.serverScope).toBe('all');
+    expect(batch.results).toHaveLength(3);
+    expect(batch.successCount).toBe(3);
+    expect(batch.failureCount).toBe(0);
+    expect(batch.batchId).toBeDefined();
+    expect(batch.totalDuration).toBeGreaterThanOrEqual(0);
+  });
+
+  it('should create independent execution records per server', async () => {
+    const skillDir = await createTempDir('batch-skill-');
+    await writeBatchSkillYaml(skillDir);
+
+    await serverRepo.create({ name: 'srv-a', userId: 'user-1' });
+    await serverRepo.create({ name: 'srv-b', userId: 'user-1' });
+
+    const skill = await engine.install('user-1', skillDir, 'local');
+    await engine.updateStatus(skill.id, 'enabled');
+
+    const result = await engine.execute({
+      skillId: skill.id,
+      serverId: 'placeholder',
+      userId: 'user-1',
+      triggerType: 'manual',
+    });
+
+    const batch = result as BatchExecutionResult;
+    expect(batch.results).toHaveLength(2);
+
+    // Each server should have a unique execution ID
+    const execIds = batch.results.map((r) => r.result.executionId);
+    expect(new Set(execIds).size).toBe(2);
+
+    // Verify execution records in DB
+    const executions = await engine.getExecutions(skill.id);
+    expect(executions).toHaveLength(2);
+  });
+
+  it('should include server names in batch results', async () => {
+    const skillDir = await createTempDir('batch-skill-');
+    await writeBatchSkillYaml(skillDir);
+
+    const s1 = await serverRepo.create({ name: 'web-server', userId: 'user-1' });
+    const s2 = await serverRepo.create({ name: 'db-server', userId: 'user-1' });
+
+    const skill = await engine.install('user-1', skillDir, 'local');
+    await engine.updateStatus(skill.id, 'enabled');
+
+    const result = await engine.execute({
+      skillId: skill.id,
+      serverId: 'placeholder',
+      userId: 'user-1',
+      triggerType: 'manual',
+    });
+
+    const batch = result as BatchExecutionResult;
+    const serverNames = batch.results.map((r) => r.serverName).sort();
+    expect(serverNames).toEqual(['db-server', 'web-server']);
+
+    const serverIds = batch.results.map((r) => r.serverId).sort();
+    expect(serverIds).toEqual([s1.id, s2.id].sort());
+  });
+
+  it('should continue execution when one server fails', async () => {
+    const skillDir = await createTempDir('batch-skill-');
+    await writeBatchSkillYaml(skillDir);
+
+    const s1 = await serverRepo.create({ name: 'good-1', userId: 'user-1' });
+    const s2 = await serverRepo.create({ name: 'good-2', userId: 'user-1' });
+    await serverRepo.create({ name: 'good-3', userId: 'user-1' });
+
+    const skill = await engine.install('user-1', skillDir, 'local');
+    await engine.updateStatus(skill.id, 'enabled');
+
+    // Make SkillRunner fail for the second server
+    let callCount = 0;
+    const MockRunner = vi.mocked(SkillRunner);
+    MockRunner.mockImplementation(() => ({
+      run: vi.fn().mockImplementation(() => {
+        callCount++;
+        if (callCount === 2) {
+          return Promise.resolve({
+            success: false,
+            status: 'failed',
+            stepsExecuted: 1,
+            duration: 5,
+            output: '',
+            errors: ['Connection refused'],
+            toolResults: [],
+          });
+        }
+        return Promise.resolve({
+          success: true,
+          status: 'success',
+          stepsExecuted: 2,
+          duration: 10,
+          output: 'OK',
+          errors: [],
+          toolResults: [],
+        });
+      }),
+    }) as unknown as SkillRunner);
+
+    const result = await engine.execute({
+      skillId: skill.id,
+      serverId: 'placeholder',
+      userId: 'user-1',
+      triggerType: 'manual',
+    });
+
+    const batch = result as BatchExecutionResult;
+    expect(batch.results).toHaveLength(3);
+    expect(batch.successCount).toBe(2);
+    expect(batch.failureCount).toBe(1);
+
+    // The failed server should have 'failed' status
+    const failedResult = batch.results.find((r) => r.result.status === 'failed');
+    expect(failedResult).toBeDefined();
+    expect(failedResult!.result.errors).toContain('Connection refused');
+  });
+
+  it('should return empty results when user has no servers (scope: all)', async () => {
+    const skillDir = await createTempDir('batch-skill-');
+    await writeBatchSkillYaml(skillDir);
+
+    const skill = await engine.install('user-1', skillDir, 'local');
+    await engine.updateStatus(skill.id, 'enabled');
+
+    const result = await engine.execute({
+      skillId: skill.id,
+      serverId: 'placeholder',
+      userId: 'user-1',
+      triggerType: 'manual',
+    });
+
+    const batch = result as BatchExecutionResult;
+    expect(batch.results).toHaveLength(0);
+    expect(batch.successCount).toBe(0);
+    expect(batch.failureCount).toBe(0);
+    expect(batch.totalDuration).toBe(0);
+  });
+
+  it('should throw for server_scope "tagged" (not yet supported)', async () => {
+    const skillDir = await createTempDir('batch-skill-');
+    await writeBatchSkillYaml(skillDir, { scope: 'tagged' });
+
+    const skill = await engine.install('user-1', skillDir, 'local');
+    await engine.updateStatus(skill.id, 'enabled');
+
+    await expect(
+      engine.execute({
+        skillId: skill.id,
+        serverId: 'server-1',
+        userId: 'user-1',
+        triggerType: 'manual',
+      }),
+    ).rejects.toThrow(/server_scope 'tagged' is not yet supported/);
+  });
+
+  it('should still use single-server mode for default scope (no constraints)', async () => {
+    const skillDir = await createTempDir('skill-');
+    await writeSkillYaml(skillDir);
+
+    await serverRepo.create({ name: 'srv-1', userId: 'user-1' });
+    await serverRepo.create({ name: 'srv-2', userId: 'user-1' });
+
+    const skill = await engine.install('user-1', skillDir, 'local');
+    await engine.updateStatus(skill.id, 'enabled');
+
+    const result = await engine.execute({
+      skillId: skill.id,
+      serverId: 'server-1',
+      userId: 'user-1',
+      triggerType: 'manual',
+    });
+
+    // Should be SkillExecutionResult, not BatchExecutionResult
+    expect(isBatchResult(result)).toBe(false);
+    const single = result as SkillExecutionResult;
+    expect(single.executionId).toBeDefined();
+    expect(single.status).toBe('success');
+  });
+
+  it('should only execute on servers owned by the executing user', async () => {
+    const skillDir = await createTempDir('batch-skill-');
+    await writeBatchSkillYaml(skillDir);
+
+    // Create servers for different users
+    await serverRepo.create({ name: 'user1-srv', userId: 'user-1' });
+    await serverRepo.create({ name: 'user2-srv', userId: 'user-2' });
+    await serverRepo.create({ name: 'user3-srv', userId: 'user-3' });
+
+    const skill = await engine.install('user-1', skillDir, 'local');
+    await engine.updateStatus(skill.id, 'enabled');
+
+    const result = await engine.execute({
+      skillId: skill.id,
+      serverId: 'placeholder',
+      userId: 'user-1',
+      triggerType: 'manual',
+    });
+
+    const batch = result as BatchExecutionResult;
+    // Only user-1's server should be included
+    expect(batch.results).toHaveLength(1);
+    expect(batch.results[0].serverName).toBe('user1-srv');
+    expect(batch.successCount).toBe(1);
+  });
+
+  it('should still validate skill status before batch execution', async () => {
+    const skillDir = await createTempDir('batch-skill-');
+    await writeBatchSkillYaml(skillDir);
+
+    await serverRepo.create({ name: 'srv-1', userId: 'user-1' });
+
+    const skill = await engine.install('user-1', skillDir, 'local');
+    // Don't enable — status is 'installed'
+
+    await expect(
+      engine.execute({
+        skillId: skill.id,
+        serverId: 'placeholder',
+        userId: 'user-1',
+        triggerType: 'manual',
+      }),
+    ).rejects.toThrow(/not enabled/);
+  });
+
+  it('should still validate chain depth for batch execution', async () => {
+    const skillDir = await createTempDir('batch-skill-');
+    await writeBatchSkillYaml(skillDir);
+
+    await serverRepo.create({ name: 'srv-1', userId: 'user-1' });
+
+    const skill = await engine.install('user-1', skillDir, 'local');
+    await engine.updateStatus(skill.id, 'enabled');
+
+    await expect(
+      engine.execute({
+        skillId: skill.id,
+        serverId: 'placeholder',
+        userId: 'user-1',
+        triggerType: 'event',
+        chainContext: { depth: 5, trail: ['a', 'b', 'c', 'd', 'e'] },
+      }),
+    ).rejects.toThrow(/Chain depth limit exceeded/);
   });
 });

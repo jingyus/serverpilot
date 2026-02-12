@@ -1,12 +1,12 @@
-### [pending] TokenTracker 内存无上限增长 — 长运行服务器必定 OOM
+### [pending] trimMessagesIfNeeded 静默丢弃上下文 — AI 无感知导致幻觉
 
-**ID**: chat-035
-**优先级**: P0
-**模块路径**: packages/server/src/ai/token-tracker.ts
-**发现的问题**: `TokenTracker.entries` 数组（第 143 行）只有 `push()` 没有任何淘汰机制。`record()` 方法（第 154 行）每次 AI 调用都追加条目。对于长时间运行的生产服务器，假设每分钟 10 次 AI 调用，每天 14,400 条 × 每条约 200 字节 = 每天 ~3MB，一个月 ~90MB 纯 entries 数组。`reset()` 方法（第 267 行）标注为测试用途。`getStats()` 和 `getStatsBySession()` 每次调用都遍历全量 entries。
-**改进方案**: 1) 添加 `maxEntries` 配置（默认 10000） 2) `record()` 时检查长度，超出则移除最旧 entries 3) 可选：按 sessionId 分桶，evict 最旧 session 的所有 entries 4) 添加 `prune(olderThanMs)` 方法供定时清理。
-**验收标准**: 1) entries 数组有上限，不再无限增长 2) 超出上限时自动淘汰旧条目 3) getStats 仍返回正确的近期统计 4) 新增 3+ 测试覆盖淘汰行为
-**影响范围**: `packages/server/src/ai/token-tracker.ts`
+**ID**: chat-036
+**优先级**: P1
+**模块路径**: packages/server/src/ai/agentic-chat.ts
+**发现的问题**: `trimMessagesIfNeeded()`（第 764-779 行）当消息 token 超过 `MAX_MESSAGES_TOKENS`(150K) 时，从 index 1 开始 splice 删除 assistant/user 消息对。问题：1) 被删除的可能包含关键文件内容（tool_result）或重要执行上下文 2) AI 模型完全不知道部分上下文已丢失，可能基于不完整信息做出错误决策 3) 没有日志记录删除了多少消息/token。
+**改进方案**: 1) 在 trim 后注入一条 system message 说明 "Earlier tool results and conversation turns were trimmed to fit context window. {N} messages ({M}K tokens) removed." 2) 添加 debug 级别日志记录 trim 事件 3) 优先保留最近的 tool_result（包含文件内容）而非简单按位置删除。
+**验收标准**: 1) trim 后 messages 数组包含一条上下文丢失提示 2) AI 能在后续回复中意识到可能缺失上下文 3) 日志记录 trim 的消息数和 token 数 4) 新增 2+ 测试验证提示注入
+**影响范围**: `packages/server/src/ai/agentic-chat.ts`
 **创建时间**: (自动填充)
 **完成时间**: -
 

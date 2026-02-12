@@ -66,7 +66,7 @@ export interface SkillExecution {
   duration: number | null;
 }
 
-/** Result returned from SkillEngine.execute(). */
+/** Result returned from SkillEngine.execute() for a single server. */
 export interface SkillExecutionResult {
   executionId: string;
   status: SkillExecutionStatus;
@@ -74,6 +74,26 @@ export interface SkillExecutionResult {
   duration: number;
   result: Record<string, unknown> | null;
   errors: string[];
+}
+
+/** Result returned from SkillEngine.execute() when server_scope is 'all' or 'tagged'. */
+export interface BatchExecutionResult {
+  batchId: string;
+  serverScope: 'all' | 'tagged';
+  results: BatchServerResult[];
+  /** Count of servers that succeeded. */
+  successCount: number;
+  /** Count of servers that failed. */
+  failureCount: number;
+  /** Total duration across all servers (wall-clock, serial). */
+  totalDuration: number;
+}
+
+/** Per-server result within a batch execution. */
+export interface BatchServerResult {
+  serverId: string;
+  serverName: string;
+  result: SkillExecutionResult;
 }
 
 // ============================================================================

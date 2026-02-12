@@ -16,7 +16,6 @@
  */
 
 import { join, resolve } from 'node:path';
-
 import { createContextLogger } from '../../utils/logger.js';
 import {
   loadSkillFromDir,
@@ -30,7 +29,9 @@ import {
   getSkillRepository,
   type SkillRepository,
 } from '../../db/repositories/skill-repository.js';
-import { getServerRepository } from '../../db/repositories/server-repository.js';
+import {
+  getServerRepository,
+} from '../../db/repositories/server-repository.js';
 import { getSkillEventBus } from './skill-event-bus.js';
 import type { SkillManifest, SkillInput } from '@aiinstaller/shared';
 import type { SkillStatus } from '../../db/schema.js';
@@ -39,11 +40,13 @@ import type {
   InstalledSkillWithInputs,
   SkillExecution,
   SkillExecutionResult,
+  BatchExecutionResult,
   AvailableSkill,
   SkillRunParams,
   ChainContext,
 } from './types.js';
 import { SkillRunner } from './runner.js';
+import { executeBatch } from './batch-executor.js';
 import { TriggerManager, setTriggerManager, _resetTriggerManager } from './trigger-manager.js';
 
 const logger = createContextLogger({ module: 'skill-engine' });
@@ -252,15 +255,9 @@ export class SkillEngine {
   // Execution
   // --------------------------------------------------------------------------
 
-  /**
-   * Execute a skill (manual trigger) via the AI SkillRunner.
-   *
-   * Creates execution record, resolves the prompt template, then delegates
-   * to SkillRunner for autonomous AI-driven execution with security checks.
-   */
-  async execute(params: SkillRunParams): Promise<SkillExecutionResult> {
-    const { skillId, serverId, userId, triggerType, chainContext } = params;
-    const startTime = Date.now();
+  /** Execute a skill, dispatching to batch mode if server_scope is 'all' or 'tagged'. */
+  async execute(params: SkillRunParams): Promise<SkillExecutionResult | BatchExecutionResult> {
+    const { skillId, chainContext } = params;
 
     // Chain depth / cycle validation
     if (chainContext) {
@@ -299,6 +296,29 @@ export class SkillEngine {
         `Failed to load skill manifest: ${(err as Error).message}`,
       );
     }
+
+    // Determine server scope
+    const serverScope = manifest.constraints?.server_scope ?? 'single';
+
+    if (serverScope === 'all' || serverScope === 'tagged') {
+      return executeBatch(
+        params, skill, manifest, serverScope,
+        (p, s, m) => this.executeSingle(p, s, m),
+      );
+    }
+
+    // Default: single-server execution
+    return this.executeSingle(params, skill, manifest);
+  }
+
+  /** Execute a skill on a single server. Reused by batch mode via callback. */
+  private async executeSingle(
+    params: SkillRunParams,
+    skill: InstalledSkill,
+    manifest: SkillManifest,
+  ): Promise<SkillExecutionResult> {
+    const { skillId, serverId, userId, triggerType, chainContext } = params;
+    const startTime = Date.now();
 
     // Check if confirmation is required for auto-triggered skills
     const needsConfirmation =
@@ -386,66 +406,36 @@ export class SkillEngine {
         errors: runResult.errors,
       };
 
-      // Emit skill.completed or skill.failed event for chain triggers
-      if (this.triggerManager) {
-        const eventType = status === 'success' ? 'skill.completed' : 'skill.failed';
-        this.triggerManager.handleEvent(eventType, {
-          serverId,
-          skillId,
-          skillName: skill.name,
-          executionId: execution.id,
-          chainContext: nextChain,
-        }).catch((err) => {
-          logger.error(
-            { skillId, eventType, error: (err as Error).message },
-            'Failed to emit skill completion event',
-          );
-        });
-      }
+      this.emitTriggerEvent(
+        status === 'success' ? 'skill.completed' : 'skill.failed',
+        { serverId, skillId, skillName: skill.name, executionId: execution.id, chainContext: nextChain },
+      );
 
       return execResult;
     } catch (err) {
       const duration = Date.now() - startTime;
       const errorMessage = (err as Error).message;
 
-      await this.repo.completeExecution(
-        execution.id,
-        'failed',
-        { error: errorMessage },
-        0,
-        duration,
-      );
+      await this.repo.completeExecution(execution.id, 'failed', { error: errorMessage }, 0, duration);
+      logger.error({ executionId: execution.id, skillId, error: errorMessage }, 'Skill execution failed');
 
-      logger.error(
-        { executionId: execution.id, skillId, error: errorMessage },
-        'Skill execution failed',
-      );
-
-      // Emit skill.failed event for chain triggers
-      if (this.triggerManager) {
-        this.triggerManager.handleEvent('skill.failed', {
-          serverId,
-          skillId,
-          skillName: skill.name,
-          executionId: execution.id,
-          chainContext: nextChain,
-        }).catch((emitErr) => {
-          logger.error(
-            { skillId, error: (emitErr as Error).message },
-            'Failed to emit skill.failed event',
-          );
-        });
-      }
+      this.emitTriggerEvent('skill.failed', {
+        serverId, skillId, skillName: skill.name, executionId: execution.id, chainContext: nextChain,
+      });
 
       return {
-        executionId: execution.id,
-        status: 'failed',
-        stepsExecuted: 0,
-        duration,
-        result: null,
-        errors: [errorMessage],
+        executionId: execution.id, status: 'failed', stepsExecuted: 0,
+        duration, result: null, errors: [errorMessage],
       };
     }
+  }
+
+  /** Fire-and-forget event emission for chain triggers. */
+  private emitTriggerEvent(eventType: string, data: Record<string, unknown>): void {
+    if (!this.triggerManager) return;
+    this.triggerManager.handleEvent(eventType, data).catch((err) => {
+      logger.error({ eventType, error: (err as Error).message }, 'Failed to emit trigger event');
+    });
   }
 
   // --------------------------------------------------------------------------
