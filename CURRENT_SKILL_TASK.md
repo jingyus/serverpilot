@@ -1,28 +1,29 @@
-### [pending] runner-tools.test.ts — 工具定义构建 & 安全工具函数单元测试
+### [pending] runner-executor.test.ts — 6 种工具执行器单元测试 + 安全审计验证
 
-**ID**: skill-023
+**ID**: skill-024
 **优先级**: P0
 **模块路径**: packages/server/src/core/skill/
-**当前状态**: 文件不存在 — `runner-tools.ts` (222 行) 包含 `parseTimeout()`、`exceedsRiskLimit()`、`buildToolDefinitions()` 三个关键导出函数，均无任何测试覆盖。`exceedsRiskLimit` 是安全核心函数（决定命令是否被拒绝），按项目标准安全模块需 95%+ 覆盖率
+**当前状态**: 文件不存在 — `runner-executor.ts` (414 行) 实现了 `executeShell`、`executeReadFile`、`executeWriteFile`、`executeNotify`、`executeHttp`、`executeStore` 六个工具执行方法，以及 `auditShell` 审计辅助函数。这些是 Skill 命令执行的最终出口，涉及安全分级 (`classifyCommand`)、审计日志 (`getAuditLogger`)、Agent 通信 (`getTaskExecutor`)，完全无测试覆盖
 **实现方案**:
-创建 `runner-tools.test.ts`，覆盖以下场景:
-1. **parseTimeout** (~8 tests):
-   - 正常解析: "30s"→30000, "5m"→300000, "1h"→3600000
-   - 边界值: "0s"→0, "999h"
-   - 错误格式: "5x", "abc", "", "5", "m5" → 抛出 Error
-2. **exceedsRiskLimit** (~8 tests):
-   - green/yellow/red/critical/forbidden 之间的所有组合比较
-   - 边界: 相同级别不超限, forbidden 永远超限
-3. **buildToolDefinitions** (~8 tests):
-   - 单工具: ['shell'] → 只有 shell 定义
-   - 多工具: ['shell', 'read_file', 'store'] → 3 个定义
-   - 全工具: 6 种工具全部声明 → 6 个完整定义
-   - 验证每个工具定义的 name、input_schema 字段完整性
+创建 `runner-executor.test.ts`，Mock 外部依赖 (TaskExecutor, AuditLogger, WebhookDispatcher, SkillKVStore, Agent):
+1. **executeShell** (~10 tests):
+   - 正常执行: command → classifyCommand → 安全通过 → Agent 执行 → 返回 stdout
+   - 安全拒绝: red 命令 + yellow max → isError=true + blocked 消息
+   - forbidden 命令永远拒绝
+   - 审计日志: 每次 shell 调用都记录到 auditLogger
+   - Agent 未连接: 返回错误信息
+2. **executeReadFile** (~3 tests): 路径正常/Agent 错误/空文件
+3. **executeWriteFile** (~3 tests): 写入成功/Agent 错误/空内容
+4. **executeNotify** (~3 tests): 正常分发/dispatcher 异常/缺少参数
+5. **executeHttp** (~4 tests): GET/POST 成功, 超时, 非 200 响应
+6. **executeStore** (~4 tests): get/set/delete/list 操作
+7. **auditShell** (~2 tests): 记录格式正确, 包含 skillId/serverId/command
 **验收标准**:
-- 测试 ≥ 22 个，覆盖所有导出函数
-- `pnpm vitest run packages/server/src/core/skill/runner-tools.test.ts` 全部通过
+- 测试 ≥ 28 个，覆盖所有 6 种执行器 + 审计函数
+- 安全相关测试验证 `classifyCommand()` 与 `exceedsRiskLimit()` 的联动
+- `pnpm vitest run packages/server/src/core/skill/runner-executor.test.ts` 全部通过
 **影响范围**:
-- `packages/server/src/core/skill/runner-tools.test.ts` (新建)
+- `packages/server/src/core/skill/runner-executor.test.ts` (新建)
 **创建时间**: (自动填充)
 **完成时间**: -
 
