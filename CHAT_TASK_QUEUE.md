@@ -3,13 +3,13 @@
 > 此队列专注于 Chat 和 AI 对话系统的质量改进
 > AI 自动发现问题 → 生成任务 → 实现 → 验证
 
-**最后更新**: 2026-02-13 06:39:44
+**最后更新**: 2026-02-13 06:40:16
 
 ## 📊 统计
 
 - **总任务数**: 65
-- **待完成** (pending): 14
-- **进行中** (in_progress): 0
+- **待完成** (pending): 13
+- **进行中** (in_progress): 1
 - **已完成** (completed): 51
 - **失败** (failed): 0
 
@@ -44,7 +44,7 @@
 
 ---
 
-### [pending] Legacy 模式 RAG 搜索异常未捕获 — ragPipeline.search() 可能抛出未处理错误
+### [in_progress] Legacy 模式 RAG 搜索异常未捕获 — ragPipeline.search() 可能抛出未处理错误
 
 **ID**: chat-052
 **优先级**: P0

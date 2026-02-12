@@ -58,6 +58,7 @@ export interface ScannedSkill {
 export interface RequirementCheckResult {
   satisfied: boolean;
   missing: string[];
+  warnings: string[];
 }
 
 // ============================================================================
@@ -219,20 +220,23 @@ function resolveVariable(path: string, vars: TemplateVars): unknown {
  * Checks:
  * - OS compatibility (if `requires.os` is specified)
  * - Command dependencies (if `requires.commands` is specified)
+ * - Agent version (if `requires.agent` is specified)
  *
- * Agent version checking is documented but deferred — the version string
- * format is not yet standardized in the protocol.
+ * When `agentVersion` is not provided but `requires.agent` is specified,
+ * the check degrades to a warning (not a blocking error).
  *
- * @returns RequirementCheckResult with `satisfied` flag and list of unmet requirements
+ * @returns RequirementCheckResult with `satisfied` flag, unmet requirements, and warnings
  */
 export function checkRequirements(
   requires: SkillManifest['requires'],
   serverProfile?: ServerProfile | null,
+  agentVersion?: string | null,
 ): RequirementCheckResult {
   const missing: string[] = [];
+  const warnings: string[] = [];
 
   if (!requires) {
-    return { satisfied: true, missing: [] };
+    return { satisfied: true, missing: [], warnings: [] };
   }
 
   // OS check
@@ -263,20 +267,88 @@ export function checkRequirements(
     }
   }
 
-  // Agent version check (deferred — version format not yet standardized)
+  // Agent version check
   if (requires.agent) {
-    logger.debug({ agent: requires.agent }, 'Agent version check deferred');
+    if (!agentVersion) {
+      logger.warn({ constraint: requires.agent }, 'Agent version required but not reported — degrading to warning');
+      warnings.push(`Agent version constraint '${requires.agent}' cannot be verified (agent did not report version)`);
+    } else {
+      const constraint = requires.agent;
+      if (!satisfiesSemverRange(agentVersion, constraint)) {
+        missing.push(`Agent version '${agentVersion}' does not satisfy constraint '${constraint}'`);
+      }
+    }
   }
 
   return {
     satisfied: missing.length === 0,
     missing,
+    warnings,
   };
 }
 
 // ============================================================================
 // Helpers
 // ============================================================================
+
+/**
+ * Compare two semver version strings (e.g. "1.2.3" vs "1.3.0").
+ *
+ * @returns positive if a > b, negative if a < b, 0 if equal
+ */
+function compareVersions(a: string, b: string): number {
+  const aParts = a.split('.').map(Number);
+  const bParts = b.split('.').map(Number);
+
+  for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
+    const aVal = aParts[i] || 0;
+    const bVal = bParts[i] || 0;
+    if (aVal !== bVal) {
+      return aVal - bVal;
+    }
+  }
+  return 0;
+}
+
+/**
+ * Check if a version string satisfies a semver range constraint.
+ *
+ * Supported formats:
+ * - ">=1.0.0" — greater than or equal
+ * - ">1.0.0"  — strictly greater than
+ * - "<=1.0.0" — less than or equal
+ * - "<1.0.0"  — strictly less than
+ * - "=1.0.0"  — exact match
+ * - "1.0.0"   — exact match (no operator)
+ *
+ * Returns false if version or constraint is not a valid format.
+ */
+export function satisfiesSemverRange(version: string, constraint: string): boolean {
+  const match = constraint.match(/^(>=|>|<=|<|=)?(\d+(?:\.\d+)*)$/);
+  if (!match) {
+    logger.warn({ version, constraint }, 'Invalid semver constraint format');
+    return false;
+  }
+
+  const versionMatch = version.match(/^\d+(?:\.\d+)*$/);
+  if (!versionMatch) {
+    logger.warn({ version }, 'Invalid version format');
+    return false;
+  }
+
+  const operator = match[1] || '=';
+  const target = match[2];
+  const cmp = compareVersions(version, target);
+
+  switch (operator) {
+    case '>=': return cmp >= 0;
+    case '>':  return cmp > 0;
+    case '<=': return cmp <= 0;
+    case '<':  return cmp < 0;
+    case '=':  return cmp === 0;
+    default:   return false;
+  }
+}
 
 /**
  * Normalize the server OS platform string to match skill requirements format.

@@ -251,14 +251,21 @@ chat.post('/:serverId', requirePermission('chat:use'), validateBody(ChatMessageB
       const conversationContext = sessionMgr.buildContextWithLimit(session.id, 8000);
       const serverLabel = `Server: ${server.name}`;
 
-      // Search knowledge base
+      // Search knowledge base (graceful degradation — never blocks chat)
       let knowledgeContext: string | undefined;
-      const ragPipeline = getRagPipeline();
-      if (ragPipeline) {
-        const ragResult = await ragPipeline.search(body.message!);
-        if (ragResult.hasResults) {
-          knowledgeContext = ragResult.contextText;
+      try {
+        const ragPipeline = getRagPipeline();
+        if (ragPipeline) {
+          const ragResult = await ragPipeline.search(body.message!);
+          if (ragResult.hasResults) {
+            knowledgeContext = ragResult.contextText;
+          }
         }
+      } catch (ragErr) {
+        logger.warn(
+          { operation: 'rag_search', error: ragErr instanceof Error ? ragErr.message : String(ragErr) },
+          'RAG search failed, continuing without knowledge context',
+        );
       }
 
       let fullResponse = '';

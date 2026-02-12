@@ -15,6 +15,7 @@ import {
   scanSkillDirectories,
   resolvePromptTemplate,
   checkRequirements,
+  satisfiesSemverRange,
   type TemplateVars,
 } from './loader.js';
 
@@ -654,5 +655,134 @@ describe('scanSkillDirectories', () => {
     const results = await scanSkillDirectories([baseDir]);
 
     expect(results[0].dirPath).toBe(skillDir);
+  });
+});
+
+// ============================================================================
+// satisfiesSemverRange Tests
+// ============================================================================
+
+describe('satisfiesSemverRange', () => {
+  it('should match >= constraint when version is greater', () => {
+    expect(satisfiesSemverRange('1.2.0', '>=1.0.0')).toBe(true);
+  });
+
+  it('should match >= constraint when version is equal', () => {
+    expect(satisfiesSemverRange('1.0.0', '>=1.0.0')).toBe(true);
+  });
+
+  it('should reject >= constraint when version is less', () => {
+    expect(satisfiesSemverRange('0.9.0', '>=1.0.0')).toBe(false);
+  });
+
+  it('should match > constraint only when strictly greater', () => {
+    expect(satisfiesSemverRange('1.0.1', '>1.0.0')).toBe(true);
+    expect(satisfiesSemverRange('1.0.0', '>1.0.0')).toBe(false);
+  });
+
+  it('should match <= constraint', () => {
+    expect(satisfiesSemverRange('1.0.0', '<=1.0.0')).toBe(true);
+    expect(satisfiesSemverRange('0.9.0', '<=1.0.0')).toBe(true);
+    expect(satisfiesSemverRange('1.0.1', '<=1.0.0')).toBe(false);
+  });
+
+  it('should match < constraint', () => {
+    expect(satisfiesSemverRange('0.9.0', '<1.0.0')).toBe(true);
+    expect(satisfiesSemverRange('1.0.0', '<1.0.0')).toBe(false);
+  });
+
+  it('should match = constraint (exact)', () => {
+    expect(satisfiesSemverRange('1.0.0', '=1.0.0')).toBe(true);
+    expect(satisfiesSemverRange('1.0.1', '=1.0.0')).toBe(false);
+  });
+
+  it('should treat bare version as exact match', () => {
+    expect(satisfiesSemverRange('1.0.0', '1.0.0')).toBe(true);
+    expect(satisfiesSemverRange('1.0.1', '1.0.0')).toBe(false);
+  });
+
+  it('should handle different segment lengths', () => {
+    expect(satisfiesSemverRange('1.0', '>=1.0.0')).toBe(true);
+    expect(satisfiesSemverRange('2', '>=1.0.0')).toBe(true);
+  });
+
+  it('should return false for invalid constraint format', () => {
+    expect(satisfiesSemverRange('1.0.0', '~1.0.0')).toBe(false);
+    expect(satisfiesSemverRange('1.0.0', '>=1.0.0 <2.0.0')).toBe(false);
+  });
+
+  it('should return false for invalid version format', () => {
+    expect(satisfiesSemverRange('abc', '>=1.0.0')).toBe(false);
+    expect(satisfiesSemverRange('v1.0.0', '>=1.0.0')).toBe(false);
+  });
+});
+
+// ============================================================================
+// checkRequirements — Agent Version Tests
+// ============================================================================
+
+describe('checkRequirements — agent version', () => {
+  it('should pass when agent version satisfies constraint', () => {
+    const result = checkRequirements({ agent: '>=1.0.0' }, null, '1.2.0');
+
+    expect(result.satisfied).toBe(true);
+    expect(result.missing).toHaveLength(0);
+    expect(result.warnings).toHaveLength(0);
+  });
+
+  it('should fail when agent version does not satisfy constraint', () => {
+    const result = checkRequirements({ agent: '>=2.0.0' }, null, '1.5.0');
+
+    expect(result.satisfied).toBe(false);
+    expect(result.missing).toHaveLength(1);
+    expect(result.missing[0]).toContain("'1.5.0'");
+    expect(result.missing[0]).toContain("'>=2.0.0'");
+  });
+
+  it('should degrade to warning when agent version is not available (null)', () => {
+    const result = checkRequirements({ agent: '>=1.0.0' }, null, null);
+
+    expect(result.satisfied).toBe(true);
+    expect(result.missing).toHaveLength(0);
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]).toContain('cannot be verified');
+  });
+
+  it('should degrade to warning when agent version is not provided (undefined)', () => {
+    const result = checkRequirements({ agent: '>=1.0.0' }, null);
+
+    expect(result.satisfied).toBe(true);
+    expect(result.missing).toHaveLength(0);
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]).toContain('agent did not report version');
+  });
+
+  it('should return empty warnings when no agent requirement', () => {
+    const result = checkRequirements({ os: ['linux'] }, makeServerProfile());
+
+    expect(result.warnings).toHaveLength(0);
+  });
+
+  it('should check agent version alongside OS and command checks', () => {
+    const profile = makeServerProfile({
+      osInfo: { platform: 'windows', arch: 'x86_64', version: 'Win 11', kernel: '10.0', hostname: 'w', uptime: 100 },
+      software: [],
+    });
+
+    const result = checkRequirements({
+      os: ['linux'],
+      commands: ['tar'],
+      agent: '>=1.0.0',
+    }, profile, '0.5.0');
+
+    expect(result.satisfied).toBe(false);
+    expect(result.missing.length).toBeGreaterThanOrEqual(3); // OS + command + agent
+    expect(result.missing.some(m => m.includes('Agent version'))).toBe(true);
+  });
+
+  it('should pass exact version match with bare constraint', () => {
+    const result = checkRequirements({ agent: '1.0.0' }, null, '1.0.0');
+
+    expect(result.satisfied).toBe(true);
   });
 });
