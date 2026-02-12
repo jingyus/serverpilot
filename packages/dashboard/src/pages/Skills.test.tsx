@@ -134,6 +134,8 @@ function setupStore(
 describe('Skills Page', () => {
   beforeEach(() => {
     setupStore();
+    // jsdom doesn't implement scrollTo
+    Element.prototype.scrollTo = vi.fn();
   });
 
   // --------------------------------------------------------------------------
@@ -346,7 +348,8 @@ describe('Skills Page', () => {
     await user.click(executeButtons[0]);
 
     expect(screen.getByText('Execute Skill')).toBeInTheDocument();
-    expect(screen.getByText('Nginx Setup')).toBeInTheDocument();
+    // Dialog description also shows skill name (alongside card), so use getAllByText
+    expect(screen.getAllByText('Nginx Setup').length).toBeGreaterThanOrEqual(2);
     expect(screen.getByTestId('exec-server-select')).toBeInTheDocument();
 
     // Only online servers should appear in dropdown
@@ -381,7 +384,7 @@ describe('Skills Page', () => {
     const confirmBtn = screen.getByRole('button', { name: 'Execute' });
     await user.click(confirmBtn);
 
-    expect(executeSkill).toHaveBeenCalledWith('sk-1', 'srv-1', undefined);
+    expect(executeSkill).toHaveBeenCalledWith('sk-1', 'srv-1');
   });
 
   it('should show no servers message when no online servers available', async () => {

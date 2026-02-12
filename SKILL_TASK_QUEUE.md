@@ -3,14 +3,14 @@
 > 此队列专注于 Skill 插件系统的设计与实现
 > AI 自动扫描 → 发现缺失 → 设计实现 → 验证
 
-**最后更新**: 2026-02-13 02:03:30
+**最后更新**: 2026-02-13 02:10:34
 
 ## 📊 统计
 
 - **总任务数**: 22
 - **待完成** (pending): 7
-- **进行中** (in_progress): 1
-- **已完成** (completed): 14
+- **进行中** (in_progress): 0
+- **已完成** (completed): 15
 - **失败** (failed): 0
 
 ## 📋 任务列表
@@ -90,7 +90,7 @@
 
 ---
 
-### [in_progress] Dashboard Skill 执行按钮无功能 — onExecute 为空回调
+### [completed] Dashboard Skill 执行按钮无功能 — onExecute 为空回调 ✅
 
 **ID**: skill-015
 **优先级**: P1
@@ -128,7 +128,7 @@
 - `packages/dashboard/src/i18n/locales/zh.json` (修改 — 新增 keys)
 
 **创建时间**: (自动填充)
-**完成时间**: -
+**完成时间**: 2026-02-13 02:10:34
 
 ---
 

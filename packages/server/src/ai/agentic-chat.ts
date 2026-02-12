@@ -19,7 +19,7 @@ import { getTaskExecutor } from '../core/task/executor.js';
 import { findConnectedAgent } from '../core/agent/agent-connector.js';
 import { validateCommand } from '../core/security/command-validator.js';
 import { getAuditLogger } from '../core/security/audit-logger.js';
-import { buildProfileContext, buildProfileCaveats } from './profile-context.js';
+import { buildProfileContext, buildProfileCaveats, estimateTokens } from './profile-context.js';
 import { getRagPipeline } from '../knowledge/rag-pipeline.js';
 import { logger } from '../utils/logger.js';
 
@@ -32,9 +32,6 @@ const MAX_TURNS = 25;
 
 /** Maximum estimated tokens for the messages array before trimming */
 const MAX_MESSAGES_TOKENS = 150_000;
-
-/** Rough chars-per-token constant (matches profile-context.ts) */
-const CHARS_PER_TOKEN = 4;
 
 /** Timeout for waiting on user confirmation (5 minutes) */
 const CONFIRM_TIMEOUT_MS = 5 * 60 * 1000;
@@ -714,28 +711,42 @@ You operate like an experienced sysadmin with SSH access — directly executing 
 // ============================================================================
 
 /**
- * Estimate the total token count of the Anthropic messages array.
- * Handles both string content and structured content blocks.
+ * Extract text from a single content block for token estimation.
+ * For text blocks, returns the text directly.
+ * For tool_use blocks, extracts the JSON input.
+ * For tool_result blocks, extracts the content string.
  */
-function estimateMessagesTokens(messages: Anthropic.MessageParam[]): number {
-  let chars = 0;
+function extractBlockText(block: Record<string, unknown>): string {
+  if ('text' in block && typeof block.text === 'string') {
+    return block.text;
+  }
+  if ('content' in block && typeof block.content === 'string') {
+    return block.content;
+  }
+  // tool_use input or other structured data — serialize for estimation
+  return JSON.stringify(block);
+}
+
+/**
+ * Estimate the total token count of the Anthropic messages array.
+ *
+ * Uses CJK-aware `estimateTokens()` from profile-context.ts, which
+ * handles mixed Chinese/English text properly (~1.5 chars/token for CJK
+ * vs ~4 chars/token for ASCII).
+ */
+export function estimateMessagesTokens(messages: Anthropic.MessageParam[]): number {
+  let tokens = 0;
   for (const msg of messages) {
     if (typeof msg.content === 'string') {
-      chars += msg.content.length;
+      tokens += estimateTokens(msg.content);
     } else if (Array.isArray(msg.content)) {
       for (const block of msg.content) {
-        if ('text' in block && typeof block.text === 'string') {
-          chars += block.text.length;
-        } else if ('content' in block && typeof block.content === 'string') {
-          chars += block.content.length;
-        } else {
-          // tool_use input, tool_result, etc. — rough estimate
-          chars += JSON.stringify(block).length;
-        }
+        const text = extractBlockText(block as Record<string, unknown>);
+        tokens += estimateTokens(text);
       }
     }
   }
-  return Math.ceil(chars / CHARS_PER_TOKEN);
+  return tokens;
 }
 
 /**
@@ -751,16 +762,14 @@ export function trimMessagesIfNeeded(
 ): void {
   if (messages.length <= 3) return; // first user + one turn pair minimum
 
-  let currentTokens = estimateMessagesTokens(messages);
-  if (currentTokens <= maxTokens) return;
+  if (estimateMessagesTokens(messages) <= maxTokens) return;
 
   // Remove pairs from index 1 (after the first user message) until under budget.
   // Each "pair" is an assistant message + a user message (tool results).
-  while (currentTokens > maxTokens && messages.length > 3) {
-    // Remove messages at index 1 and 2 (oldest assistant + user pair after first msg)
-    const removed = messages.splice(1, 2);
-    const removedTokens = estimateMessagesTokens(removed);
-    currentTokens -= removedTokens;
+  // Recalculate total after each splice to avoid cumulative estimation drift.
+  while (messages.length > 3) {
+    messages.splice(1, 2);
+    if (estimateMessagesTokens(messages) <= maxTokens) break;
   }
 }
 
