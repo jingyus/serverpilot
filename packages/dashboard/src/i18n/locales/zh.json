@@ -496,7 +496,12 @@
     "noInputs": "该技能没有可配置的输入。",
     "saveConfig": "保存配置",
     "executionHistory": "执行历史",
-    "noExecutions": "暂无执行记录。"
+    "noExecutions": "暂无执行记录。",
+    "executeSkill": "执行技能",
+    "selectServer": "选择服务器",
+    "noServers": "无可用服务器",
+    "executing": "执行中...",
+    "executionStarted": "执行已启动"
   },
   "theme": {
     "toggle": "切换主题",

@@ -496,7 +496,12 @@
     "noInputs": "This skill has no configurable inputs.",
     "saveConfig": "Save Configuration",
     "executionHistory": "Execution History",
-    "noExecutions": "No executions yet."
+    "noExecutions": "No executions yet.",
+    "executeSkill": "Execute Skill",
+    "selectServer": "Select a server",
+    "noServers": "No servers available",
+    "executing": "Executing...",
+    "executionStarted": "Execution started"
   },
   "theme": {
     "toggle": "Toggle theme",

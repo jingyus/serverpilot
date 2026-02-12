@@ -3,13 +3,13 @@
 > 此队列专注于 Skill 插件系统的设计与实现
 > AI 自动扫描 → 发现缺失 → 设计实现 → 验证
 
-**最后更新**: 2026-02-13 02:02:58
+**最后更新**: 2026-02-13 02:03:30
 
 ## 📊 统计
 
 - **总任务数**: 22
-- **待完成** (pending): 8
-- **进行中** (in_progress): 0
+- **待完成** (pending): 7
+- **进行中** (in_progress): 1
 - **已完成** (completed): 14
 - **失败** (failed): 0
 
@@ -90,7 +90,7 @@
 
 ---
 
-### [pending] Dashboard Skill 执行按钮无功能 — onExecute 为空回调
+### [in_progress] Dashboard Skill 执行按钮无功能 — onExecute 为空回调
 
 **ID**: skill-015
 **优先级**: P1

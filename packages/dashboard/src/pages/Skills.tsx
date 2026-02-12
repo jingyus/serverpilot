@@ -22,9 +22,11 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { useSkillsStore } from '@/stores/skills';
+import { useServersStore } from '@/stores/servers';
 import { SkillCard } from '@/components/skill/SkillCard';
 import { SkillConfigModal } from '@/components/skill/SkillConfigModal';
 import { ExecutionHistory } from '@/components/skill/ExecutionHistory';
+import { ExecutionStream } from '@/components/skill/ExecutionStream';
 import type { InstalledSkill, AvailableSkill } from '@/types/skill';
 import { SKILL_SOURCE_LABELS } from '@/types/skill';
 import type { SkillInputDef } from '@/components/skill/SkillConfigModal';
@@ -53,19 +55,27 @@ export function Skills() {
     uninstallSkill,
     configureSkill,
     updateStatus,
+    executeSkill,
     fetchExecutions,
     clearError,
   } = useSkillsStore();
+
+  const { servers, fetchServers } = useServersStore();
 
   const [activeTab, setActiveTab] = useState<Tab>('installed');
   const [configTarget, setConfigTarget] = useState<InstalledSkill | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<InstalledSkill | null>(null);
   const [historyTarget, setHistoryTarget] = useState<InstalledSkill | null>(null);
+  const [executeTarget, setExecuteTarget] = useState<InstalledSkill | null>(null);
+  const [selectedServerId, setSelectedServerId] = useState('');
+  const [executionId, setExecutionId] = useState<string | null>(null);
+  const [isExecuting, setIsExecuting] = useState(false);
 
   useEffect(() => {
     fetchSkills();
     fetchAvailable();
-  }, [fetchSkills, fetchAvailable]);
+    fetchServers();
+  }, [fetchSkills, fetchAvailable, fetchServers]);
 
   useEffect(() => {
     if (historyTarget) {
@@ -97,6 +107,23 @@ export function Skills() {
   const handleConfigure = useCallback(async (id: string, config: Record<string, unknown>) => {
     await configureSkill(id, config);
   }, [configureSkill]);
+
+  const handleExecuteConfirm = useCallback(async () => {
+    if (!executeTarget || !selectedServerId) return;
+    setIsExecuting(true);
+    try {
+      const result = await executeSkill(executeTarget.id, selectedServerId);
+      setExecutionId(result.executionId);
+    } catch { /* handled by store */ }
+    setIsExecuting(false);
+  }, [executeTarget, selectedServerId, executeSkill]);
+
+  const handleExecuteClose = useCallback(() => {
+    setExecuteTarget(null);
+    setSelectedServerId('');
+    setExecutionId(null);
+    setIsExecuting(false);
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -145,7 +172,7 @@ export function Skills() {
           skills={skills}
           onToggle={handleToggle}
           onConfigure={setConfigTarget}
-          onExecute={() => {}}
+          onExecute={setExecuteTarget}
           onUninstall={setDeleteTarget}
           onHistory={setHistoryTarget}
         />
@@ -189,6 +216,19 @@ export function Skills() {
           </DialogContent>
         </Dialog>
       )}
+
+      {/* Execute Skill Dialog */}
+      <ExecuteDialog
+        open={!!executeTarget}
+        skillName={executeTarget?.displayName ?? executeTarget?.name ?? ''}
+        servers={servers}
+        selectedServerId={selectedServerId}
+        onServerChange={setSelectedServerId}
+        executionId={executionId}
+        isExecuting={isExecuting}
+        onExecute={handleExecuteConfirm}
+        onClose={handleExecuteClose}
+      />
     </div>
   );
 }
@@ -408,6 +448,97 @@ function DeleteDialog({
         <DialogFooter>
           <Button variant="outline" onClick={onCancel}>{t('common.cancel')}</Button>
           <Button variant="destructive" onClick={onConfirm}>{t('skills.uninstall')}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ============================================================================
+// Execute Dialog
+// ============================================================================
+
+function ExecuteDialog({
+  open,
+  skillName,
+  servers,
+  selectedServerId,
+  onServerChange,
+  executionId,
+  isExecuting,
+  onExecute,
+  onClose,
+}: {
+  open: boolean;
+  skillName: string;
+  servers: { id: string; name: string; status: string }[];
+  selectedServerId: string;
+  onServerChange: (id: string) => void;
+  executionId: string | null;
+  isExecuting: boolean;
+  onExecute: () => void;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const onlineServers = servers.filter((s) => s.status === 'online');
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{t('skills.executeSkill')}</DialogTitle>
+          <DialogDescription>{skillName}</DialogDescription>
+        </DialogHeader>
+
+        {executionId ? (
+          <ExecutionStream executionId={executionId} />
+        ) : (
+          <div className="space-y-4">
+            {onlineServers.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{t('skills.noServers')}</p>
+            ) : (
+              <div className="space-y-2">
+                <label htmlFor="exec-server" className="text-sm font-medium">
+                  {t('skills.selectServer')}
+                </label>
+                <select
+                  id="exec-server"
+                  value={selectedServerId}
+                  onChange={(e) => onServerChange(e.target.value)}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  data-testid="exec-server-select"
+                >
+                  <option value="">{t('skills.selectServer')}</option>
+                  {onlineServers.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+        )}
+
+        <DialogFooter>
+          {executionId ? (
+            <Button onClick={onClose}>{t('common.dismiss')}</Button>
+          ) : (
+            <>
+              <Button variant="outline" onClick={onClose}>{t('common.cancel')}</Button>
+              <Button
+                onClick={onExecute}
+                disabled={!selectedServerId || isExecuting}
+              >
+                {isExecuting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {t('skills.executing')}
+                  </>
+                ) : (
+                  t('skills.execute')
+                )}
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

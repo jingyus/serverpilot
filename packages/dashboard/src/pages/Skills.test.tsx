@@ -6,7 +6,9 @@ import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Skills } from './Skills';
 import { useSkillsStore } from '@/stores/skills';
+import { useServersStore } from '@/stores/servers';
 import type { InstalledSkill, AvailableSkill, SkillExecution } from '@/types/skill';
+import type { Server } from '@/types/server';
 
 // ============================================================================
 // Mock Data
@@ -73,6 +75,11 @@ const mockAvailable = [
   }),
 ];
 
+const mockServers: Server[] = [
+  { id: 'srv-1', name: 'Web Server', status: 'online', tags: [], group: null, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
+  { id: 'srv-2', name: 'DB Server', status: 'offline', tags: [], group: null, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' },
+];
+
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -85,11 +92,16 @@ function renderSkills() {
   );
 }
 
-function setupStore(overrides: Partial<ReturnType<typeof useSkillsStore.getState>> = {}) {
+function setupStore(
+  overrides: Partial<ReturnType<typeof useSkillsStore.getState>> = {},
+  serverOverrides: Partial<ReturnType<typeof useServersStore.getState>> = {},
+) {
   useSkillsStore.setState({
     skills: mockSkills,
     available: mockAvailable,
     executions: [],
+    executionEvents: [],
+    isStreaming: false,
     isLoading: false,
     error: null,
     fetchSkills: vi.fn().mockResolvedValue(undefined),
@@ -100,8 +112,18 @@ function setupStore(overrides: Partial<ReturnType<typeof useSkillsStore.getState
     updateStatus: vi.fn().mockResolvedValue(undefined),
     executeSkill: vi.fn().mockResolvedValue({ executionId: 'e1', status: 'success', stepsExecuted: 1, duration: 100, result: null, errors: [] }),
     fetchExecutions: vi.fn().mockResolvedValue(undefined),
+    startExecutionStream: vi.fn(),
+    stopExecutionStream: vi.fn(),
     clearError: vi.fn(),
     ...overrides,
+  });
+
+  useServersStore.setState({
+    servers: mockServers,
+    isLoading: false,
+    error: null,
+    fetchServers: vi.fn().mockResolvedValue(undefined),
+    ...serverOverrides,
   });
 }
 
@@ -309,5 +331,106 @@ describe('Skills Page', () => {
     expect(screen.getByText('Success')).toBeInTheDocument();
     expect(screen.getByText('manual')).toBeInTheDocument();
     expect(screen.getByText('3 steps')).toBeInTheDocument();
+  });
+
+  // --------------------------------------------------------------------------
+  // Execute Skill Flow
+  // --------------------------------------------------------------------------
+
+  it('should open execute dialog with server selector when clicking execute', async () => {
+    const user = userEvent.setup();
+    renderSkills();
+
+    // Click the execute (Zap) button on the first enabled skill
+    const executeButtons = screen.getAllByTitle('Execute');
+    await user.click(executeButtons[0]);
+
+    expect(screen.getByText('Execute Skill')).toBeInTheDocument();
+    expect(screen.getByText('Nginx Setup')).toBeInTheDocument();
+    expect(screen.getByTestId('exec-server-select')).toBeInTheDocument();
+
+    // Only online servers should appear in dropdown
+    const select = screen.getByTestId('exec-server-select') as HTMLSelectElement;
+    const options = Array.from(select.options);
+    expect(options.some((o) => o.text === 'Web Server')).toBe(true);
+    expect(options.some((o) => o.text === 'DB Server')).toBe(false);
+  });
+
+  it('should call executeSkill when selecting server and confirming execution', async () => {
+    const executeSkill = vi.fn().mockResolvedValue({
+      executionId: 'exec-new',
+      status: 'success',
+      stepsExecuted: 2,
+      duration: 500,
+      result: null,
+      errors: [],
+    });
+    setupStore({ executeSkill });
+    const user = userEvent.setup();
+    renderSkills();
+
+    // Open execute dialog
+    const executeButtons = screen.getAllByTitle('Execute');
+    await user.click(executeButtons[0]);
+
+    // Select a server
+    const select = screen.getByTestId('exec-server-select');
+    await user.selectOptions(select, 'srv-1');
+
+    // Click Execute button in dialog
+    const confirmBtn = screen.getByRole('button', { name: 'Execute' });
+    await user.click(confirmBtn);
+
+    expect(executeSkill).toHaveBeenCalledWith('sk-1', 'srv-1', undefined);
+  });
+
+  it('should show no servers message when no online servers available', async () => {
+    setupStore({}, { servers: [{ id: 'srv-3', name: 'Down Server', status: 'offline', tags: [], group: null, createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z' }] });
+    const user = userEvent.setup();
+    renderSkills();
+
+    const executeButtons = screen.getAllByTitle('Execute');
+    await user.click(executeButtons[0]);
+
+    expect(screen.getByText('No servers available')).toBeInTheDocument();
+  });
+
+  it('should disable execute confirm button when no server is selected', async () => {
+    const user = userEvent.setup();
+    renderSkills();
+
+    const executeButtons = screen.getAllByTitle('Execute');
+    await user.click(executeButtons[0]);
+
+    const confirmBtn = screen.getByRole('button', { name: 'Execute' });
+    expect(confirmBtn).toBeDisabled();
+  });
+
+  it('should show execution stream after triggering execution', async () => {
+    const executeSkill = vi.fn().mockResolvedValue({
+      executionId: 'exec-stream-1',
+      status: 'running',
+      stepsExecuted: 0,
+      duration: 0,
+      result: null,
+      errors: [],
+    });
+    const startExecutionStream = vi.fn();
+    setupStore({ executeSkill, startExecutionStream });
+    const user = userEvent.setup();
+    renderSkills();
+
+    // Open execute dialog
+    const executeButtons = screen.getAllByTitle('Execute');
+    await user.click(executeButtons[0]);
+
+    // Select server and execute
+    await user.selectOptions(screen.getByTestId('exec-server-select'), 'srv-1');
+    await user.click(screen.getByRole('button', { name: 'Execute' }));
+
+    // After execution, the ExecutionStream component should be rendered
+    // The dialog should now show Dismiss button instead of Cancel/Execute
+    expect(screen.getByText('Dismiss')).toBeInTheDocument();
+    expect(startExecutionStream).toHaveBeenCalledWith('exec-stream-1');
   });
 });

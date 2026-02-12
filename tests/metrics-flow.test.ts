@@ -254,9 +254,11 @@ describe('Metrics Tiered Aggregation', () => {
     const { userId, serverId } = setupTestServerAndUser();
     const metricsRepo = getMetricsRepository();
 
-    // Insert 3 raw metrics in the same hour bucket (2 hours ago)
+    // Insert 3 raw metrics in the same hour bucket (5 hours ago — far enough
+    // from "now-1h" metrics inserted by earlier tests in this file to avoid
+    // cross-test contamination in aggregateToHourly which scans all servers)
     const baseTime = new Date();
-    baseTime.setHours(baseTime.getHours() - 2);
+    baseTime.setHours(baseTime.getHours() - 5);
     const hourStart = new Date(
       Math.floor(baseTime.getTime() / (60 * 60 * 1000)) * (60 * 60 * 1000)
     );
@@ -291,7 +293,7 @@ describe('Metrics Tiered Aggregation', () => {
     const metricsRepo = getMetricsRepository();
 
     const hourStart = new Date();
-    hourStart.setHours(hourStart.getHours() - 3);
+    hourStart.setHours(hourStart.getHours() - 6);
     const bucketStart = new Date(
       Math.floor(hourStart.getTime() / (60 * 60 * 1000)) * (60 * 60 * 1000)
     );
