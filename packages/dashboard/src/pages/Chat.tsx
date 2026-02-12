@@ -183,7 +183,7 @@ export function Chat() {
             data-testid="message-list"
           >
             {messages.length === 0 && !isStreaming ? (
-              <EmptyState serverName={serverName} />
+              <EmptyState serverName={serverName} onSuggestionClick={handleSend} />
             ) : (
               <div className="space-y-1 py-4">
                 {messages.map((msg) => (
@@ -357,8 +357,21 @@ function ChatHeader({
   );
 }
 
-function EmptyState({ serverName }: { serverName: string }) {
+function EmptyState({
+  serverName,
+  onSuggestionClick,
+}: {
+  serverName: string;
+  onSuggestionClick: (text: string) => void;
+}) {
   const { t } = useTranslation();
+
+  const suggestions = [
+    t('chat.suggestion1'),
+    t('chat.suggestion2'),
+    t('chat.suggestion3'),
+    t('chat.suggestion4'),
+  ];
 
   return (
     <div
@@ -375,15 +388,12 @@ function EmptyState({ serverName }: { serverName: string }) {
         </p>
       </div>
       <div className="flex flex-wrap justify-center gap-2">
-        {[
-          t('chat.suggestion1'),
-          t('chat.suggestion2'),
-          t('chat.suggestion3'),
-          t('chat.suggestion4'),
-        ].map((suggestion) => (
+        {suggestions.map((suggestion, index) => (
           <Card
             key={suggestion}
-            className="cursor-default transition-colors hover:bg-muted/50"
+            className="cursor-pointer transition-colors hover:bg-muted/50"
+            onClick={() => onSuggestionClick(suggestion)}
+            data-testid={`suggestion-card-${index}`}
           >
             <CardContent className="px-2 py-1.5 text-xs text-muted-foreground sm:px-3 sm:py-2 sm:text-sm">
               {suggestion}

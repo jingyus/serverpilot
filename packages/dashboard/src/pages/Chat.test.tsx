@@ -146,6 +146,29 @@ describe('Chat Page', () => {
       ).toBeInTheDocument();
     });
 
+    it('suggestion cards have cursor-pointer and data-testid', () => {
+      renderChat('/chat/srv-1');
+      const card = screen.getByTestId('suggestion-card-0');
+      expect(card).toBeInTheDocument();
+      expect(card.className).toContain('cursor-pointer');
+      expect(screen.getByTestId('suggestion-card-1')).toBeInTheDocument();
+      expect(screen.getByTestId('suggestion-card-2')).toBeInTheDocument();
+      expect(screen.getByTestId('suggestion-card-3')).toBeInTheDocument();
+    });
+
+    it('clicking a suggestion card calls sendMessage with suggestion text', async () => {
+      const user = (await import('@testing-library/user-event')).default.setup();
+      const sendMessage = vi.fn();
+      useChatStore.setState({ sendMessage: sendMessage as unknown as (msg: string) => void });
+      renderChat('/chat/srv-1');
+
+      const card = screen.getByTestId('suggestion-card-0');
+      await user.click(card);
+
+      expect(sendMessage).toHaveBeenCalledTimes(1);
+      expect(sendMessage).toHaveBeenCalledWith('Install nginx and configure it');
+    });
+
     it('renders message input', () => {
       renderChat('/chat/srv-1');
       expect(screen.getByTestId('message-input')).toBeInTheDocument();

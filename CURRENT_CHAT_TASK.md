@@ -1,36 +1,40 @@
-### [pending] SSE 连接无自动重连 — 网络抖动导致 Chat 流式响应永久中断
+### [pending] Chat 建议点击功能缺失 — EmptyState 建议卡片无法触发发送消息
 
-**ID**: chat-004
-**优先级**: P1
-**模块路径**: packages/dashboard/src/api/sse.ts, packages/dashboard/src/stores/chat.ts
+**ID**: chat-005
+**优先级**: P2
+**模块路径**: packages/dashboard/src/pages/Chat.tsx
 **发现的问题**:
-Chat SSE 连接 (`createSSEConnection()` at sse.ts:82-137) 没有任何重连机制。对比同文件中的 `createMetricsSSE()` (sse.ts:158-271) 和 `createServerStatusSSE()` (sse.ts:291-398) 都有完整的自动重连（指数退避、`scheduleReconnect()`），但 Chat SSE 完全没有。
+`Chat.tsx:363-379` 的 `EmptyState` 组件展示了 4 个建议卡片（"Install nginx and configure it"、"Check disk usage and clean up" 等），但这些卡片只有 `hover:bg-muted/50` 的悬浮效果和 `cursor-default` 样式，**点击没有任何响应**。
 
-具体问题：
-1. `sse.ts:128` — `while (true)` reader 循环结束后直接返回，不尝试重连
-2. `sse.ts:129-134` — catch 块只调用 `callbacks.onError?.(error)`，然后结束
-3. `chat.ts:560-569` — `onError` 回调直接设置 `isStreaming: false`，丢弃所有已接收的流式内容
-4. 如果网络短暂断开（WiFi 切换、VPN 重连），正在进行的 AI 回复直接丢失，用户需要重新发送消息
-5. 更严重的是：如果在执行阶段断开，SSE 断了但服务器端命令仍在执行，用户无法看到结果也无法取消
+具体代码：
+```tsx
+// Chat.tsx:370-371
+<Card
+  key={suggestion}
+  className="cursor-default transition-colors hover:bg-muted/50"  // cursor-default, no onClick!
+>
+```
+
+对比 ChatGPT 和 Claude.ai，空状态的建议卡片点击后应该自动将建议文本填入输入框并发送。当前实现：
+1. `EmptyState` 不接受 `onSend` 回调
+2. 卡片没有 `onClick` 事件处理
+3. `cursor-default` 暗示不可点击，但 `hover` 效果又暗示可交互——UX 矛盾
 
 **改进方案**:
-1. 为 `createSSEConnection()` 添加重连逻辑（参考同文件的 Metrics SSE 实现）
-2. 重连时携带 sessionId，服务端支持从断点续传（或至少返回错过的事件）
-3. `onError` 回调区分可重连错误（网络）和不可重连错误（401、404）
-4. 添加 `onReconnecting` / `onReconnected` 回调，让 UI 显示重连状态
-5. 在 chat store 中，网络中断时保留已收到的 `streamingContent`，重连后继续追加
+1. 给 `EmptyState` 添加 `onSuggestionClick: (text: string) => void` prop
+2. 卡片改为 `cursor-pointer`，添加 `onClick={() => onSuggestionClick(suggestion)}`
+3. 在 `Chat` 组件中将 `handleSend` 传入 `EmptyState`
+4. 点击建议后直接发送消息（而非只填入输入框）
 
 **验收标准**:
-- 网络短暂中断（<30s）后 SSE 自动恢复
-- 重连过程中 UI 显示 "重连中" 提示
-- 已收到的流式内容不丢失
-- 401 错误不无限重连（走 token 刷新流程）
-- 新增测试覆盖：重连成功、重连失败、401 不重连
+- 点击建议卡片触发 `sendMessage(suggestionText)`
+- 卡片有 `cursor-pointer` 样式
+- 添加 `data-testid="suggestion-card-{index}"` 便于测试
+- Chat.test.tsx 新增测试：点击建议卡片后消息出现在消息列表中
 
 **影响范围**:
-- `packages/dashboard/src/api/sse.ts` — 核心修改
-- `packages/dashboard/src/stores/chat.ts` — 错误处理调整
-- `packages/dashboard/src/pages/Chat.tsx` — 可选：显示重连状态
+- `packages/dashboard/src/pages/Chat.tsx` — EmptyState 组件修改
+- `packages/dashboard/src/pages/Chat.test.tsx` — 新增测试
 
 **创建时间**: 2026-02-12
 **完成时间**: -
