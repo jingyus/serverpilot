@@ -1,23 +1,25 @@
-### [pending] Skill 执行分析 Dashboard — 成功率、耗时趋势、热门 Skill 统计
+### [pending] Skill 版本升级 — engine.ts 添加 upgrade() 方法保留配置和执行历史
 
-**ID**: skill-078
-**优先级**: P2
-**模块路径**: packages/server/src/api/routes/skills.ts, packages/dashboard/src/pages/Skills.tsx
-**当前状态**: 功能缺失 — 当前 Dashboard Skills 页面只有 "Installed" 和 "Available" 两个 tab，没有执行统计视图。`skill_executions` 表已有完整的执行记录（status、duration、stepsExecuted），但无聚合查询 API 和可视化展示。
+**ID**: skill-072
+**优先级**: P0
+**模块路径**: packages/server/src/core/skill/
+**当前状态**: 升级 Skill 需要手动卸载再重新安装，卸载会级联删除执行历史和配置。`engine.ts` 无 `upgrade()` 方法，`git-installer.ts` 检测到目标目录存在时直接抛错。
 **实现方案**: 
-1. 新增 API: `GET /api/v1/skills/stats` — 返回聚合统计:
-   - 总执行次数、成功率、平均耗时
-   - 按 Skill 分组的执行次数排名 (top 5)
-   - 按日期分组的执行趋势 (最近 30 天)
-   - 按触发类型分组的分布 (manual/cron/event/threshold)
-2. `SkillRepository` 添加 `getStats(userId, dateRange?)` 聚合方法
-3. Dashboard: 在 Skills 页面添加第三个 tab "Analytics"，展示统计图表
-4. 使用简单的 CSS 进度条或文本统计（不引入重量级图表库）
+1. 在 `engine.ts` 添加 `upgrade(skillId: string, userId: string): Promise<InstalledSkill>` 方法:
+   - 读取当前 skill 的 source/skillPath/config
+   - 如果 source 是 git: 备份旧目录 → git clone 新版本到临时目录 → 验证 manifest → 替换旧目录 → 还原 config
+   - 如果 source 是 local: 重新加载 skillPath 的 manifest → 更新 DB version/displayName
+   - 保留 installed_skills 记录（更新 version, updatedAt），不删除 skill_executions
+   - 暂停触发器 → 升级 → 重新注册触发器
+2. 在 `git-installer.ts` 添加 `upgradeFromGitUrl(existingPath, gitUrl)` — clone 到临时目录 → 校验 → 原子替换
+3. 对应测试: upgrade 成功保留配置、upgrade 失败回滚、version 变更验证
 **验收标准**: 
-- `/api/v1/skills/stats` 返回结构化统计数据
-- Dashboard 展示执行成功率、平均耗时、Top Skills
-- RBAC: `skill:view` 权限即可查看统计
-- 测试 ≥ 8 个（API 3 + repo 3 + dashboard 2）
-**影响范围**: packages/server/src/api/routes/skills.ts, packages/server/src/db/repositories/skill-repository.ts, packages/dashboard/src/pages/Skills.tsx, packages/dashboard/src/stores/skills.ts, packages/dashboard/src/types/skill.ts
-**创建时间**: (自动填充)
+- `engine.upgrade()` 方法可用，保留执行历史和用户配置
+- Git 来源的 skill 支持原子升级（失败回滚）
+- Local 来源的 skill 支持热加载新 manifest
+- 测试覆盖: ≥12 个测试用例
+**影响范围**: packages/server/src/core/skill/engine.ts, packages/server/src/core/skill/git-installer.ts, packages/server/src/core/skill/engine.test.ts (或新建 engine-upgrade.test.ts)
+**创建时间**: 2026-02-13
 **完成时间**: -
+
+---

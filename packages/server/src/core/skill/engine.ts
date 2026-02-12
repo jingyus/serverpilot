@@ -25,6 +25,7 @@ import {
   getServerRepository,
 } from '../../db/repositories/server-repository.js';
 import { getWebhookDispatcher } from '../webhook/dispatcher.js';
+import { upgradeFromGitUrl } from './git-installer.js';
 import { SkillConfirmationManager } from './engine-confirmation.js';
 import type { SkillManifest, SkillInput } from '@aiinstaller/shared';
 import type { SkillStatus } from '../../db/schema.js';
@@ -179,6 +180,110 @@ export class SkillEngine {
 
     await this.repo.uninstall(skillId);
     logger.info({ skillId, name: skill.name }, 'Skill uninstalled');
+  }
+
+  /**
+   * Upgrade a skill in-place, preserving config and execution history.
+   *
+   * - Git source: atomic clone → validate → swap (rollback on failure)
+   * - Local source: re-read manifest from disk → update DB metadata
+   *
+   * Pauses triggers during upgrade and re-registers on success.
+   */
+  async upgrade(skillId: string, userId: string): Promise<InstalledSkill> {
+    const skill = await this.repo.findById(skillId);
+    if (!skill) {
+      throw new Error(`Skill not found: ${skillId}`);
+    }
+    if (skill.userId !== userId) {
+      throw new Error(`Not authorized to upgrade skill: ${skillId}`);
+    }
+
+    // Pause triggers during upgrade
+    const wasTriggerRegistered = skill.status === 'enabled';
+    if (wasTriggerRegistered) {
+      this.triggerManager?.unregisterSkill(skillId);
+    }
+
+    try {
+      let newManifest: SkillManifest;
+
+      if (skill.source === 'community') {
+        // Git-based upgrade: read git remote URL, clone new version, atomic swap
+        newManifest = await this.upgradeGitSkill(skill);
+      } else {
+        // Local/official: re-load manifest from disk (hot reload)
+        newManifest = await loadSkillFromDir(skill.skillPath);
+      }
+
+      const previousVersion = skill.version;
+
+      // Update DB record — preserves id, config, executions
+      await this.repo.updateManifest(skillId, {
+        version: newManifest.metadata.version,
+        displayName: newManifest.metadata.displayName,
+        manifestInputs: newManifest.inputs ?? null,
+      });
+
+      logger.info(
+        {
+          skillId,
+          name: skill.name,
+          previousVersion,
+          newVersion: newManifest.metadata.version,
+          source: skill.source,
+        },
+        'Skill upgraded',
+      );
+
+      // Re-register triggers if the skill was enabled
+      if (wasTriggerRegistered) {
+        const updatedSkill = await this.repo.findById(skillId);
+        if (updatedSkill && this.triggerManager) {
+          await this.triggerManager.registerSkill(updatedSkill);
+        }
+      }
+
+      return (await this.repo.findById(skillId))!;
+    } catch (err) {
+      // Re-register triggers even on failure (skill stays at old version)
+      if (wasTriggerRegistered) {
+        const currentSkill = await this.repo.findById(skillId);
+        if (currentSkill && this.triggerManager) {
+          await this.triggerManager.registerSkill(currentSkill);
+        }
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Upgrade a git-sourced (community) skill.
+   * Reads the git remote URL from the cloned directory, then performs atomic upgrade.
+   */
+  private async upgradeGitSkill(skill: InstalledSkill): Promise<SkillManifest> {
+    // Read git remote URL from the existing clone
+    const gitUrl = await this.getGitRemoteUrl(skill.skillPath);
+    if (!gitUrl) {
+      throw new Error(
+        `Cannot determine git remote URL for skill '${skill.name}' at ${skill.skillPath}. ` +
+        'The directory may not be a valid git repository.',
+      );
+    }
+
+    const result = await upgradeFromGitUrl(skill.skillPath, gitUrl);
+    return result.manifest;
+  }
+
+  /** Read the origin remote URL from a git repository directory. */
+  private async getGitRemoteUrl(dirPath: string): Promise<string | null> {
+    try {
+      const { execAsync } = await import('./git-utils.js');
+      const { stdout } = await execAsync('git remote get-url origin', { cwd: dirPath });
+      return stdout.trim() || null;
+    } catch {
+      return null;
+    }
   }
 
   /** Update user configuration (input values) for an installed skill. */

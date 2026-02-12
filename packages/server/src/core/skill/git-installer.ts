@@ -15,7 +15,7 @@
 
 import { exec } from 'node:child_process';
 import { join, basename } from 'node:path';
-import { access, rm, stat } from 'node:fs/promises';
+import { access, rm, stat, rename } from 'node:fs/promises';
 import { promisify } from 'node:util';
 
 import { createContextLogger } from '../../utils/logger.js';
@@ -281,6 +281,122 @@ export async function installFromGitUrl(
 }
 
 // ============================================================================
+// Git Upgrade (atomic: clone to temp → validate → swap)
+// ============================================================================
+
+/**
+ * Upgrade an existing community skill from its Git HTTPS URL.
+ *
+ * Flow:
+ * 1. Validate URL (HTTPS only)
+ * 2. Clone to a temporary directory alongside the existing one
+ * 3. Validate the new skill.yaml against schema
+ * 4. Run security scan
+ * 5. Atomic swap: rename existing → backup, rename temp → target, remove backup
+ * 6. On failure: restore backup, remove temp
+ *
+ * @param existingDir - Absolute path to the currently installed skill directory
+ * @param gitUrl - HTTPS Git URL to clone the new version from
+ * @returns GitInstallResult with the skill directory path and updated manifest
+ * @throws Error if URL is invalid, clone fails, validation fails, or swap fails
+ */
+export async function upgradeFromGitUrl(
+  existingDir: string,
+  gitUrl: string,
+): Promise<GitInstallResult> {
+  // Step 1: Validate URL
+  validateGitUrl(gitUrl);
+
+  // Step 2: Verify the existing directory exists
+  try {
+    const dirStat = await stat(existingDir);
+    if (!dirStat.isDirectory()) {
+      throw new Error(`Existing skill path is not a directory: ${existingDir}`);
+    }
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      throw new Error(`Existing skill directory not found: ${existingDir}`);
+    }
+    throw err;
+  }
+
+  const tempDir = existingDir + '.upgrade-tmp';
+  const backupDir = existingDir + '.upgrade-backup';
+
+  // Clean up any stale temp/backup dirs from previous failed upgrades
+  await safeRemoveDir(tempDir);
+  await safeRemoveDir(backupDir);
+
+  // Step 3: Clone to temporary directory
+  logger.info({ gitUrl, tempDir }, 'Cloning new version for upgrade');
+
+  try {
+    await execAsync(
+      `git clone --depth 1 ${escapeShellArg(gitUrl)} ${escapeShellArg(tempDir)}`,
+      { timeout: CLONE_TIMEOUT_MS },
+    );
+  } catch (err) {
+    await safeRemoveDir(tempDir);
+    throw new Error(
+      `Git clone failed during upgrade for "${gitUrl}": ${(err as Error).message}`,
+    );
+  }
+
+  // Step 4: Validate new skill.yaml
+  let manifest: SkillManifest;
+  try {
+    manifest = await loadSkillFromDir(tempDir);
+  } catch (err) {
+    await safeRemoveDir(tempDir);
+    throw new Error(
+      `Skill validation failed during upgrade for "${gitUrl}": ${(err as Error).message}`,
+    );
+  }
+
+  // Step 5: Security scan
+  const scanResult = scanManifestSecurity(manifest);
+  if (!scanResult.passed) {
+    await safeRemoveDir(tempDir);
+    throw new Error(
+      `Security scan failed during upgrade for "${gitUrl}": ${scanResult.errors.join('; ')}`,
+    );
+  }
+
+  // Step 6: Atomic swap — backup old → move new → remove backup
+  try {
+    await rename(existingDir, backupDir);
+    await rename(tempDir, existingDir);
+    // Swap succeeded — remove backup
+    await safeRemoveDir(backupDir);
+  } catch (err) {
+    // Swap failed — attempt rollback
+    logger.error({ error: (err as Error).message }, 'Atomic swap failed during upgrade, rolling back');
+    await restoreBackup(existingDir, backupDir, tempDir);
+    throw new Error(
+      `Upgrade swap failed for "${gitUrl}": ${(err as Error).message}`,
+    );
+  }
+
+  if (scanResult.warnings.length > 0) {
+    logger.warn(
+      { gitUrl, warnings: scanResult.warnings },
+      'Community skill upgraded with security warnings',
+    );
+  }
+
+  logger.info(
+    { gitUrl, existingDir, name: manifest.metadata.name, version: manifest.metadata.version },
+    'Community skill upgraded successfully',
+  );
+
+  return {
+    skillDir: existingDir,
+    manifest,
+    warnings: scanResult.warnings,
+  };
+}
+
+// ============================================================================
 // Helpers
 // ============================================================================
 
@@ -305,4 +421,32 @@ async function safeRemoveDir(dirPath: string): Promise<void> {
   } catch {
     // Directory doesn't exist or already removed — that's fine
   }
+}
+
+/**
+ * Restore backup directory after a failed swap during upgrade.
+ * Tries to move backup back to target, then cleans up temp.
+ */
+async function restoreBackup(
+  targetDir: string,
+  backupDir: string,
+  tempDir: string,
+): Promise<void> {
+  try {
+    // If target now exists (partial rename), remove it first
+    await safeRemoveDir(targetDir);
+    // Restore backup to original location
+    const backupStat = await stat(backupDir).catch(() => null);
+    if (backupStat?.isDirectory()) {
+      await rename(backupDir, targetDir);
+      logger.info({ targetDir }, 'Backup restored after failed upgrade');
+    }
+  } catch (restoreErr) {
+    logger.error(
+      { error: (restoreErr as Error).message },
+      'Failed to restore backup — manual intervention may be needed',
+    );
+  }
+  // Always clean up temp directory
+  await safeRemoveDir(tempDir);
 }

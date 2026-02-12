@@ -54,6 +54,13 @@ export interface CreateExecutionInput {
 // Interface
 // ============================================================================
 
+export interface UpdateManifestInput {
+  version: string;
+  displayName?: string | null;
+  skillPath?: string;
+  manifestInputs?: unknown[] | null;
+}
+
 export interface SkillRepository {
   findAll(userId: string): Promise<InstalledSkill[]>;
   findAllEnabled(): Promise<InstalledSkill[]>;
@@ -62,6 +69,7 @@ export interface SkillRepository {
   install(input: InstallSkillInput): Promise<InstalledSkill>;
   updateStatus(id: string, status: SkillStatus): Promise<void>;
   updateConfig(id: string, config: Record<string, unknown>): Promise<void>;
+  updateManifest(id: string, input: UpdateManifestInput): Promise<void>;
   uninstall(id: string): Promise<void>;
 
   createExecution(input: CreateExecutionInput): Promise<SkillExecution>;
@@ -160,6 +168,21 @@ export class DrizzleSkillRepository implements SkillRepository {
   async updateConfig(id: string, config: Record<string, unknown>): Promise<void> {
     this.db.update(installedSkills)
       .set({ config, updatedAt: new Date() })
+      .where(eq(installedSkills.id, id))
+      .run();
+  }
+
+  async updateManifest(id: string, input: UpdateManifestInput): Promise<void> {
+    const updates: Record<string, unknown> = {
+      version: input.version,
+      updatedAt: new Date(),
+    };
+    if (input.displayName !== undefined) updates['displayName'] = input.displayName;
+    if (input.skillPath !== undefined) updates['skillPath'] = input.skillPath;
+    if (input.manifestInputs !== undefined) updates['manifestInputs'] = input.manifestInputs;
+
+    this.db.update(installedSkills)
+      .set(updates)
       .where(eq(installedSkills.id, id))
       .run();
   }
@@ -383,6 +406,19 @@ export class InMemorySkillRepository implements SkillRepository {
     const skill = this.skills.find((s) => s.id === id);
     if (skill) {
       skill.config = config;
+      skill.updatedAt = new Date().toISOString();
+    }
+  }
+
+  async updateManifest(id: string, input: UpdateManifestInput): Promise<void> {
+    const skill = this.skills.find((s) => s.id === id);
+    if (skill) {
+      skill.version = input.version;
+      if (input.displayName !== undefined) skill.displayName = input.displayName;
+      if (input.skillPath !== undefined) skill.skillPath = input.skillPath;
+      if (input.manifestInputs !== undefined) {
+        skill.manifestInputs = (input.manifestInputs as InstalledSkill['manifestInputs']) ?? null;
+      }
       skill.updatedAt = new Date().toISOString();
     }
   }

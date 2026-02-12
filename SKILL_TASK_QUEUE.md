@@ -3,19 +3,230 @@
 > 此队列专注于 Skill 插件系统的设计与实现
 > AI 自动扫描 → 发现缺失 → 设计实现 → 验证
 
-**最后更新**: 2026-02-13 07:40:22
+**最后更新**: 2026-02-13 07:50:19
 
 ## 📊 统计
 
-- **总任务数**: 47
-- **待完成** (pending): 0
-- **进行中** (in_progress): 0
+- **总任务数**: 56
+- **待完成** (pending): 8
+- **进行中** (in_progress): 1
 - **已完成** (completed): 47
 - **失败** (failed): 0
 
 ## 📋 任务列表
 
 ### [completed] DB Schema + Migration + SkillRepository 数据层 ✅
+### [in_progress] Skill 版本升级 — engine.ts 添加 upgrade() 方法保留配置和执行历史
+
+**ID**: skill-072
+**优先级**: P0
+**模块路径**: packages/server/src/core/skill/
+**当前状态**: 升级 Skill 需要手动卸载再重新安装，卸载会级联删除执行历史和配置。`engine.ts` 无 `upgrade()` 方法，`git-installer.ts` 检测到目标目录存在时直接抛错。
+**实现方案**: 
+1. 在 `engine.ts` 添加 `upgrade(skillId: string, userId: string): Promise<InstalledSkill>` 方法:
+   - 读取当前 skill 的 source/skillPath/config
+   - 如果 source 是 git: 备份旧目录 → git clone 新版本到临时目录 → 验证 manifest → 替换旧目录 → 还原 config
+   - 如果 source 是 local: 重新加载 skillPath 的 manifest → 更新 DB version/displayName
+   - 保留 installed_skills 记录（更新 version, updatedAt），不删除 skill_executions
+   - 暂停触发器 → 升级 → 重新注册触发器
+2. 在 `git-installer.ts` 添加 `upgradeFromGitUrl(existingPath, gitUrl)` — clone 到临时目录 → 校验 → 原子替换
+3. 对应测试: upgrade 成功保留配置、upgrade 失败回滚、version 变更验证
+**验收标准**: 
+- `engine.upgrade()` 方法可用，保留执行历史和用户配置
+- Git 来源的 skill 支持原子升级（失败回滚）
+- Local 来源的 skill 支持热加载新 manifest
+- 测试覆盖: ≥12 个测试用例
+**影响范围**: packages/server/src/core/skill/engine.ts, packages/server/src/core/skill/git-installer.ts, packages/server/src/core/skill/engine.test.ts (或新建 engine-upgrade.test.ts)
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Skill 升级 REST API + RBAC 权限
+
+**ID**: skill-073
+**优先级**: P0
+**模块路径**: packages/server/src/api/routes/
+**当前状态**: 无 `PUT /api/v1/skills/:id/upgrade` 端点，前端无法触发升级操作。
+**实现方案**: 
+1. 在 `skills.ts` 添加 `PUT /skills/:id/upgrade` 端点:
+   - 中间件链: requireAuth → resolveRole → requirePermission('skill:manage')
+   - 调用 `getSkillEngine().upgrade(id, userId)`
+   - 返回更新后的 InstalledSkill
+2. 添加对应路由测试: 权限检查、升级成功、升级失败(skill 不存在/非 git 来源)
+**验收标准**: 
+- `PUT /skills/:id/upgrade` 端点可用
+- RBAC 权限检查通过 (skill:manage)
+- 测试覆盖: ≥6 个测试用例
+**影响范围**: packages/server/src/api/routes/skills.ts, packages/server/src/api/routes/skills.test.ts
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Skill 执行取消 — 运行中的执行可被用户中止
+
+**ID**: skill-074
+**优先级**: P0
+**模块路径**: packages/server/src/core/skill/
+**当前状态**: `runner.ts` 的 AbortController 仅用于超时，无法从外部取消。`engine.ts` 不跟踪运行中的执行实例。用户无法停止失控或长时间运行的 Skill。
+**实现方案**: 
+1. 在 `engine.ts` 添加 `private runningExecutions: Map<string, AbortController>`:
+   - `executeSingle()` 开始时创建 AbortController 并存入 Map
+   - 将 AbortController.signal 传递给 `runner.run()`
+   - 执行完成/失败时从 Map 中移除
+2. 在 `runner.ts` 的 `run()` 方法接受外部 `signal?: AbortSignal` 参数:
+   - 与内部 timeout AbortController 合并 (使用 `AbortSignal.any()`)
+   - 在 AI 调用循环和工具执行前检查 signal
+3. 在 `engine.ts` 添加 `cancel(executionId: string): Promise<void>`:
+   - 从 Map 中获取 AbortController → abort()
+   - 更新 DB status 为 'cancelled'
+   - 发布 SSE 'error' 事件
+4. 对应测试
+**验收标准**: 
+- `engine.cancel(executionId)` 可中止运行中的执行
+- 被取消的执行 DB 状态标记为 'cancelled'
+- SSE 推送取消事件到前端
+- 测试覆盖: ≥8 个测试用例
+**影响范围**: packages/server/src/core/skill/engine.ts, packages/server/src/core/skill/runner.ts, packages/server/src/core/skill/engine.test.ts (或新建 engine-cancel.test.ts)
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Skill 执行取消 REST API 端点
+
+**ID**: skill-075
+**优先级**: P0
+**模块路径**: packages/server/src/api/routes/
+**当前状态**: 无 `POST /api/v1/skills/executions/:eid/cancel` 端点。
+**实现方案**: 
+1. 在 `skills.ts` 添加 `POST /skills/executions/:eid/cancel` 端点:
+   - 中间件链: requireAuth → resolveRole → requirePermission('skill:execute')
+   - 调用 `getSkillEngine().cancel(eid)`
+   - 返回 `{ success: true }`
+2. 添加对应路由测试: 权限检查、取消成功、取消失败(不存在/已完成)
+**验收标准**: 
+- `POST /skills/executions/:eid/cancel` 端点可用
+- 非运行中的执行返回 400/404
+- 测试覆盖: ≥5 个测试用例
+**影响范围**: packages/server/src/api/routes/skills.ts, packages/server/src/api/routes/skills.test.ts
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Skill 执行历史自动清理 — 保留策略 + 定时清理
+
+**ID**: skill-076
+**优先级**: P1
+**模块路径**: packages/server/src/core/skill/
+**当前状态**: `skill_executions` 表记录无限增长，无清理机制。仅 pending confirmation 有 30 分钟 TTL。
+**实现方案**: 
+1. 在 `skill-repository.ts` 的 `SkillRepository` 接口添加:
+   - `deleteExecutionsBefore(cutoff: Date): Promise<number>` — 按时间删除旧记录
+   - `countExecutions(skillId?: string): Promise<number>` — 统计记录数
+2. 在 `engine.ts` 的 `start()` 中启动清理定时器 (每 24 小时执行一次):
+   - 默认保留策略: 保留最近 90 天的执行记录
+   - 使用 `setInterval().unref()` 不阻塞进程退出
+3. Drizzle + InMemory 两种实现
+4. 对应测试
+**验收标准**: 
+- 超过 90 天的执行记录被自动清理
+- 清理不影响运行中的执行
+- 日志记录清理数量
+- 测试覆盖: ≥8 个测试用例
+**影响范围**: packages/server/src/db/repositories/skill-repository.ts, packages/server/src/core/skill/engine.ts, packages/server/src/db/repositories/skill-repository.test.ts
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Skill KV Store 总量限制 — 防止单个 Skill 占满数据库
+
+**ID**: skill-077
+**优先级**: P1
+**模块路径**: packages/server/src/core/skill/
+**当前状态**: `store.ts` 仅有单值 1MB 限制，无每 Skill 键数量或总存储量上限。一个 Skill 可以创建无限键值对填满数据库。
+**实现方案**: 
+1. 在 `store.ts` 添加常量:
+   - `MAX_KEYS_PER_SKILL = 1000` — 每个 Skill 最多 1000 个键
+   - `MAX_TOTAL_SIZE_PER_SKILL = 50 * 1024 * 1024` (50MB) — 每个 Skill 总存储上限
+2. 在 `set()` 方法中:
+   - 调用 `countKeys(skillId)` 检查键数量
+   - 如果是新键且已达上限 → 抛出 `SkillStoreQuotaError`
+3. Drizzle 实现: `SELECT COUNT(*) FROM skill_store WHERE skill_id = ?`
+4. InMemory 实现: Map.size 检查
+5. 对应测试
+**验收标准**: 
+- 超过 1000 键时 set() 抛出错误
+- 更新已有键不受键数限制影响
+- 测试覆盖: ≥6 个测试用例
+**影响范围**: packages/server/src/core/skill/store.ts, packages/server/src/core/skill/store.test.ts
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Dashboard Skill 升级按钮 + 取消按钮 UI
+
+**ID**: skill-078
+**优先级**: P1
+**模块路径**: packages/dashboard/src/
+**当前状态**: Dashboard 无升级和取消执行的 UI 入口。前端 `stores/skills.ts` 无 `upgradeSkill()` 和 `cancelExecution()` 方法。
+**实现方案**: 
+1. 在 `stores/skills.ts` 添加:
+   - `upgradeSkill(id: string): Promise<void>` — PUT `/api/v1/skills/${id}/upgrade`
+   - `cancelExecution(eid: string): Promise<void>` — POST `/api/v1/skills/executions/${eid}/cancel`
+2. 在 `components/skill/SkillCard.tsx` 添加升级按钮 (仅 git source 的 skill 显示)
+3. 在 `components/skill/ExecutionStream.tsx` 添加取消按钮 (仅 status=running 时显示)
+4. 在 `types/skill.ts` 添加 `cancelled` 到 `SkillExecutionStatus` 枚举
+5. 对应测试
+**验收标准**: 
+- Git 来源的 Skill 卡片显示「升级」按钮
+- 运行中的执行流显示「取消」按钮
+- 取消后 UI 立即更新状态
+- 测试覆盖: ≥6 个测试用例
+**影响范围**: packages/dashboard/src/stores/skills.ts, packages/dashboard/src/components/skill/SkillCard.tsx, packages/dashboard/src/components/skill/ExecutionStream.tsx, packages/dashboard/src/types/skill.ts
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Skill 执行日志持久化 — 步骤级别日志写入 DB
+
+**ID**: skill-079
+**优先级**: P1
+**模块路径**: packages/server/src/
+**当前状态**: SSE 事件（step/log/error）仅通过内存 EventEmitter 传输，不持久化。断连后无法回看历史执行的详细步骤日志。虽然 `result.toolResults[]` 保存了工具调用记录，但 AI 的中间推理文本和 log 类事件丢失。
+**实现方案**: 
+1. 在 `db/schema.ts` 添加 `skill_execution_logs` 表:
+   - `id`, `executionId`, `eventType` (step|log|error), `data` (JSON), `createdAt`
+2. 创建 migration `0012_skill_execution_logs.sql`
+3. 在 `skill-repository.ts` 添加 `appendLog(executionId, eventType, data)` 和 `getLogs(executionId)` 方法
+4. 在 `skill-event-bus.ts` 的 `publish()` 中，对每个事件同时写入 DB (异步，不阻塞 SSE)
+5. 在 API `GET /skills/:id/executions/:eid` 响应中包含 logs 数组
+6. 对应测试
+**验收标准**: 
+- 所有 SSE 事件同时写入 `skill_execution_logs` 表
+- 执行详情 API 返回完整日志列表
+- DB 写入异步执行，不影响 SSE 延迟
+- 测试覆盖: ≥10 个测试用例
+**影响范围**: packages/server/src/db/schema.ts, packages/server/src/core/skill/skill-event-bus.ts, packages/server/src/db/repositories/skill-repository.ts
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Skill 执行日志持久化 — DB Migration
+
+**ID**: skill-080
+**优先级**: P1
+**模块路径**: packages/server/src/db/
+**当前状态**: `skill_execution_logs` 表尚未创建，需要 migration 文件。
+**实现方案**: 
+1. 创建 `migrations/0012_skill_execution_logs.sql`:
+
 ### [completed] engine.test.ts 拆分 — 1689 行远超 800 行硬限制 ✅
 
 **ID**: skill-068

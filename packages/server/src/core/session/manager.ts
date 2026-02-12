@@ -22,6 +22,10 @@ import type { SessionRepository } from '../../db/repositories/session-repository
 import type { SessionMessage } from '../../db/schema.js';
 import { estimateTokens } from '../../ai/profile-context.js';
 import { logger } from '../../utils/logger.js';
+import { SessionCache } from './session-cache.js';
+import type { CacheOptions } from './session-cache.js';
+import { RetryQueue } from './session-retry-queue.js';
+import type { RetryQueueOptions } from './session-retry-queue.js';
 
 // ============================================================================
 // Types
@@ -83,41 +87,8 @@ export type PersistenceFailureCallback = (
   messageId: string,
 ) => void;
 
-/** Cache configuration for SessionManager */
-export interface SessionCacheOptions {
-  /** Maximum number of sessions in cache (default: 100) */
-  maxSize: number;
-  /** TTL in milliseconds for inactive sessions (default: 30 minutes) */
-  ttlMs: number;
-  /** Interval for TTL sweep in milliseconds (default: 60 seconds) */
-  sweepIntervalMs: number;
-  /** Interval for retry queue sweep in milliseconds (default: 5 seconds) */
-  retryIntervalMs: number;
-  /** Maximum number of retry attempts for queued messages (default: 5) */
-  maxRetryAttempts: number;
-}
-
-const DEFAULT_CACHE_OPTIONS: SessionCacheOptions = {
-  maxSize: 100,
-  ttlMs: 30 * 60 * 1000,       // 30 minutes
-  sweepIntervalMs: 60 * 1000,   // 1 minute
-  retryIntervalMs: 5 * 1000,    // 5 seconds
-  maxRetryAttempts: 5,
-};
-
-/** Internal cache entry wrapping a Session with access tracking */
-interface CacheEntry {
-  session: Session;
-  lastAccessedAt: number;
-}
-
-/** Entry in the persistence retry queue */
-interface RetryEntry {
-  sessionId: string;
-  userId: string;
-  message: SessionMessage;
-  attempts: number;
-}
+/** Combined cache + retry configuration for SessionManager */
+export interface SessionCacheOptions extends CacheOptions, RetryQueueOptions {}
 
 // ============================================================================
 // Helpers: convert between ChatMessage (ISO string) and SessionMessage (number)
@@ -147,181 +118,29 @@ function toChatMessage(msg: SessionMessage): ChatMessage {
 
 export class SessionManager {
   private repo: SessionRepository;
-  private cache = new Map<string, CacheEntry>();
-  private cacheOptions: SessionCacheOptions;
-  private sweepTimer: ReturnType<typeof setInterval> | null = null;
-  private retryTimer: ReturnType<typeof setInterval> | null = null;
-  private retryQueue: RetryEntry[] = [];
+  private cache: SessionCache;
+  private retryQueue: RetryQueue;
   private cacheReloadCount = 0;
-  private _onPersistenceFailure: PersistenceFailureCallback | null = null;
 
   constructor(repo?: SessionRepository, cacheOptions?: Partial<SessionCacheOptions>) {
     this.repo = repo ?? getSessionRepository();
-    this.cacheOptions = { ...DEFAULT_CACHE_OPTIONS, ...cacheOptions };
-    this.startSweep();
-    this.startRetryQueue();
+    this.cache = new SessionCache(cacheOptions);
+    this.retryQueue = new RetryQueue(this.repo, this.cache, cacheOptions);
   }
 
   // ==========================================================================
-  // Cache internals
+  // Delegated cache/retry accessors (preserve public API)
   // ==========================================================================
 
-  /** Touch a cache entry to mark it as recently accessed. */
-  private touchEntry(entry: CacheEntry): void {
-    entry.lastAccessedAt = Date.now();
-  }
-
-  /** Get a session from cache, updating its access timestamp. */
-  private cacheGet(sessionId: string): Session | undefined {
-    const entry = this.cache.get(sessionId);
-    if (!entry) return undefined;
-    this.touchEntry(entry);
-    return entry.session;
-  }
-
-  /** Insert a session into cache, evicting LRU entries if needed. */
-  private cachePut(session: Session): void {
-    // If already cached, just update
-    const existing = this.cache.get(session.id);
-    if (existing) {
-      existing.session = session;
-      this.touchEntry(existing);
-      return;
-    }
-    this.evictIfNeeded();
-    this.cache.set(session.id, { session, lastAccessedAt: Date.now() });
-  }
-
-  /** Remove a session from cache. */
-  private cacheDelete(sessionId: string): void {
-    this.cache.delete(sessionId);
-  }
-
-  /** Check if a session has active plans (should not be evicted). */
-  private isActive(entry: CacheEntry): boolean {
-    return entry.session.plans.size > 0;
-  }
-
-  /**
-   * Evict the least-recently-used non-active entry if cache is at capacity.
-   * Active sessions (with plans) are protected from eviction.
-   */
-  private evictIfNeeded(): void {
-    if (this.cache.size < this.cacheOptions.maxSize) return;
-
-    let oldestKey: string | null = null;
-    let oldestTime = Infinity;
-
-    for (const [key, entry] of this.cache) {
-      if (this.isActive(entry)) continue;
-      if (entry.lastAccessedAt < oldestTime) {
-        oldestTime = entry.lastAccessedAt;
-        oldestKey = key;
-      }
-    }
-
-    if (oldestKey) {
-      this.cache.delete(oldestKey);
-      logger.debug({ sessionId: oldestKey, cacheSize: this.cache.size }, 'Session evicted from cache (LRU)');
-    } else {
-      logger.warn(
-        { cacheSize: this.cache.size, maxSize: this.cacheOptions.maxSize },
-        'Cache full — all sessions have active plans, cannot evict',
-      );
-    }
-  }
-
-  /** Sweep expired entries (TTL-based). Protected sessions are skipped. */
-  private sweepExpired(): void {
-    const now = Date.now();
-    const expiry = this.cacheOptions.ttlMs;
-    let evicted = 0;
-
-    for (const [key, entry] of this.cache) {
-      if (this.isActive(entry)) continue;
-      if (now - entry.lastAccessedAt > expiry) {
-        this.cache.delete(key);
-        evicted++;
-      }
-    }
-
-    if (evicted > 0) {
-      logger.debug({ evicted, cacheSize: this.cache.size }, 'TTL sweep evicted sessions');
-    }
-  }
-
-  /** Start periodic TTL sweep timer. */
-  private startSweep(): void {
-    if (this.cacheOptions.sweepIntervalMs <= 0) return;
-    this.sweepTimer = setInterval(() => this.sweepExpired(), this.cacheOptions.sweepIntervalMs);
-    this.sweepTimer.unref();
-  }
-
-  /** Stop the sweep timer (for cleanup/testing). */
+  /** Stop sweep and retry timers (for cleanup/testing). */
   stopSweep(): void {
-    if (this.sweepTimer) {
-      clearInterval(this.sweepTimer);
-      this.sweepTimer = null;
-    }
-    if (this.retryTimer) {
-      clearInterval(this.retryTimer);
-      this.retryTimer = null;
-    }
-  }
-
-  /** Start periodic retry queue processing. */
-  private startRetryQueue(): void {
-    if (this.cacheOptions.retryIntervalMs <= 0) return;
-    this.retryTimer = setInterval(() => this.processRetryQueue(), this.cacheOptions.retryIntervalMs);
-    this.retryTimer.unref();
-  }
-
-  /** Process queued persistence retries. */
-  private async processRetryQueue(): Promise<void> {
-    if (this.retryQueue.length === 0) return;
-
-    const batch = this.retryQueue.splice(0, this.retryQueue.length);
-    const requeue: RetryEntry[] = [];
-
-    for (const entry of batch) {
-      try {
-        await this.repo.addMessage(entry.sessionId, entry.userId, entry.message);
-        // Mark in-memory message as persisted
-        this.markMessagePersisted(entry.sessionId, entry.message.id);
-        logger.info(
-          { sessionId: entry.sessionId, messageId: entry.message.id, attempt: entry.attempts + 1 },
-          'Retry queue: message persisted successfully',
-        );
-      } catch {
-        entry.attempts++;
-        if (entry.attempts < this.cacheOptions.maxRetryAttempts) {
-          requeue.push(entry);
-        } else {
-          logger.error(
-            { sessionId: entry.sessionId, messageId: entry.message.id, attempts: entry.attempts },
-            'Retry queue: message persistence exhausted — message lost on restart',
-          );
-          this._onPersistenceFailure?.(entry.sessionId, entry.message.id);
-        }
-      }
-    }
-
-    if (requeue.length > 0) {
-      this.retryQueue.push(...requeue);
-    }
-  }
-
-  /** Mark a cached message as persisted. */
-  private markMessagePersisted(sessionId: string, messageId: string): void {
-    const entry = this.cache.get(sessionId);
-    if (!entry) return;
-    const msg = entry.session.messages.find((m) => m.id === messageId);
-    if (msg) msg.persisted = true;
+    this.cache.stopSweep();
+    this.retryQueue.stop();
   }
 
   /** Set a callback to be invoked when async persistence fails after all retries. */
   set onPersistenceFailure(cb: PersistenceFailureCallback | null) {
-    this._onPersistenceFailure = cb;
+    this.retryQueue.onPersistenceFailure = cb;
   }
 
   /** Get current cache size (for monitoring/testing). */
@@ -336,7 +155,17 @@ export class SessionManager {
 
   /** Get number of messages pending in the retry queue (for monitoring/testing). */
   get pendingRetryCount(): number {
-    return this.retryQueue.length;
+    return this.retryQueue.pendingCount;
+  }
+
+  /** Delegate: sweep expired cache entries (used by tests via type cast). */
+  private sweepExpired(): void {
+    this.cache.sweepExpired();
+  }
+
+  /** Delegate: process retry queue (used by tests via type cast). */
+  private async processRetryQueue(): Promise<void> {
+    return this.retryQueue.processQueue();
   }
 
   // ==========================================================================
@@ -345,25 +174,22 @@ export class SessionManager {
 
   /** Get or create a session for a server. userId required for DB persistence. */
   async getOrCreate(serverId: string, userId: string, sessionId?: string): Promise<Session> {
-    // Try cache first
     if (sessionId) {
-      const cached = this.cacheGet(sessionId);
+      const cached = this.cache.get(sessionId);
       if (cached && cached.serverId === serverId) {
         return cached;
       }
     }
 
-    // Try loading from DB
     if (sessionId) {
       const dbSession = await this.repo.getById(sessionId, userId);
       if (dbSession && dbSession.serverId === serverId) {
         const session = this.dbToSession(dbSession);
-        this.cachePut(session);
+        this.cache.put(session);
         return session;
       }
     }
 
-    // Create new session in DB
     const created = await this.repo.create({ userId, serverId });
     const session: Session = {
       id: created.id,
@@ -373,7 +199,7 @@ export class SessionManager {
       createdAt: created.createdAt,
       updatedAt: created.updatedAt,
     };
-    this.cachePut(session);
+    this.cache.put(session);
     return session;
   }
 
@@ -392,23 +218,20 @@ export class SessionManager {
     role: ChatMessage['role'],
     content: string,
   ): Promise<ChatMessage> {
-    let entry = this.cache.get(sessionId);
-    if (!entry) {
-      // Cache miss — attempt to reload from DB (session may have been evicted)
+    let session = this.cache.get(sessionId);
+    if (!session) {
       const dbSession = await this.repo.getById(sessionId, userId);
       if (!dbSession) {
         throw new Error(`Session ${sessionId} not found`);
       }
-      const session = this.dbToSession(dbSession);
-      this.cachePut(session);
-      entry = this.cache.get(sessionId)!;
+      session = this.dbToSession(dbSession);
+      this.cache.put(session);
       this.cacheReloadCount++;
       logger.info(
         { sessionId, cacheReloadCount: this.cacheReloadCount },
         'Session reloaded from DB after cache eviction',
       );
     }
-    this.touchEntry(entry);
 
     const message: ChatMessage = {
       id: randomUUID(),
@@ -418,17 +241,15 @@ export class SessionManager {
       persisted: false,
     };
 
-    entry.session.messages.push(message);
-    entry.session.updatedAt = new Date().toISOString();
+    session.messages.push(message);
+    session.updatedAt = new Date().toISOString();
 
     const sessionMsg = toSessionMessage(message);
 
     if (role === 'user') {
-      // User messages: synchronous persistence — caller knows if it failed
       await this.persistMessageSync(sessionId, userId, sessionMsg);
       message.persisted = true;
     } else {
-      // Assistant/system: fire-and-forget with retry queue fallback
       this.persistMessageAsync(sessionId, userId, sessionMsg, message);
     }
 
@@ -437,28 +258,27 @@ export class SessionManager {
 
   /** Store a generated plan in a session (in-memory only). */
   storePlan(sessionId: string, plan: StoredPlan): void {
-    const entry = this.cache.get(sessionId);
-    if (!entry) {
+    const session = this.cache.get(sessionId);
+    if (!session) {
       throw new Error(`Session ${sessionId} not found`);
     }
-    this.touchEntry(entry);
-    entry.session.plans.set(plan.planId, plan);
-    entry.session.updatedAt = new Date().toISOString();
+    session.plans.set(plan.planId, plan);
+    session.updatedAt = new Date().toISOString();
   }
 
   /** Retrieve a stored plan (in-memory only). */
   getPlan(sessionId: string, planId: string): StoredPlan | undefined {
-    const entry = this.cache.get(sessionId);
-    if (!entry) return undefined;
-    this.touchEntry(entry);
-    return entry.session.plans.get(planId);
+    const session = this.cache.get(sessionId);
+    if (!session) return undefined;
+    return session.plans.get(planId);
   }
 
   /** Remove a completed plan from a session, allowing cache eviction. */
   removePlan(sessionId: string, planId: string): boolean {
-    const entry = this.cache.get(sessionId);
-    if (!entry) return false;
-    return entry.session.plans.delete(planId);
+    // Use peek (no touch) so TTL can sweep this session after plan removal
+    const session = this.cache.peek(sessionId);
+    if (!session) return false;
+    return session.plans.delete(planId);
   }
 
   /** List sessions for a server. Uses lightweight summaries (no full message loading). */
@@ -480,23 +300,23 @@ export class SessionManager {
 
   /** Get a session by ID. Checks cache first, then DB. */
   async getSession(sessionId: string, userId: string): Promise<Session | undefined> {
-    const cached = this.cacheGet(sessionId);
+    const cached = this.cache.get(sessionId);
     if (cached) return cached;
 
     const dbSession = await this.repo.getById(sessionId, userId);
     if (!dbSession) return undefined;
 
     const session = this.dbToSession(dbSession);
-    this.cachePut(session);
+    this.cache.put(session);
     return session;
   }
 
   /** Delete a session from both cache and DB. */
   async deleteSession(sessionId: string, serverId: string, userId: string): Promise<boolean> {
-    const entry = this.cache.get(sessionId);
-    if (entry) {
-      if (entry.session.serverId !== serverId) return false;
-      this.cacheDelete(sessionId);
+    const session = this.cache.peek(sessionId);
+    if (session) {
+      if (session.serverId !== serverId) return false;
+      this.cache.delete(sessionId);
     }
 
     return this.repo.delete(sessionId, userId);
@@ -504,7 +324,7 @@ export class SessionManager {
 
   /** Build conversation context for AI from session messages. */
   buildContext(sessionId: string): string {
-    const session = this.cacheGet(sessionId);
+    const session = this.cache.get(sessionId);
     if (!session || session.messages.length === 0) {
       return '';
     }
@@ -521,7 +341,7 @@ export class SessionManager {
    * When truncation occurs, prepends a `[Earlier conversation summarized]` marker.
    */
   buildContextWithLimit(sessionId: string, maxTokens = 8000): string {
-    const session = this.cacheGet(sessionId);
+    const session = this.cache.get(sessionId);
     if (!session || session.messages.length === 0) {
       return '';
     }
@@ -529,13 +349,11 @@ export class SessionManager {
     const messages = session.messages;
     const formatted = messages.map((m) => `${m.role}: ${m.content}`);
 
-    // Check if all messages fit within the budget
     const fullText = formatted.join('\n\n');
     if (estimateTokens(fullText) <= maxTokens) {
       return fullText;
     }
 
-    // Truncation needed: keep messages from the end, within budget
     const marker = '[Earlier conversation summarized — only recent messages shown]\n\n';
     const markerTokens = estimateTokens(marker);
     const availableTokens = maxTokens - markerTokens;
@@ -543,7 +361,6 @@ export class SessionManager {
     const selected: string[] = [];
     let usedTokens = 0;
 
-    // Walk backwards, keeping recent messages
     for (let i = formatted.length - 1; i >= 0; i--) {
       const msgTokens = estimateTokens(formatted[i]);
       const separatorTokens = selected.length > 0 ? estimateTokens('\n\n') : 0;
@@ -573,7 +390,7 @@ export class SessionManager {
     sessionId: string,
     maxTokens = 40000,
   ): Array<{ role: 'user' | 'assistant'; content: string }> {
-    const session = this.cacheGet(sessionId);
+    const session = this.cache.get(sessionId);
     if (!session || session.messages.length === 0) {
       return [];
     }
@@ -616,6 +433,10 @@ export class SessionManager {
     return selected;
   }
 
+  // ==========================================================================
+  // Persistence helpers
+  // ==========================================================================
+
   /**
    * Persist a user message synchronously with one retry.
    * Throws if both attempts fail — callers should handle the error.
@@ -648,7 +469,6 @@ export class SessionManager {
   /**
    * Persist an assistant/system message asynchronously.
    * Tries once immediately, then enqueues to the retry queue on failure.
-   * Never throws — errors are queued for background retry.
    */
   private persistMessageAsync(
     sessionId: string,
@@ -663,12 +483,7 @@ export class SessionManager {
           { sessionId, messageId: sessionMsg.id, error },
           'Async message persistence failed, enqueueing for retry',
         );
-        this.retryQueue.push({
-          sessionId,
-          userId,
-          message: sessionMsg,
-          attempts: 1,
-        });
+        this.retryQueue.enqueue(sessionId, userId, sessionMsg);
       },
     );
   }
