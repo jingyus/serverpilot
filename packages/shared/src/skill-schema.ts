@@ -31,6 +31,10 @@ const CronTriggerSchema = z.object({
   schedule: z.string().min(9).max(100), // "* * * * *" minimum
 });
 
+const EventTriggerFilterSchema = z.object({
+  source_skill: z.string().min(2).max(50).optional(),
+}).catchall(z.unknown()).optional();
+
 const EventTriggerSchema = z.object({
   type: z.literal('event'),
   on: z.enum([
@@ -43,7 +47,7 @@ const EventTriggerSchema = z.object({
     'agent.disconnected',
     'skill.completed',
   ]),
-  filter: z.record(z.unknown()).optional(),
+  filter: EventTriggerFilterSchema,
 });
 
 const ThresholdOperator = z.enum(['gt', 'gte', 'lt', 'lte', 'eq', 'neq']);
@@ -186,6 +190,7 @@ export type SkillConstraints = z.infer<typeof SkillConstraintsSchema>;
 export type SkillOutput = z.infer<typeof SkillOutputSchema>;
 export type SkillMetadata = z.infer<typeof SkillMetadataSchema>;
 export type SkillToolType = z.infer<typeof SkillTool>;
+export type EventTriggerFilter = z.infer<typeof EventTriggerFilterSchema>;
 
 // Re-export sub-schemas for external use
 export {

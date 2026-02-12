@@ -626,6 +626,92 @@ describe('SkillEngine.execute', () => {
 });
 
 // ============================================================================
+// Chain Context — Cycle Detection & Depth Limits
+// ============================================================================
+
+describe('SkillEngine chain context', () => {
+  it('should reject execution when chain depth exceeds limit', async () => {
+    const skillDir = await createTempDir('skill-');
+    await writeSkillYaml(skillDir);
+
+    const skill = await engine.install('user-1', skillDir, 'local');
+    await engine.updateStatus(skill.id, 'enabled');
+
+    await expect(
+      engine.execute({
+        skillId: skill.id,
+        serverId: 'server-1',
+        userId: 'user-1',
+        triggerType: 'event',
+        chainContext: {
+          depth: 5,
+          trail: ['a', 'b', 'c', 'd', 'e'],
+        },
+      }),
+    ).rejects.toThrow(/Chain depth limit exceeded/);
+  });
+
+  it('should reject execution when circular chain is detected', async () => {
+    const skillDir = await createTempDir('skill-');
+    await writeSkillYaml(skillDir);
+
+    const skill = await engine.install('user-1', skillDir, 'local');
+    await engine.updateStatus(skill.id, 'enabled');
+
+    await expect(
+      engine.execute({
+        skillId: skill.id,
+        serverId: 'server-1',
+        userId: 'user-1',
+        triggerType: 'event',
+        chainContext: {
+          depth: 2,
+          trail: ['other-skill', skill.id],
+        },
+      }),
+    ).rejects.toThrow(/Circular chain detected/);
+  });
+
+  it('should allow execution at chain depth below limit', async () => {
+    const skillDir = await createTempDir('skill-');
+    await writeSkillYaml(skillDir);
+
+    const skill = await engine.install('user-1', skillDir, 'local');
+    await engine.updateStatus(skill.id, 'enabled');
+
+    const result = await engine.execute({
+      skillId: skill.id,
+      serverId: 'server-1',
+      userId: 'user-1',
+      triggerType: 'event',
+      chainContext: {
+        depth: 4,
+        trail: ['a', 'b', 'c', 'd'],
+      },
+    });
+
+    expect(result.status).toBe('success');
+  });
+
+  it('should execute normally without chain context (manual trigger)', async () => {
+    const skillDir = await createTempDir('skill-');
+    await writeSkillYaml(skillDir);
+
+    const skill = await engine.install('user-1', skillDir, 'local');
+    await engine.updateStatus(skill.id, 'enabled');
+
+    const result = await engine.execute({
+      skillId: skill.id,
+      serverId: 'server-1',
+      userId: 'user-1',
+      triggerType: 'manual',
+    });
+
+    expect(result.status).toBe('success');
+  });
+});
+
+// ============================================================================
 // Queries
 // ============================================================================
 

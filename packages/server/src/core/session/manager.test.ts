@@ -7,20 +7,28 @@
  * conversation context building, and DB persistence.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { SessionManager } from './manager.js';
+import type { SessionCacheOptions } from './manager.js';
 import { InMemorySessionRepository } from '../../db/repositories/session-repository.js';
 import { logger } from '../../utils/logger.js';
 
 const USER_ID = 'user-1';
 const SERVER_ID = 'server-1';
 
+/** Disable sweep timer in tests to avoid timer leaks */
+const TEST_CACHE_OPTS: Partial<SessionCacheOptions> = { sweepIntervalMs: 0 };
+
 let repo: InMemorySessionRepository;
 let mgr: SessionManager;
 
 beforeEach(() => {
   repo = new InMemorySessionRepository();
-  mgr = new SessionManager(repo);
+  mgr = new SessionManager(repo, TEST_CACHE_OPTS);
+});
+
+afterEach(() => {
+  mgr.stopSweep();
 });
 
 // ============================================================================
@@ -72,11 +80,12 @@ describe('getOrCreate', () => {
     await mgr.addMessage(session.id, USER_ID, 'user', 'Hello');
 
     // Create a new manager with the same repo (simulates restart)
-    const mgr2 = new SessionManager(repo);
+    const mgr2 = new SessionManager(repo, TEST_CACHE_OPTS);
     const loaded = await mgr2.getOrCreate(SERVER_ID, USER_ID, session.id);
     expect(loaded.id).toBe(session.id);
     expect(loaded.messages).toHaveLength(1);
     expect(loaded.messages[0].content).toBe('Hello');
+    mgr2.stopSweep();
   });
 });
 
@@ -96,10 +105,11 @@ describe('getSession', () => {
     const session = await mgr.getOrCreate(SERVER_ID, USER_ID);
 
     // Create new manager with same repo
-    const mgr2 = new SessionManager(repo);
+    const mgr2 = new SessionManager(repo, TEST_CACHE_OPTS);
     const loaded = await mgr2.getSession(session.id, USER_ID);
     expect(loaded).toBeDefined();
     expect(loaded!.id).toBe(session.id);
+    mgr2.stopSweep();
   });
 });
 
@@ -455,7 +465,7 @@ describe('persistence', () => {
     await new Promise((r) => setTimeout(r, 10));
 
     // Simulate restart: new manager, same repo
-    const mgr2 = new SessionManager(repo);
+    const mgr2 = new SessionManager(repo, TEST_CACHE_OPTS);
     const list = await mgr2.listSessions(SERVER_ID, USER_ID);
     expect(list).toHaveLength(1);
     expect(list[0].messageCount).toBe(2);
@@ -465,6 +475,7 @@ describe('persistence', () => {
     expect(loaded!.messages).toHaveLength(2);
     expect(loaded!.messages[0].content).toBe('First message');
     expect(loaded!.messages[1].content).toBe('Reply');
+    mgr2.stopSweep();
   });
 
   it('should not lose data when plan is in-memory only', async () => {
@@ -478,10 +489,11 @@ describe('persistence', () => {
     });
 
     // After restart, plan is gone but session persists
-    const mgr2 = new SessionManager(repo);
+    const mgr2 = new SessionManager(repo, TEST_CACHE_OPTS);
     const loaded = await mgr2.getSession(session.id, USER_ID);
     expect(loaded).toBeDefined();
     expect(mgr2.getPlan(session.id, 'p1')).toBeUndefined();
+    mgr2.stopSweep();
   });
 });
 
@@ -610,5 +622,268 @@ describe('addMessage persistence error handling', () => {
     // Wait for retry to complete
     await new Promise((r) => setTimeout(r, 700));
     expect(callCount).toBe(2);
+  });
+});
+
+// ============================================================================
+// Cache eviction (LRU + TTL)
+// ============================================================================
+
+describe('cache eviction', () => {
+  describe('LRU eviction on capacity', () => {
+    it('should evict the oldest session when cache is full', async () => {
+      const smallMgr = new SessionManager(repo, { maxSize: 3, sweepIntervalMs: 0 });
+
+      const s1 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
+      await smallMgr.addMessage(s1.id, USER_ID, 'user', 'Session 1 msg');
+      const s2 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
+      const s3 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
+
+      expect(smallMgr.cacheSize).toBe(3);
+
+      // Adding a 4th session should evict s1 (oldest accessed)
+      const s4 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
+      expect(smallMgr.cacheSize).toBe(3);
+
+      // s1 was evicted from cache but still in DB
+      // Access from a fresh manager should reload from DB
+      const freshMgr = new SessionManager(repo, { sweepIntervalMs: 0 });
+      const reloaded = await freshMgr.getSession(s1.id, USER_ID);
+      expect(reloaded).toBeDefined();
+      expect(reloaded!.messages).toHaveLength(1);
+      expect(reloaded!.messages[0].content).toBe('Session 1 msg');
+
+      // Wait for persistence
+      await new Promise((r) => setTimeout(r, 10));
+
+      smallMgr.stopSweep();
+      freshMgr.stopSweep();
+    });
+
+    it('should evict the least-recently-used, not just the oldest created', async () => {
+      const smallMgr = new SessionManager(repo, { maxSize: 3, sweepIntervalMs: 0 });
+
+      const s1 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
+      const s2 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
+      const s3 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
+
+      // Touch s1 to make it recently accessed
+      await smallMgr.getSession(s1.id, USER_ID);
+
+      // Adding s4 should evict s2 (least recently accessed), not s1
+      const s4 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
+      expect(smallMgr.cacheSize).toBe(3);
+
+      // s1 should still be in cache (was touched)
+      const s1Again = await smallMgr.getSession(s1.id, USER_ID);
+      expect(s1Again).toBeDefined();
+
+      // s2 was evicted — accessing it reloads from DB
+      const s2Again = await smallMgr.getSession(s2.id, USER_ID);
+      expect(s2Again).toBeDefined();
+      // This DB reload should have evicted s3 (least recently used now)
+      expect(smallMgr.cacheSize).toBe(3);
+
+      smallMgr.stopSweep();
+    });
+
+    it('should report correct cacheSize', async () => {
+      expect(mgr.cacheSize).toBe(0);
+      await mgr.getOrCreate(SERVER_ID, USER_ID);
+      expect(mgr.cacheSize).toBe(1);
+      await mgr.getOrCreate(SERVER_ID, USER_ID);
+      expect(mgr.cacheSize).toBe(2);
+    });
+  });
+
+  describe('active session protection', () => {
+    it('should not evict sessions with active plans', async () => {
+      const smallMgr = new SessionManager(repo, { maxSize: 2, sweepIntervalMs: 0 });
+      const warnSpy = vi.spyOn(logger, 'warn');
+
+      const s1 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
+      const s2 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
+
+      // Both sessions have plans — both are "active"
+      smallMgr.storePlan(s1.id, {
+        planId: 'p1', description: 'test', steps: [],
+        totalRisk: 'green', requiresConfirmation: false,
+      });
+      smallMgr.storePlan(s2.id, {
+        planId: 'p2', description: 'test', steps: [],
+        totalRisk: 'green', requiresConfirmation: false,
+      });
+
+      // Try to add a 3rd — eviction should fail (all active)
+      const s3 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
+      // Cache should grow beyond maxSize (protection takes priority)
+      expect(smallMgr.cacheSize).toBe(3);
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ cacheSize: 2, maxSize: 2 }),
+        expect.stringContaining('all sessions have active plans'),
+      );
+
+      warnSpy.mockRestore();
+      smallMgr.stopSweep();
+    });
+
+    it('should evict non-active session when mixed with active ones', async () => {
+      const smallMgr = new SessionManager(repo, { maxSize: 2, sweepIntervalMs: 0 });
+
+      const s1 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
+      const s2 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
+
+      // Only s1 has a plan (active), s2 does not
+      smallMgr.storePlan(s1.id, {
+        planId: 'p1', description: 'test', steps: [],
+        totalRisk: 'green', requiresConfirmation: false,
+      });
+
+      // Adding s3 should evict s2 (non-active), not s1 (active)
+      const s3 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
+      expect(smallMgr.cacheSize).toBe(2);
+
+      // s1 should still be accessible from cache (with plan)
+      expect(smallMgr.getPlan(s1.id, 'p1')).toBeDefined();
+
+      smallMgr.stopSweep();
+    });
+  });
+
+  describe('TTL-based eviction', () => {
+    it('should sweep expired sessions', async () => {
+      // Use a very short TTL for testing
+      const ttlMgr = new SessionManager(repo, { ttlMs: 50, sweepIntervalMs: 0 });
+
+      const s1 = await ttlMgr.getOrCreate(SERVER_ID, USER_ID);
+      await ttlMgr.addMessage(s1.id, USER_ID, 'user', 'Hello');
+      expect(ttlMgr.cacheSize).toBe(1);
+
+      // Wait for TTL to expire
+      await new Promise((r) => setTimeout(r, 60));
+
+      // Manually trigger sweep (timer is disabled in tests)
+      // Access the private method via type cast for testing
+      (ttlMgr as unknown as { sweepExpired: () => void }).sweepExpired();
+
+      expect(ttlMgr.cacheSize).toBe(0);
+
+      // Session still loadable from DB
+      await new Promise((r) => setTimeout(r, 10)); // wait for persistence
+      const reloaded = await ttlMgr.getSession(s1.id, USER_ID);
+      expect(reloaded).toBeDefined();
+      expect(reloaded!.messages).toHaveLength(1);
+      expect(ttlMgr.cacheSize).toBe(1); // reloaded into cache
+
+      ttlMgr.stopSweep();
+    });
+
+    it('should not sweep active sessions even when TTL expired', async () => {
+      const ttlMgr = new SessionManager(repo, { ttlMs: 50, sweepIntervalMs: 0 });
+
+      const s1 = await ttlMgr.getOrCreate(SERVER_ID, USER_ID);
+      ttlMgr.storePlan(s1.id, {
+        planId: 'p1', description: 'test', steps: [],
+        totalRisk: 'green', requiresConfirmation: false,
+      });
+
+      // Wait for TTL to expire
+      await new Promise((r) => setTimeout(r, 60));
+
+      (ttlMgr as unknown as { sweepExpired: () => void }).sweepExpired();
+
+      // Should still be in cache because it has an active plan
+      expect(ttlMgr.cacheSize).toBe(1);
+      expect(ttlMgr.getPlan(s1.id, 'p1')).toBeDefined();
+
+      ttlMgr.stopSweep();
+    });
+
+    it('should not sweep recently accessed sessions', async () => {
+      const ttlMgr = new SessionManager(repo, { ttlMs: 200, sweepIntervalMs: 0 });
+
+      const s1 = await ttlMgr.getOrCreate(SERVER_ID, USER_ID);
+
+      // Access it after 100ms (within TTL)
+      await new Promise((r) => setTimeout(r, 100));
+      await ttlMgr.getSession(s1.id, USER_ID); // resets access time
+
+      // Sweep at 200ms from creation — but only 100ms from last access
+      await new Promise((r) => setTimeout(r, 110));
+      (ttlMgr as unknown as { sweepExpired: () => void }).sweepExpired();
+
+      // Should still be in cache (last access was ~110ms ago, TTL is 200ms)
+      expect(ttlMgr.cacheSize).toBe(1);
+
+      ttlMgr.stopSweep();
+    });
+  });
+
+  describe('eviction and reload cycle', () => {
+    it('should reload evicted session from DB with messages intact', async () => {
+      const smallMgr = new SessionManager(repo, { maxSize: 2, sweepIntervalMs: 0 });
+
+      const s1 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
+      await smallMgr.addMessage(s1.id, USER_ID, 'user', 'First');
+      await smallMgr.addMessage(s1.id, USER_ID, 'assistant', 'Reply');
+
+      // Wait for persistence
+      await new Promise((r) => setTimeout(r, 10));
+
+      const s2 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
+
+      // Force eviction of s1 by filling cache
+      const s3 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
+      expect(smallMgr.cacheSize).toBe(2); // s1 evicted
+
+      // Access s1 again — should reload from DB
+      const reloaded = await smallMgr.getSession(s1.id, USER_ID);
+      expect(reloaded).toBeDefined();
+      expect(reloaded!.messages).toHaveLength(2);
+      expect(reloaded!.messages[0].content).toBe('First');
+      expect(reloaded!.messages[1].content).toBe('Reply');
+      // Plans are lost after eviction (in-memory only)
+      expect(reloaded!.plans.size).toBe(0);
+
+      smallMgr.stopSweep();
+    });
+
+    it('should lose plans after eviction and reload', async () => {
+      const smallMgr = new SessionManager(repo, { maxSize: 1, sweepIntervalMs: 0 });
+
+      const s1 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
+      // Note: storing a plan makes session active, so it won't be evicted
+      // We need to test the case where plan was cleared before eviction
+
+      // Create a session, don't add plan
+      const s2 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
+      // s1 is evicted (no plan, LRU)
+
+      // Reload s1
+      const reloaded = await smallMgr.getSession(s1.id, USER_ID);
+      expect(reloaded).toBeDefined();
+      expect(reloaded!.plans.size).toBe(0);
+
+      smallMgr.stopSweep();
+    });
+  });
+
+  describe('deleteSession removes from cache', () => {
+    it('should decrease cache size on delete', async () => {
+      const session = await mgr.getOrCreate(SERVER_ID, USER_ID);
+      expect(mgr.cacheSize).toBe(1);
+
+      await mgr.deleteSession(session.id, SERVER_ID, USER_ID);
+      expect(mgr.cacheSize).toBe(0);
+    });
+  });
+
+  describe('stopSweep', () => {
+    it('should stop the sweep timer', () => {
+      const timerMgr = new SessionManager(repo, { sweepIntervalMs: 100 });
+      timerMgr.stopSweep();
+      // No error should occur; test would hang if timer was not stopped
+      timerMgr.stopSweep(); // double stop is safe
+    });
   });
 });

@@ -21,7 +21,7 @@ import {
 import { loadSkillFromDir } from './loader.js';
 
 import type { SkillManifest, SkillTrigger } from '@aiinstaller/shared';
-import type { InstalledSkill } from './types.js';
+import type { InstalledSkill, ChainContext } from './types.js';
 
 const logger = createContextLogger({ module: 'trigger-manager' });
 
@@ -61,6 +61,7 @@ export type ExecuteCallback = (
   serverId: string,
   userId: string,
   triggerType: 'cron' | 'event' | 'threshold',
+  chainContext?: ChainContext,
 ) => Promise<void>;
 
 export class TriggerManager {
@@ -183,6 +184,9 @@ export class TriggerManager {
   /**
    * Handle a system event and trigger matching skills.
    * Called from external modules when events like `alert.triggered` occur.
+   *
+   * For `skill.completed` / `skill.failed` events, chain context is
+   * extracted from `data.chainContext` to support cycle detection.
    */
   async handleEvent(
     eventType: string,
@@ -192,11 +196,15 @@ export class TriggerManager {
     if (!registrations || registrations.length === 0) return;
 
     const serverId = (data['serverId'] as string) ?? 'unknown';
+    const chainContext = data['chainContext'] as ChainContext | undefined;
 
     for (const reg of registrations) {
-      if (this.matchesFilter(reg.filter, data) && !this.isDebounced(reg.skillId, serverId)) {
+      // For skill.completed / skill.failed, resolve source_skill filter
+      const filterData = this.buildFilterData(eventType, data);
+
+      if (this.matchesFilter(reg.filter, filterData) && !this.isDebounced(reg.skillId, serverId)) {
         this.recordDebounce(reg.skillId, serverId);
-        this.safeExecute(reg.skillId, serverId, reg.userId, 'event');
+        this.safeExecute(reg.skillId, serverId, reg.userId, 'event', chainContext);
       }
     }
   }
@@ -333,13 +341,31 @@ export class TriggerManager {
   private safeExecute(
     skillId: string, serverId: string, userId: string,
     triggerType: 'cron' | 'event' | 'threshold',
+    chainContext?: ChainContext,
   ): void {
-    this.executeCallback(skillId, serverId, userId, triggerType).catch((err) => {
+    this.executeCallback(skillId, serverId, userId, triggerType, chainContext).catch((err) => {
       logger.error(
         { skillId, serverId, triggerType, error: (err as Error).message },
         'Triggered skill execution failed',
       );
     });
+  }
+
+  /**
+   * Build normalized filter data from event data.
+   * For skill.completed / skill.failed, maps `skillName` → `source_skill`.
+   */
+  private buildFilterData(
+    eventType: string,
+    data: Record<string, unknown>,
+  ): Record<string, unknown> {
+    if (eventType === 'skill.completed' || eventType === 'skill.failed') {
+      return {
+        ...data,
+        source_skill: data['skillName'] as string,
+      };
+    }
+    return data;
   }
 
   private matchesFilter(

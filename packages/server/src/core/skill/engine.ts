@@ -37,6 +37,7 @@ import type {
   SkillExecutionResult,
   AvailableSkill,
   SkillRunParams,
+  ChainContext,
 } from './types.js';
 import { SkillRunner } from './runner.js';
 import { TriggerManager, setTriggerManager, _resetTriggerManager } from './trigger-manager.js';
@@ -49,6 +50,9 @@ const logger = createContextLogger({ module: 'skill-engine' });
 
 /** Default directories to scan for available skills (relative to project root). */
 const DEFAULT_SKILL_PATHS = ['skills/official', 'skills/community'];
+
+/** Maximum chain depth for skill.completed event-driven triggers. */
+const MAX_CHAIN_DEPTH = 5;
 
 /** Valid status transitions. */
 const STATUS_TRANSITIONS: Record<SkillStatus, SkillStatus[]> = {
@@ -86,8 +90,8 @@ export class SkillEngine {
 
     // Create and start TriggerManager
     this.triggerManager = new TriggerManager(
-      async (skillId, serverId, userId, triggerType) => {
-        await this.execute({ skillId, serverId, userId, triggerType });
+      async (skillId, serverId, userId, triggerType, chainContext) => {
+        await this.execute({ skillId, serverId, userId, triggerType, chainContext });
       },
       this.repo,
     );
@@ -247,8 +251,22 @@ export class SkillEngine {
    * to SkillRunner for autonomous AI-driven execution with security checks.
    */
   async execute(params: SkillRunParams): Promise<SkillExecutionResult> {
-    const { skillId, serverId, userId, triggerType } = params;
+    const { skillId, serverId, userId, triggerType, chainContext } = params;
     const startTime = Date.now();
+
+    // Chain depth / cycle validation
+    if (chainContext) {
+      if (chainContext.depth >= MAX_CHAIN_DEPTH) {
+        throw new Error(
+          `Chain depth limit exceeded (max=${MAX_CHAIN_DEPTH}): ${chainContext.trail.join(' → ')} → ${skillId}`,
+        );
+      }
+      if (chainContext.trail.includes(skillId)) {
+        throw new Error(
+          `Circular chain detected: ${chainContext.trail.join(' → ')} → ${skillId}`,
+        );
+      }
+    }
 
     // Load installed skill
     const skill = await this.repo.findById(skillId);
@@ -281,6 +299,12 @@ export class SkillEngine {
       userId,
       triggerType,
     });
+
+    // Build chain context for downstream triggers
+    const nextChain: ChainContext = {
+      depth: (chainContext?.depth ?? 0) + 1,
+      trail: [...(chainContext?.trail ?? []), skillId],
+    };
 
     try {
       // Resolve prompt template with available variables
@@ -326,7 +350,7 @@ export class SkillEngine {
         'Skill execution completed',
       );
 
-      return {
+      const execResult: SkillExecutionResult = {
         executionId: execution.id,
         status,
         stepsExecuted: runResult.stepsExecuted,
@@ -334,6 +358,25 @@ export class SkillEngine {
         result,
         errors: runResult.errors,
       };
+
+      // Emit skill.completed or skill.failed event for chain triggers
+      if (this.triggerManager) {
+        const eventType = status === 'success' ? 'skill.completed' : 'skill.failed';
+        this.triggerManager.handleEvent(eventType, {
+          serverId,
+          skillId,
+          skillName: skill.name,
+          executionId: execution.id,
+          chainContext: nextChain,
+        }).catch((err) => {
+          logger.error(
+            { skillId, eventType, error: (err as Error).message },
+            'Failed to emit skill completion event',
+          );
+        });
+      }
+
+      return execResult;
     } catch (err) {
       const duration = Date.now() - startTime;
       const errorMessage = (err as Error).message;
@@ -350,6 +393,22 @@ export class SkillEngine {
         { executionId: execution.id, skillId, error: errorMessage },
         'Skill execution failed',
       );
+
+      // Emit skill.failed event for chain triggers
+      if (this.triggerManager) {
+        this.triggerManager.handleEvent('skill.failed', {
+          serverId,
+          skillId,
+          skillName: skill.name,
+          executionId: execution.id,
+          chainContext: nextChain,
+        }).catch((emitErr) => {
+          logger.error(
+            { skillId, error: (emitErr as Error).message },
+            'Failed to emit skill.failed event',
+          );
+        });
+      }
 
       return {
         executionId: execution.id,

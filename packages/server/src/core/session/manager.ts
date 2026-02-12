@@ -4,7 +4,10 @@
  * Persistent session manager for chat conversations.
  *
  * Uses SessionRepository (SQLite) as the persistence backend with
- * an in-memory cache for active sessions and plans.
+ * an LRU in-memory cache for active sessions and plans.
+ *
+ * Cache eviction: LRU with TTL. Sessions with active plans are protected
+ * from eviction. Evicted sessions are reloaded from DB on next access.
  *
  * Plans remain in-memory only (ephemeral, tied to active execution flows).
  *
@@ -72,6 +75,28 @@ export interface Session {
   updatedAt: string;
 }
 
+/** Cache configuration for SessionManager */
+export interface SessionCacheOptions {
+  /** Maximum number of sessions in cache (default: 100) */
+  maxSize: number;
+  /** TTL in milliseconds for inactive sessions (default: 30 minutes) */
+  ttlMs: number;
+  /** Interval for TTL sweep in milliseconds (default: 60 seconds) */
+  sweepIntervalMs: number;
+}
+
+const DEFAULT_CACHE_OPTIONS: SessionCacheOptions = {
+  maxSize: 100,
+  ttlMs: 30 * 60 * 1000,       // 30 minutes
+  sweepIntervalMs: 60 * 1000,   // 1 minute
+};
+
+/** Internal cache entry wrapping a Session with access tracking */
+interface CacheEntry {
+  session: Session;
+  lastAccessedAt: number;
+}
+
 // ============================================================================
 // Helpers: convert between ChatMessage (ISO string) and SessionMessage (number)
 // ============================================================================
@@ -100,18 +125,133 @@ function toChatMessage(msg: SessionMessage): ChatMessage {
 
 export class SessionManager {
   private repo: SessionRepository;
-  /** In-memory cache: sessionId → Session (with plans) */
-  private cache = new Map<string, Session>();
+  private cache = new Map<string, CacheEntry>();
+  private cacheOptions: SessionCacheOptions;
+  private sweepTimer: ReturnType<typeof setInterval> | null = null;
 
-  constructor(repo?: SessionRepository) {
+  constructor(repo?: SessionRepository, cacheOptions?: Partial<SessionCacheOptions>) {
     this.repo = repo ?? getSessionRepository();
+    this.cacheOptions = { ...DEFAULT_CACHE_OPTIONS, ...cacheOptions };
+    this.startSweep();
   }
+
+  // ==========================================================================
+  // Cache internals
+  // ==========================================================================
+
+  /** Touch a cache entry to mark it as recently accessed. */
+  private touchEntry(entry: CacheEntry): void {
+    entry.lastAccessedAt = Date.now();
+  }
+
+  /** Get a session from cache, updating its access timestamp. */
+  private cacheGet(sessionId: string): Session | undefined {
+    const entry = this.cache.get(sessionId);
+    if (!entry) return undefined;
+    this.touchEntry(entry);
+    return entry.session;
+  }
+
+  /** Insert a session into cache, evicting LRU entries if needed. */
+  private cachePut(session: Session): void {
+    // If already cached, just update
+    const existing = this.cache.get(session.id);
+    if (existing) {
+      existing.session = session;
+      this.touchEntry(existing);
+      return;
+    }
+    this.evictIfNeeded();
+    this.cache.set(session.id, { session, lastAccessedAt: Date.now() });
+  }
+
+  /** Remove a session from cache. */
+  private cacheDelete(sessionId: string): void {
+    this.cache.delete(sessionId);
+  }
+
+  /** Check if a session has active plans (should not be evicted). */
+  private isActive(entry: CacheEntry): boolean {
+    return entry.session.plans.size > 0;
+  }
+
+  /**
+   * Evict the least-recently-used non-active entry if cache is at capacity.
+   * Active sessions (with plans) are protected from eviction.
+   */
+  private evictIfNeeded(): void {
+    if (this.cache.size < this.cacheOptions.maxSize) return;
+
+    let oldestKey: string | null = null;
+    let oldestTime = Infinity;
+
+    for (const [key, entry] of this.cache) {
+      if (this.isActive(entry)) continue;
+      if (entry.lastAccessedAt < oldestTime) {
+        oldestTime = entry.lastAccessedAt;
+        oldestKey = key;
+      }
+    }
+
+    if (oldestKey) {
+      this.cache.delete(oldestKey);
+      logger.debug({ sessionId: oldestKey, cacheSize: this.cache.size }, 'Session evicted from cache (LRU)');
+    } else {
+      logger.warn(
+        { cacheSize: this.cache.size, maxSize: this.cacheOptions.maxSize },
+        'Cache full — all sessions have active plans, cannot evict',
+      );
+    }
+  }
+
+  /** Sweep expired entries (TTL-based). Protected sessions are skipped. */
+  private sweepExpired(): void {
+    const now = Date.now();
+    const expiry = this.cacheOptions.ttlMs;
+    let evicted = 0;
+
+    for (const [key, entry] of this.cache) {
+      if (this.isActive(entry)) continue;
+      if (now - entry.lastAccessedAt > expiry) {
+        this.cache.delete(key);
+        evicted++;
+      }
+    }
+
+    if (evicted > 0) {
+      logger.debug({ evicted, cacheSize: this.cache.size }, 'TTL sweep evicted sessions');
+    }
+  }
+
+  /** Start periodic TTL sweep timer. */
+  private startSweep(): void {
+    if (this.cacheOptions.sweepIntervalMs <= 0) return;
+    this.sweepTimer = setInterval(() => this.sweepExpired(), this.cacheOptions.sweepIntervalMs);
+    this.sweepTimer.unref();
+  }
+
+  /** Stop the sweep timer (for cleanup/testing). */
+  stopSweep(): void {
+    if (this.sweepTimer) {
+      clearInterval(this.sweepTimer);
+      this.sweepTimer = null;
+    }
+  }
+
+  /** Get current cache size (for monitoring/testing). */
+  get cacheSize(): number {
+    return this.cache.size;
+  }
+
+  // ==========================================================================
+  // Public API
+  // ==========================================================================
 
   /** Get or create a session for a server. userId required for DB persistence. */
   async getOrCreate(serverId: string, userId: string, sessionId?: string): Promise<Session> {
     // Try cache first
     if (sessionId) {
-      const cached = this.cache.get(sessionId);
+      const cached = this.cacheGet(sessionId);
       if (cached && cached.serverId === serverId) {
         return cached;
       }
@@ -122,7 +262,7 @@ export class SessionManager {
       const dbSession = await this.repo.getById(sessionId, userId);
       if (dbSession && dbSession.serverId === serverId) {
         const session = this.dbToSession(dbSession);
-        this.cache.set(session.id, session);
+        this.cachePut(session);
         return session;
       }
     }
@@ -137,7 +277,7 @@ export class SessionManager {
       createdAt: created.createdAt,
       updatedAt: created.updatedAt,
     };
-    this.cache.set(session.id, session);
+    this.cachePut(session);
     return session;
   }
 
@@ -148,10 +288,11 @@ export class SessionManager {
     role: ChatMessage['role'],
     content: string,
   ): Promise<ChatMessage> {
-    const session = this.cache.get(sessionId);
-    if (!session) {
+    const entry = this.cache.get(sessionId);
+    if (!entry) {
       throw new Error(`Session ${sessionId} not found`);
     }
+    this.touchEntry(entry);
 
     const message: ChatMessage = {
       id: randomUUID(),
@@ -160,8 +301,8 @@ export class SessionManager {
       timestamp: new Date().toISOString(),
     };
 
-    session.messages.push(message);
-    session.updatedAt = new Date().toISOString();
+    entry.session.messages.push(message);
+    entry.session.updatedAt = new Date().toISOString();
 
     // Persist to DB (fire-and-forget to not block SSE streaming)
     this.persistMessage(sessionId, userId, toSessionMessage(message));
@@ -171,17 +312,21 @@ export class SessionManager {
 
   /** Store a generated plan in a session (in-memory only). */
   storePlan(sessionId: string, plan: StoredPlan): void {
-    const session = this.cache.get(sessionId);
-    if (!session) {
+    const entry = this.cache.get(sessionId);
+    if (!entry) {
       throw new Error(`Session ${sessionId} not found`);
     }
-    session.plans.set(plan.planId, plan);
-    session.updatedAt = new Date().toISOString();
+    this.touchEntry(entry);
+    entry.session.plans.set(plan.planId, plan);
+    entry.session.updatedAt = new Date().toISOString();
   }
 
   /** Retrieve a stored plan (in-memory only). */
   getPlan(sessionId: string, planId: string): StoredPlan | undefined {
-    return this.cache.get(sessionId)?.plans.get(planId);
+    const entry = this.cache.get(sessionId);
+    if (!entry) return undefined;
+    this.touchEntry(entry);
+    return entry.session.plans.get(planId);
   }
 
   /** List sessions for a server. Loads from DB for complete history. */
@@ -207,23 +352,23 @@ export class SessionManager {
 
   /** Get a session by ID. Checks cache first, then DB. */
   async getSession(sessionId: string, userId: string): Promise<Session | undefined> {
-    const cached = this.cache.get(sessionId);
+    const cached = this.cacheGet(sessionId);
     if (cached) return cached;
 
     const dbSession = await this.repo.getById(sessionId, userId);
     if (!dbSession) return undefined;
 
     const session = this.dbToSession(dbSession);
-    this.cache.set(session.id, session);
+    this.cachePut(session);
     return session;
   }
 
   /** Delete a session from both cache and DB. */
   async deleteSession(sessionId: string, serverId: string, userId: string): Promise<boolean> {
-    const session = this.cache.get(sessionId);
-    if (session) {
-      if (session.serverId !== serverId) return false;
-      this.cache.delete(sessionId);
+    const entry = this.cache.get(sessionId);
+    if (entry) {
+      if (entry.session.serverId !== serverId) return false;
+      this.cacheDelete(sessionId);
     }
 
     return this.repo.delete(sessionId, userId);
@@ -231,7 +376,7 @@ export class SessionManager {
 
   /** Build conversation context for AI from session messages. */
   buildContext(sessionId: string): string {
-    const session = this.cache.get(sessionId);
+    const session = this.cacheGet(sessionId);
     if (!session || session.messages.length === 0) {
       return '';
     }
@@ -246,13 +391,9 @@ export class SessionManager {
    *
    * Strategy: keep the most recent messages that fit within the budget.
    * When truncation occurs, prepends a `[Earlier conversation summarized]` marker.
-   *
-   * @param sessionId - Session to build context from
-   * @param maxTokens - Maximum token budget for the context string (default: 8000)
-   * @returns Formatted context string within the token budget
    */
   buildContextWithLimit(sessionId: string, maxTokens = 8000): string {
-    const session = this.cache.get(sessionId);
+    const session = this.cacheGet(sessionId);
     if (!session || session.messages.length === 0) {
       return '';
     }
@@ -277,7 +418,6 @@ export class SessionManager {
     // Walk backwards, keeping recent messages
     for (let i = formatted.length - 1; i >= 0; i--) {
       const msgTokens = estimateTokens(formatted[i]);
-      // Account for separator between messages
       const separatorTokens = selected.length > 0 ? estimateTokens('\n\n') : 0;
 
       if (usedTokens + msgTokens + separatorTokens > availableTokens) {
@@ -288,7 +428,6 @@ export class SessionManager {
       usedTokens += msgTokens + separatorTokens;
     }
 
-    // If we kept all messages, no marker needed (edge case: budget barely fits)
     if (selected.length === formatted.length) {
       return selected.join('\n\n');
     }
@@ -301,21 +440,16 @@ export class SessionManager {
    *
    * Used by the agentic engine which needs `{ role, content }[]` format.
    * Keeps the most recent messages that fit within the token budget.
-   *
-   * @param sessionId - Session to build history from
-   * @param maxTokens - Maximum token budget (default: 40000)
-   * @returns Array of messages within budget, excluding the latest user message
    */
   buildHistoryWithLimit(
     sessionId: string,
     maxTokens = 40000,
   ): Array<{ role: 'user' | 'assistant'; content: string }> {
-    const session = this.cache.get(sessionId);
+    const session = this.cacheGet(sessionId);
     if (!session || session.messages.length === 0) {
       return [];
     }
 
-    // Filter to user/assistant only, exclude the last message (current user message)
     const eligible = session.messages
       .filter((m) => m.role === 'user' || m.role === 'assistant')
       .slice(0, -1);
@@ -324,7 +458,6 @@ export class SessionManager {
       return [];
     }
 
-    // Check if everything fits
     const totalTokens = eligible.reduce(
       (sum, m) => sum + estimateTokens(m.content),
       0,
@@ -337,7 +470,6 @@ export class SessionManager {
       }));
     }
 
-    // Keep recent messages within budget
     const selected: Array<{ role: 'user' | 'assistant'; content: string }> = [];
     let usedTokens = 0;
 
@@ -419,5 +551,8 @@ export function setSessionManager(mgr: SessionManager): void {
 
 /** Reset for testing */
 export function _resetSessionManager(): void {
+  if (_instance) {
+    _instance.stopSweep();
+  }
   _instance = null;
 }

@@ -90,4 +90,14 @@ export interface SkillRunParams {
   userId: string;
   triggerType: SkillTriggerType;
   config?: Record<string, unknown>;
+  /** Chain context for cycle detection in chained skill triggers. */
+  chainContext?: ChainContext;
+}
+
+/** Tracks the execution chain for skill.completed event-driven triggers. */
+export interface ChainContext {
+  /** Current chain depth (starts at 0 for manual triggers). */
+  depth: number;
+  /** Ordered list of skill IDs in the chain (for cycle detection). */
+  trail: string[];
 }
