@@ -1,0 +1,33 @@
+{
+  "name": "@aiinstaller/cloud",
+  "version": "0.1.0",
+  "private": true,
+  "license": "BUSL-1.1",
+  "description": "ServerPilot Cloud Edition — PostgreSQL, billing, SSO, and enterprise features",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@aiinstaller/server": "workspace:*",
+    "@aiinstaller/shared": "workspace:*",
+    "drizzle-orm": "^0.42.0",
+    "pg": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.16.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.1"
+  }
+}

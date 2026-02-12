@@ -22,6 +22,27 @@ export interface ChatMessage {
   content: string;
 }
 
+/** Tool definition for function calling / tool_use */
+export interface ToolDefinition {
+  /** Tool name identifier */
+  name: string;
+  /** Human-readable description of what the tool does */
+  description: string;
+  /** JSON Schema for the tool's input parameters */
+  input_schema: Record<string, unknown>;
+}
+
+/** A tool_use block returned by the AI when it wants to call a tool */
+export interface ToolUseBlock {
+  type: 'tool_use';
+  /** Unique ID for this tool call (used to match with tool_result) */
+  id: string;
+  /** Tool name being called */
+  name: string;
+  /** Input parameters for the tool */
+  input: Record<string, unknown>;
+}
+
 /** Options for a chat request */
 export interface ChatOptions {
   /** Conversation messages */
@@ -32,6 +53,8 @@ export interface ChatOptions {
   maxTokens?: number;
   /** Request timeout in milliseconds */
   timeoutMs?: number;
+  /** Tool definitions for function calling (tool_use) */
+  tools?: ToolDefinition[];
 }
 
 /** Token usage from a response */
@@ -46,6 +69,10 @@ export interface ChatResponse {
   content: string;
   /** Token usage statistics */
   usage: TokenUsage;
+  /** Tool calls requested by the AI (when stop_reason is 'tool_use') */
+  toolCalls?: ToolUseBlock[];
+  /** Why the AI stopped: 'end_turn' (done), 'tool_use' (wants to call tools), 'max_tokens' */
+  stopReason?: string;
 }
 
 /** Callbacks for streaming responses */
@@ -70,6 +97,10 @@ export interface StreamResponse {
   success: boolean;
   /** Error message if failed */
   error?: string;
+  /** Tool calls requested by the AI (when stop_reason is 'tool_use') */
+  toolCalls?: ToolUseBlock[];
+  /** Why the AI stopped */
+  stopReason?: string;
 }
 
 /** Configuration for an AI provider */

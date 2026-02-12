@@ -11,6 +11,8 @@
  */
 
 import process from 'node:process';
+import os from 'node:os';
+import { spawn as spawnProcess } from 'node:child_process';
 
 import type { Message, InstallPlan, InstallStep, EnvironmentInfo, StepResult, ErrorContext } from '@aiinstaller/shared';
 import { createMessageLite as createMessage } from './protocol-lite.js';
@@ -64,6 +66,12 @@ export interface CLIOptions {
   help: boolean;
   /** Show version and exit */
   version: boolean;
+  /** Agent token for local auth (overrides device fingerprint) */
+  token: string;
+  /** Server ID for local auth (overrides device fingerprint) */
+  serverId: string;
+  /** Daemon mode: persistent connection with metrics reporting */
+  daemon: boolean;
 }
 
 /**
@@ -88,7 +96,7 @@ export function parseArgs(argv: string[]): CLIOptions {
 
   const options: CLIOptions = {
     software: DEFAULT_SOFTWARE,
-    serverUrl: DEFAULT_SERVER_URL,
+    serverUrl: process.env.SP_SERVER_URL || DEFAULT_SERVER_URL,
     yes: false,
     verbose: false,
     dryRun: false,
@@ -97,6 +105,9 @@ export function parseArgs(argv: string[]): CLIOptions {
     checkUpdate: false,
     help: false,
     version: false,
+    token: process.env.SP_AGENT_TOKEN || '',
+    serverId: process.env.SP_SERVER_ID || '',
+    daemon: false,
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -131,6 +142,27 @@ export function parseArgs(argv: string[]): CLIOptions {
         i++;
         break;
       }
+      case '--token': {
+        const next = args[i + 1];
+        if (!next || next.startsWith('-')) {
+          throw new Error('--token requires an argument');
+        }
+        options.token = next;
+        i++;
+        break;
+      }
+      case '--server-id': {
+        const next = args[i + 1];
+        if (!next || next.startsWith('-')) {
+          throw new Error('--server-id requires an argument');
+        }
+        options.serverId = next;
+        i++;
+        break;
+      }
+      case '--daemon':
+        options.daemon = true;
+        break;
       case '--help':
       case '-h':
         options.help = true;
@@ -170,10 +202,18 @@ Options:
   --verbose, -v         Enable verbose output
   --dry-run             Preview commands without executing
   --offline             Offline mode (environment detection only)
+  --daemon              Daemon mode (persistent connection + metrics)
+  --token <token>       Agent token for authentication
+  --server-id <id>      Server ID for authentication
   --update              Check for updates and install if available
   --check-update        Check for updates without installing
   --help, -h            Show this help message
   --version             Show version number
+
+Environment variables:
+  SP_SERVER_URL         Server WebSocket URL (overridden by --server)
+  SP_AGENT_TOKEN        Agent token (overridden by --token)
+  SP_SERVER_ID          Server ID (overridden by --server-id)
 `;
 }
 
@@ -786,6 +826,192 @@ async function runUpdate(serverUrl: string): Promise<number> {
 }
 
 // ============================================================================
+// Daemon mode
+// ============================================================================
+
+/**
+ * Run the agent in daemon mode: persistent connection + periodic metrics.
+ *
+ * Used for self-hosted deployments where the agent sits alongside the server.
+ * Reads token from CLI args, env vars, or the shared token file.
+ */
+export async function runDaemon(options: CLIOptions): Promise<number> {
+  const { loadLocalAgentToken } = await import('./detect/token-file.js');
+
+  // Resolve serverId/agentToken: CLI > env > token file
+  let serverId = options.serverId;
+  let agentToken = options.token;
+
+  if (!serverId || !agentToken) {
+    const fileToken = loadLocalAgentToken();
+    if (fileToken) {
+      serverId = serverId || fileToken.serverId;
+      agentToken = agentToken || fileToken.agentToken;
+    }
+  }
+
+  if (!serverId || !agentToken) {
+    console.error(theme.error('Daemon mode requires serverId and agentToken.'));
+    console.error(theme.muted('Provide via --server-id/--token, SP_SERVER_ID/SP_AGENT_TOKEN env, or token file.'));
+    return 1;
+  }
+
+  console.log(theme.info(`[daemon] Connecting to ${options.serverUrl} ...`));
+
+  const client = new AuthenticatedClient({
+    serverUrl: options.serverUrl,
+    autoReconnect: true,
+    maxReconnectAttempts: Infinity,
+    authTimeoutMs: 15000,
+    serverId,
+    agentToken,
+  });
+
+  // Graceful shutdown
+  let stopping = false;
+  const shutdown = () => {
+    if (stopping) return;
+    stopping = true;
+    console.log(theme.muted('\n[daemon] Shutting down...'));
+    client.disconnect();
+    process.exit(0);
+  };
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
+
+  try {
+    await client.connectAndAuth();
+    console.log(theme.success('[daemon] Connected and authenticated'));
+
+    // Report environment once
+    const environment = detectEnvironment();
+    const envMsg = createMessage('env.report', environment);
+    client.send(envMsg);
+    console.log(theme.muted('[daemon] Environment report sent'));
+
+    // Periodic metrics reporting
+    const metricsInterval = setInterval(() => {
+      if (!client.isAuthenticated() || stopping) return;
+
+      const cpus = os.cpus();
+      const totalMem = os.totalmem();
+      const freeMem = os.freemem();
+
+      const cpuUsage = cpus.reduce((acc, cpu) => {
+        const total = Object.values(cpu.times).reduce((a, b) => a + b, 0);
+        return acc + (1 - cpu.times.idle / total);
+      }, 0) / cpus.length;
+
+      try {
+        const metricsMsg = createMessage('metrics.report', {
+          serverId,
+          cpuUsage: Math.round(cpuUsage * 100),
+          memoryUsage: totalMem - freeMem,
+          memoryTotal: totalMem,
+          diskUsage: 0,
+          diskTotal: 1,
+          networkIn: 0,
+          networkOut: 0,
+        });
+        client.send(metricsMsg);
+      } catch {
+        // Connection may be temporarily lost — will retry on next interval
+      }
+    }, 15_000);
+
+    if (metricsInterval.unref) metricsInterval.unref();
+
+    // Handle incoming step.execute commands from server
+    client.on('message', (msg: Message) => {
+      if (msg.type !== 'step.execute') return;
+
+      const step = msg.payload as InstallStep;
+      console.log(theme.muted(`[daemon] Executing: ${step.command}`));
+
+      const stepStart = Date.now();
+
+      // Run through shell to support redirects (>), pipes (|), tilde (~), &&, etc.
+      const shell = process.platform === 'win32' ? 'cmd.exe' : '/bin/sh';
+      const shellArgs = process.platform === 'win32' ? ['/c', step.command] : ['-c', step.command];
+
+      let stdout = '';
+      let stderr = '';
+      let timedOut = false;
+
+      const child = spawnProcess(shell, shellArgs, {
+        stdio: 'pipe',
+        env: { ...process.env, HOME: process.env.HOME || os.homedir() },
+      });
+
+      const timer = setTimeout(() => {
+        timedOut = true;
+        child.kill('SIGKILL');
+      }, step.timeout || 300000);
+
+      child.stdout?.on('data', (chunk: Buffer) => {
+        const text = chunk.toString();
+        stdout += text;
+        try {
+          client.send(createMessage('step.output', { stepId: step.id, output: text }));
+        } catch { /* connection may be lost */ }
+      });
+
+      child.stderr?.on('data', (chunk: Buffer) => {
+        const text = chunk.toString();
+        stderr += text;
+        try {
+          client.send(createMessage('step.output', { stepId: step.id, output: text }));
+        } catch { /* connection may be lost */ }
+      });
+
+      child.on('close', (code: number | null) => {
+        clearTimeout(timer);
+        const exitCode = timedOut ? -1 : (code ?? 1);
+        const stepResult: StepResult = {
+          stepId: step.id,
+          success: exitCode === 0,
+          exitCode,
+          stdout,
+          stderr,
+          duration: Date.now() - stepStart,
+        };
+        try {
+          client.send(createMessage('step.complete', stepResult));
+        } catch { /* connection may be lost */ }
+        console.log(theme.muted(`[daemon] Step ${step.id} completed (exit ${exitCode})`));
+      });
+
+      child.on('error', (err: Error) => {
+        clearTimeout(timer);
+        const stepResult: StepResult = {
+          stepId: step.id,
+          success: false,
+          exitCode: -1,
+          stdout,
+          stderr: stderr + err.message,
+          duration: Date.now() - stepStart,
+        };
+        try {
+          client.send(createMessage('step.complete', stepResult));
+        } catch { /* connection may be lost */ }
+        console.error(theme.error(`[daemon] Step ${step.id} error: ${err.message}`));
+      });
+    });
+
+    // Keep alive — wait for SIGTERM/SIGINT
+    await new Promise<void>(() => {
+      // Never resolves; process exits via shutdown()
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(theme.error(`[daemon] Failed to connect: ${msg}`));
+    return 1;
+  }
+
+  return 0;
+}
+
+// ============================================================================
 // Entry point
 // ============================================================================
 
@@ -819,6 +1045,11 @@ export async function main(argv: string[] = process.argv): Promise<number> {
     // Handle update installation
     if (options.update) {
       return await runUpdate(options.serverUrl);
+    }
+
+    // Daemon mode: persistent connection + metrics
+    if (options.daemon) {
+      return await runDaemon(options);
     }
 
     return await runInstall(options);

@@ -16,6 +16,8 @@
     "paths": {
       "@aiinstaller/shared": ["packages/shared/src"],
       "@aiinstaller/server": ["packages/server/src"],
+      "@aiinstaller/server/schema": ["packages/server/src/db/schema"],
+      "@aiinstaller/cloud": ["packages/cloud/src"],
       "@aiinstaller/agent": ["packages/agent/src"],
       "@aiinstaller/dashboard": ["packages/dashboard/src"]
     }

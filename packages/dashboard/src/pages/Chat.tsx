@@ -20,7 +20,9 @@ import { ChatMessage } from '@/components/chat/ChatMessage';
 import { PlanPreview } from '@/components/chat/PlanPreview';
 import { MessageInput } from '@/components/chat/MessageInput';
 import { ExecutionLog } from '@/components/chat/ExecutionLog';
-import { useChatStore } from '@/stores/chat';
+import { StepConfirmBar } from '@/components/chat/StepConfirmBar';
+import { AgenticConfirmBar } from '@/components/chat/AgenticConfirmBar';
+import { useChatStore, stripJsonPlan } from '@/stores/chat';
 import { useServersStore } from '@/stores/servers';
 import { useNotificationsStore } from '@/stores/notifications';
 import { cn } from '@/lib/utils';
@@ -42,11 +44,17 @@ export function Chat() {
     currentPlan,
     planStatus,
     execution,
+    executionMode,
     sessionId,
+    pendingConfirm,
+    agenticConfirm,
+    isAgenticMode,
     setServerId,
     sendMessage,
     confirmPlan,
     rejectPlan,
+    respondToStep,
+    respondToAgenticConfirm,
     emergencyStop,
     fetchSessions,
     loadSession,
@@ -169,17 +177,53 @@ export function Chat() {
                 ))}
 
                 {/* Streaming indicator */}
-                {isStreaming && streamingContent && (
-                  <div className="flex gap-2 px-2 py-2 sm:gap-3 sm:px-4 sm:py-3" data-testid="streaming-message">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600 dark:bg-blue-900/50 dark:text-blue-400">
-                      <Bot className="h-4 w-4" />
+                {isStreaming && streamingContent && (() => {
+                  const displayText = stripJsonPlan(streamingContent);
+                  if (!displayText) return null;
+
+                  // Agentic mode: AI thinking + tool call output (interleaved)
+                  if (isAgenticMode) {
+                    return (
+                      <div className="flex gap-2 px-2 py-2 sm:gap-3 sm:px-4 sm:py-3" data-testid="streaming-message">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600 dark:bg-blue-900/50 dark:text-blue-400">
+                          <Bot className="h-4 w-4" />
+                        </div>
+                        <div className="max-w-[90%] rounded-2xl bg-muted px-3 py-2 text-sm sm:max-w-[85%] sm:px-4 sm:py-2.5">
+                          <pre className="whitespace-pre-wrap break-words font-sans text-sm">{displayText}</pre>
+                          <Loader2 className="mt-1 h-3 w-3 animate-spin text-muted-foreground" />
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  // Inline execution mode: terminal-style output
+                  if (executionMode === 'inline') {
+                    return (
+                      <div className="flex gap-2 px-2 py-2 sm:gap-3 sm:px-4 sm:py-3" data-testid="streaming-message">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-800 text-green-400 dark:bg-gray-900">
+                          <Server className="h-4 w-4" />
+                        </div>
+                        <div className="max-w-[90%] rounded-lg bg-gray-900 px-3 py-2 text-sm sm:max-w-[85%] sm:px-4 sm:py-3">
+                          <pre className="whitespace-pre-wrap break-all font-mono text-xs text-green-400 sm:text-sm">{displayText}</pre>
+                          <Loader2 className="mt-1 h-3 w-3 animate-spin text-green-600" />
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  // Normal chat streaming
+                  return (
+                    <div className="flex gap-2 px-2 py-2 sm:gap-3 sm:px-4 sm:py-3" data-testid="streaming-message">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600 dark:bg-blue-900/50 dark:text-blue-400">
+                        <Bot className="h-4 w-4" />
+                      </div>
+                      <div className="max-w-[85%] rounded-2xl bg-muted px-3 py-2 text-sm sm:max-w-[75%] sm:px-4 sm:py-2.5">
+                        <p className="whitespace-pre-wrap">{displayText}</p>
+                        <Loader2 className="mt-1 h-3 w-3 animate-spin text-muted-foreground" />
+                      </div>
                     </div>
-                    <div className="max-w-[85%] rounded-2xl bg-muted px-3 py-2 text-sm sm:max-w-[75%] sm:px-4 sm:py-2.5">
-                      <p className="whitespace-pre-wrap">{streamingContent}</p>
-                      <Loader2 className="mt-1 h-3 w-3 animate-spin text-muted-foreground" />
-                    </div>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {isStreaming && !streamingContent && (
                   <div className="flex items-center gap-2 px-4 py-3 text-sm text-muted-foreground" data-testid="thinking-indicator">
@@ -198,8 +242,9 @@ export function Chat() {
                   />
                 )}
 
-                {/* Execution Log */}
+                {/* Execution Log — only shown in 'log' mode (non-GREEN commands) */}
                 {currentPlan &&
+                  executionMode === 'log' &&
                   (planStatus === 'executing' ||
                     planStatus === 'completed') && (
                     <ExecutionLog
@@ -214,6 +259,25 @@ export function Chat() {
                       cancelled={execution.cancelled}
                     />
                   )}
+
+                {/* Step Confirmation Bar — only shown in 'log' mode */}
+                {pendingConfirm && executionMode === 'log' && planStatus === 'executing' && (
+                  <StepConfirmBar
+                    step={pendingConfirm}
+                    onAllow={() => respondToStep('allow')}
+                    onAllowAll={() => respondToStep('allow_all')}
+                    onReject={() => respondToStep('reject')}
+                  />
+                )}
+
+                {/* Agentic mode confirmation for risky commands */}
+                {agenticConfirm && (
+                  <AgenticConfirmBar
+                    confirm={agenticConfirm}
+                    onApprove={() => respondToAgenticConfirm(true)}
+                    onReject={() => respondToAgenticConfirm(false)}
+                  />
+                )}
 
                 <div ref={messagesEndRef} />
               </div>

@@ -218,6 +218,14 @@ export async function handleEnvReport(
   try {
     const sessionId = server.getClientSessionId(clientId);
     if (!sessionId) {
+      // No install session — check if this is a daemon-mode agent (has auth credentials).
+      // Daemon agents send env.report on connect but don't go through the install flow.
+      const clientAuth = server.getClientAuth(clientId);
+      if (clientAuth) {
+        // Authenticated daemon-mode agent — silently succeed
+        return { success: true };
+      }
+      // No auth credentials — this is an install-flow client without a session
       logError(
         new Error('No session found'),
         { clientId, operation: 'env.report' },
@@ -502,15 +510,43 @@ export function handleStepComplete(
   message: StepCompleteMessage,
 ): HandlerResult {
   try {
+    // IMPORTANT: Route results to TaskExecutor FIRST, before any session checks.
+    // Chat-initiated executions (via executor.executeCommand) don't use install sessions,
+    // so the session lookup below may fail for daemon-mode agents. The executor must
+    // still receive the result to resolve its awaiting Promise.
+    try {
+      const executor = getTaskExecutor(server);
+      executor.handleStepComplete(message.payload);
+    } catch {
+      // TaskExecutor not initialized - skip routing (likely in test environment)
+    }
+
+    // Session status updates (for install-flow sessions only)
     const sessionId = server.getClientSessionId(clientId);
     if (!sessionId) {
-      logError(new Error('No session found'), { clientId, operation: 'step.complete' }, 'No session found for client');
+      // Check if this is a daemon-mode agent (has auth credentials).
+      // Daemon agents run chat commands without install sessions — the executor
+      // routing above already handled the result.
+      const clientAuth = server.getClientAuth(clientId);
+      if (clientAuth) {
+        return { success: true };
+      }
+      // No auth credentials — this is an install-flow client without a session
+      logError(
+        new Error('No session found'),
+        { clientId, operation: 'step.complete' },
+        'No session found for client'
+      );
       return { success: false, error: `No session found for client ${clientId}` };
     }
 
     const session = server.getSession(sessionId);
     if (!session) {
-      logError(new Error('Session not found'), { clientId, sessionId, operation: 'step.complete' }, 'Session not found');
+      logError(
+        new Error('Session not found'),
+        { clientId, sessionId, operation: 'step.complete' },
+        'Session not found'
+      );
       return { success: false, error: `Session ${sessionId} not found` };
     }
 
@@ -522,22 +558,10 @@ export function handleStepComplete(
       success: message.payload.success,
     });
 
-    // Route the result to TaskExecutor (which will resolve waiting executions)
-    // This is a best-effort operation - if the executor isn't initialized
-    // (e.g., in tests), we skip this step without failing
-    try {
-      const executor = getTaskExecutor(server);
-      executor.handleStepComplete(message.payload);
-    } catch {
-      // TaskExecutor not initialized - skip routing (likely in test environment)
-    }
-
     if (message.payload.success) {
-      // Step succeeded - keep session in executing status
       server.updateSessionStatus(sessionId, SessionStatus.EXECUTING);
       logger.info({ stepId: message.payload.stepId }, 'Step completed successfully');
     } else {
-      // Step failed - update session to error status
       server.updateSessionStatus(sessionId, SessionStatus.ERROR);
       logger.warn({
         stepId: message.payload.stepId,

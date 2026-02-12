@@ -280,6 +280,69 @@ send_notification() {
     return 0
 }
 
+# 创建检查点：记录当前 HEAD SHA + stash 未提交的变更
+create_checkpoint() {
+    if [ ! -d ".git" ]; then
+        echo ""
+        return
+    fi
+
+    local checkpoint_sha=$(git rev-parse HEAD 2>/dev/null)
+    if [ -z "$checkpoint_sha" ]; then
+        echo ""
+        return
+    fi
+
+    # 如果有未提交的变更，先 stash 保存
+    if ! git diff --quiet 2>/dev/null || ! git diff --cached --quiet 2>/dev/null || [ -n "$(git ls-files --others --exclude-standard 2>/dev/null)" ]; then
+        git stash push --include-untracked -m "autorun checkpoint $(date '+%Y%m%d_%H%M%S')" > /dev/null 2>&1
+        checkpoint_sha=$(git rev-parse HEAD 2>/dev/null)
+        git stash pop > /dev/null 2>&1 || true
+    fi
+
+    log_info "检查点: $checkpoint_sha ($(git log --oneline -1 HEAD 2>/dev/null | cut -c1-60))"
+    echo "$checkpoint_sha"
+}
+
+# 回滚到检查点：丢弃任务产生的所有变更
+rollback_to_checkpoint() {
+    local checkpoint_sha="$1"
+    local task_name="$2"
+
+    if [ -z "$checkpoint_sha" ] || [ ! -d ".git" ]; then
+        log_warning "无检查点信息，无法回滚"
+        return 1
+    fi
+
+    local current_sha=$(git rev-parse HEAD 2>/dev/null)
+
+    # 检查是否有新的提交需要回滚
+    if [ "$current_sha" != "$checkpoint_sha" ]; then
+        local new_commits=$(git rev-list --count "${checkpoint_sha}..HEAD" 2>/dev/null || echo "0")
+        log_warning "回滚 $new_commits 个失败任务的提交..."
+        log_warning "回滚: $current_sha → $checkpoint_sha"
+        git reset --hard "$checkpoint_sha" > /dev/null 2>&1
+        log_success "已回滚到检查点: $(git rev-parse --short HEAD)"
+    fi
+
+    # 清理未跟踪的文件
+    local untracked=$(git ls-files --others --exclude-standard 2>/dev/null)
+    if [ -n "$untracked" ]; then
+        log_warning "清理任务遗留的未跟踪文件..."
+        git checkout -- . 2>/dev/null || true
+        git clean -fd > /dev/null 2>&1 || true
+        log_success "已清理未跟踪文件"
+    fi
+
+    # 恢复所有被修改的文件
+    if ! git diff --quiet 2>/dev/null; then
+        git checkout -- . 2>/dev/null || true
+        log_success "已恢复所有修改"
+    fi
+
+    return 0
+}
+
 # 检查环境
 check_environment() {
     log_info "检查开发环境..."
@@ -440,49 +503,25 @@ build_execute_prompt() {
     local task_content="$1"
 
     cat << EOF
-你正在开发 ServerPilot 项目 - 一个 AI 驱动的智能运维平台。
-
-## 必读文档
-
-> **⚠️ 强制约束**: 执行任务前，必须先阅读 \`docs/AI开发约束.md\`，严格遵守版本分离原则。
-
-**AI 开发约束**: docs/AI开发约束.md - **必读** — 版本分离规则、代码隔离、架构边界
-**产品方案**: docs/产品方案-目录.md - MVP 范围、优先级、技术栈
-**开发标准**: docs/开发标准.md - 技术架构、代码规范、Git 工作流、测试标准
+你正在开发 ServerPilot 项目 — AI 驱动的智能运维平台。
 
 ## 项目信息
-- **技术栈**: Node.js 22+ / TypeScript / Hono / React / Drizzle ORM / SQLite
-- **架构**: Monorepo (packages/server, packages/agent, packages/dashboard, packages/shared)
-- **当前阶段**: 开源版 MVP 完善（云版暂不开发）
+- Monorepo: packages/server(Hono+Drizzle+SQLite), dashboard(React+Vite+Zustand), shared(Zod), agent
+- 包名: @aiinstaller/* | Node 22+ | TypeScript strict | ESM (.js 后缀)
+- 详细规范见: docs/AI开发约束.md, docs/开发标准.md
 
 ## 当前任务
 $task_content
 
-## 开发要求
-
-1. **遵守 AI 开发约束**: 严格按照 docs/AI开发约束.md 的规则：
-   - 云版专属功能（PostgreSQL、Stripe、多副本）不得混入开源核心代码
-   - 新增文件必须放在对应模块目录下
-   - Commit message 必须准确描述实际变更内容
-2. **对照产品方案**: 确保实现符合 docs/产品方案-目录.md 中的 MVP 范围
-3. **遵循开发标准**: 严格按照 docs/开发标准.md 中的规范执行：
-   - 技术架构：分层架构、模块职责、技术栈选型
-   - 代码规范：TypeScript strict mode、命名规则、文件结构
-   - 测试标准：安全模块 ≥95%、AI 模块 ≥90%、整体 ≥80%
-   - Git 规范：分支命名、Commit Message 格式
-   - 安全边界：五层纵深防御、命令分级制度
-4. **代码质量**:
-   - 使用 TypeScript，确保类型安全
-   - 使用 Zod 进行数据验证
-   - 遵循项目现有代码风格
-   - 单文件不超过 500 行（硬限制 800 行）
-5. **编写测试**: 为新功能编写单元测试，确保覆盖率达标
-6. **增量开发**: 只实现当前任务，不要过度设计
-
-## 安全规则
-- 不执行破坏性命令
-- 不暴露敏感信息
-- 所有外部输入都要验证
+## 开发约束
+- TypeScript strict, 无 any, Zod 验证外部输入
+- 单文件 ≤ 500 行 (硬限制 800)
+- 单例模式: getXxx() / setXxx() / _resetXxx()
+- 仓库模式: interface + Drizzle + InMemory 实现
+- API 路由: requireAuth → resolveRole → requirePermission 中间件链
+- 测试: 安全 ≥95%, AI ≥90%, 整体 ≥80%
+- 云版功能 (PostgreSQL/Stripe) 不得混入开源核心
+- 不执行破坏性命令, 不暴露敏感信息
 
 开始执行任务。完成后运行测试确保功能正常。
 EOF
@@ -581,7 +620,7 @@ build_batch_generate_prompt() {
 - **可执行性**: 每个任务描述要清晰、可独立执行
 - **代码隔离**: 任务涉及的模块路径必须符合 AI开发约束.md 中的架构边界
 
-开始分析并生成任务列表...
+⚠️ **输出格式强制要求**: 你的输出必须且只能是一个 \`\`\`tasks 代码块（以 \`\`\`tasks 开头，以 \`\`\` 结尾），内含多个 ### [pending] 任务。直接输出，不要输出任何前言、分析或总结文字。
 EOF
 }
 
@@ -596,18 +635,33 @@ run_claude_batch_generate() {
     local input_tokens=$(estimate_tokens "$prompt")
 
     if echo "$prompt" | claude -p > "$output_file" 2>&1; then
-        # 提取任务块
+        # 解析策略 1: ```tasks ... ``` 标准格式
         local tasks_content=$(sed -n '/```tasks/,/```/p' "$output_file" | sed '1d;$d')
 
+        # 解析策略 2: 任意 ``` ... ``` 代码块中包含 ### [pending]
+        if [ -z "$tasks_content" ]; then
+            tasks_content=$(sed -n '/^```/,/^```/p' "$output_file" | sed '1d;$d')
+            if ! echo "$tasks_content" | grep -q '^\### \[pending\]'; then
+                tasks_content=""
+            fi
+        fi
+
+        # 解析策略 3: 直接从输出中提取 ### [pending] 块（无代码块包裹）
+        if [ -z "$tasks_content" ]; then
+            if grep -q '^\### \[pending\]' "$output_file"; then
+                tasks_content=$(awk '
+                    /^### \[pending\]/ { found=1 }
+                    found { print }
+                ' "$output_file")
+            fi
+        fi
+
         if [ -n "$tasks_content" ]; then
-            # 添加任务到队列
             add_tasks_to_queue "$TASK_QUEUE" "$tasks_content"
 
-            # 估算输出 Token
             local output_tokens=$(estimate_tokens "$tasks_content")
             log_token_usage $input_tokens $output_tokens "批量生成任务"
 
-            # 显示统计
             local stats=$(get_task_stats "$TASK_QUEUE")
             read total pending in_progress completed failed <<< "$stats"
             log_success "成功生成 $pending 个新任务"
@@ -616,8 +670,9 @@ run_claude_batch_generate() {
             rm -f "$output_file"
             return 0
         else
-            log_error "AI 未能生成有效任务格式"
-            cat "$output_file"
+            log_error "AI 未能生成有效任务格式（需要 ### [pending] 格式的任务块）"
+            log_error "AI 输出前 20 行:"
+            head -20 "$output_file" >&2
             rm -f "$output_file"
             return 1
         fi
@@ -988,7 +1043,7 @@ run_incremental_tests() {
 
     if [ "$test_server" = true ]; then
         log_info "测试 server 模块..."
-        if pnpm --filter @serverpilot/server test > "$TEST_LOG" 2>&1; then
+        if pnpm --filter @aiinstaller/server test > "$TEST_LOG" 2>&1; then
             log_success "server 模块测试通过"
         else
             log_error "server 模块测试失败"
@@ -998,7 +1053,7 @@ run_incremental_tests() {
 
     if [ "$test_agent" = true ]; then
         log_info "测试 agent 模块..."
-        if pnpm --filter @serverpilot/agent test >> "$TEST_LOG" 2>&1; then
+        if pnpm --filter @aiinstaller/agent test >> "$TEST_LOG" 2>&1; then
             log_success "agent 模块测试通过"
         else
             log_error "agent 模块测试失败"
@@ -1008,7 +1063,7 @@ run_incremental_tests() {
 
     if [ "$test_dashboard" = true ]; then
         log_info "测试 dashboard 模块..."
-        if pnpm --filter @serverpilot/dashboard test >> "$TEST_LOG" 2>&1; then
+        if pnpm --filter @aiinstaller/dashboard test >> "$TEST_LOG" 2>&1; then
             log_success "dashboard 模块测试通过"
         else
             log_error "dashboard 模块测试失败"
@@ -1297,6 +1352,9 @@ main() {
         # 将任务内容写入 TASK_FILE 供执行使用
         echo "$task_content" > "$TASK_FILE"
 
+        # 创建 Git 检查点（用于失败时回滚）
+        local checkpoint_sha=$(create_checkpoint)
+
         # 步骤3: AI 执行任务（带智能重试）
         local execute_retry=0
         local task_success=false
@@ -1373,6 +1431,12 @@ ID: $task_id
 ✅ 任务执行成功，测试通过，已提交到 Git。"
             send_notification "任务完成: $task_name" "$success_msg" "success"
         else
+            # 回滚到检查点：丢弃失败任务产生的所有变更
+            if [ -n "$checkpoint_sha" ]; then
+                log_warning "任务失败，回滚代码变更..."
+                rollback_to_checkpoint "$checkpoint_sha" "$task_name"
+            fi
+
             # 标记任务为失败
             local error_msg="执行阶段尝试 $execute_retry 次"
             mark_task_failed "$TASK_QUEUE" "$task_id" "$error_msg"

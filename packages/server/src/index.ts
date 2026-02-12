@@ -14,8 +14,8 @@ import { randomBytes } from 'node:crypto';
 import { createServer as createHttpServer } from 'node:http';
 import type { Server as HttpServer } from 'node:http';
 
-import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
 import { config } from 'dotenv';
 import { getRequestListener } from '@hono/node-server';
 
@@ -26,7 +26,6 @@ import { createApiApp } from './api/routes/index.js';
 import { warnWildcardCorsInProduction } from './api/middleware/cors-config.js';
 import { initJwtConfig } from './api/middleware/auth.js';
 import { initDatabase, closeDatabase, createTables } from './db/connection.js';
-import { resolveDbType, initDatabaseFromEnv, closeDatabaseConnection } from './db/db-factory.js';
 import { seedDefaultAdmin } from './db/seed-admin.js';
 import { getSnapshotService } from './core/snapshot/snapshot-service.js';
 import { getRollbackService } from './core/rollback/rollback-service.js';
@@ -35,6 +34,8 @@ import { getTaskScheduler } from './core/task/scheduler.js';
 import { initAgentConnector } from './core/agent/agent-connector.js';
 import { InstallAIAgent } from './ai/agent.js';
 import { getActiveProvider, resolveProviderFromEnv, setActiveProvider } from './ai/providers/provider-factory.js';
+import { initAgenticEngine } from './ai/agentic-chat.js';
+import { ClaudeProvider } from './ai/providers/claude.js';
 import { initLogger, logger, logConnectionEvent, logError } from './utils/logger.js';
 import { initGitHubOAuth } from './utils/github-oauth.js';
 import { getMemoryMonitor } from './utils/memory-monitor.js';
@@ -60,6 +61,9 @@ export const SERVER_VERSION = '0.1.0';
 
 /** Global reference to the documentation auto-fetcher (for graceful shutdown) */
 let _docAutoFetcher: DocAutoFetcher | null = null;
+
+/** Cloud package cleanup function (for PostgreSQL graceful shutdown) */
+let _cloudCleanup: (() => Promise<void>) | null = null;
 
 // ============================================================================
 // Environment Configuration
@@ -110,6 +114,46 @@ export interface ServerConfig {
 }
 
 /**
+ * Resolve the JWT secret, persisting auto-generated secrets to survive
+ * server restarts (e.g. tsx watch in development). Priority:
+ *   1. JWT_SECRET environment variable (explicit config)
+ *   2. Persisted secret from data/.jwt-secret file
+ *   3. Generate new random secret and persist it
+ */
+function resolveJwtSecret(databasePath: string): string {
+  // 1. Explicit env var takes priority
+  if (process.env.JWT_SECRET) {
+    return process.env.JWT_SECRET;
+  }
+
+  // 2. Try to read persisted secret from data directory
+  const dataDir = dirname(resolve(databasePath));
+  const secretPath = resolve(dataDir, '.jwt-secret');
+
+  try {
+    if (existsSync(secretPath)) {
+      const secret = readFileSync(secretPath, 'utf-8').trim();
+      if (secret.length >= 32) {
+        return secret;
+      }
+    }
+  } catch {
+    // File not readable — fall through to generate
+  }
+
+  // 3. Generate and persist a new secret
+  const secret = randomBytes(32).toString('base64');
+  try {
+    mkdirSync(dataDir, { recursive: true });
+    writeFileSync(secretPath, secret, { mode: 0o600 });
+  } catch {
+    // Non-fatal — secret will work for this process lifetime
+  }
+
+  return secret;
+}
+
+/**
  * Load configuration from environment variables.
  *
  * Reads from .env file (if present) and process.env. Falls back to
@@ -127,8 +171,15 @@ export function loadConfig(): ServerConfig {
   }
   config();
 
-  // Generate a random JWT secret if not set or empty
-  const jwtSecret = process.env.JWT_SECRET || randomBytes(32).toString('base64');
+  // Also load from monorepo root .env (for pnpm workspace dev mode where
+  // cwd is packages/server/ but .env lives at the project root).
+  const monorepoEnv = resolve(process.cwd(), '../../.env');
+  if (existsSync(monorepoEnv)) {
+    config({ path: monorepoEnv });
+  }
+
+  // Resolve JWT secret: env var → persisted file → generate new
+  const jwtSecret = resolveJwtSecret(process.env.DATABASE_PATH ?? './data/serverpilot.db');
 
   const serverConfig: ServerConfig = {
     port: parseInt(process.env.SERVER_PORT ?? '3000', 10),
@@ -138,7 +189,8 @@ export function loadConfig(): ServerConfig {
     logLevel: process.env.LOG_LEVEL ?? 'info',
     requireAuth: process.env.WS_REQUIRE_AUTH !== 'false', // Default to true
     authTimeoutMs: parseInt(process.env.WS_AUTH_TIMEOUT_MS ?? '10000', 10),
-    dbType: resolveDbType(),
+    dbType: (process.env.DB_TYPE?.toLowerCase() === 'postgres' || process.env.DB_TYPE?.toLowerCase() === 'postgresql')
+      ? 'postgres' : 'sqlite',
     databasePath: process.env.DATABASE_PATH ?? './data/serverpilot.db',
     jwtSecret,
   };
@@ -254,6 +306,17 @@ export function createServer(serverConfig: ServerConfig): InstallServer {
     }, 'InstallAIAgent not initialized - no AI provider available');
   }
 
+  // Initialize AgenticChatEngine for Claude provider (uses tool_use protocol)
+  if (activeProvider && activeProvider instanceof ClaudeProvider) {
+    const anthropicClient = activeProvider.getClient();
+    const model = activeProvider.getModel();
+    initAgenticEngine(anthropicClient, model);
+    logger.info({
+      operation: 'initialization',
+      model,
+    }, `AgenticChatEngine initialized with model: ${model}`);
+  }
+
   // Initialize services that depend on the server instance
   // Note: TaskExecutor must be initialized before TaskScheduler
   initAgentConnector(server);
@@ -349,7 +412,11 @@ export function registerShutdownHandlers(server: InstallServer, httpServer?: Htt
         });
       }
 
-      await closeDatabaseConnection();
+      if (_cloudCleanup) {
+        await _cloudCleanup();
+      } else {
+        closeDatabase();
+      }
       logger.info({ operation: 'shutdown' }, 'Server stopped gracefully');
       process.exit(0);
     } catch (err) {
@@ -382,11 +449,20 @@ export async function startServer(): Promise<InstallServer> {
   initLogger({ level: serverConfig.logLevel });
 
   // 1. Initialize database
-  const dbType = resolveDbType();
-  if (dbType === 'postgres') {
-    logger.info({ operation: 'startup', dbType: 'postgres' }, 'Initializing PostgreSQL database...');
-    await initDatabaseFromEnv();
-    logger.info({ operation: 'startup' }, 'PostgreSQL database initialized (use migrations for schema)');
+  if (serverConfig.dbType === 'postgres') {
+    // Dynamically load @aiinstaller/cloud for PostgreSQL support
+    try {
+      const { bootstrapCloud } = await import('@aiinstaller/cloud');
+      const result = await bootstrapCloud();
+      _cloudCleanup = result.close;
+      logger.info({ operation: 'startup', dbType: 'postgres' }, 'PostgreSQL (cloud) initialized');
+    } catch (err) {
+      logger.error(
+        { operation: 'startup', error: err },
+        'Cloud package not available. Install @aiinstaller/cloud for PostgreSQL support.',
+      );
+      process.exit(1);
+    }
   } else {
     logger.info({ operation: 'startup', databasePath: serverConfig.databasePath }, 'Initializing SQLite database...');
     initDatabase(serverConfig.databasePath);
@@ -396,6 +472,10 @@ export async function startServer(): Promise<InstallServer> {
 
   // 1b. Seed default admin (only on first run when users table is empty)
   await seedDefaultAdmin();
+
+  // 1c. Seed local server for co-located agent (self-hosted mode)
+  const { seedLocalServer } = await import('./db/seed-local-server.js');
+  await seedLocalServer();
 
   // 2. Initialize JWT
   initJwtConfig({ secret: serverConfig.jwtSecret });

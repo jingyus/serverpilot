@@ -31,6 +31,9 @@ describe('parseArgs', () => {
       checkUpdate: false,
       help: false,
       version: false,
+      token: '',
+      serverId: '',
+      daemon: false,
     });
   });
 

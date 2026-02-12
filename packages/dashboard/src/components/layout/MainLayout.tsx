@@ -7,6 +7,7 @@ import { Header } from './Header';
 import { useAuthStore } from '@/stores/auth';
 import { useUiStore } from '@/stores/ui';
 import { useIsMobile } from '@/hooks/useMediaQuery';
+import { getWebSocketClient } from '@/api/websocket';
 
 export function MainLayout() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -20,6 +21,15 @@ export function MainLayout() {
   useEffect(() => {
     restoreSession();
   }, [restoreSession]);
+
+  // Connect WebSocket when authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      const ws = getWebSocketClient();
+      ws.connect();
+      return () => ws.disconnect();
+    }
+  }, [isAuthenticated]);
 
   // Close mobile sidebar on route change (not initial mount)
   useEffect(() => {

@@ -19,3 +19,6 @@ export * from './security/index.js';
 
 // RBAC exports
 export * from './rbac.js';
+
+// Skill schema exports
+export * from './skill-schema.js';

@@ -212,6 +212,7 @@ cat .env.example
 | `DEEPSEEK_API_KEY` | (空) | 否 | DeepSeek API Key (AI_PROVIDER=deepseek 时需要) |
 | `AI_MODEL` | `claude-sonnet-4-20250514` | 否 | AI 模型名称 |
 | `GITHUB_TOKEN` | (空) | 否 | GitHub API Token (文档自动抓取) |
+| `CORS_ORIGIN` | `*` | 否 | CORS 允许的来源域名 (生产环境建议设为具体域名) |
 | `LOG_LEVEL` | `info` | 否 | 日志级别 (debug/info/warn/error) |
 
 生成安全的 JWT Secret:

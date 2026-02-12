@@ -1,9 +1,9 @@
-// SPDX-License-Identifier: AGPL-3.0
+// SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2024-2026 ServerPilot Contributors
 /**
- * PostgreSQL migration runner for ServerPilot.
+ * PostgreSQL migration runner for ServerPilot Cloud.
  *
- * Applies Drizzle ORM migrations from the pg-migrations directory.
+ * Applies Drizzle ORM migrations from the migrations directory.
  * Supports both programmatic usage (imported as module) and CLI execution.
  *
  * @module db/pg-migrate
@@ -18,7 +18,7 @@ import { migrate as drizzleMigrate } from 'drizzle-orm/node-postgres/migrator';
 import { buildPgConfigFromEnv } from './pg-connection.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const DEFAULT_MIGRATIONS_PATH = resolve(__dirname, 'pg-migrations');
+const DEFAULT_MIGRATIONS_PATH = resolve(__dirname, 'migrations');
 
 export interface PgMigrateOptions {
   connectionString?: string;

@@ -71,6 +71,7 @@ const PackageManagersSchema = z.object({
   yarn: z.string().optional(),
   brew: z.string().optional(),
   apt: z.string().optional(),
+  yum: z.string().optional(),
 });
 
 /** Network reachability */

@@ -1,0 +1,150 @@
+kind: skill
+version: "1.0"
+
+metadata:
+  name: intrusion-detector
+  displayName: "入侵检测与防御"
+  description: "实时监控服务器安全状态，检测暴力破解、异常端口、可疑进程，发现威胁立即告警"
+  version: "1.0.0"
+  author: "serverpilot-official"
+  tags: [security, intrusion-detection, defense]
+
+triggers:
+  - type: cron
+    schedule: "*/30 * * * *"    # 每 30 分钟检测一次
+  - type: event
+    on: alert.triggered
+    filter:
+      severity: [critical]
+  - type: threshold
+    metric: network.rx_bytes
+    operator: gte
+    value: 104857600            # 100MB/s — 可能的 DDoS 信号
+  - type: manual
+
+tools:
+  - shell
+  - read_file
+  - notify
+  - store
+
+inputs:
+  - name: trusted_ips
+    type: string[]
+    required: false
+    default: []
+    description: "可信 IP 白名单，这些 IP 的登录不会触发告警"
+
+  - name: alert_on_root_login
+    type: boolean
+    required: false
+    default: true
+    description: "是否在检测到 root 直接登录时告警"
+
+  - name: max_failed_attempts
+    type: number
+    required: false
+    default: 10
+    description: "同一 IP 在检测周期内的最大失败登录次数阈值"
+
+  - name: check_open_ports
+    type: boolean
+    required: false
+    default: true
+    description: "是否检查异常开放端口"
+
+constraints:
+  risk_level_max: yellow         # 需要 netstat/ss 等网络检测命令
+  timeout: "2m"
+  max_steps: 20
+  requires_confirmation: false
+  server_scope: single
+
+requires:
+  os: [linux]
+  commands: [ss]                 # 至少需要 ss 命令检查网络连接
+
+prompt: |
+  ## 角色
+  你是一个服务器安全专家，专注于入侵检测与即时防御响应。你的职责是快速发现安全威胁并立即通知用户。
+
+  ## 目标
+  对服务器 {{server.name}} 进行全面的安全扫描，检测潜在入侵行为。
+
+  ## 环境信息
+  - 服务器: {{server.name}} ({{server.os}})
+  - IP: {{server.ip}}
+  - 可信 IP 白名单: {{input.trusted_ips}}
+  - 上次扫描: {{skill.last_run}}
+  - 上次结果: {{skill.last_result}}
+
+  ## 检测项目
+
+  ### 1. 暴力破解检测
+  - 检查 auth.log / secure 中最近 30 分钟的 Failed password 记录
+  - 统计每个源 IP 的失败次数
+  - 超过 {{input.max_failed_attempts}} 次的 IP 标记为威胁
+  - 排除可信 IP: {{input.trusted_ips}}
+
+  ### 2. 异常登录检测
+  - 检查成功的 SSH 登录记录
+  - 标记：非可信 IP 的登录、非常规时间段（0:00-6:00）的登录
+  - root 直接登录检测（如 {{input.alert_on_root_login}} 为 true）
+
+  ### 3. 可疑进程检测
+  - 检查当前运行的进程列表
+  - 识别：加密矿工特征（xmrig, minerd, cryptonight）、反弹 shell、异常高 CPU 进程
+  - 检查 /tmp 和 /dev/shm 下的可执行文件
+
+  ### 4. 异常端口检测（如 {{input.check_open_ports}} 为 true）
+  - 使用 ss -tlnp 检查监听端口
+  - 与上次扫描结果对比（从 store 读取），标记新增端口
+  - 重点关注：非标准端口上的服务、绑定 0.0.0.0 的未知服务
+
+  ### 5. 文件完整性检测
+  - 检查关键文件最近修改时间：/etc/passwd, /etc/shadow, /etc/sudoers, /root/.ssh/authorized_keys
+  - 如果在上次扫描后有修改，标记为警告
+
+  ## 响应策略
+  - **critical** (立即 notify): 发现活跃入侵（矿工进程、反弹 shell、authorized_keys 被篡改）
+  - **warning** (notify): 暴力破解超阈值、异常端口新增、可疑登录
+  - **info** (仅记录): 低于阈值的失败登录、常规端口变动
+
+  ## 注意事项
+  - 不要杀进程、不要修改防火墙规则 — 只检测和报告
+  - 发现 critical 级别问题时，notify 消息要包含具体的威胁详情和建议的手动处置步骤
+  - 使用 store 保存本次检测基线（端口列表、关键文件 hash），供下次对比
+
+  ## 输出要求
+  ```json
+  {
+    "severity": "info | warning | critical",
+    "summary": "一句话总结",
+    "scan_duration": "扫描耗时",
+    "threats": [
+      {
+        "type": "brute_force | suspicious_login | malicious_process | abnormal_port | file_tamper",
+        "severity": "warning | critical",
+        "description": "具体描述",
+        "evidence": "证据",
+        "source_ip": "来源 IP（如适用）",
+        "recommendation": "建议处置步骤"
+      }
+    ],
+    "baseline_changes": {
+      "new_ports": [],
+      "modified_files": []
+    }
+  }
+  ```
+
+outputs:
+  - name: report
+    type: object
+    description: "完整的安全扫描报告"
+  - name: severity
+    type: string
+    description: "最高威胁级别"
+  - name: threat_count
+    type: number
+    description: "发现的威胁数量"

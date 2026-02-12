@@ -58,6 +58,7 @@ export {
   type Session,
   type CreateSessionInput,
   DrizzleSessionRepository,
+  InMemorySessionRepository,
   getSessionRepository,
   setSessionRepository,
   _resetSessionRepository,

@@ -78,6 +78,33 @@ services:
       - serverpilot-network
 
   # ==============================================================================
+  # ServerPilot Agent (Daemon Mode — co-located server management)
+  # ==============================================================================
+  agent:
+    build:
+      context: .
+      dockerfile: packages/agent/Dockerfile
+    image: serverpilot/agent:latest
+    container_name: serverpilot-agent
+    restart: unless-stopped
+    stop_grace_period: 10s
+    depends_on:
+      server:
+        condition: service_healthy
+    environment:
+      - NODE_ENV=production
+      - SP_SERVER_URL=ws://server:3000
+    volumes:
+      - server-data:/data:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+    networks:
+      - serverpilot-network
+
+  # ==============================================================================
   # ServerPilot Dashboard (Nginx + Static Frontend)
   # ==============================================================================
   dashboard:

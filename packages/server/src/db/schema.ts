@@ -883,3 +883,104 @@ export const docSourceHistory = sqliteTable(
     index('doc_source_history_created_at_idx').on(table.createdAt),
   ],
 );
+
+// ============================================================================
+// Installed Skills (skill plugin registry)
+// ============================================================================
+
+export type SkillSource = 'official' | 'community' | 'local';
+export type SkillStatus = 'installed' | 'configured' | 'enabled' | 'paused' | 'error';
+
+export const installedSkills = sqliteTable(
+  'installed_skills',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+    tenantId: text('tenant_id').references(() => tenants.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    displayName: text('display_name'),
+    version: text('version').notNull(),
+    source: text('source', { enum: ['official', 'community', 'local'] }).notNull(),
+    skillPath: text('skill_path').notNull(),
+    status: text('status', {
+      enum: ['installed', 'configured', 'enabled', 'paused', 'error'],
+    })
+      .default('installed')
+      .notNull(),
+    config: text('config', { mode: 'json' }).$type<Record<string, unknown> | null>(),
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+  },
+  (table) => [
+    index('installed_skills_user_id_idx').on(table.userId),
+    index('installed_skills_tenant_id_idx').on(table.tenantId),
+    index('installed_skills_name_idx').on(table.name),
+    index('installed_skills_status_idx').on(table.status),
+  ],
+);
+
+// ============================================================================
+// Skill Executions (execution history log)
+// ============================================================================
+
+export type SkillTriggerType = 'manual' | 'cron' | 'event' | 'threshold';
+export type SkillExecutionStatus = 'running' | 'success' | 'failed' | 'timeout';
+
+export const skillExecutions = sqliteTable(
+  'skill_executions',
+  {
+    id: text('id').primaryKey(),
+    skillId: text('skill_id')
+      .references(() => installedSkills.id, { onDelete: 'cascade' })
+      .notNull(),
+    serverId: text('server_id')
+      .references(() => servers.id, { onDelete: 'cascade' })
+      .notNull(),
+    userId: text('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+    triggerType: text('trigger_type', {
+      enum: ['manual', 'cron', 'event', 'threshold'],
+    }).notNull(),
+    status: text('status', {
+      enum: ['running', 'success', 'failed', 'timeout'],
+    })
+      .default('running')
+      .notNull(),
+    startedAt: integer('started_at', { mode: 'timestamp' }).notNull(),
+    completedAt: integer('completed_at', { mode: 'timestamp' }),
+    result: text('result', { mode: 'json' }).$type<Record<string, unknown> | null>(),
+    stepsExecuted: integer('steps_executed').default(0).notNull(),
+    duration: integer('duration'),
+  },
+  (table) => [
+    index('skill_executions_skill_id_idx').on(table.skillId),
+    index('skill_executions_server_id_idx').on(table.serverId),
+    index('skill_executions_user_id_idx').on(table.userId),
+    index('skill_executions_status_idx').on(table.status),
+    index('skill_executions_started_at_idx').on(table.startedAt),
+  ],
+);
+
+// ============================================================================
+// Skill Store (per-skill key-value persistence)
+// ============================================================================
+
+export const skillStore = sqliteTable(
+  'skill_store',
+  {
+    id: text('id').primaryKey(),
+    skillId: text('skill_id')
+      .references(() => installedSkills.id, { onDelete: 'cascade' })
+      .notNull(),
+    key: text('key').notNull(),
+    value: text('value'),
+    updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+  },
+  (table) => [
+    uniqueIndex('skill_store_skill_key_idx').on(table.skillId, table.key),
+    index('skill_store_skill_id_idx').on(table.skillId),
+  ],
+);

@@ -5,11 +5,22 @@ import { API_BASE_URL } from '@/utils/constants';
 export interface SSECallbacks {
   onMessage?: (data: string) => void;
   onPlan?: (data: string) => void;
+  onRetry?: (data: string) => void;
+  onAutoExecute?: (data: string) => void;
+  onStepConfirm?: (data: string) => void;
   onStepStart?: (data: string) => void;
   onOutput?: (data: string) => void;
   onStepComplete?: (data: string) => void;
+  onDiagnosis?: (data: string) => void;
   onComplete?: (data: string) => void;
   onError?: (error: Error) => void;
+  // Agentic mode events
+  onToolCall?: (data: string) => void;
+  onToolExecuting?: (data: string) => void;
+  onToolOutput?: (data: string) => void;
+  onToolResult?: (data: string) => void;
+  onConfirmRequired?: (data: string) => void;
+  onConfirmId?: (data: string) => void;
 }
 
 async function tryRefreshToken(): Promise<string | null> {
@@ -402,6 +413,15 @@ function dispatchSSEEvent(
     case 'plan':
       callbacks.onPlan?.(data);
       break;
+    case 'retry':
+      callbacks.onRetry?.(data);
+      break;
+    case 'auto_execute':
+      callbacks.onAutoExecute?.(data);
+      break;
+    case 'step_confirm':
+      callbacks.onStepConfirm?.(data);
+      break;
     case 'step_start':
       callbacks.onStepStart?.(data);
       break;
@@ -411,8 +431,30 @@ function dispatchSSEEvent(
     case 'step_complete':
       callbacks.onStepComplete?.(data);
       break;
+    case 'diagnosis':
+      callbacks.onDiagnosis?.(data);
+      break;
     case 'complete':
       callbacks.onComplete?.(data);
+      break;
+    // Agentic mode events
+    case 'tool_call':
+      callbacks.onToolCall?.(data);
+      break;
+    case 'tool_executing':
+      callbacks.onToolExecuting?.(data);
+      break;
+    case 'tool_output':
+      callbacks.onToolOutput?.(data);
+      break;
+    case 'tool_result':
+      callbacks.onToolResult?.(data);
+      break;
+    case 'confirm_required':
+      callbacks.onConfirmRequired?.(data);
+      break;
+    case 'confirm_id':
+      callbacks.onConfirmId?.(data);
       break;
     default:
       callbacks.onMessage?.(data);

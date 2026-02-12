@@ -18,6 +18,7 @@ import { getUserRepository } from './repositories/user-repository.js';
 import { getDatabase } from './connection.js';
 import { users } from './schema.js';
 import { logger } from '../utils/logger.js';
+import { ensureDefaultTenant } from '../utils/auto-tenant.js';
 
 const DEFAULT_ADMIN_EMAIL = 'admin@serverpilot.local';
 const DEFAULT_ADMIN_NAME = 'Admin';
@@ -65,6 +66,9 @@ export async function seedDefaultAdmin(): Promise<void> {
 
   // Promote the seeded admin to owner role
   db.update(users).set({ role: 'owner' }).where(eq(users.id, user.id)).run();
+
+  // Auto-provision default tenant (single-tenant mode)
+  await ensureDefaultTenant(user.id, email);
 
   logger.info({ operation: 'seed', email }, 'Default admin account created with owner role');
 

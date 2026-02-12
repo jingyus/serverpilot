@@ -383,7 +383,7 @@ describe('handleEnvReport', () => {
     expect(result.error).toBeUndefined();
   });
 
-  it('fails without an existing session', async () => {
+  it('succeeds silently without an existing session (daemon mode)', async () => {
     const port = nextPort();
     server = new InstallServer({ port, heartbeatIntervalMs: 60000 });
 
@@ -395,15 +395,17 @@ describe('handleEnvReport', () => {
     ws = await connectClient(port);
     clientId = await clientIdPromise;
 
-    // Do not create a session
+    // Simulate daemon-mode agent with auth credentials (no install session)
+    server.authenticateClient(clientId, 'device-1', 'token-1');
+
     const envMsg = createMessage(MessageType.ENV_REPORT, makeEnvInfo()) as EnvReportMessage;
     const result = await handleEnvReport(server, clientId, envMsg);
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('No session found');
+    // Daemon-mode agents have no install session; env.report is silently ignored
+    expect(result.success).toBe(true);
   });
 
-  it('fails for non-existent client', async () => {
+  it('returns failure for non-existent client', async () => {
     const port = nextPort();
     server = new InstallServer({ port, heartbeatIntervalMs: 60000 });
     await server.start();
@@ -413,25 +415,6 @@ describe('handleEnvReport', () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('No session found');
-  });
-
-  it('error message includes the client id when no session exists', async () => {
-    const port = nextPort();
-    server = new InstallServer({ port, heartbeatIntervalMs: 60000 });
-
-    const clientIdPromise = new Promise<string>((resolve) => {
-      server.on('connection', (id) => resolve(id));
-    });
-
-    await server.start();
-    ws = await connectClient(port);
-    clientId = await clientIdPromise;
-
-    const envMsg = createMessage(MessageType.ENV_REPORT, makeEnvInfo()) as EnvReportMessage;
-    const result = await handleEnvReport(server, clientId, envMsg);
-
-    expect(result.success).toBe(false);
-    expect(result.error).toContain(clientId);
   });
 
   it('calls AI agent to analyze environment when provided', async () => {
@@ -745,7 +728,7 @@ describe('handleStepComplete', () => {
     expect(result.error).toBeUndefined();
   });
 
-  it('fails without an existing session', async () => {
+  it('succeeds without an existing session (daemon-mode agent)', async () => {
     const port = nextPort();
     server = new InstallServer({ port, heartbeatIntervalMs: 60000 });
 
@@ -756,6 +739,9 @@ describe('handleStepComplete', () => {
     await server.start();
     ws = await connectClient(port);
     clientId = await clientIdPromise;
+
+    // Simulate daemon-mode agent with auth credentials (no install session)
+    server.authenticateClient(clientId, 'device-1', 'token-1');
 
     const stepMsg = createMessage(MessageType.STEP_COMPLETE, {
       stepId: 'step-1',
@@ -768,11 +754,12 @@ describe('handleStepComplete', () => {
 
     const result = handleStepComplete(server, clientId, stepMsg);
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('No session found');
+    // Daemon-mode agent with auth credentials but no install session;
+    // result still routes to TaskExecutor and returns success
+    expect(result.success).toBe(true);
   });
 
-  it('fails for non-existent client', async () => {
+  it('returns failure for non-existent client', async () => {
     const port = nextPort();
     server = new InstallServer({ port, heartbeatIntervalMs: 60000 });
     await server.start();

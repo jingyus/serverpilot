@@ -1,7 +1,7 @@
-// SPDX-License-Identifier: AGPL-3.0
+// SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2024-2026 ServerPilot Contributors
 /**
- * PostgreSQL connection management for ServerPilot.
+ * PostgreSQL connection management for ServerPilot Cloud.
  *
  * Creates and manages the PostgreSQL database connection using node-postgres
  * and wraps it with Drizzle ORM for type-safe queries.

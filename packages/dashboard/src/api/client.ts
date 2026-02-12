@@ -81,7 +81,12 @@ function tryRefresh(): Promise<boolean> {
   return refreshPromise;
 }
 
-function friendlyMessage(code: string, fallback: string): string {
+function friendlyMessage(code: string, fallback: string, isAuthPath: boolean): string {
+  // For auth endpoints (login/register), use the server's message directly
+  // — "Invalid email or password" is more helpful than generic "Session expired"
+  if (isAuthPath && code === 'UNAUTHORIZED') {
+    return fallback;
+  }
   return ERROR_MESSAGES[code] ?? fallback;
 }
 
@@ -133,7 +138,7 @@ export async function apiRequest<T>(
       window.dispatchEvent(new CustomEvent('auth:logout'));
     }
 
-    throw new ApiError(response.status, code, friendlyMessage(code, message));
+    throw new ApiError(response.status, code, friendlyMessage(code, message, path.startsWith('/auth/')));
   }
 
   return response.json() as Promise<T>;

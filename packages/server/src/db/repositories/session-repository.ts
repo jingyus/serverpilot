@@ -236,6 +236,92 @@ export class DrizzleSessionRepository implements SessionRepository {
 }
 
 // ============================================================================
+// InMemory Implementation (for testing)
+// ============================================================================
+
+export class InMemorySessionRepository implements SessionRepository {
+  private sessions = new Map<string, Session>();
+
+  async create(input: CreateSessionInput): Promise<Session> {
+    const now = new Date().toISOString();
+    const id = randomUUID();
+
+    const session: Session = {
+      id,
+      userId: input.userId,
+      serverId: input.serverId,
+      messages: [],
+      context: input.context ?? null,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.sessions.set(id, session);
+    return session;
+  }
+
+  async getById(id: string, userId: string): Promise<Session | null> {
+    const session = this.sessions.get(id);
+    if (!session || session.userId !== userId) return null;
+    return session;
+  }
+
+  async listByServer(
+    serverId: string,
+    userId: string,
+    pagination: PaginationOptions,
+  ): Promise<{ sessions: Session[]; total: number }> {
+    const all = [...this.sessions.values()]
+      .filter((s) => s.serverId === serverId && s.userId === userId)
+      .sort((a, b) =>
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      );
+
+    return {
+      sessions: all.slice(pagination.offset, pagination.offset + pagination.limit),
+      total: all.length,
+    };
+  }
+
+  async addMessage(
+    id: string,
+    userId: string,
+    message: SessionMessage,
+  ): Promise<boolean> {
+    const session = this.sessions.get(id);
+    if (!session || session.userId !== userId) return false;
+
+    session.messages.push(message);
+    session.updatedAt = new Date().toISOString();
+    return true;
+  }
+
+  async updateContext(
+    id: string,
+    userId: string,
+    context: SessionContext,
+  ): Promise<boolean> {
+    const session = this.sessions.get(id);
+    if (!session || session.userId !== userId) return false;
+
+    session.context = context;
+    session.updatedAt = new Date().toISOString();
+    return true;
+  }
+
+  async delete(id: string, userId: string): Promise<boolean> {
+    const session = this.sessions.get(id);
+    if (!session || session.userId !== userId) return false;
+
+    this.sessions.delete(id);
+    return true;
+  }
+
+  clear(): void {
+    this.sessions.clear();
+  }
+}
+
+// ============================================================================
 // Singleton
 // ============================================================================
 

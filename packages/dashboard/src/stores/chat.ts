@@ -18,6 +18,21 @@ import type {
   SessionSummary,
 } from '@/types/chat';
 
+/** Strip json-plan blocks and any raw JSON plan objects from AI text so users never see them. */
+export function stripJsonPlan(text: string): string {
+  let clean = text;
+  // Complete ```json-plan ... ``` blocks
+  clean = clean.replace(/```json-plan\s*\n[\s\S]*?```/g, '');
+  // Incomplete ```json-plan (no closing ```) — strip to end
+  clean = clean.replace(/```json-plan[\s\S]*$/g, '');
+  // Complete ```json ... ``` blocks that contain "steps" (likely a plan)
+  clean = clean.replace(/```json\s*\n\s*\{[\s\S]*?"steps"\s*:[\s\S]*?```/g, '');
+  // Incomplete ```json with "steps" — strip to end
+  clean = clean.replace(/```json\s*\n\s*\{[\s\S]*?"steps"\s*:[\s\S]*$/g, '');
+  // Collapse excessive newlines
+  return clean.replace(/\n{3,}/g, '\n\n').trim();
+}
+
 interface ExecutionState {
   activeStepId: string | null;
   outputs: Record<string, string>;
@@ -27,6 +42,41 @@ interface ExecutionState {
   startTime: number | null;
   cancelled: boolean;
 }
+
+export interface PendingConfirm {
+  stepId: string;
+  command: string;
+  description: string;
+  riskLevel: string;
+}
+
+/** Agentic mode: tracks a tool call in progress or completed */
+export interface ToolCallEntry {
+  id: string;
+  tool: string;
+  command?: string;
+  description?: string;
+  status: 'running' | 'completed' | 'failed' | 'blocked' | 'rejected';
+  output: string;
+  exitCode?: number;
+  duration?: number;
+}
+
+/** Agentic mode: pending confirmation for a risky command */
+export interface AgenticConfirm {
+  confirmId: string;
+  command: string;
+  description: string;
+  riskLevel: string;
+}
+
+/**
+ * Execution mode determines how command output is displayed:
+ * - 'inline': GREEN auto-execute — output streams directly into chat text (like Claude Code)
+ * - 'log': non-GREEN step-confirm — output shown in ExecutionLog component
+ * - 'none': no execution in progress
+ */
+export type ExecutionMode = 'none' | 'inline' | 'log';
 
 interface ChatState {
   serverId: string | null;
@@ -40,11 +90,19 @@ interface ChatState {
   currentPlan: ExecutionPlan | null;
   planStatus: 'none' | 'preview' | 'confirmed' | 'executing' | 'completed';
   execution: ExecutionState;
+  executionMode: ExecutionMode;
+  pendingConfirm: PendingConfirm | null;
+  // Agentic mode state
+  toolCalls: ToolCallEntry[];
+  agenticConfirm: AgenticConfirm | null;
+  isAgenticMode: boolean;
 
   setServerId: (id: string | null) => void;
   sendMessage: (message: string) => void;
   confirmPlan: () => void;
   rejectPlan: () => void;
+  respondToStep: (decision: 'allow' | 'allow_all' | 'reject') => Promise<void>;
+  respondToAgenticConfirm: (approved: boolean) => Promise<void>;
   emergencyStop: () => Promise<void>;
   fetchSessions: (serverId: string) => Promise<void>;
   loadSession: (serverId: string, sessionId: string) => Promise<void>;
@@ -80,6 +138,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
     startTime: null,
     cancelled: false,
   },
+  executionMode: 'none',
+  pendingConfirm: null,
+  toolCalls: [],
+  agenticConfirm: null,
+  isAgenticMode: false,
 
   setServerId: (id) => set({ serverId: id }),
 
@@ -104,6 +167,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
       error: null,
       currentPlan: null,
       planStatus: 'none',
+      executionMode: 'none',
+      pendingConfirm: null,
+      toolCalls: [],
+      agenticConfirm: null,
+      isAgenticMode: false,
     }));
 
     activeController?.abort();
@@ -129,7 +197,28 @@ export const useChatStore = create<ChatState>((set, get) => ({
           }
         },
 
+        onRetry: (data) => {
+          try {
+            const parsed = JSON.parse(data) as {
+              attempt: number;
+              maxAttempts: number;
+              errorCategory: string;
+              isFallback: boolean;
+              fallbackProvider?: string;
+            };
+            const content = parsed.isFallback
+              ? `Switching to backup AI provider (${parsed.fallbackProvider ?? 'unknown'})...`
+              : `AI request failed (${parsed.errorCategory}), retrying (${parsed.attempt}/${parsed.maxAttempts})...`;
+            set((state) => ({
+              streamingContent: state.streamingContent
+                ? state.streamingContent + `\n\n_${content}_\n\n`
+                : `_${content}_\n\n`,
+            }));
+          } catch { /* ignore */ }
+        },
+
         onPlan: (data) => {
+          // Plan event only sent for non-GREEN plans (YELLOW/RED/CRITICAL) or agent-offline
           try {
             const plan = ExecutionPlanSchema.parse(JSON.parse(data));
             set({ currentPlan: plan, planStatus: 'preview' });
@@ -138,24 +227,334 @@ export const useChatStore = create<ChatState>((set, get) => ({
           }
         },
 
-        onComplete: () => {
-          const { streamingContent, currentPlan } = get();
-          if (streamingContent) {
-            const assistantMsg: ChatMessage = {
-              id: generateId(),
-              role: 'assistant',
-              content: streamingContent,
-              timestamp: new Date().toISOString(),
-              plan: currentPlan ?? undefined,
-            };
+        onAutoExecute: (data) => {
+          // Determine execution mode: GREEN = inline, non-GREEN = log
+          let plan: ExecutionPlan | null = get().currentPlan;
+          let mode: ExecutionMode = 'log';
+
+          try {
+            const parsed = JSON.parse(data) as { plan?: unknown };
+            if (parsed.plan) {
+              // Plan embedded in auto_execute → GREEN auto-execute → inline mode
+              plan = ExecutionPlanSchema.parse(parsed.plan);
+              mode = 'inline';
+            }
+          } catch { /* use existing currentPlan, log mode */ }
+
+          // For inline mode: strip json-plan from AI text, keep streaming open
+          // For log mode: commit AI text as message, switch to ExecutionLog UI
+          const { streamingContent } = get();
+          const cleanText = stripJsonPlan(streamingContent);
+
+          if (mode === 'inline') {
+            // Inline: keep isStreaming=true, output will append to streamingContent
             set((state) => ({
-              messages: [...state.messages, assistantMsg],
-              streamingContent: '',
-              isStreaming: false,
+              streamingContent: cleanText ? cleanText + '\n\n' : '',
+              currentPlan: plan,
+              planStatus: 'executing',
+              executionMode: 'inline',
+              execution: {
+                activeStepId: null,
+                outputs: {},
+                completedSteps: {},
+                success: null,
+                operationId: null,
+                startTime: Date.now(),
+                cancelled: false,
+              },
             }));
           } else {
-            set({ isStreaming: false });
+            // Log mode: commit text, show ExecutionLog
+            const msgs: ChatMessage[] = [];
+            if (cleanText) {
+              msgs.push({
+                id: generateId(),
+                role: 'assistant',
+                content: cleanText,
+                timestamp: new Date().toISOString(),
+              });
+            }
+            set((state) => ({
+              messages: [...state.messages, ...msgs],
+              streamingContent: '',
+              currentPlan: plan,
+              planStatus: 'executing',
+              executionMode: 'log',
+              execution: {
+                activeStepId: null,
+                outputs: {},
+                completedSteps: {},
+                success: null,
+                operationId: null,
+                startTime: Date.now(),
+                cancelled: false,
+              },
+            }));
           }
+        },
+
+        // --- Execution event handlers (mode-aware) ---
+
+        onStepStart: (data) => {
+          try {
+            const parsed = JSON.parse(data) as { stepId: string; command?: string };
+            const { executionMode } = get();
+            if (executionMode === 'inline') {
+              // Inline: just track active step. The server sends "$ command\n" as an output event next.
+              set((state) => ({
+                execution: { ...state.execution, activeStepId: parsed.stepId },
+              }));
+            } else {
+              set((state) => ({
+                execution: { ...state.execution, activeStepId: parsed.stepId },
+              }));
+            }
+          } catch { /* ignore */ }
+        },
+
+        onOutput: (data) => {
+          try {
+            const parsed = StepOutputSchema.parse(JSON.parse(data));
+            const { executionMode } = get();
+            if (executionMode === 'inline') {
+              // Inline: append output directly to streaming text
+              set((state) => ({
+                streamingContent: state.streamingContent + parsed.content,
+              }));
+            } else {
+              // Log mode: update execution state for ExecutionLog
+              set((state) => ({
+                execution: {
+                  ...state.execution,
+                  outputs: {
+                    ...state.execution.outputs,
+                    [parsed.stepId]:
+                      (state.execution.outputs[parsed.stepId] ?? '') + parsed.content,
+                  },
+                },
+              }));
+            }
+          } catch { /* ignore */ }
+        },
+
+        onStepComplete: (data) => {
+          try {
+            const parsed = StepCompleteSchema.parse(JSON.parse(data));
+            const { executionMode } = get();
+            if (executionMode === 'inline') {
+              // Inline: add separator between steps
+              set((state) => ({
+                streamingContent: state.streamingContent + '\n',
+                execution: {
+                  ...state.execution,
+                  completedSteps: {
+                    ...state.execution.completedSteps,
+                    [parsed.stepId]: { exitCode: parsed.exitCode, duration: parsed.duration },
+                  },
+                },
+              }));
+            } else {
+              set((state) => ({
+                execution: {
+                  ...state.execution,
+                  completedSteps: {
+                    ...state.execution.completedSteps,
+                    [parsed.stepId]: { exitCode: parsed.exitCode, duration: parsed.duration },
+                  },
+                },
+              }));
+            }
+          } catch { /* ignore */ }
+        },
+
+        onStepConfirm: (data) => {
+          try {
+            const parsed = JSON.parse(data) as PendingConfirm;
+            set(() => ({ pendingConfirm: parsed }));
+          } catch { /* ignore */ }
+        },
+
+        onDiagnosis: () => {
+          // Diagnosis events stored in session by server
+        },
+
+        onComplete: (data) => {
+          const { planStatus, executionMode, streamingContent } = get();
+
+          if (planStatus === 'executing') {
+            if (executionMode === 'inline') {
+              // Inline execution done — commit everything as one assistant message
+              let success: boolean | null = null;
+              try {
+                const parsed = ExecutionCompleteSchema.parse(JSON.parse(data));
+                success = parsed.success;
+              } catch { /* ignore */ }
+
+              // Strip any json-plan blocks that leaked from AI summary
+              const content = stripJsonPlan(streamingContent).trim();
+              if (content) {
+                const msg: ChatMessage = {
+                  id: generateId(),
+                  role: 'assistant',
+                  content,
+                  timestamp: new Date().toISOString(),
+                };
+                set((state) => ({
+                  messages: [...state.messages, msg],
+                  streamingContent: '',
+                  isStreaming: false,
+                  planStatus: 'completed',
+                  executionMode: 'none',
+                  pendingConfirm: null,
+                  execution: { ...state.execution, success, activeStepId: null },
+                }));
+              } else {
+                set((state) => ({
+                  isStreaming: false,
+                  planStatus: 'completed',
+                  executionMode: 'none',
+                  pendingConfirm: null,
+                  execution: { ...state.execution, success, activeStepId: null },
+                }));
+              }
+            } else {
+              // Log mode — update execution state
+              try {
+                const parsed = ExecutionCompleteSchema.parse(JSON.parse(data));
+                set((state) => ({
+                  planStatus: 'completed',
+                  isStreaming: false,
+                  pendingConfirm: null,
+                  execution: {
+                    ...state.execution,
+                    success: parsed.success,
+                    operationId: parsed.operationId ?? null,
+                    activeStepId: null,
+                    cancelled: parsed.cancelled ?? false,
+                  },
+                }));
+              } catch {
+                set({ planStatus: 'completed', isStreaming: false, pendingConfirm: null });
+              }
+            }
+          } else {
+            // Normal chat completion (no execution)
+            const cleanText = stripJsonPlan(streamingContent);
+            const { currentPlan } = get();
+            if (cleanText) {
+              const msg: ChatMessage = {
+                id: generateId(),
+                role: 'assistant',
+                content: cleanText,
+                timestamp: new Date().toISOString(),
+                plan: currentPlan ?? undefined,
+              };
+              set((state) => ({
+                messages: [...state.messages, msg],
+                streamingContent: '',
+                isStreaming: false,
+              }));
+            } else {
+              set({ isStreaming: false, streamingContent: '' });
+            }
+          }
+        },
+
+        // ====== Agentic mode event handlers ======
+
+        onToolCall: (data) => {
+          try {
+            const parsed = JSON.parse(data) as { id: string; tool: string; status: string };
+            set((state) => ({
+              isAgenticMode: true,
+              toolCalls: [...state.toolCalls, {
+                id: parsed.id,
+                tool: parsed.tool,
+                status: 'running' as const,
+                output: '',
+              }],
+            }));
+          } catch { /* ignore */ }
+        },
+
+        onToolExecuting: (data) => {
+          try {
+            const parsed = JSON.parse(data) as { id: string; tool: string; command: string };
+            // Show the command being executed in streaming content
+            set((state) => ({
+              streamingContent: state.streamingContent + `\n\`\`\`bash\n$ ${parsed.command}\n`,
+              toolCalls: state.toolCalls.map((tc) =>
+                tc.id === parsed.id ? { ...tc, command: parsed.command } : tc,
+              ),
+            }));
+          } catch { /* ignore */ }
+        },
+
+        onToolOutput: (data) => {
+          try {
+            const parsed = JSON.parse(data) as { id: string; content: string };
+            // Stream output directly into chat text
+            set((state) => ({
+              streamingContent: state.streamingContent + parsed.content,
+              toolCalls: state.toolCalls.map((tc) =>
+                tc.id === parsed.id ? { ...tc, output: tc.output + parsed.content } : tc,
+              ),
+            }));
+          } catch { /* ignore */ }
+        },
+
+        onToolResult: (data) => {
+          try {
+            const parsed = JSON.parse(data) as {
+              id: string; tool: string; status: string;
+              exitCode?: number; output?: string; duration?: number; error?: string;
+            };
+            // Close the code block and update tool call status
+            const status = parsed.status as ToolCallEntry['status'];
+            set((state) => {
+              // If there was non-streamed output, append it
+              let extra = '';
+              if (parsed.output) {
+                extra = parsed.output;
+              }
+              const closingMark = '\n```\n';
+              return {
+                streamingContent: state.streamingContent + extra + closingMark,
+                toolCalls: state.toolCalls.map((tc) =>
+                  tc.id === parsed.id
+                    ? { ...tc, status, exitCode: parsed.exitCode, duration: parsed.duration, output: tc.output + (extra || '') }
+                    : tc,
+                ),
+              };
+            });
+          } catch { /* ignore */ }
+        },
+
+        onConfirmRequired: (data) => {
+          try {
+            const parsed = JSON.parse(data) as {
+              id: string; command: string; description: string; riskLevel: string;
+            };
+            set({
+              agenticConfirm: {
+                confirmId: '', // Will be set by confirm_id event
+                command: parsed.command,
+                description: parsed.description,
+                riskLevel: parsed.riskLevel,
+              },
+            });
+          } catch { /* ignore */ }
+        },
+
+        onConfirmId: (data) => {
+          try {
+            const parsed = JSON.parse(data) as { confirmId: string };
+            set((state) => ({
+              agenticConfirm: state.agenticConfirm
+                ? { ...state.agenticConfirm, confirmId: parsed.confirmId }
+                : null,
+            }));
+          } catch { /* ignore */ }
         },
 
         onError: (error) => {
@@ -163,6 +562,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
             error: error.message,
             isStreaming: false,
             streamingContent: '',
+            executionMode: 'none',
+            pendingConfirm: null,
+            agenticConfirm: null,
           });
         },
       }
@@ -175,6 +577,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     set({
       planStatus: 'executing',
+      executionMode: 'log',
       execution: {
         activeStepId: null,
         outputs: {},
@@ -209,8 +612,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
                 outputs: {
                   ...state.execution.outputs,
                   [parsed.stepId]:
-                    (state.execution.outputs[parsed.stepId] ?? '') +
-                    parsed.content,
+                    (state.execution.outputs[parsed.stepId] ?? '') + parsed.content,
                 },
               },
             }));
@@ -225,13 +627,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
                 ...state.execution,
                 completedSteps: {
                   ...state.execution.completedSteps,
-                  [parsed.stepId]: {
-                    exitCode: parsed.exitCode,
-                    duration: parsed.duration,
-                  },
+                  [parsed.stepId]: { exitCode: parsed.exitCode, duration: parsed.duration },
                 },
               },
             }));
+          } catch { /* ignore */ }
+        },
+
+        onStepConfirm: (data) => {
+          try {
+            const parsed = JSON.parse(data) as PendingConfirm;
+            set(() => ({ pendingConfirm: parsed }));
           } catch { /* ignore */ }
         },
 
@@ -240,6 +646,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
             const parsed = ExecutionCompleteSchema.parse(JSON.parse(data));
             set((state) => ({
               planStatus: 'completed',
+              isStreaming: false,
+              pendingConfirm: null,
               execution: {
                 ...state.execution,
                 success: parsed.success,
@@ -249,7 +657,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
               },
             }));
           } catch {
-            set({ planStatus: 'completed' });
+            set({ planStatus: 'completed', isStreaming: false, pendingConfirm: null });
           }
         },
 
@@ -257,17 +665,69 @@ export const useChatStore = create<ChatState>((set, get) => ({
           set({
             error: error.message,
             planStatus: 'preview',
+            pendingConfirm: null,
           });
         },
       }
     );
   },
 
+  respondToStep: async (decision) => {
+    const { serverId, sessionId, currentPlan, pendingConfirm } = get();
+    if (!serverId || !sessionId || !currentPlan || !pendingConfirm) return;
+
+    set({ pendingConfirm: null });
+
+    try {
+      await apiRequest(`/chat/${serverId}/step-decision`, {
+        method: 'POST',
+        body: JSON.stringify({
+          planId: currentPlan.planId,
+          sessionId,
+          stepId: pendingConfirm.stepId,
+          decision,
+        }),
+      });
+    } catch {
+      // If the decision API fails, the server timeout will auto-reject
+    }
+
+    if (decision === 'reject') {
+      set((state) => ({
+        planStatus: 'completed',
+        execution: {
+          ...state.execution,
+          success: false,
+          activeStepId: null,
+          cancelled: true,
+        },
+      }));
+    }
+  },
+
+  respondToAgenticConfirm: async (approved) => {
+    const { serverId, agenticConfirm } = get();
+    if (!serverId || !agenticConfirm?.confirmId) return;
+
+    set({ agenticConfirm: null });
+
+    try {
+      await apiRequest(`/chat/${serverId}/confirm`, {
+        method: 'POST',
+        body: JSON.stringify({
+          confirmId: agenticConfirm.confirmId,
+          approved,
+        }),
+      });
+    } catch {
+      // If confirm API fails, server timeout will auto-reject
+    }
+  },
+
   emergencyStop: async () => {
     const { serverId, sessionId, currentPlan } = get();
     if (!serverId || !sessionId || !currentPlan) return;
 
-    // Abort the SSE connection first
     activeController?.abort();
     activeController = null;
 
@@ -280,11 +740,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
         }),
       });
     } catch {
-      // Cancel API may fail if execution already completed — that's OK
+      // Cancel API may fail if execution already completed
     }
 
     set((state) => ({
       planStatus: 'completed',
+      executionMode: 'none',
+      pendingConfirm: null,
       execution: {
         ...state.execution,
         success: false,
@@ -295,7 +757,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   rejectPlan: () => {
-    set({ currentPlan: null, planStatus: 'none' });
+    set({ currentPlan: null, planStatus: 'none', executionMode: 'none', pendingConfirm: null });
     const systemMsg: ChatMessage = {
       id: generateId(),
       role: 'system',
@@ -367,6 +829,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
       isStreaming: false,
       streamingContent: '',
       error: null,
+      executionMode: 'none',
+      pendingConfirm: null,
+      toolCalls: [],
+      agenticConfirm: null,
+      isAgenticMode: false,
       execution: {
         activeStepId: null,
         outputs: {},

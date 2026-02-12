@@ -49,6 +49,7 @@ services:
       - "${SERVER_PORT:-3000}:3000"
     environment:
       NODE_ENV: production
+      CLOUD_MODE: "true"
       DB_TYPE: postgres
       DATABASE_URL: postgres://serverpilot:${PG_PASSWORD:-serverpilot}@postgres:5432/serverpilot
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}

@@ -38,6 +38,11 @@ import {
   setServerRepository,
   _resetServerRepository,
 } from '../../db/repositories/server-repository.js';
+import {
+  InMemorySessionRepository,
+  setSessionRepository,
+  _resetSessionRepository,
+} from '../../db/repositories/session-repository.js';
 import { getSessionManager, _resetSessionManager } from '../../core/session/manager.js';
 import { _resetChatAIAgent, initChatAIAgent } from './chat-ai.js';
 import type { ApiEnv } from './types.js';
@@ -135,6 +140,9 @@ beforeEach(() => {
   repo = new InMemoryServerRepository();
   setServerRepository(repo);
   _resetSessionManager();
+  _resetSessionRepository();
+  // Provide InMemorySessionRepository so SessionManager doesn't need a real DB
+  setSessionRepository(new InMemorySessionRepository());
   _resetChatAIAgent();
   app = createApiApp();
 });
@@ -282,6 +290,10 @@ describe('POST /api/v1/chat/:serverId', () => {
   it('should stream AI response with plan', async () => {
     const server = await createServer('web-01', tokenA);
 
+    // Agent offline: plan is shown for reference only (no auto-execute or step-confirm)
+    const { findConnectedAgent } = await import('../../core/agent/agent-connector.js');
+    vi.mocked(findConnectedAgent).mockReturnValueOnce(null);
+
     // Set up mock agent
     const mockAgent = {
       chat: vi.fn().mockResolvedValue({
@@ -314,7 +326,7 @@ describe('POST /api/v1/chat/:serverId', () => {
     );
     expect(sessionEvent).toBeDefined();
 
-    // Should have a plan event
+    // Should have a plan event (agent offline shows plan for reference)
     const planEvent = events.find(e => e.event === 'plan');
     expect(planEvent).toBeDefined();
     const planData = JSON.parse(planEvent!.data);
@@ -451,7 +463,7 @@ describe('POST /api/v1/chat/:serverId', () => {
     const sessionId = JSON.parse(sessionEvent!.data).sessionId;
 
     // Check messages are stored
-    const session = getSessionManager().getSession(sessionId);
+    const session = await getSessionManager().getSession(sessionId, USER_A);
     expect(session).toBeDefined();
     expect(session!.messages).toHaveLength(2); // user + assistant
     expect(session!.messages[0].role).toBe('user');
@@ -477,7 +489,7 @@ describe('POST /api/v1/chat/:serverId/execute', () => {
 
   it('should return 404 for non-existent plan', async () => {
     const server = await createServer('web-01', tokenA);
-    const session = getSessionManager().getOrCreate(server.id);
+    const session = await getSessionManager().getOrCreate(server.id, USER_A);
 
     const res = await jsonPost(
       `/api/v1/chat/${server.id}/execute`,
@@ -510,7 +522,7 @@ describe('POST /api/v1/chat/:serverId/execute', () => {
   it('should stream execution events for a stored plan', async () => {
     const server = await createServer('web-01', tokenA);
     const sessionMgr = getSessionManager();
-    const session = sessionMgr.getOrCreate(server.id);
+    const session = await sessionMgr.getOrCreate(server.id, USER_A);
 
     // Store a plan
     sessionMgr.storePlan(session.id, {
@@ -599,8 +611,8 @@ describe('GET /api/v1/chat/:serverId/sessions', () => {
   it('should return sessions for the server', async () => {
     const server = await createServer('web-01', tokenA);
     const sessionMgr = getSessionManager();
-    const session = sessionMgr.getOrCreate(server.id);
-    sessionMgr.addMessage(session.id, 'user', 'Hello');
+    const session = await sessionMgr.getOrCreate(server.id, USER_A);
+    await sessionMgr.addMessage(session.id, USER_A, 'user', 'Hello');
 
     const res = await req(`/api/v1/chat/${server.id}/sessions`, tokenA);
     expect(res.status).toBe(200);
@@ -614,8 +626,8 @@ describe('GET /api/v1/chat/:serverId/sessions', () => {
     const s1 = await createServer('web-01', tokenA);
     const s2 = await createServer('web-02', tokenA);
     const sessionMgr = getSessionManager();
-    sessionMgr.getOrCreate(s1.id);
-    sessionMgr.getOrCreate(s2.id);
+    await sessionMgr.getOrCreate(s1.id, USER_A);
+    await sessionMgr.getOrCreate(s2.id, USER_A);
 
     const res = await req(`/api/v1/chat/${s1.id}/sessions`, tokenA);
     const body = await res.json();
@@ -638,9 +650,9 @@ describe('GET /api/v1/chat/:serverId/sessions/:sessionId', () => {
   it('should return session with messages', async () => {
     const server = await createServer('web-01', tokenA);
     const sessionMgr = getSessionManager();
-    const session = sessionMgr.getOrCreate(server.id);
-    sessionMgr.addMessage(session.id, 'user', 'Hello');
-    sessionMgr.addMessage(session.id, 'assistant', 'Hi!');
+    const session = await sessionMgr.getOrCreate(server.id, USER_A);
+    await sessionMgr.addMessage(session.id, USER_A, 'user', 'Hello');
+    await sessionMgr.addMessage(session.id, USER_A, 'assistant', 'Hi!');
 
     const res = await req(
       `/api/v1/chat/${server.id}/sessions/${session.id}`,
@@ -667,7 +679,7 @@ describe('GET /api/v1/chat/:serverId/sessions/:sessionId', () => {
     const s1 = await createServer('web-01', tokenA);
     const s2 = await createServer('web-02', tokenA);
     const sessionMgr = getSessionManager();
-    const session = sessionMgr.getOrCreate(s2.id);
+    const session = await sessionMgr.getOrCreate(s2.id, USER_A);
 
     const res = await req(
       `/api/v1/chat/${s1.id}/sessions/${session.id}`,
@@ -678,7 +690,7 @@ describe('GET /api/v1/chat/:serverId/sessions/:sessionId', () => {
 
   it('should return 404 for another user\'s server', async () => {
     const server = await createServer('web-01', tokenA);
-    const session = getSessionManager().getOrCreate(server.id);
+    const session = await getSessionManager().getOrCreate(server.id, USER_A);
 
     const res = await req(
       `/api/v1/chat/${server.id}/sessions/${session.id}`,
@@ -695,7 +707,7 @@ describe('GET /api/v1/chat/:serverId/sessions/:sessionId', () => {
 describe('DELETE /api/v1/chat/:serverId/sessions/:sessionId', () => {
   it('should delete a session', async () => {
     const server = await createServer('web-01', tokenA);
-    const session = getSessionManager().getOrCreate(server.id);
+    const session = await getSessionManager().getOrCreate(server.id, USER_A);
 
     const res = await req(
       `/api/v1/chat/${server.id}/sessions/${session.id}`,
@@ -707,7 +719,7 @@ describe('DELETE /api/v1/chat/:serverId/sessions/:sessionId', () => {
     expect(body.success).toBe(true);
 
     // Verify it's gone
-    expect(getSessionManager().getSession(session.id)).toBeUndefined();
+    expect(await getSessionManager().getSession(session.id, USER_A)).toBeUndefined();
   });
 
   it('should return 404 for non-existent session', async () => {
@@ -722,7 +734,7 @@ describe('DELETE /api/v1/chat/:serverId/sessions/:sessionId', () => {
 
   it('should return 404 for another user\'s server', async () => {
     const server = await createServer('web-01', tokenA);
-    const session = getSessionManager().getOrCreate(server.id);
+    const session = await getSessionManager().getOrCreate(server.id, USER_A);
 
     const res = await req(
       `/api/v1/chat/${server.id}/sessions/${session.id}`,

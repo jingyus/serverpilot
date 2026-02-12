@@ -14,8 +14,11 @@
 
 import type { AuthRequestMessage, AuthResponseMessage } from '@aiinstaller/shared';
 import { MessageType } from '@aiinstaller/shared';
+import { eq, and } from 'drizzle-orm';
 import { DeviceClient } from './device-client.js';
 import { logger } from '../utils/logger.js';
+import { getDatabase } from '../db/connection.js';
+import { agents } from '../db/schema.js';
 
 /**
  * Authentication result for WebSocket connections
@@ -42,10 +45,51 @@ export interface AuthResult {
 }
 
 /**
+ * Try local agent authentication using the agents table directly.
+ *
+ * For self-hosted deployments where the agent is co-located with the server,
+ * the agent authenticates using serverId (as deviceId) and agentToken (as deviceToken).
+ * This avoids the external DeviceClient/Magic API round-trip.
+ *
+ * @returns AuthResult if local token matches, null to fall through to DeviceClient path
+ */
+function tryLocalAgentAuth(serverId: string, token: string): AuthResult | null {
+  try {
+    const db = getDatabase();
+    const rows = db
+      .select()
+      .from(agents)
+      .where(and(eq(agents.serverId, serverId), eq(agents.keyHash, token)))
+      .limit(1)
+      .all();
+
+    if (rows.length > 0) {
+      logger.info(
+        { serverId, operation: 'auth_handshake' },
+        'Local agent authenticated via agents table',
+      );
+      return {
+        success: true,
+        deviceToken: token,
+        quota: { limit: 999_999, used: 0, remaining: 999_999 },
+        plan: 'self-hosted',
+      };
+    }
+  } catch (err) {
+    logger.debug(
+      { serverId, error: err, operation: 'auth_handshake' },
+      'Local agent auth lookup failed, falling back to DeviceClient',
+    );
+  }
+  return null;
+}
+
+/**
  * Authenticate a device during WebSocket handshake.
  *
  * Flow:
- * 1. If device has token, verify it
+ * 0. Try local agent auth (self-hosted: check agents table directly)
+ * 1. If device has token, verify it via DeviceClient
  * 2. If verification succeeds, return quota info
  * 3. If token missing or invalid, auto-register device
  * 4. Return new token and quota info
@@ -69,7 +113,13 @@ export async function authenticateDevice(
     'Processing device authentication'
   );
 
-  // Case 1: Device has token, verify it
+  // Case 0: Try local agent auth (self-hosted mode)
+  if (deviceId && deviceToken) {
+    const localResult = tryLocalAgentAuth(deviceId, deviceToken);
+    if (localResult) return localResult;
+  }
+
+  // Case 1: Device has token, verify it via DeviceClient
   if (deviceToken) {
     const verifyResult = await DeviceClient.verify({
       deviceId,

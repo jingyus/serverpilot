@@ -28,6 +28,9 @@ import {
 import {
   InMemoryServerRepository, setServerRepository, _resetServerRepository,
 } from '../packages/server/src/db/repositories/server-repository.js';
+import {
+  InMemorySessionRepository, setSessionRepository, _resetSessionRepository,
+} from '../packages/server/src/db/repositories/session-repository.js';
 import { _resetSessionManager } from '../packages/server/src/core/session/manager.js';
 import { _resetChatAIAgent, initChatAIAgent } from '../packages/server/src/api/routes/chat-ai.js';
 import { _resetProfileRepository } from '../packages/server/src/db/repositories/profile-repository.js';
@@ -178,6 +181,7 @@ describe('E2E: Chat → Plan → Execute → Result Flow', () => {
     accessToken = (await generateTokens(TEST_USER_ID)).accessToken;
 
     setServerRepository(new InMemoryServerRepository());
+    setSessionRepository(new InMemorySessionRepository());
 
     // Set up RBAC with owner role for test user
     const rbacRepo = new InMemoryRbacRepository();
@@ -228,7 +232,7 @@ describe('E2E: Chat → Plan → Execute → Result Flow', () => {
 
   afterAll(async () => {
     [_resetTaskExecutor, _resetAgentConnector, _resetChatAIAgent, _resetSessionManager,
-     _resetServerRepository, _resetProfileRepository, _resetOperationRepository,
+     _resetServerRepository, _resetSessionRepository, _resetProfileRepository, _resetOperationRepository,
      _resetTaskRepository, _resetSnapshotRepository, _resetRbacRepository].forEach((fn) => fn());
     if (wsServer) await wsServer.stop();
     if (httpServer) await new Promise<void>((r) => httpServer.close(() => r()));
@@ -350,10 +354,12 @@ describe('E2E: Chat → Plan → Execute → Result Flow', () => {
   // --- Test 3: Full Chat → Plan → Execute → Result flow ---
 
   it('should execute the complete chat → plan → execute → result flow', async () => {
-    const agent = await connectAgent();
+    // Get plan FIRST (before agent connects), so auto-execute doesn't trigger
     const { sessionId, planId, events: chatEvents } = await chatAndGetPlan();
     expect(JSON.parse(chatEvents.find((e) => e.event === 'plan')!.data).steps).toHaveLength(2);
 
+    // Now connect agent and set up responder before executing
+    const agent = await connectAgent();
     const agentMessages = setupAgentResponder(agent);
     const execEvents = await executePlan(sessionId, planId);
 
@@ -388,9 +394,11 @@ describe('E2E: Chat → Plan → Execute → Result Flow', () => {
   // --- Test 4: Execution stops on agent failure ---
 
   it('should stop execution and report failure when agent step fails', async () => {
-    const agent = await connectAgent();
+    // Get plan FIRST (before agent connects)
     const { sessionId, planId } = await chatAndGetPlan();
 
+    // Now connect agent and set up failing responder
+    const agent = await connectAgent();
     setupAgentResponder(agent, { fail: true });
     const execEvents = await executePlan(sessionId, planId);
 
@@ -422,9 +430,11 @@ describe('E2E: Chat → Plan → Execute → Result Flow', () => {
   // --- Test 6: SSE event ordering during execution ---
 
   it('should emit SSE events in correct order during execution', async () => {
-    const agent = await connectAgent();
+    // Get plan FIRST (before agent connects)
     const { sessionId, planId } = await chatAndGetPlan();
 
+    // Now connect agent and set up responder
+    const agent = await connectAgent();
     agent.on('message', (data) => {
       const msg = JSON.parse(String(data));
       if (msg.type === MessageType.STEP_EXECUTE) {

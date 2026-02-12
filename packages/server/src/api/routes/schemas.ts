@@ -182,6 +182,14 @@ export const CancelExecutionBodySchema = z.object({
 });
 export type CancelExecutionBody = z.infer<typeof CancelExecutionBodySchema>;
 
+export const StepDecisionBodySchema = z.object({
+  planId: z.string().min(1, 'Plan ID is required'),
+  sessionId: z.string().min(1, 'Session ID is required'),
+  stepId: z.string().min(1, 'Step ID is required'),
+  decision: z.enum(['allow', 'allow_all', 'reject']),
+});
+export type StepDecisionBody = z.infer<typeof StepDecisionBodySchema>;
+
 export const ChatServerIdParamSchema = z.object({
   serverId: uuid,
 });

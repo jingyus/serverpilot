@@ -261,6 +261,31 @@ export async function requireAuth(c: Context<ApiEnv>, next: Next): Promise<void>
 }
 
 // ============================================================================
+// Optional Auth (for rate limiting — extract userId without enforcing)
+// ============================================================================
+
+/**
+ * Optional auth middleware that silently extracts userId from a valid Bearer
+ * token without rejecting unauthenticated requests. This allows downstream
+ * middleware (e.g. rate limiter) to apply higher limits for authenticated users.
+ */
+export async function optionalAuth(c: Context<ApiEnv>, next: Next): Promise<void> {
+  const authHeader = c.req.header('Authorization');
+  if (authHeader?.startsWith('Bearer ')) {
+    const token = authHeader.slice(7);
+    if (token) {
+      try {
+        const result = await verifyToken(token, 'access');
+        c.set('userId', result.userId);
+      } catch {
+        // Ignore — unauthenticated requests proceed without userId
+      }
+    }
+  }
+  await next();
+}
+
+// ============================================================================
 // Reset (for testing)
 // ============================================================================
 

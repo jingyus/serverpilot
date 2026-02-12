@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0
+// SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2024-2026 ServerPilot Contributors
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { buildPgConfigFromEnv } from './pg-connection.js';

@@ -46,6 +46,10 @@ export interface AuthState {
 export interface AuthenticatedClientOptions extends InstallClientOptions {
   /** Timeout for authentication in ms (default: 10000) */
   authTimeoutMs?: number;
+  /** Pre-configured server ID for local/token auth (skips fingerprint) */
+  serverId?: string;
+  /** Pre-configured agent token for local/token auth (skips fingerprint) */
+  agentToken?: string;
 }
 
 /**
@@ -64,10 +68,14 @@ export interface AuthenticatedClientOptions extends InstallClientOptions {
 export class AuthenticatedClient extends InstallClient {
   private authState: AuthState = { authenticated: false };
   private readonly authTimeoutMs: number;
+  private readonly _serverId?: string;
+  private readonly _agentToken?: string;
 
   constructor(options: AuthenticatedClientOptions) {
     super(options);
     this.authTimeoutMs = options.authTimeoutMs ?? 10000;
+    this._serverId = options.serverId;
+    this._agentToken = options.agentToken;
 
     // Re-authenticate on reconnection
     this.on('reconnected', () => {
@@ -131,7 +139,44 @@ export class AuthenticatedClient extends InstallClient {
    * @throws {Error} When authentication fails or times out
    */
   private async authenticate(): Promise<void> {
-    // Get or create device fingerprint
+    // Token mode: use pre-configured serverId/agentToken (local/daemon auth)
+    if (this._serverId && this._agentToken) {
+      const deviceInfo: DeviceAuthInfo = {
+        deviceId: this._serverId,
+        deviceToken: this._agentToken,
+        hostname: os.hostname(),
+        platform: os.platform(),
+        arch: os.arch(),
+        macAddressHash: '',
+        username: os.userInfo().username,
+        createdAt: new Date().toISOString(),
+        lastVerifiedAt: new Date().toISOString(),
+      };
+      this.authState.deviceInfo = deviceInfo;
+
+      const authRequest = createMessage(
+        MessageType.AUTH_REQUEST,
+        {
+          deviceId: this._serverId,
+          deviceToken: this._agentToken,
+          platform: deviceInfo.platform,
+          osVersion: os.release(),
+          architecture: deviceInfo.arch,
+          hostname: deviceInfo.hostname,
+        },
+      );
+
+      const authResponse = await this.sendAndWait<typeof MessageType.AUTH_RESPONSE>(
+        authRequest,
+        MessageType.AUTH_RESPONSE,
+        this.authTimeoutMs,
+      );
+
+      await this.handleAuthResponse(authResponse);
+      return;
+    }
+
+    // Fingerprint mode: get or create device fingerprint
     const deviceInfo = getOrCreateDeviceFingerprint();
     this.authState.deviceInfo = deviceInfo;
 

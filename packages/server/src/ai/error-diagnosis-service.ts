@@ -128,7 +128,7 @@ export function buildEnvironmentFromProfile(
 
   return {
     os: {
-      platform: os.platform,
+      platform: os.platform as 'darwin' | 'linux' | 'win32',
       version: os.version,
       arch: os.arch,
     },

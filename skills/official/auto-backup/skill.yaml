@@ -1,0 +1,172 @@
+kind: skill
+version: "1.0"
+
+metadata:
+  name: auto-backup
+  displayName: "自动备份管理"
+  description: "定期备份关键数据（数据库、配置文件），验证备份完整性，自动清理过期备份"
+  version: "1.0.0"
+  author: "serverpilot-official"
+  tags: [backup, database, disaster-recovery]
+
+triggers:
+  - type: cron
+    schedule: "0 3 * * *"       # 每天凌晨 3:00
+  - type: manual
+
+tools:
+  - shell
+  - read_file
+  - notify
+  - store
+
+inputs:
+  - name: backup_targets
+    type: enum
+    required: true
+    default: all
+    options: [all, database, config, custom]
+    description: "备份目标类型"
+
+  - name: custom_paths
+    type: string[]
+    required: false
+    default: []
+    description: "自定义备份路径（backup_targets=custom 时使用）"
+
+  - name: backup_dir
+    type: string
+    required: false
+    default: "/var/backups/serverpilot"
+    description: "备份文件存放目录"
+
+  - name: retention_days
+    type: number
+    required: false
+    default: 30
+    description: "备份保留天数，超期自动清理"
+
+  - name: compression
+    type: enum
+    required: false
+    default: gzip
+    options: [gzip, zstd, none]
+    description: "压缩算法"
+
+  - name: verify_backup
+    type: boolean
+    required: false
+    default: true
+    description: "备份后是否验证完整性（解压测试）"
+
+constraints:
+  risk_level_max: red            # 需要创建目录、写文件、删除过期备份
+  timeout: "30m"                 # 大数据库备份可能需要较长时间
+  max_steps: 25
+  requires_confirmation: false
+  server_scope: single
+
+requires:
+  os: [linux, darwin]
+  commands: [tar]                # 至少需要 tar
+
+prompt: |
+  ## 角色
+  你是一个服务器备份管理专家，负责可靠地备份关键数据并确保备份可用于灾难恢复。
+
+  ## 目标
+  在服务器 {{server.name}} 上执行自动备份，确保关键数据安全。
+
+  ## 环境信息
+  - 服务器: {{server.name}} ({{server.os}})
+  - 备份目录: {{input.backup_dir}}
+  - 保留天数: {{input.retention_days}}
+  - 压缩方式: {{input.compression}}
+  - 上次备份: {{skill.last_run}}
+  - 上次结果: {{skill.last_result}}
+
+  ## 执行流程
+
+  ### 1. 环境准备
+  - 确保备份目录 {{input.backup_dir}} 存在，不存在则创建
+  - 检查磁盘可用空间，如果 < 5GB 发出警告
+  - 生成备份文件名: `backup-{类型}-{日期时间}.tar.{压缩后缀}`
+
+  ### 2. 备份数据（根据 backup_targets={{input.backup_targets}}）
+
+  **database** — 自动检测并备份数据库:
+  - 检测 MySQL/MariaDB: `which mysqldump` → `mysqldump --all-databases`
+  - 检测 PostgreSQL: `which pg_dumpall` → `pg_dumpall`
+  - 检测 SQLite: 查找常见路径下的 .db/.sqlite 文件 → `cp`
+  - 检测 Redis: `which redis-cli` → `redis-cli bgsave` → 备份 dump.rdb
+  - 如果没有检测到任何数据库，记录 info 并跳过
+
+  **config** — 备份关键配置文件:
+  - /etc/nginx/ 或 /etc/apache2/
+  - /etc/ssh/sshd_config
+  - /etc/crontab, /var/spool/cron/
+  - /etc/systemd/system/ (自定义服务)
+  - Docker: /etc/docker/, docker-compose.yml 文件
+  - 应用配置: .env 文件（注意：不要在日志中输出 .env 内容）
+
+  **custom** — 备份用户指定路径: {{input.custom_paths}}
+
+  **all** — 执行 database + config
+
+  ### 3. 压缩打包
+  - gzip: `tar -czf`
+  - zstd: `tar --zstd -cf`（检测 zstd 是否可用，不可用时回退 gzip）
+  - none: `tar -cf`
+
+  ### 4. 验证备份（如 {{input.verify_backup}} 为 true）
+  - 测试解压: `tar -tzf <备份文件>` 检查文件列表是否完整
+  - 记录文件大小和包含的文件数
+  - 如果验证失败，标记 severity 为 critical
+
+  ### 5. 清理过期备份
+  - 删除 {{input.backup_dir}} 下超过 {{input.retention_days}} 天的备份文件
+  - 记录清理了多少个文件、释放了多少空间
+
+  ### 6. 保存记录
+  - 使用 store 保存本次备份摘要（文件名、大小、类型、是否验证通过）
+  - 发送 notify（无论成功失败都通知，成功为 info，失败为 critical）
+
+  ## 注意事项
+  - 数据库备份时注意不要影响线上服务（mysqldump 使用 --single-transaction）
+  - 不要在日志或输出中暴露密码、密钥等敏感信息
+  - 如果磁盘空间不足以完成备份，立即停止并发送 critical 告警
+  - 备份文件权限设为 600（仅 root 可读）
+
+  ## 输出要求
+  ```json
+  {
+    "severity": "info | warning | critical",
+    "summary": "备份结果一句话总结",
+    "backup_files": [
+      {
+        "filename": "backup-db-20250116-030000.tar.gz",
+        "type": "database | config | custom",
+        "size_bytes": 0,
+        "file_count": 0,
+        "verified": true
+      }
+    ],
+    "cleanup": {
+      "files_removed": 0,
+      "space_freed_bytes": 0
+    },
+    "disk_remaining_bytes": 0,
+    "warnings": ["任何需要注意的问题"]
+  }
+  ```
+
+outputs:
+  - name: report
+    type: object
+    description: "完整的备份执行报告"
+  - name: severity
+    type: string
+    description: "执行结果级别"
+  - name: total_backup_size
+    type: number
+    description: "本次备份总大小 (bytes)"

@@ -24,24 +24,28 @@ ServerPilot 采用 **开源核心 + 云版增值** 的商业模式：
 
 **必须遵守**：
 
-1. **云版专属功能必须隔离**，不得混入开源核心代码：
-   - PostgreSQL 适配器 → `packages/server/src/db/pg/` 或独立的 `packages/cloud/` 包
-   - Stripe 计费 → `packages/cloud/billing/` 或 `packages/server/src/cloud/billing/`
-   - 多副本/集群 → `packages/cloud/cluster/`
+1. **云版专属功能全部在 `packages/cloud/` 包中**，不得混入开源核心代码：
+   - PostgreSQL 适配器 → `packages/cloud/src/db/`
+   - Stripe 计费 → `packages/cloud/src/billing/`
+   - 多副本/集群 → `packages/cloud/src/cluster/`
+   - SSO/SAML → `packages/cloud/src/sso/`
+   - 高级分析 → `packages/cloud/src/analytics/`
+   - 云版许可证: BUSL-1.1（非开源），`private: true`（不发布到 npm）
 
-2. **开源核心代码不得依赖云版模块**：
-   - `packages/server/src/` 的核心文件不能 import 云版专属模块
-   - 条件加载可以，但必须使用环境变量 feature flag（如 `CLOUD_MODE=true`）
-   - 默认行为（无环境变量时）必须是开源版行为
+2. **开源核心代码不得静态依赖云版模块**：
+   - `packages/server/src/` 的核心文件不能静态 `import` 云版专属模块
+   - 仅允许在 `DB_TYPE=postgres` 时通过 `await import('@aiinstaller/cloud')` 动态加载
+   - 默认行为（无环境变量时）必须是开源版行为（SQLite）
 
 3. **数据库 schema 分离**：
    - `packages/server/src/db/schema.ts` → 开源版 SQLite schema（只能新增开源功能的表）
-   - `packages/server/src/db/pg/pg-schema.ts` → 云版 PostgreSQL schema
+   - `packages/cloud/src/db/pg-schema.ts` → 云版 PostgreSQL schema
    - 不得在 SQLite schema 文件中添加云版专属表（如 subscriptions, billing 等）
+   - cloud 包通过 `@aiinstaller/server/schema` 子路径导出引用 SQLite 类型
 
 4. **Docker 配置分离**：
    - `docker-compose.yml` → 开源版（只含 server + agent，SQLite）
-   - `docker-compose.cloud.yml` → 云版（含 PostgreSQL, Redis 等）
+   - `docker-compose.cloud.yml` → 云版（含 PostgreSQL, `CLOUD_MODE=true`）
 
 ### 1.3 允许共用的部分
 
@@ -111,7 +115,8 @@ ServerPilot 采用 **开源核心 + 云版增值** 的商业模式：
 
 | 包 | 职责 | 禁止 |
 |----|------|------|
-| `packages/server` | 后端 API + AI 引擎 + WebSocket | 不得包含前端代码 |
+| `packages/server` | 后端 API + AI 引擎 + WebSocket (SQLite) | 不得包含前端代码，不得静态依赖 cloud |
+| `packages/cloud` | 云版增值：PostgreSQL、计费、SSO、集群 | 不得修改 server 核心逻辑 |
 | `packages/agent` | 远程执行 Agent | 不得直接访问数据库 |
 | `packages/dashboard` | Web 前端 | 不得包含后端逻辑 |
 | `packages/shared` | 共享类型和校验 | 不得有运行时副作用 |
@@ -119,7 +124,7 @@ ServerPilot 采用 **开源核心 + 云版增值** 的商业模式：
 ### 4.2 依赖方向
 
 ```
-dashboard → shared ← server
+dashboard → shared ← server ← cloud (动态加载)
                      ↑
                    agent
 ```
@@ -127,6 +132,8 @@ dashboard → shared ← server
 - `shared` 不得依赖其他任何包
 - `agent` 不得依赖 `server` 或 `dashboard`
 - `dashboard` 不得依赖 `server` 或 `agent`
+- `cloud` 可以依赖 `server`（通过子路径导出引用 schema 类型）和 `shared`
+- `server` 仅通过动态 `import()` 加载 `cloud`，不得静态依赖
 
 ---
 
@@ -139,4 +146,4 @@ dashboard → shared ← server
 
 ---
 
-*最后更新: 2026-02-11*
+*最后更新: 2026-02-12*

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0
+// SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2024-2026 ServerPilot Contributors
 /**
  * Drizzle ORM schema definitions for PostgreSQL.
@@ -45,7 +45,7 @@ export type {
   WebhookEventType,
   InvitationStatus,
   TenantPlan,
-} from './schema.js';
+} from '@aiinstaller/server/schema';
 
 import type {
   UserSettingsAIProvider,
@@ -63,7 +63,7 @@ import type {
   DocSourceGitHubConfig,
   DocSourceWebConfig,
   WebhookEventType,
-} from './schema.js';
+} from '@aiinstaller/server/schema';
 
 // ============================================================================
 // Tenants

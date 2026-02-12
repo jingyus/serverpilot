@@ -17,6 +17,7 @@ import type {
   ProviderStreamCallbacks,
   StreamResponse,
   TokenUsage,
+  ToolUseBlock,
 } from './base.js';
 
 // ============================================================================
@@ -73,26 +74,40 @@ export class ClaudeProvider implements AIProviderInterface {
   }
 
   async chat(options: ChatOptions): Promise<ChatResponse> {
+    const createParams: Anthropic.MessageCreateParams = {
+      model: this.model,
+      max_tokens: options.maxTokens ?? DEFAULTS.maxTokens,
+      system: options.system,
+      messages: options.messages.map((m) => ({
+        role: m.role === 'system' ? ('user' as const) : m.role,
+        content: m.content,
+      })),
+    };
+
+    if (options.tools?.length) {
+      createParams.tools = options.tools.map((t) => ({
+        name: t.name,
+        description: t.description,
+        input_schema: t.input_schema as Anthropic.Tool.InputSchema,
+      }));
+    }
+
     const response = await this.client.messages.create(
-      {
-        model: this.model,
-        max_tokens: options.maxTokens ?? DEFAULTS.maxTokens,
-        system: options.system,
-        messages: options.messages.map((m) => ({
-          role: m.role === 'system' ? ('user' as const) : m.role,
-          content: m.content,
-        })),
-      },
+      createParams,
       { timeout: options.timeoutMs ?? this.timeoutMs },
     );
 
     const content = this.extractText(response);
+    const toolCalls = this.extractToolCalls(response);
+
     return {
       content,
       usage: {
         inputTokens: response.usage?.input_tokens ?? 0,
         outputTokens: response.usage?.output_tokens ?? 0,
       },
+      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+      stopReason: response.stop_reason ?? undefined,
     };
   }
 
@@ -104,16 +119,26 @@ export class ClaudeProvider implements AIProviderInterface {
     let usage: TokenUsage = { inputTokens: 0, outputTokens: 0 };
 
     try {
+      const streamParams: Anthropic.MessageCreateParams = {
+        model: this.model,
+        max_tokens: options.maxTokens ?? DEFAULTS.maxTokens,
+        system: options.system,
+        messages: options.messages.map((m) => ({
+          role: m.role === 'system' ? ('user' as const) : m.role,
+          content: m.content,
+        })),
+      };
+
+      if (options.tools?.length) {
+        streamParams.tools = options.tools.map((t) => ({
+          name: t.name,
+          description: t.description,
+          input_schema: t.input_schema as Anthropic.Tool.InputSchema,
+        }));
+      }
+
       const stream = this.client.messages.stream(
-        {
-          model: this.model,
-          max_tokens: options.maxTokens ?? DEFAULTS.maxTokens,
-          system: options.system,
-          messages: options.messages.map((m) => ({
-            role: m.role === 'system' ? ('user' as const) : m.role,
-            content: m.content,
-          })),
-        },
+        streamParams,
         { timeout: options.timeoutMs ?? this.timeoutMs },
       );
 
@@ -130,8 +155,16 @@ export class ClaudeProvider implements AIProviderInterface {
         outputTokens: finalMessage.usage?.output_tokens ?? 0,
       };
 
+      const toolCalls = this.extractToolCalls(finalMessage);
+
       callbacks?.onComplete?.(accumulated, usage);
-      return { content: accumulated, usage, success: true };
+      return {
+        content: accumulated,
+        usage,
+        success: true,
+        toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+        stopReason: finalMessage.stop_reason ?? undefined,
+      };
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
       callbacks?.onError?.(error);
@@ -168,11 +201,27 @@ export class ClaudeProvider implements AIProviderInterface {
   }
 
   private extractText(response: Anthropic.Message): string {
+    const texts: string[] = [];
     for (const block of response.content) {
       if (block.type === 'text') {
-        return block.text;
+        texts.push(block.text);
       }
     }
-    return '';
+    return texts.join('');
+  }
+
+  private extractToolCalls(response: Anthropic.Message): ToolUseBlock[] {
+    const calls: ToolUseBlock[] = [];
+    for (const block of response.content) {
+      if (block.type === 'tool_use') {
+        calls.push({
+          type: 'tool_use',
+          id: block.id,
+          name: block.name,
+          input: block.input as Record<string, unknown>,
+        });
+      }
+    }
+    return calls;
   }
 }

@@ -266,6 +266,7 @@ describe('Chat Page', () => {
           requiresConfirmation: true,
         },
         planStatus: 'executing',
+        executionMode: 'log',
         messages: [
           {
             id: 'msg-1',
@@ -305,6 +306,7 @@ describe('Chat Page', () => {
     it('shows emergency stop button during execution', () => {
       useChatStore.setState({
         planStatus: 'executing',
+        executionMode: 'log',
         currentPlan: {
           planId: 'p1',
           description: 'Test',
@@ -346,6 +348,7 @@ describe('Chat Page', () => {
     it('shows step progress indicators', () => {
       useChatStore.setState({
         planStatus: 'executing',
+        executionMode: 'log',
         currentPlan: {
           planId: 'p1',
           description: 'Test',
