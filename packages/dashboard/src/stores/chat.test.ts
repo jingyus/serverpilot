@@ -114,6 +114,28 @@ describe('useChatStore', () => {
       expect(state.currentPlan).toBeNull();
       expect(state.planStatus).toBe('none');
     });
+
+    it('is a no-op when isStreaming is true (re-entry guard)', () => {
+      useChatStore.setState({ serverId: 'srv-1', isStreaming: true });
+      useChatStore.getState().sendMessage('duplicate');
+
+      expect(useChatStore.getState().messages).toHaveLength(0);
+      expect(createSSEConnection).not.toHaveBeenCalled();
+    });
+
+    it('does not produce duplicate messages on rapid consecutive calls', () => {
+      useChatStore.setState({ serverId: 'srv-1' });
+
+      // First call succeeds and sets isStreaming = true
+      useChatStore.getState().sendMessage('first');
+      // Second call should be blocked by the re-entry guard
+      useChatStore.getState().sendMessage('second');
+
+      const state = useChatStore.getState();
+      expect(state.messages).toHaveLength(1);
+      expect(state.messages[0].content).toBe('first');
+      expect(createSSEConnection).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('rejectPlan', () => {

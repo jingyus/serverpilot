@@ -58,7 +58,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   setServerId: (id) => set({ serverId: id }),
 
   sendMessage: (message) => {
-    const { serverId, sessionId } = get();
+    const { serverId, sessionId, isStreaming } = get();
+    if (isStreaming) return;
     if (!serverId) {
       set({ error: 'No server selected' });
       return;
