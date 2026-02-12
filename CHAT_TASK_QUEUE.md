@@ -3,14 +3,14 @@
 > 此队列专注于 Chat 和 AI 对话系统的质量改进
 > AI 自动发现问题 → 生成任务 → 实现 → 验证
 
-**最后更新**: 2026-02-13 04:25:44
+**最后更新**: 2026-02-13 04:35:03
 
 ## 📊 统计
 
 - **总任务数**: 49
 - **待完成** (pending): 12
-- **进行中** (in_progress): 1
-- **已完成** (completed): 36
+- **进行中** (in_progress): 0
+- **已完成** (completed): 37
 - **失败** (failed): 0
 
 ## 📋 任务列表
@@ -72,7 +72,7 @@
 
 ---
 
-### [in_progress] listSessions 加载全部消息仅取 lastMessage — N+1 查询性能问题
+### [completed] listSessions 加载全部消息仅取 lastMessage — N+1 查询性能问题 ✅
 
 **ID**: chat-037
 **优先级**: P1
@@ -82,7 +82,7 @@
 **验收标准**: 1) listSessions 不再加载全部消息 2) SQL 查询数量从 N+1 降为 1 3) 返回结果格式不变 4) 新增性能测试验证改进
 **影响范围**: `packages/server/src/core/session/manager.ts`, `packages/server/src/core/session/repository.ts`
 **创建时间**: (自动填充)
-**完成时间**: -
+**完成时间**: 2026-02-13 04:35:03
 
 ---
 

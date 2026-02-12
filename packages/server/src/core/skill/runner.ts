@@ -28,6 +28,8 @@ import type {
 import { parseTimeout, buildToolDefinitions } from './runner-tools.js';
 import { SkillToolExecutor } from './runner-executor.js';
 import { getSkillEventBus } from './skill-event-bus.js';
+import { parseSkillOutputs, buildOutputInstructions } from './output-parser.js';
+import type { ParsedOutputs } from './output-parser.js';
 import type { SkillRunParams } from './types.js';
 
 // ============================================================================
@@ -57,6 +59,8 @@ export interface SkillRunResult {
   output: string;
   errors: string[];
   toolResults: ToolCallRecord[];
+  /** Structured outputs parsed from AI text, validated against manifest declarations. */
+  parsedOutputs?: ParsedOutputs;
 }
 
 /** Record of a single tool call during execution. */
@@ -81,6 +85,7 @@ export interface RunnerParams {
 
 // Re-export for convenience
 export { parseTimeout, buildToolDefinitions } from './runner-tools.js';
+export type { ParsedOutputs } from './output-parser.js';
 
 // ============================================================================
 // SkillRunner
@@ -135,7 +140,8 @@ export class SkillRunner {
 
     try {
       // Build initial messages
-      const systemPrompt = `${SYSTEM_PROMPT_PREFIX}\n\n--- Skill Prompt ---\n${resolvedPrompt}`;
+      const outputInstructions = buildOutputInstructions(manifest.outputs ?? []);
+      const systemPrompt = `${SYSTEM_PROMPT_PREFIX}${outputInstructions}\n\n--- Skill Prompt ---\n${resolvedPrompt}`;
       const messages: ChatMessage[] = [
         { role: 'user', content: 'Execute the skill as described above. Use the provided tools to complete the task.' },
       ];
@@ -267,6 +273,12 @@ export class SkillRunner {
 
     const duration = Date.now() - startTime;
 
+    // Parse structured outputs if manifest declares them
+    const declaredOutputs = manifest.outputs ?? [];
+    const parsedOutputs = declaredOutputs.length > 0
+      ? parseSkillOutputs(output, declaredOutputs)
+      : undefined;
+
     if (timedOut) {
       bus.publish(executionId, {
         type: 'completed',
@@ -285,6 +297,7 @@ export class SkillRunner {
         output: output || 'Execution timed out',
         errors: [...errors, `Timeout after ${timeoutMs}ms`],
         toolResults,
+        parsedOutputs,
       };
     }
 
@@ -307,6 +320,7 @@ export class SkillRunner {
       output,
       errors,
       toolResults,
+      parsedOutputs,
     };
   }
 

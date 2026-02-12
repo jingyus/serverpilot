@@ -382,6 +382,7 @@ export class SkillEngine {
         output: runResult.output,
         toolResults: runResult.toolResults,
         errors: runResult.errors,
+        ...(runResult.parsedOutputs ? { parsedOutputs: runResult.parsedOutputs } : {}),
       };
 
       await this.repo.completeExecution(
