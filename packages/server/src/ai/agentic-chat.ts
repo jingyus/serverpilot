@@ -127,6 +127,10 @@ export class AgenticChatEngine {
     // Add current user message
     messages.push({ role: 'user', content: userMessage });
 
+    // Pre-trim: if conversation history already exceeds token budget,
+    // trim before the first API call to avoid context window overflow.
+    trimMessagesIfNeeded(messages, MAX_MESSAGES_TOKENS);
+
     let turns = 0;
     let toolCallCount = 0;
     let finalText = '';

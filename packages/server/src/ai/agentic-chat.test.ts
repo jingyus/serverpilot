@@ -1594,3 +1594,226 @@ describe('AgenticChatEngine — confirmation abort race', () => {
     expect(rejectedEvents).toHaveLength(1);
   });
 });
+
+// ============================================================================
+// AgenticChatEngine — pre-trim long conversation history (chat-057)
+// ============================================================================
+
+describe('AgenticChatEngine — pre-trim long conversation history', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should not fail on first API call when conversation history exceeds 150K tokens', async () => {
+    // Build a conversation history with hundreds of long messages
+    // Each message ~1000 chars ≈ 250 tokens → 600+ messages ≈ 150K+ tokens
+    const longHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+    for (let i = 0; i < 400; i++) {
+      longHistory.push({ role: 'user', content: `用户消息 ${i}: ${'这是一段很长的对话内容'.repeat(50)}` });
+      longHistory.push({ role: 'assistant', content: `助手回复 ${i}: ${'执行系统检查和维护操作'.repeat(50)}` });
+    }
+
+    const { client } = createMockAnthropicClient(1);
+    const engine = new AgenticChatEngine(client);
+    const { stream } = createMockStream();
+
+    const result = await engine.run({
+      userMessage: '继续帮我检查服务器状态',
+      serverId: 'srv-1',
+      userId: 'usr-1',
+      sessionId: 'sess-1',
+      stream,
+      conversationHistory: longHistory,
+    });
+
+    // Should succeed — pre-trim prevented context overflow
+    expect(result.success).toBe(true);
+    expect(result.turns).toBe(1);
+  });
+
+  it('should preserve the latest user message after pre-trim', async () => {
+    // Spy on the Anthropic stream call to capture what messages are sent
+    const capturedMessages: Anthropic.MessageParam[][] = [];
+    const client = {
+      messages: {
+        stream: vi.fn((params: { messages: Anthropic.MessageParam[] }) => {
+          capturedMessages.push([...params.messages]);
+          return {
+            on: vi.fn(),
+            finalMessage: vi.fn(async () => ({
+              content: [{ type: 'text', text: 'Done' }],
+              stop_reason: 'end_turn',
+            })),
+          };
+        }),
+      },
+    } as unknown as Anthropic;
+
+    const longHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+    for (let i = 0; i < 400; i++) {
+      longHistory.push({ role: 'user', content: `Message ${i}: ${'x'.repeat(2000)}` });
+      longHistory.push({ role: 'assistant', content: `Reply ${i}: ${'y'.repeat(2000)}` });
+    }
+
+    const engine = new AgenticChatEngine(client);
+    const { stream } = createMockStream();
+
+    await engine.run({
+      userMessage: 'Latest question from user',
+      serverId: 'srv-1',
+      userId: 'usr-1',
+      sessionId: 'sess-1',
+      stream,
+      conversationHistory: longHistory,
+    });
+
+    // Verify the API was called
+    expect(capturedMessages).toHaveLength(1);
+    const sentMessages = capturedMessages[0];
+
+    // The last message should be the current user message
+    const lastMsg = sentMessages[sentMessages.length - 1];
+    expect(lastMsg.role).toBe('user');
+    expect(typeof lastMsg.content === 'string' && lastMsg.content).toContain('Latest question from user');
+
+    // Total token count should be within budget (150K)
+    const tokens = estimateMessagesTokens(sentMessages);
+    expect(tokens).toBeLessThanOrEqual(150_000);
+  });
+
+  it('should preserve the first user message (original context) after pre-trim', async () => {
+    const capturedMessages: Anthropic.MessageParam[][] = [];
+    const client = {
+      messages: {
+        stream: vi.fn((params: { messages: Anthropic.MessageParam[] }) => {
+          capturedMessages.push([...params.messages]);
+          return {
+            on: vi.fn(),
+            finalMessage: vi.fn(async () => ({
+              content: [{ type: 'text', text: 'Done' }],
+              stop_reason: 'end_turn',
+            })),
+          };
+        }),
+      },
+    } as unknown as Anthropic;
+
+    const longHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+    // First message is from user — this is part of conversationHistory
+    longHistory.push({ role: 'user', content: 'ORIGINAL_FIRST_MESSAGE' });
+    longHistory.push({ role: 'assistant', content: 'First reply' });
+    for (let i = 0; i < 400; i++) {
+      longHistory.push({ role: 'user', content: `Msg ${i}: ${'z'.repeat(2000)}` });
+      longHistory.push({ role: 'assistant', content: `Rep ${i}: ${'w'.repeat(2000)}` });
+    }
+
+    const engine = new AgenticChatEngine(client);
+    const { stream } = createMockStream();
+
+    await engine.run({
+      userMessage: 'New message',
+      serverId: 'srv-1',
+      userId: 'usr-1',
+      sessionId: 'sess-1',
+      stream,
+      conversationHistory: longHistory,
+    });
+
+    expect(capturedMessages).toHaveLength(1);
+    const sentMessages = capturedMessages[0];
+
+    // First message should still contain the original user message
+    const firstMsg = sentMessages[0];
+    expect(firstMsg.role).toBe('user');
+    expect(typeof firstMsg.content === 'string' && firstMsg.content).toContain('ORIGINAL_FIRST_MESSAGE');
+  });
+
+  it('should not trim when conversation history is within token budget', async () => {
+    const capturedMessages: Anthropic.MessageParam[][] = [];
+    const client = {
+      messages: {
+        stream: vi.fn((params: { messages: Anthropic.MessageParam[] }) => {
+          capturedMessages.push([...params.messages]);
+          return {
+            on: vi.fn(),
+            finalMessage: vi.fn(async () => ({
+              content: [{ type: 'text', text: 'Done' }],
+              stop_reason: 'end_turn',
+            })),
+          };
+        }),
+      },
+    } as unknown as Anthropic;
+
+    // Short history — well within budget
+    const shortHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [
+      { role: 'user', content: 'Hello' },
+      { role: 'assistant', content: 'Hi there' },
+      { role: 'user', content: 'How are you?' },
+      { role: 'assistant', content: 'Good' },
+    ];
+
+    const engine = new AgenticChatEngine(client);
+    const { stream } = createMockStream();
+
+    await engine.run({
+      userMessage: 'New question',
+      serverId: 'srv-1',
+      userId: 'usr-1',
+      sessionId: 'sess-1',
+      stream,
+      conversationHistory: shortHistory,
+    });
+
+    expect(capturedMessages).toHaveLength(1);
+    // All messages should be preserved (4 history + 1 current = 5)
+    expect(capturedMessages[0]).toHaveLength(5);
+  });
+
+  it('should handle CJK conversation history pre-trim correctly', async () => {
+    const capturedMessages: Anthropic.MessageParam[][] = [];
+    const client = {
+      messages: {
+        stream: vi.fn((params: { messages: Anthropic.MessageParam[] }) => {
+          capturedMessages.push([...params.messages]);
+          return {
+            on: vi.fn(),
+            finalMessage: vi.fn(async () => ({
+              content: [{ type: 'text', text: '完成' }],
+              stop_reason: 'end_turn',
+            })),
+          };
+        }),
+      },
+    } as unknown as Anthropic;
+
+    // CJK text uses more tokens per char (~1.5 chars/token vs 4 chars/token for ASCII)
+    const cjkHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+    for (let i = 0; i < 300; i++) {
+      cjkHistory.push({ role: 'user', content: `用户请求 ${i}: ${'服务器运维管理系统检查'.repeat(100)}` });
+      cjkHistory.push({ role: 'assistant', content: `系统回复 ${i}: ${'正在执行安全检查和性能优化'.repeat(100)}` });
+    }
+
+    const engine = new AgenticChatEngine(client);
+    const { stream } = createMockStream();
+
+    const result = await engine.run({
+      userMessage: '请检查最新状态',
+      serverId: 'srv-1',
+      userId: 'usr-1',
+      sessionId: 'sess-1',
+      stream,
+      conversationHistory: cjkHistory,
+    });
+
+    expect(result.success).toBe(true);
+
+    // Messages sent to API should be within token budget
+    const sentMessages = capturedMessages[0];
+    const tokens = estimateMessagesTokens(sentMessages);
+    expect(tokens).toBeLessThanOrEqual(150_000);
+
+    // Should have been trimmed (original was way over budget)
+    expect(sentMessages.length).toBeLessThan(601); // 300 pairs + 1 current
+  });
+});
