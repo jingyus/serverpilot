@@ -1,21 +1,17 @@
-### [pending] sse.ts 文件超 500 行且含 4 套重复 SSE 解析逻辑 — 需提取通用解析器
+### [pending] SessionSidebar 日期分组使用硬编码英文 — 与项目 i18n 不一致
 
-**ID**: chat-030
+**ID**: chat-031
 **优先级**: P2
-**模块路径**: packages/dashboard/src/api/sse.ts
-**发现的问题**: `sse.ts` 当前 700 行，超出 500 行软限制。文件中 4 个 SSE 连接函数（`createSSEConnection` 行 101-238、`createMetricsSSE` 行 269-382、`createServerStatusSSE` 行 402-509、`createSkillExecutionSSE` 行 531-635）各自独立实现了完全相同的 SSE 流解析逻辑：`decoder + buffer + split('\n') + lines.pop() + event:/data: 解析`。同样的 `cleanup` + `scheduleReconnect` + `connect` 三件套也重复了 3 次。任何解析 bug 的修复需要在 4 处同步更新。
+**模块路径**: packages/dashboard/src/pages/Chat.tsx
+**发现的问题**: `Chat.tsx:501-514` 的 `getSessionDateGroup()` 函数和 `Chat.tsx:547` 的 `groupOrder` 数组使用硬编码英文字符串 `'Today'`、`'Yesterday'`、`'This Week'`、`'Older'`。项目使用 `react-i18next` 做国际化，其他所有 UI 文本都通过 `t()` 函数获取。SessionSidebar 中这些分组标题直接在 `Chat.tsx:584` 渲染为英文文本，与中文 UI 的其他部分不一致。
 **改进方案**: 
-1. 提取 `parseSSEStream(reader, dispatch)` 通用解析函数处理 buffer/decode/line-split/event dispatch
-2. 提取 `createReconnectableSSE(connectFn, maxAttempts, onReconnecting)` 通用重连包装器
-3. 4 个 SSE 函数简化为：配置 URL + 事件类型映射 + 调用通用函数
-4. 主文件降至 300 行以内
+1. 将日期分组文本移入 i18n 翻译文件（`chat.sessionGroupToday`、`chat.sessionGroupYesterday` 等）
+2. `getSessionDateGroup` 返回 key（如 `'today'`），渲染时通过 `t(`chat.sessionGroup.${key}`)` 转换
+3. 或在 `SessionSidebar` 组件中使用 `useTranslation` 翻译分组标题
 **验收标准**: 
-- `sse.ts` 降至 500 行以内
-- SSE 解析逻辑只有一份
-- 重连逻辑只有一份
-- 所有现有 SSE 测试通过
-- 无功能回归
-**影响范围**: packages/dashboard/src/api/sse.ts
+- 日期分组标题根据当前语言显示（中文环境显示"今天"、"昨天"等）
+- 所有现有 Chat 页面测试通过
+**影响范围**: packages/dashboard/src/pages/Chat.tsx, 国际化翻译文件
 **创建时间**: (自动填充)
 **完成时间**: -
 

@@ -69,6 +69,8 @@ describe('useSkillsStore', () => {
       skills: [],
       available: [],
       executions: [],
+      selectedExecution: null,
+      isLoadingDetail: false,
       isLoading: false,
       error: null,
     });
@@ -403,6 +405,78 @@ describe('useSkillsStore', () => {
       await useSkillsStore.getState().fetchExecutions('sk-1');
 
       expect(useSkillsStore.getState().error).toBe('Failed to load executions');
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // fetchExecutionDetail
+  // --------------------------------------------------------------------------
+
+  describe('fetchExecutionDetail', () => {
+    it('should fetch execution detail and update selectedExecution', async () => {
+      const execution = makeExecution({ id: 'exec-42', skillId: 'sk-1' });
+      mockApiRequest.mockResolvedValueOnce({ execution });
+
+      await useSkillsStore.getState().fetchExecutionDetail('sk-1', 'exec-42');
+
+      const state = useSkillsStore.getState();
+      expect(state.selectedExecution).toEqual(execution);
+      expect(state.isLoadingDetail).toBe(false);
+      expect(state.error).toBeNull();
+      expect(mockApiRequest).toHaveBeenCalledWith('/skills/sk-1/executions/exec-42');
+    });
+
+    it('should set isLoadingDetail while fetching', async () => {
+      let resolvePromise: (v: unknown) => void;
+      const pendingPromise = new Promise((resolve) => {
+        resolvePromise = resolve;
+      });
+      mockApiRequest.mockReturnValueOnce(pendingPromise);
+
+      const fetchPromise = useSkillsStore.getState().fetchExecutionDetail('sk-1', 'exec-1');
+
+      expect(useSkillsStore.getState().isLoadingDetail).toBe(true);
+
+      resolvePromise!({ execution: makeExecution() });
+      await fetchPromise;
+
+      expect(useSkillsStore.getState().isLoadingDetail).toBe(false);
+    });
+
+    it('should handle error on fetchExecutionDetail', async () => {
+      const { ApiError } = await import('@/api/client');
+      mockApiRequest.mockRejectedValueOnce(
+        new ApiError(404, 'NOT_FOUND', 'Execution not found'),
+      );
+
+      await useSkillsStore.getState().fetchExecutionDetail('sk-1', 'exec-missing');
+
+      const state = useSkillsStore.getState();
+      expect(state.error).toBe('Execution not found');
+      expect(state.isLoadingDetail).toBe(false);
+      expect(state.selectedExecution).toBeNull();
+    });
+
+    it('should use fallback message for non-ApiError', async () => {
+      mockApiRequest.mockRejectedValueOnce(new Error('timeout'));
+
+      await useSkillsStore.getState().fetchExecutionDetail('sk-1', 'exec-1');
+
+      expect(useSkillsStore.getState().error).toBe('Failed to load execution detail');
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // clearSelectedExecution
+  // --------------------------------------------------------------------------
+
+  describe('clearSelectedExecution', () => {
+    it('should clear the selectedExecution state', () => {
+      useSkillsStore.setState({ selectedExecution: makeExecution() });
+
+      useSkillsStore.getState().clearSelectedExecution();
+
+      expect(useSkillsStore.getState().selectedExecution).toBeNull();
     });
   });
 
