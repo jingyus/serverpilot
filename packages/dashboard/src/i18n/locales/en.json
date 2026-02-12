@@ -476,7 +476,27 @@
   "skills": {
     "title": "Skills",
     "description": "Manage automation skills and plugins.",
-    "noSkills": "No skills installed yet."
+    "noSkills": "No skills installed yet.",
+    "noSkillsDesc": "Browse the available tab to discover and install skills.",
+    "noAvailable": "No skills available",
+    "noAvailableDesc": "Check back later for new skills.",
+    "installed": "Installed",
+    "available": "Available",
+    "install": "Install",
+    "alreadyInstalled": "Installed",
+    "uninstall": "Uninstall",
+    "uninstallSkill": "Uninstall Skill",
+    "uninstallConfirm": "Are you sure you want to uninstall \"{{name}}\"? This action cannot be undone.",
+    "enable": "Enable",
+    "pause": "Pause",
+    "configure": "Configure",
+    "execute": "Execute",
+    "history": "History",
+    "configureSkill": "Configure Skill",
+    "noInputs": "This skill has no configurable inputs.",
+    "saveConfig": "Save Configuration",
+    "executionHistory": "Execution History",
+    "noExecutions": "No executions yet."
   },
   "theme": {
     "toggle": "Toggle theme",

@@ -12,6 +12,8 @@ import {
   buildProfileContext,
   buildProfileCaveats,
   estimateTokens,
+  countCjkChars,
+  getCharsPerToken,
 } from './profile-context.js';
 import type { FullServerProfile } from '../core/profile/manager.js';
 
@@ -61,6 +63,67 @@ function makeProfile(overrides: Partial<FullServerProfile> = {}): FullServerProf
 }
 
 // ============================================================================
+// countCjkChars
+// ============================================================================
+
+describe('countCjkChars', () => {
+  it('should return 0 for pure ASCII text', () => {
+    expect(countCjkChars('Hello, world!')).toBe(0);
+  });
+
+  it('should count Chinese characters', () => {
+    expect(countCjkChars('你好世界')).toBe(4);
+  });
+
+  it('should count Japanese hiragana and katakana', () => {
+    expect(countCjkChars('こんにちは')).toBe(5);
+    expect(countCjkChars('カタカナ')).toBe(4);
+  });
+
+  it('should count Korean hangul', () => {
+    expect(countCjkChars('안녕하세요')).toBe(5);
+  });
+
+  it('should count CJK in mixed text', () => {
+    expect(countCjkChars('Hello 你好 World')).toBe(2);
+  });
+
+  it('should count fullwidth characters', () => {
+    // Fullwidth Latin letters are in FF00-FFEF range
+    expect(countCjkChars('ＡＢＣ')).toBe(3);
+  });
+
+  it('should return 0 for empty string', () => {
+    expect(countCjkChars('')).toBe(0);
+  });
+});
+
+// ============================================================================
+// getCharsPerToken
+// ============================================================================
+
+describe('getCharsPerToken', () => {
+  it('should return 4.0 for pure ASCII text', () => {
+    expect(getCharsPerToken('Hello, world!')).toBe(4);
+  });
+
+  it('should return 1.5 for pure CJK text', () => {
+    expect(getCharsPerToken('你好世界测试')).toBe(1.5);
+  });
+
+  it('should return weighted average for mixed text', () => {
+    // 'Hi你好' = 4 chars, 2 CJK, 2 ASCII
+    // ratio = 0.5 CJK → 1.5 * 0.5 + 4 * 0.5 = 2.75
+    const ratio = getCharsPerToken('Hi你好');
+    expect(ratio).toBeCloseTo(2.75, 5);
+  });
+
+  it('should return 4.0 for empty string', () => {
+    expect(getCharsPerToken('')).toBe(4);
+  });
+});
+
+// ============================================================================
 // estimateTokens
 // ============================================================================
 
@@ -69,14 +132,67 @@ describe('estimateTokens', () => {
     expect(estimateTokens('')).toBe(0);
   });
 
-  it('should estimate ~4 chars per token', () => {
+  it('should estimate ~4 chars per token for English text', () => {
     const text = 'Hello, world!'; // 13 chars → ceil(13/4) = 4
     expect(estimateTokens(text)).toBe(4);
   });
 
-  it('should handle longer text', () => {
-    const text = 'a'.repeat(400); // 400 chars → 100 tokens
+  it('should handle longer ASCII text', () => {
+    const text = 'a'.repeat(400); // 400 chars / 4 = 100 tokens
     expect(estimateTokens(text)).toBe(100);
+  });
+
+  it('should estimate ~1.5 chars per token for Chinese text', () => {
+    // '你好世界' = 4 chars / 1.5 = ceil(2.67) = 3
+    const result = estimateTokens('你好世界');
+    expect(result).toBeGreaterThanOrEqual(3);
+    expect(result).toBeLessThanOrEqual(5);
+  });
+
+  it('should return reasonable estimate for short Chinese', () => {
+    // '你好' = 2 chars / 1.5 = ceil(1.33) = 2
+    expect(estimateTokens('你好')).toBe(2);
+  });
+
+  it('should handle longer Chinese text', () => {
+    // 100 CJK chars / 1.5 = ceil(66.67) = 67
+    const text = '测'.repeat(100);
+    expect(estimateTokens(text)).toBe(67);
+  });
+
+  it('should handle mixed Chinese/English text', () => {
+    // 'Hello你好World' = 12 chars total, 2 CJK (2/12 CJK)
+    // ratio = 1.5*(2/12) + 4*(10/12) = 0.25 + 3.333 = 3.583
+    // tokens = ceil(12 / 3.583) = ceil(3.349) = 4
+    const mixed = 'Hello你好World';
+    const result = estimateTokens(mixed);
+    expect(result).toBe(4);
+  });
+
+  it('should handle Japanese text', () => {
+    // 'こんにちは' = 5 chars / 1.5 = ceil(3.33) = 4
+    expect(estimateTokens('こんにちは')).toBe(4);
+  });
+
+  it('should handle Korean text', () => {
+    // '안녕하세요' = 5 chars / 1.5 = ceil(3.33) = 4
+    expect(estimateTokens('안녕하세요')).toBe(4);
+  });
+
+  it('should not undercount Chinese text vs old behavior', () => {
+    // Old behavior: '你好世界' → ceil(4/4) = 1 (WRONG)
+    // New behavior: '你好世界' → ceil(4/1.5) = 3 (CORRECT)
+    expect(estimateTokens('你好世界')).toBeGreaterThan(1);
+  });
+
+  it('should estimate realistic token count for Chinese paragraphs', () => {
+    // 50 Chinese chars: should estimate ~33 tokens (50/1.5), not ~13 (50/4)
+    const paragraph = '这是一段用于测试的中文文本，包含了足够多的字符来验证估算的准确性。这段话大约有五十个中文字符左右。';
+    const result = estimateTokens(paragraph);
+    // Should be significantly higher than text.length / 4
+    expect(result).toBeGreaterThan(paragraph.length / 4);
+    // Should be in the ballpark of text.length / 1.5
+    expect(result).toBeLessThanOrEqual(Math.ceil(paragraph.length / 1.5) + 1);
   });
 });
 

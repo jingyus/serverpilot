@@ -1,18 +1,20 @@
-### [pending] SSE 事件 JSON 解析错误全部静默吞没 — 开发调试和生产排错极其困难
+### [pending] Token 估算对中文内容偏差 4 倍 — 可能导致上下文溢出或 AI 请求失败
 
-**ID**: chat-011
+**ID**: chat-012
 **优先级**: P1
-**模块路径**: packages/dashboard/src/stores/chat.ts
-**发现的问题**: `chat.ts` 中所有 SSE 回调（onAutoExecute:246, onStepStart:316, onStepComplete:382, onOutput:370, onConfirmRequired:550, onConfirmId:561, onToolCall:520, onToolResult:534 等）统一使用 `catch { /* ignore */ }` 吞没 JSON 解析错误。如果服务端发送格式变更或损坏的数据，前端完全无感知，用户看到的是莫名的 UI 停滞（按钮不出现、输出不更新）而不是错误信息。
+**模块路径**: packages/server/src/ai/profile-context.ts, packages/server/src/core/session/manager.ts
+**发现的问题**: `profile-context.ts:54` 使用 `CHARS_PER_TOKEN = 4` 作为全局 token 估算比率。这对英文文本合理（约 4 字符/token），但本项目 AI 系统提示要求用中文回复（agentic-chat.ts:672），中文文本实际约 1-2 字符/token。这意味着 `buildContextWithLimit(sessionId, 8000)` 实际可能放入 32000 真实 token；`buildHistoryWithLimit(sessionId, 40000)` 可能放入 160000 真实 token，远超模型限制。`estimateTokens()` 在 `manager.ts:260` 和 `manager.ts:322` 被用于上下文裁剪决策。
 **改进方案**: 
-1. 将 `catch { /* ignore */ }` 替换为 `catch (e) { console.warn('[SSE] Failed to parse event:', eventName, e); }`
-2. 生产环境保持不抛异常（保证 SSE 流继续），但记录到 console.warn
-3. 可选：添加 SSE 事件解析错误计数器，超过阈值时在 UI 显示 "部分数据解析失败" 提示
+1. 改进 `estimateTokens()` 函数，检测文本中的非 ASCII 字符比例
+2. 对于高 CJK 比例文本使用 `CHARS_PER_TOKEN = 1.5`；纯英文使用 `CHARS_PER_TOKEN = 4`；混合文本加权平均
+3. 或引入轻量级 tokenizer 库（如 `tiktoken` 的 WASM 版本）做精确计算
+4. 保持 `estimateTokens()` 的接口不变，仅改进内部实现
 **验收标准**: 
-- 浏览器控制台能看到 SSE 解析失败的 warn 日志，包含事件名和原始数据
-- SSE 流不因解析错误中断
-- 不影响正常流程的行为
-**影响范围**: packages/dashboard/src/stores/chat.ts
+- 中文对话 100 轮后不会因 token 溢出导致 AI 请求 400 错误
+- `estimateTokens('你好世界')` 返回值在 3-5 之间（而非当前的 1）
+- 英文估算精度不变
+- 新增测试覆盖中文、英文、混合文本场景
+**影响范围**: packages/server/src/ai/profile-context.ts, packages/server/src/core/session/manager.ts
 **创建时间**: (自动填充)
 **完成时间**: -
 

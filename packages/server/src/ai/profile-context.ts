@@ -51,19 +51,55 @@ export interface ProfileContextResult {
 const DEFAULT_MODEL_CONTEXT_WINDOW = 200_000;
 const DEFAULT_MAX_CONTEXT_PERCENTAGE = 0.20;
 const DEFAULT_MAX_RECENT_OPERATIONS = 5;
-const CHARS_PER_TOKEN = 4;
+
+/**
+ * Chars-per-token ratio for ASCII/Latin text (~4 chars = 1 token).
+ * CJK characters average ~1.5 chars per token (often 1 char = 1 token).
+ */
+const CHARS_PER_TOKEN_ASCII = 4;
+const CHARS_PER_TOKEN_CJK = 1.5;
+
+// CJK Unified Ideographs, Hiragana, Katakana, Hangul, fullwidth forms, CJK symbols
+const CJK_REGEX = /[\u2E80-\u9FFF\uAC00-\uD7AF\uF900-\uFAFF\uFF00-\uFFEF]/g;
 
 // ============================================================================
 // Token estimation
 // ============================================================================
 
 /**
+ * Count the number of CJK characters in a text string.
+ */
+export function countCjkChars(text: string): number {
+  const matches = text.match(CJK_REGEX);
+  return matches ? matches.length : 0;
+}
+
+/**
+ * Compute the weighted chars-per-token ratio based on CJK character proportion.
+ * Pure ASCII text → 4.0; pure CJK text → 1.5; mixed → weighted average.
+ */
+export function getCharsPerToken(text: string): number {
+  if (!text) return CHARS_PER_TOKEN_ASCII;
+  const cjkCount = countCjkChars(text);
+  if (cjkCount === 0) return CHARS_PER_TOKEN_ASCII;
+  const asciiCount = text.length - cjkCount;
+  if (asciiCount === 0) return CHARS_PER_TOKEN_CJK;
+  // Weighted average based on character proportions
+  const cjkRatio = cjkCount / text.length;
+  return CHARS_PER_TOKEN_CJK * cjkRatio + CHARS_PER_TOKEN_ASCII * (1 - cjkRatio);
+}
+
+/**
  * Estimate token count for a text string.
- * Uses ~4 chars/token heuristic for English text.
+ *
+ * Uses language-aware heuristics:
+ * - English/ASCII text: ~4 chars per token
+ * - CJK text (Chinese/Japanese/Korean): ~1.5 chars per token
+ * - Mixed text: weighted average based on CJK proportion
  */
 export function estimateTokens(text: string): number {
   if (!text) return 0;
-  return Math.ceil(text.length / CHARS_PER_TOKEN);
+  return Math.ceil(text.length / getCharsPerToken(text));
 }
 
 // ============================================================================
@@ -214,8 +250,7 @@ export function buildProfileContext(
   ];
 
   const header = `# Server Profile: ${serverName}`;
-  const maxChars = maxTokens * CHARS_PER_TOKEN;
-  let currentLength = header.length + 1; // +1 for trailing newline
+  let usedTokens = estimateTokens(header) + 1; // +1 for trailing newline token
   const includedSections: string[] = ['header'];
   const omittedSections: string[] = [];
   const parts: string[] = [header];
@@ -225,20 +260,27 @@ export function buildProfileContext(
     const content = section.build();
     if (!content) continue;
 
-    const sectionLength = content.length + 2; // +2 for \n\n separator
-    if (currentLength + sectionLength <= maxChars) {
+    const sectionTokens = estimateTokens(content) + 1; // +1 for \n\n separator
+    if (usedTokens + sectionTokens <= maxTokens) {
       parts.push(content);
-      currentLength += sectionLength;
+      usedTokens += sectionTokens;
       includedSections.push(section.name);
     } else {
       // Try to include a truncated version for important sections
       if (!section.optional && content.length > 0) {
-        const availableChars = maxChars - currentLength - 2;
-        if (availableChars > 50) {
-          const truncated = content.slice(0, availableChars - 30) + '\n(...truncated)';
-          parts.push(truncated);
-          currentLength += truncated.length + 2;
-          includedSections.push(section.name + ' (truncated)');
+        const availableTokens = maxTokens - usedTokens - 1;
+        if (availableTokens > 15) {
+          // Estimate how many chars we can keep based on the section's own ratio
+          const sectionRatio = getCharsPerToken(content);
+          const availableChars = Math.floor(availableTokens * sectionRatio);
+          if (availableChars > 50) {
+            const truncated = content.slice(0, availableChars - 30) + '\n(...truncated)';
+            parts.push(truncated);
+            usedTokens += estimateTokens(truncated) + 1;
+            includedSections.push(section.name + ' (truncated)');
+          } else {
+            omittedSections.push(section.name);
+          }
         } else {
           omittedSections.push(section.name);
         }
