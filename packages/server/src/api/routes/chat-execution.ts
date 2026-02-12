@@ -276,11 +276,21 @@ export async function executePlanSteps(opts: ExecutePlanStepsOptions): Promise<E
   activePlanExecutions.set(planId, '');
 
   // Detect client disconnect: set flag when SSE stream is aborted
-  let streamAborted = false;
+  let streamAborted = stream.aborted ?? false;
   stream.onAbort(() => {
     streamAborted = true;
     logger.info({ operation: 'plan_execute', serverId, planId }, 'Client disconnected, aborting plan execution');
   });
+
+  /** Write SSE event safely — catches errors and marks stream as aborted. */
+  async function safeWriteSSE(msg: { event?: string; data: string }): Promise<void> {
+    if (streamAborted) return;
+    try {
+      await stream.writeSSE(msg);
+    } catch {
+      streamAborted = true;
+    }
+  }
 
   // Track current step for real-time output routing
   let currentStepId: string | null = null;
@@ -334,9 +344,9 @@ export async function executePlanSteps(opts: ExecutePlanStepsOptions): Promise<E
         { operation: 'plan_execute', serverId, stepId: step.id, reason: validation.classification.reason },
         `Step blocked: ${step.command}`,
       );
-      await stream.writeSSE({ event: 'step_start', data: JSON.stringify({ stepId: step.id, command: step.command, description: step.description }) });
-      await stream.writeSSE({ event: 'output', data: JSON.stringify({ stepId: step.id, content: `[BLOCKED] ${validation.classification.reason}\n` }) });
-      await stream.writeSSE({ event: 'step_complete', data: JSON.stringify({ stepId: step.id, exitCode: -1, duration: Date.now() - startTime, success: false, blocked: true }) });
+      await safeWriteSSE({ event: 'step_start', data: JSON.stringify({ stepId: step.id, command: step.command, description: step.description }) });
+      await safeWriteSSE({ event: 'output', data: JSON.stringify({ stepId: step.id, content: `[BLOCKED] ${validation.classification.reason}\n` }) });
+      await safeWriteSSE({ event: 'step_complete', data: JSON.stringify({ stepId: step.id, exitCode: -1, duration: Date.now() - startTime, success: false, blocked: true }) });
       allSucceeded = false;
       firstFailedStep = step.id;
       break;
@@ -344,7 +354,7 @@ export async function executePlanSteps(opts: ExecutePlanStepsOptions): Promise<E
 
     // Step-confirm mode: pause for user decision on non-GREEN steps
     if (!allowAll && mode === 'step_confirm' && validation.action !== 'allowed') {
-      await stream.writeSSE({
+      await safeWriteSSE({
         event: 'step_confirm',
         data: JSON.stringify({
           stepId: step.id,
@@ -369,8 +379,8 @@ export async function executePlanSteps(opts: ExecutePlanStepsOptions): Promise<E
 
     currentStepId = step.id;
     hasStreamedOutput = false;
-    await stream.writeSSE({ event: 'step_start', data: JSON.stringify({ stepId: step.id, command: step.command, description: step.description }) });
-    await stream.writeSSE({ event: 'output', data: JSON.stringify({ stepId: step.id, content: `$ ${step.command}\n` }) });
+    await safeWriteSSE({ event: 'step_start', data: JSON.stringify({ stepId: step.id, command: step.command, description: step.description }) });
+    await safeWriteSSE({ event: 'output', data: JSON.stringify({ stepId: step.id, content: `$ ${step.command}\n` }) });
 
     try {
       const validatedRiskLevel = validation.classification.riskLevel as 'green' | 'yellow' | 'red' | 'critical';
@@ -388,15 +398,15 @@ export async function executePlanSteps(opts: ExecutePlanStepsOptions): Promise<E
 
       if (!hasStreamedOutput) {
         if (result.stdout) {
-          await stream.writeSSE({ event: 'output', data: JSON.stringify({ stepId: step.id, content: result.stdout }) });
+          await safeWriteSSE({ event: 'output', data: JSON.stringify({ stepId: step.id, content: result.stdout }) });
         }
         if (result.stderr) {
-          await stream.writeSSE({ event: 'output', data: JSON.stringify({ stepId: step.id, content: result.stderr }) });
+          await safeWriteSSE({ event: 'output', data: JSON.stringify({ stepId: step.id, content: result.stderr }) });
         }
       }
 
       const duration = Date.now() - startTime;
-      await stream.writeSSE({ event: 'step_complete', data: JSON.stringify({ stepId: step.id, exitCode: result.exitCode, duration, success: result.success }) });
+      await safeWriteSSE({ event: 'step_complete', data: JSON.stringify({ stepId: step.id, exitCode: result.exitCode, duration, success: result.success }) });
 
       await auditLogger.updateExecutionResult(auditEntry.id, result.success ? 'success' : 'failed', result.operationId);
 
@@ -423,7 +433,7 @@ export async function executePlanSteps(opts: ExecutePlanStepsOptions): Promise<E
             stdout: result.stdout, stderr: result.stderr,
             serverId, serverProfile, previousSteps: completedSteps.slice(0, -1),
           });
-          await stream.writeSSE({ event: 'diagnosis', data: JSON.stringify(diagnosis) });
+          await safeWriteSSE({ event: 'diagnosis', data: JSON.stringify(diagnosis) });
           if (diagnosis.success) {
             await sessionMgr.addMessage(sessionId, userId, 'system',
               `Error diagnosis for "${step.command}": ${diagnosis.rootCause}` +
@@ -438,8 +448,8 @@ export async function executePlanSteps(opts: ExecutePlanStepsOptions): Promise<E
       const errorMsg = err instanceof Error ? err.message : 'Unknown error';
       logger.error({ operation: 'plan_execute', serverId, planId, stepId: step.id, error: errorMsg }, `Step execution error: ${step.description}`);
 
-      await stream.writeSSE({ event: 'output', data: JSON.stringify({ stepId: step.id, content: `[ERROR] ${errorMsg}\n` }) });
-      await stream.writeSSE({ event: 'step_complete', data: JSON.stringify({ stepId: step.id, exitCode: -1, duration: Date.now() - startTime, success: false }) });
+      await safeWriteSSE({ event: 'output', data: JSON.stringify({ stepId: step.id, content: `[ERROR] ${errorMsg}\n` }) });
+      await safeWriteSSE({ event: 'step_complete', data: JSON.stringify({ stepId: step.id, exitCode: -1, duration: Date.now() - startTime, success: false }) });
       await auditLogger.updateExecutionResult(auditEntry.id, 'failed');
 
       try {
@@ -447,7 +457,7 @@ export async function executePlanSteps(opts: ExecutePlanStepsOptions): Promise<E
           stepId: step.id, command: step.command, exitCode: -1, stdout: '', stderr: errorMsg,
           serverId, serverProfile, previousSteps: completedSteps,
         });
-        await stream.writeSSE({ event: 'diagnosis', data: JSON.stringify(diagnosis) });
+        await safeWriteSSE({ event: 'diagnosis', data: JSON.stringify(diagnosis) });
       } catch (diagErr) {
         logger.error({ operation: 'auto_diagnosis', serverId, stepId: step.id, error: String(diagErr) }, 'Auto-diagnosis failed');
       }
@@ -484,7 +494,7 @@ export async function executePlanSteps(opts: ExecutePlanStepsOptions): Promise<E
           '',
           {
             onToken: async (token: string) => {
-              await stream.writeSSE({
+              await safeWriteSSE({
                 event: 'message',
                 data: JSON.stringify({ content: token }),
               });

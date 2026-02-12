@@ -500,6 +500,7 @@ export function createTables(db?: DrizzleDB): void {
       skill_path TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'installed',
       config TEXT,
+      manifest_inputs TEXT,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );

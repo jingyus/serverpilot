@@ -34,6 +34,7 @@ export interface InstalledSkill {
   skillPath: string;
   status: SkillStatus;
   config: Record<string, unknown> | null;
+  manifestInputs: SkillInput[] | null;
   createdAt: string;
   updatedAt: string;
 }

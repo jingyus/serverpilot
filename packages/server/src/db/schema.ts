@@ -910,6 +910,7 @@ export const installedSkills = sqliteTable(
       .default('installed')
       .notNull(),
     config: text('config', { mode: 'json' }).$type<Record<string, unknown> | null>(),
+    manifestInputs: text('manifest_inputs', { mode: 'json' }).$type<unknown[] | null>(),
     createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
     updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
   },

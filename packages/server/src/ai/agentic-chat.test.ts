@@ -1,17 +1,50 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
 /**
- * Tests for agentic chat message trimming and token estimation.
+ * Tests for agentic chat message trimming, token estimation, and stream abort.
  *
  * Validates that:
  * 1. Token estimation is CJK-aware (not just ASCII chars/4)
  * 2. Message trimming recalculates totals (no cumulative drift)
  * 3. Chinese conversations are trimmed correctly under token budget
+ * 4. Agentic loop aborts when SSE stream is closed by client
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type Anthropic from '@anthropic-ai/sdk';
-import { trimMessagesIfNeeded, estimateMessagesTokens } from './agentic-chat.js';
+import type { SSEStreamingApi } from 'hono/streaming';
+
+// Module mocks for AgenticChatEngine.run() — must be before import
+vi.mock('../core/agent/agent-connector.js', () => ({
+  findConnectedAgent: vi.fn(() => 'agent-1'),
+}));
+vi.mock('../core/task/executor.js', () => ({
+  getTaskExecutor: vi.fn(() => ({
+    executeCommand: vi.fn(async () => ({
+      stdout: 'ok\n', stderr: '', exitCode: 0, success: true,
+      operationId: 'op-1', duration: 100,
+    })),
+    addProgressListener: vi.fn(),
+    removeProgressListener: vi.fn(),
+  })),
+}));
+vi.mock('../core/security/audit-logger.js', () => ({
+  getAuditLogger: vi.fn(() => ({
+    log: vi.fn(async () => ({ id: 'audit-1' })),
+    updateExecutionResult: vi.fn(async () => true),
+  })),
+}));
+vi.mock('../core/security/command-validator.js', () => ({
+  validateCommand: vi.fn(() => ({
+    action: 'allowed',
+    classification: { riskLevel: 'green', reason: 'safe' },
+  })),
+}));
+vi.mock('../knowledge/rag-pipeline.js', () => ({
+  getRagPipeline: vi.fn(() => null),
+}));
+
+import { trimMessagesIfNeeded, estimateMessagesTokens, AgenticChatEngine } from './agentic-chat.js';
 
 function makeMessage(role: 'user' | 'assistant', content: string): Anthropic.MessageParam {
   return { role, content };
@@ -350,5 +383,197 @@ describe('trimMessagesIfNeeded — recalculation accuracy', () => {
     const freshEstimate = estimateMessagesTokens(messages);
     expect(freshEstimate).toBeLessThanOrEqual(budget);
     expect(messages[0].content).toBe('帮我检查 Nginx 配置');
+  });
+});
+
+// ============================================================================
+// AgenticChatEngine — stream abort behavior
+// ============================================================================
+
+/**
+ * Create a mock SSEStreamingApi with abort trigger support.
+ * If `simulateAbort()` is called before `onAbort()`, the callback fires
+ * immediately on registration.
+ */
+function createMockStream() {
+  let abortCallback: (() => void) | null = null;
+  let preAborted = false;
+  const sseEvents: Array<{ event: string; data: Record<string, unknown> }> = [];
+
+  const stream = {
+    writeSSE: vi.fn(async (msg: { event?: string; data: string }) => {
+      sseEvents.push({ event: msg.event ?? 'message', data: JSON.parse(msg.data) });
+    }),
+    onAbort: vi.fn((cb: () => void) => {
+      abortCallback = cb;
+      if (preAborted) cb();
+    }),
+    aborted: false,
+  } as unknown as SSEStreamingApi;
+
+  return {
+    stream,
+    sseEvents,
+    simulateAbort: () => {
+      preAborted = true;
+      if (abortCallback) abortCallback();
+    },
+  };
+}
+
+function createMockAnthropicClient(turnCount: number) {
+  let callIndex = 0;
+
+  const client = {
+    messages: {
+      stream: vi.fn(() => {
+        callIndex++;
+        const isLastTurn = callIndex >= turnCount;
+
+        const listeners: Record<string, ((...args: unknown[]) => void)[]> = {};
+
+        return {
+          on: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
+            if (!listeners[event]) listeners[event] = [];
+            listeners[event].push(handler);
+          }),
+          finalMessage: vi.fn(async () => {
+            // Emit a text delta
+            for (const handler of (listeners['text'] ?? [])) {
+              handler(`Response turn ${callIndex}`);
+            }
+
+            if (isLastTurn) {
+              return {
+                content: [{ type: 'text', text: `Response turn ${callIndex}` }],
+                stop_reason: 'end_turn',
+              };
+            }
+
+            return {
+              content: [
+                { type: 'text', text: `Thinking turn ${callIndex}...` },
+                { type: 'tool_use', id: `tool-${callIndex}`, name: 'execute_command', input: { command: 'echo test', description: 'test' } },
+              ],
+              stop_reason: 'tool_use',
+            };
+          }),
+        };
+      }),
+    },
+  } as unknown as Anthropic;
+
+  return { client, getCallCount: () => callIndex };
+}
+
+describe('AgenticChatEngine — stream abort', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should register an onAbort handler on the stream', async () => {
+    const { client } = createMockAnthropicClient(1);
+    const engine = new AgenticChatEngine(client);
+    const { stream } = createMockStream();
+
+    await engine.run({
+      userMessage: 'hello',
+      serverId: 'srv-1',
+      userId: 'usr-1',
+      sessionId: 'sess-1',
+      stream,
+    });
+
+    expect(stream.onAbort).toHaveBeenCalledOnce();
+  });
+
+  it('should stop the agentic loop when stream is aborted before AI call', async () => {
+    const { client, getCallCount } = createMockAnthropicClient(5);
+    const engine = new AgenticChatEngine(client);
+    const { stream, simulateAbort } = createMockStream();
+
+    // Abort before engine.run — onAbort callback fires immediately on register
+    simulateAbort();
+
+    const result = await engine.run({
+      userMessage: 'install nginx',
+      serverId: 'srv-1',
+      userId: 'usr-1',
+      sessionId: 'sess-1',
+      stream,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.turns).toBe(1); // Entered turn 1 then detected abort
+    expect(getCallCount()).toBe(0); // No AI calls made
+  });
+
+  it('should stop the loop after one turn when stream is aborted during AI call', async () => {
+    const { stream, simulateAbort, sseEvents } = createMockStream();
+
+    // Create a client where the first AI call triggers abort during finalMessage
+    let apiCallCount = 0;
+    const client = {
+      messages: {
+        stream: vi.fn(() => {
+          apiCallCount++;
+          const currentCall = apiCallCount;
+          return {
+            on: vi.fn(),
+            finalMessage: vi.fn(async () => {
+              if (currentCall === 1) {
+                // Abort during first AI response
+                simulateAbort();
+              }
+              return {
+                content: [
+                  { type: 'text', text: `turn ${currentCall}` },
+                  { type: 'tool_use', id: `tool-${currentCall}`, name: 'execute_command', input: { command: 'echo test', description: 'test' } },
+                ],
+                stop_reason: 'tool_use',
+              };
+            }),
+          };
+        }),
+      },
+    } as unknown as Anthropic;
+
+    const engine = new AgenticChatEngine(client);
+    const result = await engine.run({
+      userMessage: 'install nginx',
+      serverId: 'srv-1',
+      userId: 'usr-1',
+      sessionId: 'sess-1',
+      stream,
+    });
+
+    expect(result.success).toBe(false);
+    // Only 1 API call — abort detected before tool execution and before turn 2
+    expect(apiCallCount).toBe(1);
+
+    // Should NOT have a 'complete' event (stream was aborted)
+    const completeEvent = sseEvents.find((e) => e.event === 'complete');
+    expect(completeEvent).toBeUndefined();
+  });
+
+  it('should not write complete SSE event when stream is aborted before run', async () => {
+    const { client } = createMockAnthropicClient(1);
+    const engine = new AgenticChatEngine(client);
+    const { stream, simulateAbort, sseEvents } = createMockStream();
+
+    // Abort before run — callback fires on onAbort registration
+    simulateAbort();
+
+    await engine.run({
+      userMessage: 'hello',
+      serverId: 'srv-1',
+      userId: 'usr-1',
+      sessionId: 'sess-1',
+      stream,
+    });
+
+    // No complete event should have been sent
+    const completeEvents = sseEvents.filter((e) => e.event === 'complete');
+    expect(completeEvents).toHaveLength(0);
   });
 });

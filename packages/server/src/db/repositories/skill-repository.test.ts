@@ -28,10 +28,16 @@ function seedUser(db: DrizzleDB, id: string, email: string): void {
   );
 }
 
+const SAMPLE_INPUTS = [
+  { name: 'domain', type: 'string', required: true, description: 'Target domain' },
+  { name: 'port', type: 'number', required: false, default: 443, description: 'Port number' },
+];
+
 function makeInstallInput(overrides: {
   userId?: string;
   name?: string;
   source?: SkillSource;
+  manifestInputs?: unknown[] | null;
 } = {}) {
   return {
     userId: overrides.userId ?? 'user-1',
@@ -39,6 +45,7 @@ function makeInstallInput(overrides: {
     version: '1.0.0',
     source: (overrides.source ?? 'local') as SkillSource,
     skillPath: '/skills/test-skill',
+    manifestInputs: overrides.manifestInputs,
   };
 }
 
@@ -104,6 +111,112 @@ describe('DrizzleSkillRepository.findAllEnabled', () => {
     expect(result).toHaveLength(2);
     expect(result.map((s) => s.userId)).toContain('user-1');
     expect(result.map((s) => s.userId)).toContain('user-2');
+  });
+});
+
+// ============================================================================
+// DrizzleSkillRepository — manifestInputs persistence
+// ============================================================================
+
+describe('DrizzleSkillRepository.manifestInputs', () => {
+  let db: DrizzleDB;
+  let repo: DrizzleSkillRepository;
+
+  beforeEach(() => {
+    db = initDatabase(':memory:');
+    createTables();
+    repo = new DrizzleSkillRepository(db);
+    seedUser(db, 'user-1', 'a@test.com');
+  });
+
+  afterEach(() => {
+    closeDatabase();
+  });
+
+  it('should persist manifestInputs on install', async () => {
+    const skill = await repo.install(
+      makeInstallInput({ name: 'with-inputs', manifestInputs: SAMPLE_INPUTS }),
+    );
+    expect(skill.manifestInputs).toEqual(SAMPLE_INPUTS);
+  });
+
+  it('should return null manifestInputs when not provided', async () => {
+    const skill = await repo.install(makeInstallInput({ name: 'no-inputs' }));
+    expect(skill.manifestInputs).toBeNull();
+  });
+
+  it('should persist manifestInputs through findById', async () => {
+    const installed = await repo.install(
+      makeInstallInput({ name: 'find-by-id', manifestInputs: SAMPLE_INPUTS }),
+    );
+    const found = await repo.findById(installed.id);
+    expect(found).not.toBeNull();
+    expect(found!.manifestInputs).toEqual(SAMPLE_INPUTS);
+  });
+
+  it('should persist manifestInputs through findAll', async () => {
+    await repo.install(
+      makeInstallInput({ name: 'find-all', manifestInputs: SAMPLE_INPUTS }),
+    );
+    const all = await repo.findAll('user-1');
+    expect(all).toHaveLength(1);
+    expect(all[0].manifestInputs).toEqual(SAMPLE_INPUTS);
+  });
+
+  it('should persist manifestInputs through findByName', async () => {
+    await repo.install(
+      makeInstallInput({ name: 'by-name', manifestInputs: SAMPLE_INPUTS }),
+    );
+    const found = await repo.findByName('user-1', 'by-name');
+    expect(found).not.toBeNull();
+    expect(found!.manifestInputs).toEqual(SAMPLE_INPUTS);
+  });
+
+  it('should persist empty array as manifestInputs', async () => {
+    const skill = await repo.install(
+      makeInstallInput({ name: 'empty-inputs', manifestInputs: [] }),
+    );
+    expect(skill.manifestInputs).toEqual([]);
+  });
+});
+
+// ============================================================================
+// InMemorySkillRepository — manifestInputs persistence
+// ============================================================================
+
+describe('InMemorySkillRepository.manifestInputs', () => {
+  let repo: InMemorySkillRepository;
+
+  beforeEach(() => {
+    repo = new InMemorySkillRepository();
+  });
+
+  it('should persist manifestInputs on install', async () => {
+    const skill = await repo.install(
+      makeInstallInput({ name: 'with-inputs', manifestInputs: SAMPLE_INPUTS }),
+    );
+    expect(skill.manifestInputs).toEqual(SAMPLE_INPUTS);
+  });
+
+  it('should return null manifestInputs when not provided', async () => {
+    const skill = await repo.install(makeInstallInput({ name: 'no-inputs' }));
+    expect(skill.manifestInputs).toBeNull();
+  });
+
+  it('should persist manifestInputs through findById', async () => {
+    const installed = await repo.install(
+      makeInstallInput({ name: 'find-by-id', manifestInputs: SAMPLE_INPUTS }),
+    );
+    const found = await repo.findById(installed.id);
+    expect(found).not.toBeNull();
+    expect(found!.manifestInputs).toEqual(SAMPLE_INPUTS);
+  });
+
+  it('should persist empty array as manifestInputs', async () => {
+    const skill = await repo.install(
+      makeInstallInput({ name: 'empty-inputs', manifestInputs: [] }),
+    );
+    expect(skill.manifestInputs).toEqual([]);
   });
 });
 

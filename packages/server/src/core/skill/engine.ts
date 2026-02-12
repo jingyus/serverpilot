@@ -29,7 +29,7 @@ import {
   getSkillRepository,
   type SkillRepository,
 } from '../../db/repositories/skill-repository.js';
-import type { SkillManifest } from '@aiinstaller/shared';
+import type { SkillManifest, SkillInput } from '@aiinstaller/shared';
 import type { SkillStatus } from '../../db/schema.js';
 import type {
   InstalledSkill,
@@ -150,6 +150,7 @@ export class SkillEngine {
       source,
       skillPath: resolvedDir,
       config: null,
+      manifestInputs: manifest.inputs ?? null,
     });
 
     logger.info(
@@ -434,14 +435,17 @@ export class SkillEngine {
   /**
    * List installed skills enriched with manifest input definitions.
    *
-   * For each skill, loads the skill.yaml from disk and extracts `inputs[]`.
-   * If a manifest cannot be loaded (e.g. skill directory was moved), the
-   * skill is still returned with an empty inputs array.
+   * Uses persisted `manifestInputs` from DB when available.
+   * Falls back to loading skill.yaml from disk if DB value is null
+   * (e.g. skills installed before this feature was added).
    */
   async listInstalledWithInputs(userId: string): Promise<InstalledSkillWithInputs[]> {
     const skills = await this.repo.findAll(userId);
     return Promise.all(
       skills.map(async (skill): Promise<InstalledSkillWithInputs> => {
+        if (skill.manifestInputs) {
+          return { ...skill, inputs: skill.manifestInputs as SkillInput[] };
+        }
         try {
           const manifest = await loadSkillFromDir(skill.skillPath);
           return { ...skill, inputs: manifest.inputs ?? [] };
@@ -460,10 +464,16 @@ export class SkillEngine {
 
   /**
    * Get a single installed skill enriched with manifest input definitions.
+   *
+   * Uses persisted `manifestInputs` from DB when available,
+   * falls back to loading from disk.
    */
   async getInstalledWithInputs(skillId: string): Promise<InstalledSkillWithInputs | null> {
     const skill = await this.repo.findById(skillId);
     if (!skill) return null;
+    if (skill.manifestInputs) {
+      return { ...skill, inputs: skill.manifestInputs as SkillInput[] };
+    }
     try {
       const manifest = await loadSkillFromDir(skill.skillPath);
       return { ...skill, inputs: manifest.inputs ?? [] };

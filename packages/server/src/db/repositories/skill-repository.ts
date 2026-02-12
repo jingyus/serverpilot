@@ -39,6 +39,7 @@ export interface InstallSkillInput {
   source: SkillSource;
   skillPath: string;
   config?: Record<string, unknown> | null;
+  manifestInputs?: unknown[] | null;
 }
 
 export interface CreateExecutionInput {
@@ -136,6 +137,7 @@ export class DrizzleSkillRepository implements SkillRepository {
       skillPath: input.skillPath,
       status: 'installed',
       config: input.config ?? null,
+      manifestInputs: input.manifestInputs ?? null,
       createdAt: now,
       updatedAt: now,
     }).run();
@@ -240,6 +242,7 @@ export class DrizzleSkillRepository implements SkillRepository {
       skillPath: row.skillPath,
       status: row.status as SkillStatus,
       config: row.config as Record<string, unknown> | null,
+      manifestInputs: (row.manifestInputs as unknown[] | null) ?? null,
       createdAt: row.createdAt!.toISOString(),
       updatedAt: row.updatedAt!.toISOString(),
     };
@@ -303,6 +306,7 @@ export class InMemorySkillRepository implements SkillRepository {
       skillPath: input.skillPath,
       status: 'installed',
       config: input.config ?? null,
+      manifestInputs: (input.manifestInputs as InstalledSkill['manifestInputs']) ?? null,
       createdAt: now,
       updatedAt: now,
     };
