@@ -1,20 +1,19 @@
-### [pending] 双 pendingConfirmations Map 导致 agentic 确认可能路由到错误系统
+### [pending] activePlanExecutions 初始值为空字符串 — 取消执行可能失败
 
-**ID**: chat-023
-**优先级**: P0
-**模块路径**: packages/server/src/api/routes/chat.ts, packages/server/src/ai/agentic-chat.ts
-**发现的问题**: 存在两个独立的 `pendingConfirmations` Map：`chat.ts:50-53` 和 `agentic-chat.ts:165-168`。`chat.ts` 中的 Map 由 `chat.ts:137-147` 的 `onConfirmRequired` 回调写入，由 `chat.ts:332-350` 的 `/confirm` 端点消费。而 `agentic-chat.ts:165-168` 的 Map 通过 `resolveConfirmation()` 导出但仅在测试中使用。前端统一调用 `/confirm` 端点（`chat-execution.ts:190-197`），该端点只查 `chat.ts` 的 Map。如果有代码直接调用 `agentic-chat.ts` 的 `resolveConfirmation()`，会因 confirmId 不在该 Map 中而返回 false。两套系统增加维护负担和 bug 风险。
+**ID**: chat-024
+**优先级**: P1
+**模块路径**: packages/server/src/api/routes/chat-execution.ts
+**发现的问题**: `chat-execution.ts:259` 将 `activePlanExecutions.set(planId, '')` 设为空字符串，表示执行已开始但 executionId 尚未就绪。然后在 `chat-execution.ts:268`（progress listener 回调中）才更新为真实 executionId。如果用户在这两行之间发起取消请求，`chat.ts:412` 的 `getActiveExecution(body.planId)` 返回空字符串 `''`，传入 `executor.cancelExecution('')` 导致取消失败（因为没有 executionId 为空的执行）。虽然 `removeActiveExecution` 仍会清除 Map 条目使 step 循环在 `chat-execution.ts:277` break，但 `chat.ts:422` 的 `cancelled` 变量为 false，返回 `{ success: false }` 给前端——用户看到"取消失败"但实际已停止。
 **改进方案**: 
-1. 删除 `agentic-chat.ts:165-168` 中的 `pendingConfirmations` Map 和 `resolveConfirmation()` 函数
-2. Agentic engine 的确认完全通过 `opts.onConfirmRequired` 回调（定义在 `chat.ts:137-147`）与 `chat.ts` 的 Map 交互
-3. 确保只有一个 `pendingConfirmations` 管理点（`chat.ts`），避免状态分裂
-4. 更新相关测试，移除对 `resolveConfirmation` 的直接调用
+1. 在 `executePlanSteps` 入口处生成 executionId（`randomUUID()`），直接 `activePlanExecutions.set(planId, executionId)` 
+2. 将 executionId 传入 progress listener，listener 只用于路由 output
+3. 或在 `getActiveExecution` 返回空字符串时返回 undefined（视为无活跃执行）
+4. 在取消端点中，如果 `executionId` 为空则至少返回 `success: true`（因为 step 循环会 break）
 **验收标准**: 
-- 项目中只有一个 `pendingConfirmations` Map（在 chat.ts 中）
-- 所有确认流程通过 `/confirm` 端点正确路由
-- agentic-chat.ts 不再导出 `resolveConfirmation`
-- 现有确认流程测试通过
-**影响范围**: packages/server/src/ai/agentic-chat.ts, packages/server/src/api/routes/chat.ts
+- 用户在执行刚开始时点击取消，前端收到 `{ success: true }`
+- `activePlanExecutions` 不再出现空字符串值
+- 新增测试：执行开始后立即取消的场景
+**影响范围**: packages/server/src/api/routes/chat-execution.ts, packages/server/src/api/routes/chat.ts
 **创建时间**: (自动填充)
 **完成时间**: -
 
