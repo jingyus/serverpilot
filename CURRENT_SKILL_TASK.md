@@ -1,35 +1,29 @@
-### [pending] Skill 执行历史增强 — 执行详情页 + 重新执行
+### [pending] runner-tools.test.ts — 工具定义构建 & 安全工具函数单元测试
 
-**ID**: skill-022
-**优先级**: P3
-**模块路径**: packages/dashboard/src/components/skill/
-**当前状态**: 功能缺失 — `ExecutionHistory.tsx` 只显示执行列表 (时间、状态、步数、耗时)，无法展开查看单条执行的详细结果 (AI 输出、工具调用记录、错误信息)。API 已有 `GET /skills/:id/executions/:eid` 返回执行详情，但 Dashboard 未调用。也无法从历史中重新执行 Skill
+**ID**: skill-023
+**优先级**: P0
+**模块路径**: packages/server/src/core/skill/
+**当前状态**: 文件不存在 — `runner-tools.ts` (222 行) 包含 `parseTimeout()`、`exceedsRiskLimit()`、`buildToolDefinitions()` 三个关键导出函数，均无任何测试覆盖。`exceedsRiskLimit` 是安全核心函数（决定命令是否被拒绝），按项目标准安全模块需 95%+ 覆盖率
 **实现方案**:
-
-1. **ExecutionDetail.tsx** (~150 行):
-   - 执行详情展示: AI 输出文本、工具调用列表 (名称、输入、结果、耗时)、错误列表
-   - 工具调用折叠/展开
-   - "重新执行" 按钮 → 使用相同的 skillId + serverId 触发新执行
-2. **ExecutionHistory.tsx** — 修改:
-   - 点击执行记录行 → 展开/切换到 ExecutionDetail 视图
-   - 或使用 Dialog 展示详情
-3. **stores/skills.ts** — 新增:
-   - `fetchExecutionDetail(skillId, executionId)` → `GET /skills/:id/executions/:eid`
-   - `selectedExecution: SkillExecution | null` state
-4. **i18n** — 新增 keys: executionDetail, reExecute, toolCalls, aiOutput, errors
-5. **测试**: ≥ 4 个 (详情加载、重新执行、错误处理)
-
+创建 `runner-tools.test.ts`，覆盖以下场景:
+1. **parseTimeout** (~8 tests):
+   - 正常解析: "30s"→30000, "5m"→300000, "1h"→3600000
+   - 边界值: "0s"→0, "999h"
+   - 错误格式: "5x", "abc", "", "5", "m5" → 抛出 Error
+2. **exceedsRiskLimit** (~8 tests):
+   - green/yellow/red/critical/forbidden 之间的所有组合比较
+   - 边界: 相同级别不超限, forbidden 永远超限
+3. **buildToolDefinitions** (~8 tests):
+   - 单工具: ['shell'] → 只有 shell 定义
+   - 多工具: ['shell', 'read_file', 'store'] → 3 个定义
+   - 全工具: 6 种工具全部声明 → 6 个完整定义
+   - 验证每个工具定义的 name、input_schema 字段完整性
 **验收标准**:
-- 点击历史记录可查看执行详情 (AI 输出 + 工具调用记录)
-- 详情页有"重新执行"按钮
-- 测试 ≥ 4 个
-
+- 测试 ≥ 22 个，覆盖所有导出函数
+- `pnpm vitest run packages/server/src/core/skill/runner-tools.test.ts` 全部通过
 **影响范围**:
-- `packages/dashboard/src/components/skill/ExecutionDetail.tsx` (新建)
-- `packages/dashboard/src/components/skill/ExecutionHistory.tsx` (修改)
-- `packages/dashboard/src/stores/skills.ts` (修改)
-- `packages/dashboard/src/i18n/locales/en.json` (修改)
-- `packages/dashboard/src/i18n/locales/zh.json` (修改)
-
+- `packages/server/src/core/skill/runner-tools.test.ts` (新建)
 **创建时间**: (自动填充)
 **完成时间**: -
+
+---

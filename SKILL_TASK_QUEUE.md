@@ -3,19 +3,184 @@
 > 此队列专注于 Skill 插件系统的设计与实现
 > AI 自动扫描 → 发现缺失 → 设计实现 → 验证
 
-**最后更新**: 2026-02-13 03:03:59
+**最后更新**: 2026-02-13 03:15:46
 
 ## 📊 统计
 
-- **总任务数**: 22
-- **待完成** (pending): 0
+- **总任务数**: 28
+- **待完成** (pending): 5
 - **进行中** (in_progress): 0
-- **已完成** (completed): 22
+- **已完成** (completed): 23
 - **失败** (failed): 0
 
 ## 📋 任务列表
 
 ### [completed] DB Schema + Migration + SkillRepository 数据层 ✅
+### [completed] runner-tools.test.ts — 工具定义构建 & 安全工具函数单元测试 ✅
+
+**ID**: skill-023
+**优先级**: P0
+**模块路径**: packages/server/src/core/skill/
+**当前状态**: 文件不存在 — `runner-tools.ts` (222 行) 包含 `parseTimeout()`、`exceedsRiskLimit()`、`buildToolDefinitions()` 三个关键导出函数，均无任何测试覆盖。`exceedsRiskLimit` 是安全核心函数（决定命令是否被拒绝），按项目标准安全模块需 95%+ 覆盖率
+**实现方案**:
+创建 `runner-tools.test.ts`，覆盖以下场景:
+1. **parseTimeout** (~8 tests):
+   - 正常解析: "30s"→30000, "5m"→300000, "1h"→3600000
+   - 边界值: "0s"→0, "999h"
+   - 错误格式: "5x", "abc", "", "5", "m5" → 抛出 Error
+2. **exceedsRiskLimit** (~8 tests):
+   - green/yellow/red/critical/forbidden 之间的所有组合比较
+   - 边界: 相同级别不超限, forbidden 永远超限
+3. **buildToolDefinitions** (~8 tests):
+   - 单工具: ['shell'] → 只有 shell 定义
+   - 多工具: ['shell', 'read_file', 'store'] → 3 个定义
+   - 全工具: 6 种工具全部声明 → 6 个完整定义
+   - 验证每个工具定义的 name、input_schema 字段完整性
+**验收标准**:
+- 测试 ≥ 22 个，覆盖所有导出函数
+- `pnpm vitest run packages/server/src/core/skill/runner-tools.test.ts` 全部通过
+**影响范围**:
+- `packages/server/src/core/skill/runner-tools.test.ts` (新建)
+**创建时间**: (自动填充)
+**完成时间**: 2026-02-13 03:15:46
+
+---
+
+### [pending] runner-executor.test.ts — 6 种工具执行器单元测试 + 安全审计验证
+
+**ID**: skill-024
+**优先级**: P0
+**模块路径**: packages/server/src/core/skill/
+**当前状态**: 文件不存在 — `runner-executor.ts` (414 行) 实现了 `executeShell`、`executeReadFile`、`executeWriteFile`、`executeNotify`、`executeHttp`、`executeStore` 六个工具执行方法，以及 `auditShell` 审计辅助函数。这些是 Skill 命令执行的最终出口，涉及安全分级 (`classifyCommand`)、审计日志 (`getAuditLogger`)、Agent 通信 (`getTaskExecutor`)，完全无测试覆盖
+**实现方案**:
+创建 `runner-executor.test.ts`，Mock 外部依赖 (TaskExecutor, AuditLogger, WebhookDispatcher, SkillKVStore, Agent):
+1. **executeShell** (~10 tests):
+   - 正常执行: command → classifyCommand → 安全通过 → Agent 执行 → 返回 stdout
+   - 安全拒绝: red 命令 + yellow max → isError=true + blocked 消息
+   - forbidden 命令永远拒绝
+   - 审计日志: 每次 shell 调用都记录到 auditLogger
+   - Agent 未连接: 返回错误信息
+2. **executeReadFile** (~3 tests): 路径正常/Agent 错误/空文件
+3. **executeWriteFile** (~3 tests): 写入成功/Agent 错误/空内容
+4. **executeNotify** (~3 tests): 正常分发/dispatcher 异常/缺少参数
+5. **executeHttp** (~4 tests): GET/POST 成功, 超时, 非 200 响应
+6. **executeStore** (~4 tests): get/set/delete/list 操作
+7. **auditShell** (~2 tests): 记录格式正确, 包含 skillId/serverId/command
+**验收标准**:
+- 测试 ≥ 28 个，覆盖所有 6 种执行器 + 审计函数
+- 安全相关测试验证 `classifyCommand()` 与 `exceedsRiskLimit()` 的联动
+- `pnpm vitest run packages/server/src/core/skill/runner-executor.test.ts` 全部通过
+**影响范围**:
+- `packages/server/src/core/skill/runner-executor.test.ts` (新建)
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] Prompt 模板变量注入缺失 — engine.ts 未传递 server/skill 上下文
+
+**ID**: skill-025
+**优先级**: P0
+**模块路径**: packages/server/src/core/skill/engine.ts
+**当前状态**: 功能缺失 — `engine.ts:314` 调用 `resolvePromptTemplate(manifest.prompt, { input, now })` 仅传递了 `input` 和 `now` 两个变量命名空间。但 `loader.ts` 的 `resolveVariable()` 支持 4 个命名空间: `input`, `server`, `skill`, `env`。SKILL_SPEC.md 明确列出 `{{server.name}}`, `{{server.os}}`, `{{server.ip}}`, `{{skill.last_run}}`, `{{skill.last_result}}` 为可用变量。当前所有使用这些变量的 Skill prompt 将无法正确解析（变量原样保留）
+**实现方案**:
+1. **engine.ts execute() 方法** — 补充 `server` 和 `skill` 变量:
+   - 通过 `getServerRepository().findById(serverId)` 获取 server 信息 (name, os, hostname/ip)
+   - 通过 `this.repo.listExecutions(skillId, 1)` 获取上次执行记录 → `skill.last_run` (completedAt) + `skill.last_result` (result summary)
+   - 传递完整 TemplateVars: `{ input, server: { name, os, ip }, skill: { last_run, last_result }, now }`
+2. **可选 — env 变量**: 根据 skill manifest 的 `requires` 或配置决定是否传入 env (当前可跳过，低优先)
+3. **测试**:
+   - engine.test.ts 新增: 验证 resolvedPrompt 包含 server.name 替换
+   - engine.test.ts 新增: 验证 skill.last_run 从上次执行记录获取
+   - engine.test.ts 新增: 无上次执行时 skill.last_run 为空字符串或 "N/A"
+**验收标准**:
+- `resolvePromptTemplate` 接收完整 4 命名空间变量
+- 官方 Skill 的 `{{server.os}}` 等模板变量能正确替换
+- 测试 ≥ 4 个新增
+**影响范围**:
+- `packages/server/src/core/skill/engine.ts` (修改 — execute 方法)
+- `packages/server/src/core/skill/engine.test.ts` (修改 — 新增变量注入测试)
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] requires_confirmation 执行确认流 — SSE 暂停/确认/恢复机制
+
+**ID**: skill-026
+**优先级**: P1
+**模块路径**: packages/server/src/core/skill/
+**当前状态**: 功能缺失 — SKILL_SPEC.md (line 147-150) 定义了 `requires_confirmation: boolean` 约束，建议 `risk_level_max >= red` 时设为 true。当前 engine.ts execute() 完全忽略此字段，直接进入 AI 循环执行。schema 已在 `@aiinstaller/shared` 中定义并验证，但后端和前端均无确认流实现
+**实现方案**:
+1. **engine.ts** — execute() 方法检测 `manifest.constraints.requires_confirmation`:
+   - 如果为 true 且 triggerType !== 'manual'（cron/event/threshold 自动触发）: 创建 execution 记录但状态设为 `pending_confirmation`，通过 SkillEventBus 发送 `confirmation_required` 事件，等待确认
+   - 如果为 true 且 triggerType === 'manual': 立即执行（手动触发已经是用户主动行为）
+2. **新增 execution 状态**: `pending_confirmation` 加入 SkillExecutionStatus 枚举 (schema.ts + types)
+3. **新增 API**: `POST /api/v1/skills/executions/:eid/confirm` — 确认执行，将 pending_confirmation → running
+4. **新增 API**: `POST /api/v1/skills/executions/:eid/reject` — 拒绝执行，将 pending_confirmation → cancelled
+5. **SkillEventBus** — 新增 `SkillConfirmationEvent` 类型
+6. **Dashboard** — 待确认执行列表 + 确认/拒绝按钮 + SSE 实时通知
+7. **测试**: engine 确认流 + API 端点 + Dashboard 交互
+**验收标准**:
+- `requires_confirmation: true` 的 Skill 自动触发时暂停等待确认
+- Dashboard 显示待确认执行，用户可确认或拒绝
+- 手动触发不受影响（直接执行）
+- 过期未确认的执行自动取消 (可选: 30min TTL)
+- 测试 ≥ 12 个
+**影响范围**:
+- `packages/server/src/db/schema.ts` (修改 — 新增 pending_confirmation 状态)
+- `packages/server/src/core/skill/engine.ts` (修改 — 确认流逻辑)
+- `packages/server/src/core/skill/skill-event-bus.ts` (修改 — 新增事件类型)
+- `packages/server/src/api/routes/skills.ts` (修改 — 新增 confirm/reject 端点)
+- `packages/dashboard/src/pages/Skills.tsx` (修改 — 确认 UI)
+- `packages/dashboard/src/stores/skills.ts` (修改 — confirm/reject actions)
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] server_scope: 'all' / 'tagged' — 多服务器批量执行
+
+**ID**: skill-027
+**优先级**: P1
+**模块路径**: packages/server/src/core/skill/engine.ts
+**当前状态**: 功能缺失 — SKILL_SPEC.md (line 152-155) 定义了 `server_scope` 约束: "single" (默认), "all" (用户所有服务器), "tagged" (匹配 tag)。当前 engine.ts execute() 始终只在单个 serverId 上执行，忽略 `manifest.constraints.server_scope` 字段。TriggerManager 自动触发时也只对单个 server 执行
+**实现方案**:
+1. **engine.ts** — execute() 方法根据 `server_scope` 分发:
+   - `'single'`: 当前逻辑不变，使用传入的 serverId
+   - `'all'`: 通过 `getServerRepository().findByUser(userId)` 获取所有服务器，逐一执行 (串行，避免 Agent 并发冲突)
+   - `'tagged'`: 需要 server tags 功能支持（当前 servers 表无 tags 字段，可先跳过或返回错误）
+2. **执行结果聚合**: 多服务器执行返回 `SkillExecutionResult[]` 数组或包含 `perServer` 字段的聚合结果
+3. **execution 记录**: 每个服务器一条 execution 记录，共享同一个 `batchId`
+4. **SSE**: 按 server 分段推送进度
+5. **测试**:
+   - engine.test.ts: scope='all' 对 3 台 server 各执行一次
+   - engine.test.ts: scope='all' 部分 server 失败不影响其余
+   - engine.test.ts: scope='single' 行为不变
+**验收标准**:
+- `server_scope: 'all'` 的 Skill 在用户所有 enabled 服务器上依次执行
+- 每台服务器的执行结果独立记录
+- 单台失败不阻塞其余服务器
+- 测试 ≥ 8 个
+**影响范围**:
+- `packages/server/src/core/skill/engine.ts` (修改 — 多服务器分发)
+- `packages/server/src/core/skill/types.ts` (修改 — batchId / 聚合结果类型)
+- `packages/server/src/core/skill/engine.test.ts` (修改 — 多服务器测试)
+- `packages/server/src/db/repositories/skill-repository.ts` (可能修改 — batchId 字段)
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] Output Schema 验证 — AI 输出结构化校验
+
+**ID**: skill-028
+**优先级**: P1
+**模块路径**: packages/server/src/core/skill/runner.ts
+**当前状态**: 功能缺失 — SKILL_SPEC.md (line 210-220) 定义了 `outputs` 字段允许 Skill 声明结构化输出格式。`@aiinstaller/shared/skill-schema.ts` 已定义 `SkillOutput` Zod schema (name, type, description)。但 `runner.ts` 收集 AI 原始文本输出后直接返回 `output: string`，未尝试解析 AI 输出为结构化数据，也未校验是否满足 manifest 声明的 outputs
+**实现方案**:
+1. **runner.ts** — run() 方法最后阶段新增 output 解析:
+
 ### [completed] SkillRepository.findAllEnabled() — 启动时加载已启用 Skill 的触发器 ✅
 
 **ID**: skill-013
