@@ -31,6 +31,9 @@ const mockEngine = {
   getInstalledWithInputs: vi.fn(),
   getExecutions: vi.fn(),
   getExecution: vi.fn(),
+  confirmExecution: vi.fn(),
+  rejectExecution: vi.fn(),
+  listPendingConfirmations: vi.fn(),
   start: vi.fn(),
   stop: vi.fn(),
 };
@@ -793,6 +796,166 @@ describe('RBAC integration', () => {
       body: JSON.stringify({ serverId: 'server-1' }),
     });
     expect(execRes.status).toBe(200);
+  });
+});
+
+// ============================================================================
+// GET /skills/pending-confirmations — List pending confirmations
+// ============================================================================
+
+describe('GET /skills/pending-confirmations', () => {
+  it('should return pending confirmation executions', async () => {
+    const pending = [makeExecution({ id: 'exec-pending', status: 'pending_confirmation', triggerType: 'cron' })];
+    mockEngine.listPendingConfirmations.mockResolvedValue(pending);
+
+    const res = await app.request('/skills/pending-confirmations');
+    expect(res.status).toBe(200);
+
+    const body = await res.json();
+    expect(body.executions).toHaveLength(1);
+    expect(body.executions[0].id).toBe('exec-pending');
+    expect(body.executions[0].status).toBe('pending_confirmation');
+    expect(mockEngine.listPendingConfirmations).toHaveBeenCalledWith('user-1');
+  });
+
+  it('should return empty array when no pending confirmations', async () => {
+    mockEngine.listPendingConfirmations.mockResolvedValue([]);
+
+    const res = await app.request('/skills/pending-confirmations');
+    expect(res.status).toBe(200);
+
+    const body = await res.json();
+    expect(body.executions).toHaveLength(0);
+  });
+
+  it('should be forbidden for member role (skill:execute)', async () => {
+    mockUserRole = 'member';
+
+    const res = await app.request('/skills/pending-confirmations');
+    expect(res.status).toBe(403);
+  });
+});
+
+// ============================================================================
+// POST /skills/executions/:eid/confirm — Confirm pending execution
+// ============================================================================
+
+describe('POST /skills/executions/:eid/confirm', () => {
+  it('should confirm a pending execution and return result', async () => {
+    const result: SkillExecutionResult = {
+      executionId: 'exec-confirmed',
+      status: 'success',
+      stepsExecuted: 3,
+      duration: 2000,
+      result: { output: 'confirmed ok' },
+      errors: [],
+    };
+    mockEngine.confirmExecution.mockResolvedValue(result);
+
+    const res = await app.request('/skills/executions/exec-confirmed/confirm', {
+      method: 'POST',
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.execution.executionId).toBe('exec-confirmed');
+    expect(body.execution.status).toBe('success');
+    expect(mockEngine.confirmExecution).toHaveBeenCalledWith('exec-confirmed', 'user-1');
+  });
+
+  it('should return 404 for nonexistent execution', async () => {
+    mockEngine.confirmExecution.mockRejectedValue(new Error('Execution not found: nonexistent'));
+
+    const res = await app.request('/skills/executions/nonexistent/confirm', {
+      method: 'POST',
+    });
+
+    expect(res.status).toBe(404);
+  });
+
+  it('should return 400 for execution not pending confirmation', async () => {
+    mockEngine.confirmExecution.mockRejectedValue(
+      new Error("Execution 'exec-1' is not pending confirmation (status=running)"),
+    );
+
+    const res = await app.request('/skills/executions/exec-1/confirm', {
+      method: 'POST',
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('should return 400 for expired execution', async () => {
+    mockEngine.confirmExecution.mockRejectedValue(
+      new Error("Execution 'exec-1' has expired"),
+    );
+
+    const res = await app.request('/skills/executions/exec-1/confirm', {
+      method: 'POST',
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('should be forbidden for member role (skill:execute)', async () => {
+    mockUserRole = 'member';
+
+    const res = await app.request('/skills/executions/exec-1/confirm', {
+      method: 'POST',
+    });
+
+    expect(res.status).toBe(403);
+  });
+});
+
+// ============================================================================
+// POST /skills/executions/:eid/reject — Reject pending execution
+// ============================================================================
+
+describe('POST /skills/executions/:eid/reject', () => {
+  it('should reject a pending execution', async () => {
+    mockEngine.rejectExecution.mockResolvedValue(undefined);
+
+    const res = await app.request('/skills/executions/exec-1/reject', {
+      method: 'POST',
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(mockEngine.rejectExecution).toHaveBeenCalledWith('exec-1', 'user-1');
+  });
+
+  it('should return 404 for nonexistent execution', async () => {
+    mockEngine.rejectExecution.mockRejectedValue(new Error('Execution not found: nonexistent'));
+
+    const res = await app.request('/skills/executions/nonexistent/reject', {
+      method: 'POST',
+    });
+
+    expect(res.status).toBe(404);
+  });
+
+  it('should return 400 for execution not pending confirmation', async () => {
+    mockEngine.rejectExecution.mockRejectedValue(
+      new Error("Execution 'exec-1' is not pending confirmation (status=success)"),
+    );
+
+    const res = await app.request('/skills/executions/exec-1/reject', {
+      method: 'POST',
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('should be forbidden for member role (skill:execute)', async () => {
+    mockUserRole = 'member';
+
+    const res = await app.request('/skills/executions/exec-1/reject', {
+      method: 'POST',
+    });
+
+    expect(res.status).toBe(403);
   });
 });
 

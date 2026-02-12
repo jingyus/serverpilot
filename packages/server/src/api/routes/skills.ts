@@ -236,6 +236,63 @@ skillsRoute.get('/:id/executions/:eid', requirePermission('skill:view'), async (
 });
 
 // ============================================================================
+// GET /skills/pending-confirmations — List pending confirmation executions
+// ============================================================================
+
+skillsRoute.get('/pending-confirmations', requirePermission('skill:execute'), async (c) => {
+  const userId = c.get('userId');
+  const engine = getSkillEngine();
+  const executions = await engine.listPendingConfirmations(userId);
+  return c.json({ executions });
+});
+
+// ============================================================================
+// POST /skills/executions/:eid/confirm — Confirm a pending execution
+// ============================================================================
+
+skillsRoute.post('/executions/:eid/confirm', requirePermission('skill:execute'), async (c) => {
+  const executionId = c.req.param('eid');
+  const userId = c.get('userId');
+  const engine = getSkillEngine();
+  try {
+    const result = await engine.confirmExecution(executionId, userId);
+    return c.json({ execution: result });
+  } catch (err) {
+    const msg = (err as Error).message;
+    if (msg.includes('not found')) {
+      throw ApiError.notFound('Execution');
+    }
+    if (msg.includes('not pending confirmation') || msg.includes('has expired')) {
+      throw ApiError.badRequest(msg);
+    }
+    throw err;
+  }
+});
+
+// ============================================================================
+// POST /skills/executions/:eid/reject — Reject a pending execution
+// ============================================================================
+
+skillsRoute.post('/executions/:eid/reject', requirePermission('skill:execute'), async (c) => {
+  const executionId = c.req.param('eid');
+  const userId = c.get('userId');
+  const engine = getSkillEngine();
+  try {
+    await engine.rejectExecution(executionId, userId);
+    return c.json({ success: true });
+  } catch (err) {
+    const msg = (err as Error).message;
+    if (msg.includes('not found')) {
+      throw ApiError.notFound('Execution');
+    }
+    if (msg.includes('not pending confirmation')) {
+      throw ApiError.badRequest(msg);
+    }
+    throw err;
+  }
+});
+
+// ============================================================================
 // GET /skills/executions/:eid/stream — SSE execution progress stream
 // ============================================================================
 

@@ -517,8 +517,14 @@
       "success": "Success",
       "failed": "Failed",
       "running": "Running",
-      "timeout": "Timeout"
-    }
+      "timeout": "Timeout",
+      "pending_confirmation": "Pending Confirmation",
+      "cancelled": "Cancelled"
+    },
+    "pendingConfirmations": "{{count}} skill execution(s) awaiting confirmation",
+    "triggeredBy": "triggered by {{type}}",
+    "confirm": "Confirm",
+    "reject": "Reject"
   },
   "theme": {
     "toggle": "Toggle theme",

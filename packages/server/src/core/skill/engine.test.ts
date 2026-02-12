@@ -1077,6 +1077,227 @@ describe('SkillEngine singleton', () => {
 });
 
 // ============================================================================
+// Confirmation Flow
+// ============================================================================
+
+describe('SkillEngine confirmation flow', () => {
+  /** Write a skill.yaml with requires_confirmation: true */
+  async function writeConfirmationSkillYaml(dir: string, name = 'confirm-skill'): Promise<void> {
+    const yaml = `kind: skill
+version: "1.0"
+
+metadata:
+  name: ${name}
+  displayName: "Confirmation Skill"
+  version: "1.0.0"
+
+triggers:
+  - type: manual
+  - type: cron
+    schedule: "0 * * * *"
+
+tools:
+  - shell
+
+constraints:
+  requires_confirmation: true
+  risk_level_max: red
+
+prompt: |
+  This is a confirmation-required skill prompt that exceeds the minimum 50-character validation requirement for testing.
+`;
+    const { writeFile: wf } = await import('node:fs/promises');
+    await wf(join(dir, 'skill.yaml'), yaml, 'utf-8');
+  }
+
+  it('should return pending_confirmation when auto-triggered with requires_confirmation=true', async () => {
+    const skillDir = await createTempDir('confirm-skill-');
+    await writeConfirmationSkillYaml(skillDir);
+
+    const skill = await engine.install('user-1', skillDir, 'local');
+    await engine.updateStatus(skill.id, 'enabled');
+
+    const result = await engine.execute({
+      skillId: skill.id,
+      serverId: 'server-1',
+      userId: 'user-1',
+      triggerType: 'cron',
+    });
+
+    expect(result.status).toBe('pending_confirmation');
+    expect(result.executionId).toBeDefined();
+    expect(result.stepsExecuted).toBe(0);
+    expect(result.errors).toEqual([]);
+  });
+
+  it('should execute immediately for manual trigger even with requires_confirmation=true', async () => {
+    const skillDir = await createTempDir('confirm-skill-');
+    await writeConfirmationSkillYaml(skillDir);
+
+    const skill = await engine.install('user-1', skillDir, 'local');
+    await engine.updateStatus(skill.id, 'enabled');
+
+    const result = await engine.execute({
+      skillId: skill.id,
+      serverId: 'server-1',
+      userId: 'user-1',
+      triggerType: 'manual',
+    });
+
+    expect(result.status).toBe('success');
+    expect(result.stepsExecuted).toBe(0);
+  });
+
+  it('should confirm a pending execution and run it', async () => {
+    const skillDir = await createTempDir('confirm-skill-');
+    await writeConfirmationSkillYaml(skillDir);
+
+    const skill = await engine.install('user-1', skillDir, 'local');
+    await engine.updateStatus(skill.id, 'enabled');
+
+    const pendingResult = await engine.execute({
+      skillId: skill.id,
+      serverId: 'server-1',
+      userId: 'user-1',
+      triggerType: 'event',
+    });
+    expect(pendingResult.status).toBe('pending_confirmation');
+
+    const confirmedResult = await engine.confirmExecution(pendingResult.executionId, 'user-1');
+    expect(confirmedResult.status).toBe('success');
+    expect(confirmedResult.executionId).toBe(pendingResult.executionId);
+  });
+
+  it('should reject a pending execution', async () => {
+    const skillDir = await createTempDir('confirm-skill-');
+    await writeConfirmationSkillYaml(skillDir);
+
+    const skill = await engine.install('user-1', skillDir, 'local');
+    await engine.updateStatus(skill.id, 'enabled');
+
+    const pendingResult = await engine.execute({
+      skillId: skill.id,
+      serverId: 'server-1',
+      userId: 'user-1',
+      triggerType: 'threshold',
+    });
+
+    await engine.rejectExecution(pendingResult.executionId, 'user-1');
+
+    const exec = await engine.getExecution(pendingResult.executionId);
+    expect(exec!.status).toBe('cancelled');
+    expect(exec!.result).toEqual({ reason: 'rejected' });
+  });
+
+  it('should throw when confirming a non-existent execution', async () => {
+    await expect(
+      engine.confirmExecution('non-existent', 'user-1'),
+    ).rejects.toThrow(/Execution not found/);
+  });
+
+  it('should throw when confirming an already-completed execution', async () => {
+    const skillDir = await createTempDir('confirm-skill-');
+    await writeConfirmationSkillYaml(skillDir);
+
+    const skill = await engine.install('user-1', skillDir, 'local');
+    await engine.updateStatus(skill.id, 'enabled');
+
+    const result = await engine.execute({
+      skillId: skill.id,
+      serverId: 'server-1',
+      userId: 'user-1',
+      triggerType: 'manual',
+    });
+
+    await expect(
+      engine.confirmExecution(result.executionId, 'user-1'),
+    ).rejects.toThrow(/not pending confirmation/);
+  });
+
+  it('should throw when rejecting a non-pending execution', async () => {
+    const skillDir = await createTempDir('confirm-skill-');
+    await writeConfirmationSkillYaml(skillDir);
+
+    const skill = await engine.install('user-1', skillDir, 'local');
+    await engine.updateStatus(skill.id, 'enabled');
+
+    const result = await engine.execute({
+      skillId: skill.id,
+      serverId: 'server-1',
+      userId: 'user-1',
+      triggerType: 'manual',
+    });
+
+    await expect(
+      engine.rejectExecution(result.executionId, 'user-1'),
+    ).rejects.toThrow(/not pending confirmation/);
+  });
+
+  it('should list pending confirmations for a user', async () => {
+    const skillDir = await createTempDir('confirm-skill-');
+    await writeConfirmationSkillYaml(skillDir);
+
+    const skill = await engine.install('user-1', skillDir, 'local');
+    await engine.updateStatus(skill.id, 'enabled');
+
+    await engine.execute({
+      skillId: skill.id, serverId: 'server-1', userId: 'user-1', triggerType: 'cron',
+    });
+    await engine.execute({
+      skillId: skill.id, serverId: 'server-2', userId: 'user-1', triggerType: 'event',
+    });
+
+    const pending = await engine.listPendingConfirmations('user-1');
+    expect(pending).toHaveLength(2);
+    expect(pending.every((e) => e.status === 'pending_confirmation')).toBe(true);
+  });
+
+  it('should expire pending confirmations after TTL', async () => {
+    const skillDir = await createTempDir('confirm-skill-');
+    await writeConfirmationSkillYaml(skillDir);
+
+    const skill = await engine.install('user-1', skillDir, 'local');
+    await engine.updateStatus(skill.id, 'enabled');
+
+    await engine.execute({
+      skillId: skill.id, serverId: 'server-1', userId: 'user-1', triggerType: 'cron',
+    });
+
+    const pending = await engine.listPendingConfirmations('user-1');
+    expect(pending).toHaveLength(1);
+
+    const exec = pending[0];
+    // Force startedAt to be 31min ago for expiry test
+    const rawExec = await repo.findExecutionById(exec.id);
+    (rawExec as { startedAt: string }).startedAt = new Date(Date.now() - 31 * 60 * 1000).toISOString();
+
+    const expired = await engine.expirePendingConfirmations();
+    expect(expired).toBe(1);
+
+    const after = await engine.listPendingConfirmations('user-1');
+    expect(after).toHaveLength(0);
+  });
+
+  it('should not expire recent pending confirmations', async () => {
+    const skillDir = await createTempDir('confirm-skill-');
+    await writeConfirmationSkillYaml(skillDir);
+
+    const skill = await engine.install('user-1', skillDir, 'local');
+    await engine.updateStatus(skill.id, 'enabled');
+
+    await engine.execute({
+      skillId: skill.id, serverId: 'server-1', userId: 'user-1', triggerType: 'cron',
+    });
+
+    const expired = await engine.expirePendingConfirmations();
+    expect(expired).toBe(0);
+
+    const pending = await engine.listPendingConfirmations('user-1');
+    expect(pending).toHaveLength(1);
+  });
+});
+
+// ============================================================================
 // listAvailable (directory scan integration)
 // ============================================================================
 

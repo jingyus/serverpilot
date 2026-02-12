@@ -467,6 +467,135 @@ describe('useSkillsStore', () => {
   });
 
   // --------------------------------------------------------------------------
+  // fetchPendingConfirmations
+  // --------------------------------------------------------------------------
+
+  describe('fetchPendingConfirmations', () => {
+    it('should fetch pending confirmations and update state', async () => {
+      const pending = [makeExecution({ id: 'exec-p1', status: 'pending_confirmation', triggerType: 'cron' })];
+      mockApiRequest.mockResolvedValueOnce({ executions: pending });
+
+      await useSkillsStore.getState().fetchPendingConfirmations();
+
+      const state = useSkillsStore.getState();
+      expect(state.pendingConfirmations).toEqual(pending);
+      expect(mockApiRequest).toHaveBeenCalledWith('/skills/pending-confirmations');
+    });
+
+    it('should handle error on fetchPendingConfirmations', async () => {
+      const { ApiError } = await import('@/api/client');
+      mockApiRequest.mockRejectedValueOnce(
+        new ApiError(500, 'INTERNAL_ERROR', 'Server error'),
+      );
+
+      await useSkillsStore.getState().fetchPendingConfirmations();
+
+      expect(useSkillsStore.getState().error).toBe('Server error');
+    });
+
+    it('should use fallback message for non-ApiError', async () => {
+      mockApiRequest.mockRejectedValueOnce(new Error('network'));
+
+      await useSkillsStore.getState().fetchPendingConfirmations();
+
+      expect(useSkillsStore.getState().error).toBe('Failed to load pending confirmations');
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // confirmExecution
+  // --------------------------------------------------------------------------
+
+  describe('confirmExecution', () => {
+    it('should confirm execution and remove from pending list', async () => {
+      useSkillsStore.setState({
+        pendingConfirmations: [
+          makeExecution({ id: 'exec-p1', status: 'pending_confirmation' }),
+          makeExecution({ id: 'exec-p2', status: 'pending_confirmation' }),
+        ],
+      });
+
+      const result = {
+        executionId: 'exec-p1',
+        status: 'success' as const,
+        stepsExecuted: 2,
+        duration: 1000,
+        result: { output: 'done' },
+        errors: [],
+      };
+      mockApiRequest.mockResolvedValueOnce({ execution: result });
+
+      const ret = await useSkillsStore.getState().confirmExecution('exec-p1');
+
+      expect(ret).toEqual(result);
+      expect(useSkillsStore.getState().pendingConfirmations).toHaveLength(1);
+      expect(useSkillsStore.getState().pendingConfirmations[0].id).toBe('exec-p2');
+      expect(mockApiRequest).toHaveBeenCalledWith('/skills/executions/exec-p1/confirm', {
+        method: 'POST',
+      });
+    });
+
+    it('should handle error on confirmExecution and re-throw', async () => {
+      const { ApiError } = await import('@/api/client');
+      mockApiRequest.mockRejectedValueOnce(
+        new ApiError(400, 'BAD_REQUEST', 'Execution has expired'),
+      );
+
+      await expect(
+        useSkillsStore.getState().confirmExecution('exec-expired'),
+      ).rejects.toThrow();
+
+      expect(useSkillsStore.getState().error).toBe('Execution has expired');
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // rejectExecution
+  // --------------------------------------------------------------------------
+
+  describe('rejectExecution', () => {
+    it('should reject execution and remove from pending list', async () => {
+      useSkillsStore.setState({
+        pendingConfirmations: [
+          makeExecution({ id: 'exec-p1', status: 'pending_confirmation' }),
+        ],
+      });
+
+      mockApiRequest.mockResolvedValueOnce({ success: true });
+
+      await useSkillsStore.getState().rejectExecution('exec-p1');
+
+      expect(useSkillsStore.getState().pendingConfirmations).toHaveLength(0);
+      expect(mockApiRequest).toHaveBeenCalledWith('/skills/executions/exec-p1/reject', {
+        method: 'POST',
+      });
+    });
+
+    it('should handle error on rejectExecution and re-throw', async () => {
+      const { ApiError } = await import('@/api/client');
+      mockApiRequest.mockRejectedValueOnce(
+        new ApiError(404, 'NOT_FOUND', 'Execution not found'),
+      );
+
+      await expect(
+        useSkillsStore.getState().rejectExecution('exec-missing'),
+      ).rejects.toThrow();
+
+      expect(useSkillsStore.getState().error).toBe('Execution not found');
+    });
+
+    it('should use fallback message for non-ApiError on reject', async () => {
+      mockApiRequest.mockRejectedValueOnce(new Error('network'));
+
+      await expect(
+        useSkillsStore.getState().rejectExecution('exec-1'),
+      ).rejects.toThrow();
+
+      expect(useSkillsStore.getState().error).toBe('Failed to reject execution');
+    });
+  });
+
+  // --------------------------------------------------------------------------
   // clearSelectedExecution
   // --------------------------------------------------------------------------
 

@@ -117,6 +117,9 @@ export const ListFilesInputSchema = z.object({
   show_hidden: z.boolean().optional(),
 });
 
+/** Shared abort flag — set by onAbort / writeSSE failure, read at every async boundary. */
+interface AbortState { aborted: boolean }
+
 // Types
 
 export interface AgenticRunOptions {
@@ -188,10 +191,9 @@ export class AgenticChatEngine {
       return { success: false, turns: 0, toolCallCount: 0, finalText: '' };
     }
 
-    // Detect client disconnect via SSE stream abort
-    let streamAborted = false;
+    const abort: AbortState = { aborted: false };
     stream.onAbort(() => {
-      streamAborted = true;
+      abort.aborted = true;
       logger.info({ operation: 'agentic_loop', serverId }, 'Client disconnected, aborting agentic loop');
     });
 
@@ -222,14 +224,14 @@ export class AgenticChatEngine {
         turns = turn + 1;
 
         // Abort if client disconnected — avoid wasting API calls
-        if (streamAborted) {
+        if (abort.aborted) {
           logger.info({ operation: 'agentic_loop', serverId, turn }, 'Agentic loop aborted: client disconnected');
           return { success: false, turns, toolCallCount, finalText };
         }
 
         // Call Claude with tools — streaming
         const collected = await this.streamAnthropicCall(
-          systemPrompt, messages, stream,
+          systemPrompt, messages, stream, abort,
         );
 
         // Accumulate text for return value
@@ -243,7 +245,7 @@ export class AgenticChatEngine {
         }
 
         // Process tool calls — skip if client disconnected
-        if (streamAborted) {
+        if (abort.aborted) {
           logger.info({ operation: 'agentic_loop', serverId, turn }, 'Agentic loop aborted after AI call: client disconnected');
           return { success: false, turns, toolCallCount, finalText };
         }
@@ -251,10 +253,10 @@ export class AgenticChatEngine {
         const toolResults: Anthropic.ToolResultBlockParam[] = [];
 
         for (const toolCall of collected.toolUseBlocks) {
-          if (streamAborted) break;
+          if (abort.aborted) break;
           toolCallCount++;
           const result = await this.executeToolCall(
-            toolCall, serverId, userId, sessionId, clientId, stream, opts.onConfirmRequired,
+            toolCall, serverId, userId, sessionId, clientId, stream, abort, opts.onConfirmRequired,
           );
           toolResults.push({
             type: 'tool_result',
@@ -264,7 +266,7 @@ export class AgenticChatEngine {
         }
 
         // If aborted during tool execution, don't continue the loop
-        if (streamAborted) {
+        if (abort.aborted) {
           logger.info({ operation: 'agentic_loop', serverId, turn }, 'Agentic loop aborted during tool execution: client disconnected');
           return { success: false, turns, toolCallCount, finalText };
         }
@@ -278,8 +280,8 @@ export class AgenticChatEngine {
         trimMessagesIfNeeded(messages, MAX_MESSAGES_TOKENS);
       }
 
-      if (!streamAborted) {
-        await this.writeSSE(stream, 'complete', { success: true, turns, toolCallCount });
+      if (!abort.aborted) {
+        await this.writeSSE(stream, 'complete', { success: true, turns, toolCallCount }, abort);
       }
       return { success: true, turns, toolCallCount, finalText };
     } catch (err) {
@@ -288,11 +290,11 @@ export class AgenticChatEngine {
         { operation: 'agentic_loop', serverId, error: errorMsg },
         'Agentic loop error',
       );
-      if (!streamAborted) {
+      if (!abort.aborted) {
         await this.writeSSE(stream, 'message', {
           content: `\n\n执行过程中发生错误: ${errorMsg}`,
-        });
-        await this.writeSSE(stream, 'complete', { success: false, error: errorMsg });
+        }, abort);
+        await this.writeSSE(stream, 'complete', { success: false, error: errorMsg }, abort);
       }
       return { success: false, turns, toolCallCount, finalText };
     }
@@ -305,6 +307,7 @@ export class AgenticChatEngine {
     systemPrompt: string,
     messages: Anthropic.MessageParam[],
     stream: SSEStreamingApi,
+    abort: AbortState,
   ): Promise<{
     text: string;
     toolUseBlocks: Anthropic.ToolUseBlock[];
@@ -314,11 +317,6 @@ export class AgenticChatEngine {
     let text = '';
     const toolUseBlocks: Anthropic.ToolUseBlock[] = [];
 
-    // Track tool_use blocks being built from streaming deltas
-    let currentToolId = '';
-    let currentToolName = '';
-    let currentToolInputJson = '';
-
     const response = this.client.messages.stream({
       model: this.model,
       max_tokens: 4096,
@@ -327,31 +325,32 @@ export class AgenticChatEngine {
       tools: TOOLS,
     });
 
-    // Stream text deltas to Dashboard in real-time
+    // Stream text to Dashboard; abort Anthropic stream early on disconnect
     response.on('text', (delta: string) => {
       text += delta;
-      this.writeSSE(stream, 'message', { content: delta }).catch(() => {});
+      if (abort.aborted) {
+        response.abort();
+        return;
+      }
+      this.writeSSE(stream, 'message', { content: delta }, abort).catch(() => {});
     });
 
     // Track tool_use content blocks as they start
     response.on('contentBlock', (block: Anthropic.ContentBlock) => {
       if (block.type === 'tool_use') {
-        currentToolId = block.id;
-        currentToolName = block.name;
-        currentToolInputJson = '';
-
         // Notify frontend that a tool call is starting
         this.writeSSE(stream, 'tool_call', {
           id: block.id,
           tool: block.name,
           status: 'running',
-        }).catch(() => {});
+        }, abort).catch(() => {});
       }
     });
 
-    // Collect input_json_delta for tool_use blocks
-    response.on('inputJson', (delta: string) => {
-      currentToolInputJson += delta;
+    response.on('inputJson', (_delta: string) => {
+      if (abort.aborted) {
+        response.abort();
+      }
     });
 
     const finalMessage = await response.finalMessage();
@@ -381,12 +380,18 @@ export class AgenticChatEngine {
     sessionId: string,
     clientId: string,
     stream: SSEStreamingApi,
+    abort: AbortState,
     onConfirmRequired?: (command: string, riskLevel: string, description: string) => {
       confirmId: string;
       approved: Promise<boolean>;
     },
   ): Promise<string> {
     const { name, input } = toolCall;
+
+    // Early exit if client already disconnected
+    if (abort.aborted) {
+      return 'Error: Client disconnected, skipping tool execution';
+    }
 
     try {
       switch (name) {
@@ -397,7 +402,7 @@ export class AgenticChatEngine {
           }
           return await this.toolExecuteCommand(
             parsed.data,
-            serverId, userId, sessionId, clientId, stream, toolCall.id,
+            serverId, userId, sessionId, clientId, stream, toolCall.id, abort,
             onConfirmRequired,
           );
         }
@@ -409,7 +414,7 @@ export class AgenticChatEngine {
           }
           return await this.toolReadFile(
             parsed.data,
-            serverId, userId, sessionId, clientId, stream, toolCall.id,
+            serverId, userId, sessionId, clientId, stream, toolCall.id, abort,
           );
         }
 
@@ -420,7 +425,7 @@ export class AgenticChatEngine {
           }
           return await this.toolListFiles(
             parsed.data,
-            serverId, userId, sessionId, clientId, stream, toolCall.id,
+            serverId, userId, sessionId, clientId, stream, toolCall.id, abort,
           );
         }
 
@@ -434,7 +439,7 @@ export class AgenticChatEngine {
         tool: name,
         status: 'failed',
         error: errMsg,
-      });
+      }, abort);
       return `Error executing ${name}: ${errMsg}`;
     }
   }
@@ -450,6 +455,7 @@ export class AgenticChatEngine {
     clientId: string,
     stream: SSEStreamingApi,
     toolCallId: string,
+    abort: AbortState,
     onConfirmRequired?: (command: string, riskLevel: string, description: string) => {
       confirmId: string;
       approved: Promise<boolean>;
@@ -477,7 +483,7 @@ export class AgenticChatEngine {
         tool: 'execute_command',
         status: 'blocked',
         output: msg,
-      });
+      }, abort);
       return msg;
     }
 
@@ -485,15 +491,13 @@ export class AgenticChatEngine {
     if (riskLevel !== RiskLevel.GREEN && onConfirmRequired) {
       const confirmation = onConfirmRequired(command, riskLevel, description);
 
-      // Include confirmId in the SSE event so frontend can respond immediately
-      // without waiting for a separate confirm_id event
       await this.writeSSE(stream, 'confirm_required', {
         id: toolCallId,
         command,
         description,
         riskLevel,
         confirmId: confirmation.confirmId,
-      });
+      }, abort);
 
       const approved = await confirmation.approved;
 
@@ -504,10 +508,15 @@ export class AgenticChatEngine {
           tool: 'execute_command',
           status: 'rejected',
           output: msg,
-        });
+        }, abort);
         await auditLogger.updateExecutionResult(auditEntry.id, 'skipped');
         return msg;
       }
+    }
+
+    // Check abort before dispatching command to agent
+    if (abort.aborted) {
+      return 'Error: Client disconnected, skipping command execution';
     }
 
     // Execute the command
@@ -515,13 +524,10 @@ export class AgenticChatEngine {
       id: toolCallId,
       tool: 'execute_command',
       command,
-    });
+    }, abort);
 
     const executor = getTaskExecutor();
 
-    // Register a progress listener scoped to this tool call.
-    // Using toolCallId as the listener ID ensures concurrent tool executions
-    // from different agentic sessions each receive only their own output.
     let hasStreamedOutput = false;
     executor.addProgressListener(toolCallId, (_executionId, _status, output) => {
       if (output) {
@@ -529,7 +535,7 @@ export class AgenticChatEngine {
         this.writeSSE(stream, 'tool_output', {
           id: toolCallId,
           content: output,
-        }).catch(() => {});
+        }, abort).catch(() => {});
       }
     });
 
@@ -545,7 +551,6 @@ export class AgenticChatEngine {
         timeoutMs,
       });
     } finally {
-      // Always clean up the listener to prevent SSE stream closure leaks
       executor.removeProgressListener(toolCallId);
     }
 
@@ -563,7 +568,7 @@ export class AgenticChatEngine {
       exitCode: result.exitCode,
       output: hasStreamedOutput ? undefined : output,
       duration: result.duration,
-    });
+    }, abort);
 
     await auditLogger.updateExecutionResult(
       auditEntry.id,
@@ -590,13 +595,14 @@ export class AgenticChatEngine {
     clientId: string,
     stream: SSEStreamingApi,
     toolCallId: string,
+    abort: AbortState,
   ): Promise<string> {
     const maxLines = input.max_lines ?? 200;
     const command = `head -n ${maxLines} ${this.shellEscape(input.path)}`;
 
     return this.toolExecuteCommand(
       { command, description: `Read file: ${input.path}` },
-      serverId, userId, sessionId, clientId, stream, toolCallId,
+      serverId, userId, sessionId, clientId, stream, toolCallId, abort,
     );
   }
 
@@ -611,13 +617,14 @@ export class AgenticChatEngine {
     clientId: string,
     stream: SSEStreamingApi,
     toolCallId: string,
+    abort: AbortState,
   ): Promise<string> {
     const flags = input.show_hidden ? '-lah' : '-lh';
     const command = `ls ${flags} ${this.shellEscape(input.path)}`;
 
     return this.toolExecuteCommand(
       { command, description: `List files: ${input.path}` },
-      serverId, userId, sessionId, clientId, stream, toolCallId,
+      serverId, userId, sessionId, clientId, stream, toolCallId, abort,
     );
   }
 
@@ -674,16 +681,17 @@ export class AgenticChatEngine {
     return parts.join('\n\n');
   }
 
-  /** Write a typed SSE event */
+  /** Write SSE event; on failure sets abort.aborted immediately. */
   private async writeSSE(
     stream: SSEStreamingApi,
     event: string,
     data: Record<string, unknown>,
+    abort?: AbortState,
   ): Promise<void> {
     try {
       await stream.writeSSE({ event, data: JSON.stringify(data) });
     } catch {
-      // Stream closed, ignore
+      if (abort) abort.aborted = true;
     }
   }
 

@@ -517,8 +517,14 @@
       "success": "成功",
       "failed": "失败",
       "running": "运行中",
-      "timeout": "超时"
-    }
+      "timeout": "超时",
+      "pending_confirmation": "待确认",
+      "cancelled": "已取消"
+    },
+    "pendingConfirmations": "{{count}} 个技能执行等待确认",
+    "triggeredBy": "由 {{type}} 触发",
+    "confirm": "确认执行",
+    "reject": "拒绝"
   },
   "theme": {
     "toggle": "切换主题",

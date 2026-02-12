@@ -100,6 +100,7 @@ function setupStore(
     skills: mockSkills,
     available: mockAvailable,
     executions: [],
+    pendingConfirmations: [],
     executionEvents: [],
     isStreaming: false,
     isLoading: false,
@@ -112,6 +113,9 @@ function setupStore(
     updateStatus: vi.fn().mockResolvedValue(undefined),
     executeSkill: vi.fn().mockResolvedValue({ executionId: 'e1', status: 'success', stepsExecuted: 1, duration: 100, result: null, errors: [] }),
     fetchExecutions: vi.fn().mockResolvedValue(undefined),
+    fetchPendingConfirmations: vi.fn().mockResolvedValue(undefined),
+    confirmExecution: vi.fn().mockResolvedValue({ executionId: 'exec-p1', status: 'success', stepsExecuted: 1, duration: 100, result: null, errors: [] }),
+    rejectExecution: vi.fn().mockResolvedValue(undefined),
     startExecutionStream: vi.fn(),
     stopExecutionStream: vi.fn(),
     clearError: vi.fn(),
@@ -541,5 +545,70 @@ describe('Skills Page', () => {
     // The dialog should now show Dismiss button instead of Cancel/Execute
     expect(screen.getByText('Dismiss')).toBeInTheDocument();
     expect(startExecutionStream).toHaveBeenCalledWith('exec-stream-1');
+  });
+
+  // --------------------------------------------------------------------------
+  // Pending Confirmations UI
+  // --------------------------------------------------------------------------
+
+  it('should show pending confirmations banner when there are pending executions', () => {
+    setupStore({
+      pendingConfirmations: [
+        makeExecution({ id: 'exec-p1', status: 'pending_confirmation', triggerType: 'cron', skillId: 'sk-1' }),
+      ],
+    });
+    renderSkills();
+
+    const banner = screen.getByTestId('pending-confirmations');
+    expect(banner).toBeInTheDocument();
+    expect(within(banner).getByText(/1 skill execution\(s\) awaiting confirmation/)).toBeInTheDocument();
+    expect(within(banner).getByText('Nginx Setup')).toBeInTheDocument();
+    expect(within(banner).getByText(/triggered by cron/)).toBeInTheDocument();
+  });
+
+  it('should not show pending confirmations banner when empty', () => {
+    setupStore({ pendingConfirmations: [] });
+    renderSkills();
+
+    expect(screen.queryByTestId('pending-confirmations')).not.toBeInTheDocument();
+  });
+
+  it('should call confirmExecution when clicking confirm button', async () => {
+    const confirmExecution = vi.fn().mockResolvedValue({
+      executionId: 'exec-p1', status: 'success', stepsExecuted: 1, duration: 100, result: null, errors: [],
+    });
+    setupStore({
+      pendingConfirmations: [
+        makeExecution({ id: 'exec-p1', status: 'pending_confirmation', triggerType: 'cron', skillId: 'sk-1' }),
+      ],
+      confirmExecution,
+    });
+    const user = userEvent.setup();
+    renderSkills();
+
+    await user.click(screen.getByTestId('confirm-exec-p1'));
+    expect(confirmExecution).toHaveBeenCalledWith('exec-p1');
+  });
+
+  it('should call rejectExecution when clicking reject button', async () => {
+    const rejectExecution = vi.fn().mockResolvedValue(undefined);
+    setupStore({
+      pendingConfirmations: [
+        makeExecution({ id: 'exec-p1', status: 'pending_confirmation', triggerType: 'event', skillId: 'sk-1' }),
+      ],
+      rejectExecution,
+    });
+    const user = userEvent.setup();
+    renderSkills();
+
+    await user.click(screen.getByTestId('reject-exec-p1'));
+    expect(rejectExecution).toHaveBeenCalledWith('exec-p1');
+  });
+
+  it('should call fetchPendingConfirmations on mount', () => {
+    const fetchPendingConfirmations = vi.fn().mockResolvedValue(undefined);
+    setupStore({ fetchPendingConfirmations });
+    renderSkills();
+    expect(fetchPendingConfirmations).toHaveBeenCalled();
   });
 });

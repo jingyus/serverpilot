@@ -902,3 +902,233 @@ describe('AgenticChatEngine — malformed tool input', () => {
     expect(executingEvents).toHaveLength(1);
   });
 });
+
+// ============================================================================
+// AgenticChatEngine — writeSSE failure triggers abort (chat-034)
+// ============================================================================
+
+describe('AgenticChatEngine — writeSSE failure triggers abort', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should set abort flag when writeSSE throws, stopping subsequent tool calls', async () => {
+    // AI returns 3 tool calls in one response. After the first tool call,
+    // writeSSE (tool_result) throws → abort.aborted should become true
+    // → remaining 2 tool calls should be skipped.
+    let writeCallCount = 0;
+    const stream = {
+      writeSSE: vi.fn(async () => {
+        writeCallCount++;
+        // Fail on the 4th writeSSE call (after tool_executing + tool_output + tool_result for 1st tool)
+        // For simplicity, fail after a few calls to simulate mid-execution disconnect
+        if (writeCallCount >= 3) {
+          throw new Error('stream closed');
+        }
+      }),
+      onAbort: vi.fn(),
+    } as unknown as SSEStreamingApi;
+
+    let callIndex = 0;
+    const client = {
+      messages: {
+        stream: vi.fn(() => {
+          callIndex++;
+          if (callIndex === 1) {
+            return {
+              on: vi.fn(),
+              finalMessage: vi.fn(async () => ({
+                content: [
+                  { type: 'tool_use', id: 'tool-1', name: 'execute_command', input: { command: 'echo 1', description: 'first' } },
+                  { type: 'tool_use', id: 'tool-2', name: 'execute_command', input: { command: 'echo 2', description: 'second' } },
+                  { type: 'tool_use', id: 'tool-3', name: 'execute_command', input: { command: 'echo 3', description: 'third' } },
+                ],
+                stop_reason: 'tool_use',
+              })),
+            };
+          }
+          return {
+            on: vi.fn(),
+            finalMessage: vi.fn(async () => ({
+              content: [{ type: 'text', text: 'Done.' }],
+              stop_reason: 'end_turn',
+            })),
+          };
+        }),
+      },
+    } as unknown as Anthropic;
+
+    const engine = new AgenticChatEngine(client);
+    const result = await engine.run({
+      userMessage: 'multi-tool test',
+      serverId: 'srv-1',
+      userId: 'usr-1',
+      sessionId: 'sess-1',
+      stream,
+    });
+
+    // Should abort — not all 3 tools executed
+    expect(result.success).toBe(false);
+    // At most 1-2 tool calls actually dispatched (3rd should be skipped)
+    expect(result.toolCallCount).toBeLessThan(3);
+  });
+
+  it('should stop agentic loop after writeSSE failure on text stream', async () => {
+    // AI streams text → writeSSE fails → abort.aborted set → loop stops
+    let writeCount = 0;
+    const stream = {
+      writeSSE: vi.fn(async () => {
+        writeCount++;
+        if (writeCount >= 2) throw new Error('connection reset');
+      }),
+      onAbort: vi.fn(),
+    } as unknown as SSEStreamingApi;
+
+    let apiCalls = 0;
+    const client = {
+      messages: {
+        stream: vi.fn(() => {
+          apiCalls++;
+          const listeners: Record<string, ((...args: unknown[]) => void)[]> = {};
+          return {
+            on: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
+              if (!listeners[event]) listeners[event] = [];
+              listeners[event].push(handler);
+            }),
+            abort: vi.fn(),
+            finalMessage: vi.fn(async () => {
+              // Emit text which triggers writeSSE → failure → abort
+              for (const handler of (listeners['text'] ?? [])) {
+                handler('Hello ');
+              }
+              return {
+                content: [
+                  { type: 'text', text: 'Hello' },
+                  { type: 'tool_use', id: 'tool-1', name: 'execute_command', input: { command: 'echo test', description: 'test' } },
+                ],
+                stop_reason: 'tool_use',
+              };
+            }),
+          };
+        }),
+      },
+    } as unknown as Anthropic;
+
+    const engine = new AgenticChatEngine(client);
+    const result = await engine.run({
+      userMessage: 'test',
+      serverId: 'srv-1',
+      userId: 'usr-1',
+      sessionId: 'sess-1',
+      stream,
+    });
+
+    expect(result.success).toBe(false);
+    // Should not make a second API call — loop stops after abort
+    expect(apiCalls).toBe(1);
+  });
+});
+
+// ============================================================================
+// AgenticChatEngine — Anthropic stream abort on disconnect (chat-034)
+// ============================================================================
+
+describe('AgenticChatEngine — Anthropic stream abort on disconnect', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should call response.abort() when client disconnects during AI streaming', async () => {
+    const { stream, simulateAbort } = createMockStream();
+    const abortSpy = vi.fn();
+
+    const client = {
+      messages: {
+        stream: vi.fn(() => {
+          const listeners: Record<string, ((...args: unknown[]) => void)[]> = {};
+          return {
+            on: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
+              if (!listeners[event]) listeners[event] = [];
+              listeners[event].push(handler);
+            }),
+            abort: abortSpy,
+            finalMessage: vi.fn(async () => {
+              // Simulate: first text delta arrives, then client disconnects,
+              // then more text arrives — abort should be called
+              for (const handler of (listeners['text'] ?? [])) {
+                handler('First token ');
+              }
+              simulateAbort();
+              for (const handler of (listeners['text'] ?? [])) {
+                handler('Second token ');
+              }
+              return {
+                content: [{ type: 'text', text: 'First token Second token ' }],
+                stop_reason: 'end_turn',
+              };
+            }),
+          };
+        }),
+      },
+    } as unknown as Anthropic;
+
+    const engine = new AgenticChatEngine(client);
+    const result = await engine.run({
+      userMessage: 'test',
+      serverId: 'srv-1',
+      userId: 'usr-1',
+      sessionId: 'sess-1',
+      stream,
+    });
+
+    // abort() should have been called when text delta detected abort state
+    expect(abortSpy).toHaveBeenCalled();
+    expect(result.success).toBe(true); // loop ended naturally (end_turn, no tool_use)
+  });
+
+  it('should call response.abort() on inputJson delta when disconnected', async () => {
+    const { stream, simulateAbort } = createMockStream();
+    const abortSpy = vi.fn();
+
+    const client = {
+      messages: {
+        stream: vi.fn(() => {
+          const listeners: Record<string, ((...args: unknown[]) => void)[]> = {};
+          return {
+            on: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
+              if (!listeners[event]) listeners[event] = [];
+              listeners[event].push(handler);
+            }),
+            abort: abortSpy,
+            finalMessage: vi.fn(async () => {
+              // Disconnect then receive inputJson delta
+              simulateAbort();
+              for (const handler of (listeners['inputJson'] ?? [])) {
+                handler('{"command":');
+              }
+              return {
+                content: [
+                  { type: 'tool_use', id: 'tool-1', name: 'execute_command', input: { command: 'ls', description: 'list' } },
+                ],
+                stop_reason: 'tool_use',
+              };
+            }),
+          };
+        }),
+      },
+    } as unknown as Anthropic;
+
+    const engine = new AgenticChatEngine(client);
+    const result = await engine.run({
+      userMessage: 'test',
+      serverId: 'srv-1',
+      userId: 'usr-1',
+      sessionId: 'sess-1',
+      stream,
+    });
+
+    expect(abortSpy).toHaveBeenCalled();
+    // Loop should stop — abort detected after AI call
+    expect(result.success).toBe(false);
+  });
+});

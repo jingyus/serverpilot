@@ -16,6 +16,7 @@ import type {
   ExecutionResponse,
   ExecutionsResponse,
   ExecutionDetailResponse,
+  PendingConfirmationsResponse,
   SkillExecutionEvent,
 } from '@/types/skill';
 
@@ -29,6 +30,7 @@ interface SkillsState {
   isStreaming: boolean;
   isLoading: boolean;
   error: string | null;
+  pendingConfirmations: SkillExecution[];
 
   fetchSkills: () => Promise<void>;
   fetchAvailable: () => Promise<void>;
@@ -39,6 +41,9 @@ interface SkillsState {
   executeSkill: (id: string, serverId: string, config?: Record<string, unknown>) => Promise<SkillExecutionResult>;
   fetchExecutions: (id: string) => Promise<void>;
   fetchExecutionDetail: (skillId: string, executionId: string) => Promise<void>;
+  fetchPendingConfirmations: () => Promise<void>;
+  confirmExecution: (executionId: string) => Promise<SkillExecutionResult>;
+  rejectExecution: (executionId: string) => Promise<void>;
   clearSelectedExecution: () => void;
   startExecutionStream: (executionId: string) => void;
   stopExecutionStream: () => void;
@@ -57,6 +62,7 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
   isStreaming: false,
   isLoading: false,
   error: null,
+  pendingConfirmations: [],
 
   fetchSkills: async () => {
     set({ isLoading: true, error: null });
@@ -184,6 +190,49 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to load execution detail';
       set({ error: message, isLoadingDetail: false });
+    }
+  },
+
+  fetchPendingConfirmations: async () => {
+    try {
+      const data = await apiRequest<PendingConfirmationsResponse>('/skills/pending-confirmations');
+      set({ pendingConfirmations: data.executions });
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to load pending confirmations';
+      set({ error: message });
+    }
+  },
+
+  confirmExecution: async (executionId) => {
+    set({ error: null });
+    try {
+      const data = await apiRequest<ExecutionResponse>(`/skills/executions/${executionId}/confirm`, {
+        method: 'POST',
+      });
+      set({
+        pendingConfirmations: get().pendingConfirmations.filter((e) => e.id !== executionId),
+      });
+      return data.execution;
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to confirm execution';
+      set({ error: message });
+      throw err;
+    }
+  },
+
+  rejectExecution: async (executionId) => {
+    set({ error: null });
+    try {
+      await apiRequest(`/skills/executions/${executionId}/reject`, {
+        method: 'POST',
+      });
+      set({
+        pendingConfirmations: get().pendingConfirmations.filter((e) => e.id !== executionId),
+      });
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to reject execution';
+      set({ error: message });
+      throw err;
     }
   },
 

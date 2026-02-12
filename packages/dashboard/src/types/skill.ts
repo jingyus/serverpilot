@@ -8,7 +8,7 @@
 export type SkillStatus = 'installed' | 'configured' | 'enabled' | 'paused' | 'error';
 export type SkillSource = 'official' | 'community' | 'local';
 export type SkillTriggerType = 'manual' | 'cron' | 'event' | 'threshold';
-export type SkillExecutionStatus = 'running' | 'success' | 'failed' | 'timeout';
+export type SkillExecutionStatus = 'pending_confirmation' | 'running' | 'success' | 'failed' | 'timeout' | 'cancelled';
 
 export const SKILL_STATUS_LABELS: Record<SkillStatus, string> = {
   installed: 'Installed',
@@ -150,11 +150,15 @@ export interface ExecutionDetailResponse {
   execution: SkillExecution;
 }
 
+export interface PendingConfirmationsResponse {
+  executions: SkillExecution[];
+}
+
 // ============================================================================
 // Skill Execution Streaming Events
 // ============================================================================
 
-export type SkillExecutionEventType = 'step' | 'log' | 'completed' | 'error';
+export type SkillExecutionEventType = 'step' | 'log' | 'completed' | 'error' | 'confirmation_required';
 
 export interface SkillStepEvent {
   type: 'step';
@@ -192,8 +196,19 @@ export interface SkillErrorEvent {
   message: string;
 }
 
+export interface SkillConfirmationEvent {
+  type: 'confirmation_required';
+  executionId: string;
+  timestamp: string;
+  skillId: string;
+  skillName: string;
+  serverId: string;
+  triggerType: string;
+}
+
 export type SkillExecutionEvent =
   | SkillStepEvent
   | SkillLogEvent
   | SkillCompletedEvent
-  | SkillErrorEvent;
+  | SkillErrorEvent
+  | SkillConfirmationEvent;
