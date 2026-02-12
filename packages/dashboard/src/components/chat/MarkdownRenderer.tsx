@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { useState, useCallback, type ComponentPropsWithoutRef } from 'react';
+import { useState, useCallback, useEffect, useRef, type ComponentPropsWithoutRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
@@ -13,11 +13,25 @@ interface MarkdownRendererProps {
 
 function CopyButton({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current !== null) {
+        clearTimeout(timerRef.current);
+      }
+    };
+  }, []);
 
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(code).then(() => {
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      if (timerRef.current !== null) {
+        clearTimeout(timerRef.current);
+      }
+      timerRef.current = setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {
+      // Clipboard API may fail in non-HTTPS, iframe, or unfocused contexts
     });
   }, [code]);
 

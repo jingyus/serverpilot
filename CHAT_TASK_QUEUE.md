@@ -3,14 +3,14 @@
 > 此队列专注于 Chat 和 AI 对话系统的质量改进
 > AI 自动发现问题 → 生成任务 → 实现 → 验证
 
-**最后更新**: 2026-02-13 00:33:09
+**最后更新**: 2026-02-13 00:36:28
 
 ## 📊 统计
 
 - **总任务数**: 20
-- **待完成** (pending): 5
+- **待完成** (pending): 4
 - **进行中** (in_progress): 0
-- **已完成** (completed): 15
+- **已完成** (completed): 16
 - **失败** (failed): 0
 
 ## 📋 任务列表
@@ -232,7 +232,7 @@
 
 ---
 
-### [pending] MarkdownRenderer 复制按钮 Promise 未处理 + setTimeout 泄漏
+### [completed] MarkdownRenderer 复制按钮 Promise 未处理 + setTimeout 泄漏 ✅
 
 **ID**: chat-016
 **优先级**: P2
@@ -249,7 +249,7 @@
 - 现有 MarkdownRenderer 测试继续通过
 **影响范围**: packages/dashboard/src/components/chat/MarkdownRenderer.tsx
 **创建时间**: (自动填充)
-**完成时间**: -
+**完成时间**: 2026-02-13 00:36:28
 
 ---
 

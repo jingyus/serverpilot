@@ -1,51 +1,43 @@
-### [pending] SSE 推送 — Skill 执行实时进度流
+### [pending] 社区 Skill 安装 — 从 Git URL 克隆 + 安全扫描
 
-**ID**: skill-010
-**优先级**: P3
-**模块路径**: packages/server/src/core/skill/ + packages/server/src/api/routes/ + packages/dashboard/src/
-**当前状态**: 不存在 — Skill 执行目前是同步等待返回最终结果，无中间进度推送。已有 MetricsBus SSE 可参考
+**ID**: skill-011
+**优先级**: P4
+**模块路径**: packages/server/src/core/skill/
+**当前状态**: 不存在 — 当前仅支持从本地目录安装 (`engine.ts:install()` 接受 `skillDir` 参数为本地路径)；`POST /api/v1/skills/install` 只接收 `{ name, source }`，无 Git URL 字段
 **实现方案**:
 
-1. **core/skill/skill-event-bus.ts** (~60 行):
-   - `SkillEventBus` — EventEmitter 封装，发布 Skill 执行进度事件
-   - 事件类型: `step` (工具调用进度), `log` (AI 思考日志), `completed` (执行完成), `error` (错误)
-   - 单例: `getSkillEventBus()` / `_resetSkillEventBus()`
-   - 频道: `skill:${executionId}` — 每次执行一个独立事件流
-2. **更新 runner.ts** — 在 agentic loop 的关键节点发布事件:
-   - 工具调用前: `emit('step', { tool, input })` — 通知前端 "正在执行 shell: ls -la"
-   - 工具调用后: `emit('step', { tool, result, success })` — 通知结果
-   - AI 思考: `emit('log', { text })` — AI 的文本输出
-   - 完成/超时: `emit('completed', { result })` 或 `emit('error', { message })`
-3. **api/routes/skills.ts** — 新增 SSE 端点:
-   - `GET /api/v1/skills/:id/executions/:eid/stream` — SSE 连接
-   - 订阅 `SkillEventBus` 对应 executionId 的事件
-   - 中间件: requireAuth + requirePermission('skill:view')
-4. **Dashboard 集成**:
-   - `api/sse.ts` 新增 `createSkillExecutionSSE(executionId)` 方法
-   - `stores/skills.ts` 新增 `streamExecution(executionId)` 方法
-   - `components/skill/ExecutionStream.tsx` (~100 行) — 实时进度 UI:
-     - 步骤列表: 每步显示工具名、输入、结果、状态图标
-     - AI 思考文本实时追加
-     - 完成/失败状态自动切换
-5. **测试**:
-   - `skill-event-bus.test.ts` (~50 行): emit/subscribe/unsubscribe
-   - SSE 端点测试 (整合到 skills.test.ts): 连接 → 收到事件 → 断开
+1. **core/skill/git-installer.ts** (~120 行):
+   - `installFromGitUrl(url: string, targetDir: string): Promise<string>` — 执行 `git clone --depth 1` 到 `skills/community/<name>/`
+   - URL 验证: 仅允许 `https://` 协议 (拒绝 `git://`, `ssh://`)
+   - 目录命名: 从 URL 提取仓库名 (如 `https://github.com/user/my-skill.git` → `skills/community/my-skill/`)
+   - 克隆后验证: 检查 `skill.yaml` 是否存在 + Schema 验证
+   - 失败回滚: 克隆失败或验证失败则删除目录
+2. **安全扫描** (~50 行，集成到 git-installer.ts 或单独文件):
+   - 检查 skill.yaml 中是否有 `risk_level_max: critical` 或 `forbidden` — 警告用户
+   - 扫描 prompt 长度 (异常大的 prompt 可能是注入尝试)
+   - 不执行任何从 Git 仓库引入的可执行文件
+3. **更新 api/routes/skills.ts**:
+   - `POST /api/v1/skills/install` 扩展 body: `{ name, source, gitUrl? }`
+   - 当 `gitUrl` 存在时: 调用 `installFromGitUrl()` → 再调用 `engine.install()`
+   - 权限: `skill:manage` (仅 admin/owner 可安装社区 Skill)
+4. **git-installer.test.ts** (~100 行):
+   - Mock `child_process.exec` (不实际 git clone)
+   - 测试: 有效 URL 解析、无效 URL 拒绝、协议限制 (ssh 拒绝)
+   - 测试: 克隆后验证成功/失败
+   - 测试: 失败回滚清理目录
 
 **验收标准**:
-- 手动执行 Skill 后，前端实时显示每一步工具调用的进度
-- SSE 连接自动重连 (参考 MetricsSSE 的 exponential backoff)
-- 执行完成后 SSE 自动关闭
-- 事件总线不泄漏 (执行完成后清理 listener)
+- 能通过 API 传入 Git HTTPS URL 安装社区 Skill
+- 仅允许 HTTPS 协议 (拒绝 SSH/Git 协议)
+- 克隆后自动验证 skill.yaml 合规性
+- 失败时自动清理目录 (无残留)
 - 测试 ≥ 8 个
 
 **影响范围**:
-- `packages/server/src/core/skill/skill-event-bus.ts` (新建)
-- `packages/server/src/core/skill/skill-event-bus.test.ts` (新建)
-- `packages/server/src/core/skill/runner.ts` (修改 — 接入事件发布)
-- `packages/server/src/api/routes/skills.ts` (修改 — 新增 SSE 端点)
-- `packages/dashboard/src/api/sse.ts` (修改 — 新增 Skill SSE)
-- `packages/dashboard/src/stores/skills.ts` (修改 — 新增 stream 方法)
-- `packages/dashboard/src/components/skill/ExecutionStream.tsx` (新建)
+- `packages/server/src/core/skill/git-installer.ts` (新建)
+- `packages/server/src/core/skill/git-installer.test.ts` (新建)
+- `packages/server/src/api/routes/skills.ts` (修改 — 扩展 install 端点)
+- `packages/server/src/api/routes/schemas.ts` (修改 — 扩展 InstallSkillBody)
 
 **创建时间**: (自动填充)
 **完成时间**: -

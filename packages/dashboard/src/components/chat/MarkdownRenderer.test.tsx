@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { render, screen, fireEvent, waitFor, act, cleanup } from '@testing-library/react';
 import { MarkdownRenderer } from './MarkdownRenderer';
 
 describe('MarkdownRenderer', () => {
@@ -108,5 +108,71 @@ describe('MarkdownRenderer', () => {
     render(<MarkdownRenderer content={content} />);
     const codeBlocks = screen.getAllByTestId('code-block');
     expect(codeBlocks).toHaveLength(2);
+  });
+
+  it('handles clipboard rejection without unhandled promise rejection', async () => {
+    const writeText = vi.fn().mockRejectedValue(new DOMException('Not allowed'));
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    render(<MarkdownRenderer content={'```js\nconst x = 1;\n```'} />);
+    const copyBtn = screen.getByTestId('copy-code-button');
+    fireEvent.click(copyBtn);
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith('const x = 1;');
+    });
+    // Should remain in "Copy" state, not "Copied"
+    expect(screen.getByText('Copy')).toBeInTheDocument();
+  });
+
+  it('clears timeout on unmount to prevent state update on unmounted component', async () => {
+    vi.useFakeTimers();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    const { unmount } = render(<MarkdownRenderer content={'```js\nlet a = 1;\n```'} />);
+    const copyBtn = screen.getByTestId('copy-code-button');
+    fireEvent.click(copyBtn);
+
+    // Wait for clipboard promise to resolve
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('Copied')).toBeInTheDocument();
+
+    // Unmount before the 2000ms timer fires
+    unmount();
+
+    // Advance past the timer — should NOT cause "state update on unmounted component"
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
+
+    vi.useRealTimers();
+  });
+
+  it('resets copied state after 2 seconds', async () => {
+    vi.useFakeTimers();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    render(<MarkdownRenderer content={'```js\nlet b = 2;\n```'} />);
+    const copyBtn = screen.getByTestId('copy-code-button');
+    fireEvent.click(copyBtn);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('Copied')).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+
+    expect(screen.getByText('Copy')).toBeInTheDocument();
+
+    vi.useRealTimers();
   });
 });
