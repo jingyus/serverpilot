@@ -1,34 +1,40 @@
-### [pending] runner.ts 超 500 行限制 — 提取工具执行方法到独立模块
+### [pending] Skill 执行 E2E 集成测试 — 覆盖完整生命周期
 
-**ID**: skill-017
+**ID**: skill-018
 **优先级**: P2
-**模块路径**: packages/server/src/core/skill/runner.ts
-**当前状态**: 需要改进 — `runner.ts` 当前 677 行，超过项目标准的 500 行软限制。文件包含 SkillRunner 核心循环 + 6 种工具执行方法 (shell/read_file/write_file/notify/http/store) + 审计方法 + helper 方法。工具执行逻辑可独立提取
+**模块路径**: tests/ 或 packages/server/src/core/skill/
+**当前状态**: 功能缺失 — 现有测试全部为单元测试 (mock AI provider、mock executor)。缺少验证完整 install → configure → enable → manual execute → verify execution result 的集成测试。特别是以下集成点未被测试覆盖:
+  - SkillEngine + SkillRunner + TriggerManager 协同
+  - RBAC 权限在 skill 路由上的端到端验证
+  - SSE 事件流从 SkillRunner → SkillEventBus → SSE endpoint 的完整链路
 **实现方案**:
 
-1. **新建 `runner-executor.ts`** (~250 行):
-   - 提取 6 个 `execute*` 方法 + `auditShell` 方法为独立类 `SkillToolExecutor`:
-     - `executeShell()`, `executeReadFile()`, `executeWriteFile()`, `executeNotify()`, `executeHttp()`, `executeStore()`
-     - `auditShell()` 辅助方法
-   - 构造参数: 接收所需依赖 (taskExecutor, auditLogger, webhookDispatcher 等)
-   - 导出 `SkillToolExecutor` 类
-2. **修改 `runner.ts`** (~350 行):
-   - 移除工具执行方法，改为实例化 `SkillToolExecutor` 并调用
-   - 保留核心 agentic loop 逻辑
-3. **测试**:
-   - 现有 runner.test.ts 无需大改 (接口不变)
-   - 可选: 新增 runner-executor.test.ts 对工具执行方法做独立单元测试
+1. **skill-integration.test.ts** (~300 行):
+   - 使用 InMemory repositories + Mock AI Provider
+   - 测试完整生命周期:
+     - 安装 → 验证 DB 持久化
+     - 配置 → 验证状态自动转换 (installed → configured)
+     - 启用 → 验证 TriggerManager 注册触发器
+     - 手动执行 → Mock AI 返回 tool_use → 验证工具调用链
+     - 暂停 → 验证 TriggerManager 注销触发器
+     - 卸载 → 验证 DB 清理 + 关联执行记录级联删除
+   - 测试 SSE 事件流:
+     - 启动执行 → 订阅 SkillEventBus → 验证 step/log/completed 事件序列
+   - 测试 RBAC 端到端:
+     - member 角色只能 view，不能 manage/execute
+     - admin 角色可以 manage + execute
+   - 测试错误恢复:
+     - Skill manifest 损坏 → 执行失败 → status 设为 error
+     - 执行超时 → 正确记录 timeout 状态
 
 **验收标准**:
-- `runner.ts` 降至 ≤ 500 行
-- `runner-executor.ts` ≤ 300 行
-- 所有现有 runner.test.ts 测试继续通过
-- 无行为变化，纯重构
+- 完整的 install→configure→enable→execute→result 链路覆盖
+- SSE 事件流验证
+- RBAC 权限验证
+- 测试 ≥ 15 个
 
 **影响范围**:
-- `packages/server/src/core/skill/runner.ts` (修改 — 拆分)
-- `packages/server/src/core/skill/runner-executor.ts` (新建)
-- `packages/server/src/core/skill/runner.test.ts` (可能微调 import)
+- `packages/server/src/core/skill/skill-integration.test.ts` (新建)
 
 **创建时间**: (自动填充)
 **完成时间**: -

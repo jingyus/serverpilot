@@ -164,12 +164,29 @@ export function rejectAllPendingDecisions(planId: string): void {
 
 /** Get the active execution ID for a plan, or undefined. */
 export function getActiveExecution(planId: string): string | undefined {
-  return activePlanExecutions.get(planId);
+  const id = activePlanExecutions.get(planId);
+  // Empty string means execution is tracked but executionId not yet assigned
+  return id || undefined;
+}
+
+/** Check if a plan execution is tracked (even if executionId not yet assigned). */
+export function hasActiveExecution(planId: string): boolean {
+  return activePlanExecutions.has(planId);
 }
 
 /** Remove an active execution and return whether it existed. */
 export function removeActiveExecution(planId: string): boolean {
   return activePlanExecutions.delete(planId);
+}
+
+/** @internal Test helper — set an active execution entry directly. */
+export function _setActiveExecution(planId: string, executionId: string): void {
+  activePlanExecutions.set(planId, executionId);
+}
+
+/** @internal Test helper — clear all active executions. */
+export function _resetActiveExecutions(): void {
+  activePlanExecutions.clear();
 }
 
 // ============================================================================

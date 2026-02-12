@@ -45,6 +45,7 @@ import {
 } from '../../db/repositories/session-repository.js';
 import { getSessionManager, _resetSessionManager } from '../../core/session/manager.js';
 import { _resetChatAIAgent, initChatAIAgent } from './chat-ai.js';
+import { _setActiveExecution, _resetActiveExecutions } from './chat-execution.js';
 import type { ApiEnv } from './types.js';
 
 // ============================================================================
@@ -146,6 +147,7 @@ beforeEach(() => {
   // Provide InMemorySessionRepository so SessionManager doesn't need a real DB
   setSessionRepository(new InMemorySessionRepository());
   _resetChatAIAgent();
+  _resetActiveExecutions();
   app = createApiApp();
 });
 
@@ -932,6 +934,78 @@ describe('DELETE /api/v1/chat/:serverId/sessions/:sessionId', () => {
       `/api/v1/chat/${server.id}/sessions/${session.id}`,
       tokenB,
       { method: 'DELETE' },
+    );
+    expect(res.status).toBe(404);
+  });
+});
+
+// ============================================================================
+// POST /chat/:serverId/execute/cancel — Cancel Execution
+// ============================================================================
+
+describe('POST /api/v1/chat/:serverId/execute/cancel', () => {
+  it('should return 404 when no execution is tracked', async () => {
+    const server = await createServer('web-01', tokenA);
+    const res = await jsonPost(
+      `/api/v1/chat/${server.id}/execute/cancel`,
+      { planId: 'nonexistent-plan', sessionId: 'session-1' },
+      tokenA,
+    );
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.success).toBe(false);
+  });
+
+  it('should return success when execution has a real executionId', async () => {
+    const server = await createServer('web-01', tokenA);
+
+    // Simulate an active execution with a real executionId
+    _setActiveExecution('plan-1', 'exec-real-id');
+
+    // Mock cancelExecution to return true for our executionId
+    const { getTaskExecutor } = await import('../../core/task/executor.js');
+    vi.mocked(getTaskExecutor).mockReturnValueOnce({
+      executeCommand: vi.fn(),
+      addProgressListener: vi.fn(),
+      removeProgressListener: vi.fn(),
+      cancelExecution: vi.fn((id: string) => id === 'exec-real-id'),
+    } as never);
+
+    const res = await jsonPost(
+      `/api/v1/chat/${server.id}/execute/cancel`,
+      { planId: 'plan-1', sessionId: 'session-1' },
+      tokenA,
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+  });
+
+  it('should return success when executionId is empty (immediate cancel)', async () => {
+    const server = await createServer('web-01', tokenA);
+
+    // Simulate the race condition: execution tracked but executionId not yet assigned
+    _setActiveExecution('plan-2', '');
+
+    const res = await jsonPost(
+      `/api/v1/chat/${server.id}/execute/cancel`,
+      { planId: 'plan-2', sessionId: 'session-1' },
+      tokenA,
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    // Should return success: true because the step loop will detect removal and break
+    expect(body.success).toBe(true);
+  });
+
+  it('should return 404 for another user\'s server', async () => {
+    const server = await createServer('web-01', tokenA);
+    _setActiveExecution('plan-1', 'exec-id');
+
+    const res = await jsonPost(
+      `/api/v1/chat/${server.id}/execute/cancel`,
+      { planId: 'plan-1', sessionId: 'session-1' },
+      tokenB,
     );
     expect(res.status).toBe(404);
   });

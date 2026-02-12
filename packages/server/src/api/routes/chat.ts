@@ -36,6 +36,7 @@ import {
   resolveStepDecision,
   rejectAllPendingDecisions,
   getActiveExecution,
+  hasActiveExecution,
   removeActiveExecution,
 } from './chat-execution.js';
 import type { StoredPlan } from './chat-execution.js';
@@ -409,23 +410,34 @@ chat.post('/:serverId/execute/cancel', requirePermission('chat:use'), validateBo
     throw ApiError.notFound('Server');
   }
 
-  const executionId = getActiveExecution(body.planId);
+  const isTracked = hasActiveExecution(body.planId);
 
   // Resolve any pending step decisions as 'reject'
   rejectAllPendingDecisions(body.planId);
 
-  if (!executionId) {
+  if (!isTracked) {
     return c.json({ success: false, message: 'No active execution found for this plan' }, 404);
   }
 
-  const executor = getTaskExecutor();
-  const cancelled = executor.cancelExecution(executionId);
+  // Get executionId before removing (may be undefined if not yet assigned)
+  const executionId = getActiveExecution(body.planId);
 
-  // Remove from tracking map so the step loop breaks
+  // Remove from tracking map so the step loop breaks on next iteration
   removeActiveExecution(body.planId);
 
+  let cancelled = true;
+
+  if (executionId) {
+    // ExecutionId is available — cancel the running command in the executor
+    const executor = getTaskExecutor();
+    cancelled = executor.cancelExecution(executionId);
+  }
+  // If executionId was not yet assigned, the execution just started and hasn't
+  // dispatched a command yet. Removing from the tracking map is sufficient —
+  // the step loop will detect the removal and break with cancelled=true.
+
   logger.info(
-    { operation: 'plan_cancel', serverId, planId: body.planId, executionId, userId, cancelled },
+    { operation: 'plan_cancel', serverId, planId: body.planId, executionId: executionId ?? '(not yet assigned)', userId, cancelled },
     `Emergency stop: plan execution ${cancelled ? 'cancelled' : 'not found'}`,
   );
 
