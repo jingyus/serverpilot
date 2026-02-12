@@ -19,7 +19,12 @@ import {
   _resetSkillRepository,
 } from '../../db/repositories/skill-repository.js';
 import { getMetricsBus, _resetMetricsBus, type MetricEvent } from '../metrics/metrics-bus.js';
+import {
+  WebhookDispatcher,
+  _resetWebhookDispatcher,
+} from '../webhook/dispatcher.js';
 
+import type { WebhookRepository } from '../../db/repositories/webhook-repository.js';
 import type { SkillManifest } from '@aiinstaller/shared';
 
 // Mock the loader to avoid disk I/O in tests

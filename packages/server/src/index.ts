@@ -48,6 +48,7 @@ import { getWebhookDispatcher } from './core/webhook/dispatcher.js';
 import { getServerRepository } from './db/repositories/server-repository.js';
 import { getServerStatusBus } from './core/server-status-bus.js';
 import { getSkillEngine } from './core/skill/engine.js';
+import { getTriggerManager } from './core/skill/trigger-manager.js';
 
 // ============================================================================
 // Constants
@@ -578,6 +579,16 @@ export async function startServer(): Promise<InstallServer> {
   const skillEngine = getSkillEngine();
   await skillEngine.start();
   logger.info({ operation: 'startup' }, 'Skill engine started');
+
+  // Bridge webhook dispatcher events to TriggerManager so system events
+  // (task.completed, alert.triggered, server.offline, etc.) auto-trigger skills
+  try {
+    getTriggerManager().subscribeToDispatcher(webhookDispatcher);
+    logger.info({ operation: 'startup' }, 'Webhook→Skill event bridge established');
+  } catch {
+    // TriggerManager may not be initialized if no skills are installed
+    logger.debug({ operation: 'startup' }, 'Skipped webhook→skill bridge (TriggerManager not available)');
+  }
 
   // Start the metrics cleanup scheduler
   startMetricsCleanupScheduler();

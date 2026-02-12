@@ -563,6 +563,145 @@ describe('chat-execution (via useChatStore)', () => {
     });
   });
 
+  describe('onComplete clears agentic state (chat-028)', () => {
+    function setupAgenticState(): void {
+      useChatStore.setState({
+        serverId: 'srv-1',
+        isAgenticMode: true,
+        toolCalls: [
+          { id: 'tc-1', tool: 'execute_command', status: 'completed' as const, output: 'done', exitCode: 0 },
+        ],
+        agenticConfirm: {
+          confirmId: 'conf-1',
+          command: 'apt install nginx',
+          description: 'Install nginx',
+          riskLevel: 'yellow',
+        },
+      });
+    }
+
+    it('clears agenticConfirm, isAgenticMode, toolCalls on inline complete with content', () => {
+      useChatStore.setState({ serverId: 'srv-1' });
+      useChatStore.getState().sendMessage('test');
+
+      setupAgenticState();
+      useChatStore.setState({
+        planStatus: 'executing',
+        executionMode: 'inline',
+        streamingContent: 'Installed nginx successfully',
+      });
+
+      const callbacks = getSSECallbacks();
+      callbacks.onComplete(JSON.stringify({ success: true, operationId: 'op-1' }));
+
+      const state = useChatStore.getState();
+      expect(state.agenticConfirm).toBeNull();
+      expect(state.isAgenticMode).toBe(false);
+      expect(state.toolCalls).toEqual([]);
+      expect(state.planStatus).toBe('completed');
+    });
+
+    it('clears agenticConfirm, isAgenticMode, toolCalls on inline complete without content', () => {
+      useChatStore.setState({ serverId: 'srv-1' });
+      useChatStore.getState().sendMessage('test');
+
+      setupAgenticState();
+      useChatStore.setState({
+        planStatus: 'executing',
+        executionMode: 'inline',
+        streamingContent: '',
+      });
+
+      const callbacks = getSSECallbacks();
+      callbacks.onComplete(JSON.stringify({ success: true }));
+
+      const state = useChatStore.getState();
+      expect(state.agenticConfirm).toBeNull();
+      expect(state.isAgenticMode).toBe(false);
+      expect(state.toolCalls).toEqual([]);
+    });
+
+    it('clears agenticConfirm, isAgenticMode, toolCalls on log mode complete', () => {
+      useChatStore.setState({ serverId: 'srv-1' });
+      useChatStore.getState().sendMessage('test');
+
+      setupAgenticState();
+      useChatStore.setState({
+        planStatus: 'executing',
+        executionMode: 'log',
+      });
+
+      const callbacks = getSSECallbacks();
+      callbacks.onComplete(JSON.stringify({ success: true, operationId: 'op-2' }));
+
+      const state = useChatStore.getState();
+      expect(state.agenticConfirm).toBeNull();
+      expect(state.isAgenticMode).toBe(false);
+      expect(state.toolCalls).toEqual([]);
+      expect(state.planStatus).toBe('completed');
+    });
+
+    it('clears agenticConfirm, isAgenticMode, toolCalls on log mode complete with parse error', () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      useChatStore.setState({ serverId: 'srv-1' });
+      useChatStore.getState().sendMessage('test');
+
+      setupAgenticState();
+      useChatStore.setState({
+        planStatus: 'executing',
+        executionMode: 'log',
+      });
+
+      const callbacks = getSSECallbacks();
+      callbacks.onComplete('not-valid-json');
+
+      const state = useChatStore.getState();
+      expect(state.agenticConfirm).toBeNull();
+      expect(state.isAgenticMode).toBe(false);
+      expect(state.toolCalls).toEqual([]);
+      expect(state.planStatus).toBe('completed');
+      warnSpy.mockRestore();
+    });
+
+    it('clears agenticConfirm on non-executing complete with streaming content', () => {
+      useChatStore.setState({ serverId: 'srv-1' });
+      useChatStore.getState().sendMessage('test');
+
+      setupAgenticState();
+      useChatStore.setState({
+        planStatus: 'none',
+        streamingContent: 'AI response text',
+      });
+
+      const callbacks = getSSECallbacks();
+      callbacks.onComplete(JSON.stringify({}));
+
+      const state = useChatStore.getState();
+      expect(state.agenticConfirm).toBeNull();
+      expect(state.isAgenticMode).toBe(false);
+      expect(state.toolCalls).toEqual([]);
+    });
+
+    it('clears agenticConfirm on non-executing complete without content', () => {
+      useChatStore.setState({ serverId: 'srv-1' });
+      useChatStore.getState().sendMessage('test');
+
+      setupAgenticState();
+      useChatStore.setState({
+        planStatus: 'none',
+        streamingContent: '',
+      });
+
+      const callbacks = getSSECallbacks();
+      callbacks.onComplete(JSON.stringify({}));
+
+      const state = useChatStore.getState();
+      expect(state.agenticConfirm).toBeNull();
+      expect(state.isAgenticMode).toBe(false);
+      expect(state.toolCalls).toEqual([]);
+    });
+  });
+
   describe('rejectPlan (bug fix: merged set calls)', () => {
     it('clears plan and adds system message in single atomic update', () => {
       useChatStore.setState({

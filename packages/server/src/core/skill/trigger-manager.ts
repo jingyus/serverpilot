@@ -20,6 +20,7 @@ import {
 } from '../../db/repositories/skill-repository.js';
 import { loadSkillFromDir } from './loader.js';
 
+import type { WebhookDispatcher, DispatchedEvent } from '../webhook/dispatcher.js';
 import type { SkillManifest, SkillTrigger } from '@aiinstaller/shared';
 import type { InstalledSkill, ChainContext } from './types.js';
 
@@ -71,6 +72,7 @@ export class TriggerManager {
   private debounceMap: Map<DebounceKey, number> = new Map();
   private cronTimer: ReturnType<typeof setInterval> | null = null;
   private metricsUnsubscribe: (() => void) | null = null;
+  private dispatcherUnsubscribe: (() => void) | null = null;
   private running = false;
   private executeCallback: ExecuteCallback;
   private repo: SkillRepository;
@@ -120,12 +122,36 @@ export class TriggerManager {
       this.metricsUnsubscribe();
       this.metricsUnsubscribe = null;
     }
+    if (this.dispatcherUnsubscribe) {
+      this.dispatcherUnsubscribe();
+      this.dispatcherUnsubscribe = null;
+    }
 
     this.cronJobs.clear();
     this.eventTriggers.clear();
     this.thresholdTriggers.clear();
     this.debounceMap.clear();
     logger.info('TriggerManager stopped');
+  }
+
+  /**
+   * Subscribe to a WebhookDispatcher so that system events (e.g. `alert.triggered`,
+   * `server.offline`) automatically trigger matching event-based skills.
+   * The dispatcher emits events without knowing about the skill system (inverted dependency).
+   */
+  subscribeToDispatcher(dispatcher: WebhookDispatcher): void {
+    if (this.dispatcherUnsubscribe) {
+      this.dispatcherUnsubscribe();
+    }
+    this.dispatcherUnsubscribe = dispatcher.onDispatched((event: DispatchedEvent) => {
+      this.handleEvent(event.type, event.data).catch((err) => {
+        logger.error(
+          { eventType: event.type, error: (err as Error).message },
+          'Failed to handle dispatched webhook event in TriggerManager',
+        );
+      });
+    });
+    logger.info('TriggerManager subscribed to WebhookDispatcher events');
   }
 
   // --- Registration ---

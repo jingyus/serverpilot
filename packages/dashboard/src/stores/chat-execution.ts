@@ -429,6 +429,9 @@ export function buildStreamingCallbacks(set: SetFn, get: GetFn): SSECallbacks {
               planStatus: 'completed' as const,
               executionMode: 'none' as const,
               pendingConfirm: null,
+              agenticConfirm: null,
+              isAgenticMode: false,
+              toolCalls: [],
               execution: { ...state.execution, success, activeStepId: null },
             }));
           } else {
@@ -437,6 +440,9 @@ export function buildStreamingCallbacks(set: SetFn, get: GetFn): SSECallbacks {
               planStatus: 'completed' as const,
               executionMode: 'none' as const,
               pendingConfirm: null,
+              agenticConfirm: null,
+              isAgenticMode: false,
+              toolCalls: [],
               execution: { ...state.execution, success, activeStepId: null },
             }));
           }
@@ -447,6 +453,9 @@ export function buildStreamingCallbacks(set: SetFn, get: GetFn): SSECallbacks {
               planStatus: 'completed' as const,
               isStreaming: false,
               pendingConfirm: null,
+              agenticConfirm: null,
+              isAgenticMode: false,
+              toolCalls: [],
               execution: {
                 ...state.execution,
                 success: parsed.success,
@@ -457,7 +466,14 @@ export function buildStreamingCallbacks(set: SetFn, get: GetFn): SSECallbacks {
             }));
           } catch (e) {
             warnParseFail(set, 'complete(log)', data, e);
-            set({ planStatus: 'completed', isStreaming: false, pendingConfirm: null });
+            set({
+              planStatus: 'completed',
+              isStreaming: false,
+              pendingConfirm: null,
+              agenticConfirm: null,
+              isAgenticMode: false,
+              toolCalls: [],
+            });
           }
         }
       } else {
@@ -475,9 +491,18 @@ export function buildStreamingCallbacks(set: SetFn, get: GetFn): SSECallbacks {
             messages: [...state.messages, msg],
             streamingContent: '',
             isStreaming: false,
+            agenticConfirm: null,
+            isAgenticMode: false,
+            toolCalls: [],
           }));
         } else {
-          set({ isStreaming: false, streamingContent: '' });
+          set({
+            isStreaming: false,
+            streamingContent: '',
+            agenticConfirm: null,
+            isAgenticMode: false,
+            toolCalls: [],
+          });
         }
       }
     },
@@ -606,7 +631,7 @@ export function buildStreamingCallbacks(set: SetFn, get: GetFn): SSECallbacks {
           isStreaming: false,
           isReconnecting: false,
           streamingContent: '',
-          executionMode: 'none',
+          executionMode: 'none' as const,
           pendingConfirm: null,
           agenticConfirm: null,
         });

@@ -353,4 +353,95 @@ describe('WebhookDispatcher', () => {
     // Stopping again should be a no-op
     dispatcher.stop();
   });
+
+  // ============================================================================
+  // onDispatched Event Emission
+  // ============================================================================
+
+  it('should emit dispatched event when webhooks are matched', async () => {
+    const hook = createMockWebhook();
+    (repo.findEnabledByEvent as ReturnType<typeof vi.fn>).mockResolvedValue([hook]);
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('OK', { status: 200 }),
+    );
+
+    const listener = vi.fn();
+    dispatcher.onDispatched(listener);
+
+    await dispatcher.dispatch({
+      type: 'alert.triggered',
+      userId: 'user-1',
+      data: { serverId: 'server-1', severity: 'critical' },
+    });
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledWith({
+      type: 'alert.triggered',
+      data: { serverId: 'server-1', severity: 'critical' },
+    });
+
+    fetchSpy.mockRestore();
+  });
+
+  it('should emit dispatched event even when no webhooks match', async () => {
+    (repo.findEnabledByEvent as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+
+    const listener = vi.fn();
+    dispatcher.onDispatched(listener);
+
+    await dispatcher.dispatch({
+      type: 'server.offline',
+      userId: 'user-1',
+      data: { serverId: 'server-1' },
+    });
+
+    // No webhooks matched, but the event should still be emitted
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener).toHaveBeenCalledWith({
+      type: 'server.offline',
+      data: { serverId: 'server-1' },
+    });
+  });
+
+  it('should support unsubscribing from dispatched events', async () => {
+    (repo.findEnabledByEvent as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+
+    const listener = vi.fn();
+    const unsub = dispatcher.onDispatched(listener);
+
+    await dispatcher.dispatch({
+      type: 'task.completed',
+      userId: 'user-1',
+      data: {},
+    });
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    unsub();
+
+    await dispatcher.dispatch({
+      type: 'task.completed',
+      userId: 'user-1',
+      data: {},
+    });
+    expect(listener).toHaveBeenCalledTimes(1); // still 1 after unsubscribe
+  });
+
+  it('should remove all listeners on stop', async () => {
+    (repo.findEnabledByEvent as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+
+    const listener = vi.fn();
+    dispatcher.onDispatched(listener);
+
+    dispatcher.start();
+    dispatcher.stop();
+
+    await dispatcher.dispatch({
+      type: 'task.completed',
+      userId: 'user-1',
+      data: {},
+    });
+
+    expect(listener).not.toHaveBeenCalled();
+  });
 });

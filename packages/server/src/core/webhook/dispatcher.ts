@@ -10,6 +10,7 @@
  */
 
 import { createHmac, randomUUID } from 'node:crypto';
+import { EventEmitter } from 'node:events';
 import { logger } from '../../utils/logger.js';
 import { getWebhookRepository } from '../../db/repositories/webhook-repository.js';
 
@@ -23,6 +24,12 @@ import type { Webhook, WebhookRepository } from '../../db/repositories/webhook-r
 export interface WebhookEvent {
   type: WebhookEventType;
   userId: string;
+  data: Record<string, unknown>;
+}
+
+/** Payload emitted after a successful dispatch (for subscribers like TriggerManager). */
+export interface DispatchedEvent {
+  type: string;
   data: Record<string, unknown>;
 }
 
@@ -79,6 +86,7 @@ export class WebhookDispatcher {
   private processing = false;
   private retryIntervalMs: number;
   private requestTimeoutMs: number;
+  private emitter = new EventEmitter();
 
   constructor(
     private repo: WebhookRepository,
@@ -104,7 +112,18 @@ export class WebhookDispatcher {
       clearInterval(this.timer);
       this.timer = null;
     }
+    this.emitter.removeAllListeners();
     logger.info({ operation: 'webhook_dispatcher_stop' }, 'Webhook dispatcher stopped');
+  }
+
+  /**
+   * Register a listener for dispatched events.
+   * Called after `dispatch()` completes for each event, allowing external
+   * modules (e.g. TriggerManager) to react to system events without coupling.
+   */
+  onDispatched(listener: (event: DispatchedEvent) => void): () => void {
+    this.emitter.on('dispatched', listener);
+    return () => { this.emitter.off('dispatched', listener); };
   }
 
   /**
@@ -115,16 +134,20 @@ export class WebhookDispatcher {
    */
   async dispatch(event: WebhookEvent): Promise<void> {
     const hooks = await this.repo.findEnabledByEvent(event.type, event.userId);
-    if (hooks.length === 0) return;
 
-    logger.info(
-      { operation: 'webhook_dispatch', eventType: event.type, hookCount: hooks.length },
-      `Dispatching ${event.type} to ${hooks.length} webhook(s)`,
-    );
+    if (hooks.length > 0) {
+      logger.info(
+        { operation: 'webhook_dispatch', eventType: event.type, hookCount: hooks.length },
+        `Dispatching ${event.type} to ${hooks.length} webhook(s)`,
+      );
 
-    await Promise.allSettled(
-      hooks.map((hook) => this.deliverToWebhook(hook, event)),
-    );
+      await Promise.allSettled(
+        hooks.map((hook) => this.deliverToWebhook(hook, event)),
+      );
+    }
+
+    // Always notify subscribers (e.g. TriggerManager) regardless of webhook matches
+    this.emitter.emit('dispatched', { type: event.type, data: event.data });
   }
 
   /**

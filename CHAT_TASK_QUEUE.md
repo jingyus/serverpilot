@@ -3,14 +3,14 @@
 > 此队列专注于 Chat 和 AI 对话系统的质量改进
 > AI 自动发现问题 → 生成任务 → 实现 → 验证
 
-**最后更新**: 2026-02-13 02:36:03
+**最后更新**: 2026-02-13 02:40:01
 
 ## 📊 统计
 
 - **总任务数**: 32
-- **待完成** (pending): 5
+- **待完成** (pending): 4
 - **进行中** (in_progress): 0
-- **已完成** (completed): 27
+- **已完成** (completed): 28
 - **失败** (failed): 0
 
 ## 📋 任务列表
@@ -167,7 +167,7 @@
 
 ---
 
-### [pending] onComplete 未清理 agenticConfirm 状态 — 执行成功后仍显示确认栏
+### [completed] onComplete 未清理 agenticConfirm 状态 — 执行成功后仍显示确认栏 ✅
 
 **ID**: chat-028
 **优先级**: P2
@@ -183,7 +183,7 @@
 - 新增测试：agentic 模式 complete 后验证 agenticConfirm 为 null
 **影响范围**: packages/dashboard/src/stores/chat-execution.ts
 **创建时间**: (自动填充)
-**完成时间**: -
+**完成时间**: 2026-02-13 02:40:01
 
 ---
 
