@@ -1,21 +1,21 @@
-### [pending] RBAC 权限修正 — skill:execute 应包含 member 角色
+### [pending] Skills.tsx 页面组件拆分 — 降至 500 行以下
 
-**ID**: skill-064
+**ID**: skill-065
 **优先级**: P1
-**模块路径**: packages/shared/src/rbac.ts
-**当前状态**: 开发规范定义 `skill:execute` 应授予 member+admin+owner，但实际代码中 `skill:execute` 仅在 `ADMIN_PERMISSIONS` 数组中（第 150 行），member 角色只有 `skill:view`。这意味着普通成员无法手动执行 Skill。
+**模块路径**: packages/dashboard/src/pages/Skills.tsx, packages/dashboard/src/components/skill/
+**当前状态**: `Skills.tsx` 693 行，超过 500 行软限制。页面内嵌了 `ExecuteDialog`、`ConfirmationBanner`、`AvailableSkillCard` 等内联组件定义，应提取到独立文件。
 **实现方案**: 
-1. 在 `packages/shared/src/rbac.ts` 的 `MEMBER_PERMISSIONS` 数组中添加 `'skill:execute'`（在 `'skill:view'` 之后）
-2. 从 `ADMIN_PERMISSIONS` 中移除 `'skill:execute'`（因为 admin 已继承 member 权限）
-3. 更新 `packages/shared/src/rbac.test.ts` — 添加显式测试验证 member 拥有 skill:execute
-4. 重新构建 shared 包 (`pnpm --filter @aiinstaller/shared build`)
-5. 验证 routes 测试中 member 用户可以执行 skill
+1. 提取 `ExecuteDialog` 组件到 `components/skill/ExecuteDialog.tsx`（约 80 行）
+2. 提取 `ConfirmationBanner` 组件到 `components/skill/ConfirmationBanner.tsx`（约 50 行）
+3. 提取 `AvailableSkillCard` 组件到 `components/skill/AvailableSkillCard.tsx`（约 60 行）
+4. `Skills.tsx` 仅保留页面级布局和 tab 切换逻辑
+5. 目标：`Skills.tsx` ≤ 450 行
 **验收标准**: 
-- member 角色拥有 `skill:view` + `skill:execute` 权限
-- admin 角色拥有 `skill:view` + `skill:execute` + `skill:manage` 权限
-- owner 继承所有权限
-- rbac 测试验证三个角色的 skill 权限分配
-**影响范围**: packages/shared/src/rbac.ts, packages/shared/src/rbac.test.ts
+- `Skills.tsx` ≤ 450 行
+- 各提取组件 ≤ 150 行
+- `Skills.test.tsx` 所有现有测试通过
+- 无视觉回归（组件行为不变）
+**影响范围**: packages/dashboard/src/pages/Skills.tsx, packages/dashboard/src/components/skill/ (3 个新文件)
 **创建时间**: (自动填充)
 **完成时间**: -
 
