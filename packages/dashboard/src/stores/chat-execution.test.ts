@@ -728,4 +728,206 @@ describe('chat-execution (via useChatStore)', () => {
       expect(state.messages[0].role).toBe('system');
     });
   });
+
+  describe('Zod runtime validation rejects malformed SSE payloads (chat-032)', () => {
+    let warnSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      useChatStore.setState({ serverId: 'srv-1' });
+      useChatStore.getState().sendMessage('test');
+    });
+
+    afterEach(() => {
+      warnSpy.mockRestore();
+    });
+
+    it('rejects step_confirm missing stepId (empty string)', () => {
+      const callbacks = getSSECallbacks();
+      callbacks.onStepConfirm(JSON.stringify({
+        stepId: '', command: 'rm -rf /', description: 'delete all', riskLevel: 'critical',
+      }));
+
+      expect(useChatStore.getState().pendingConfirm).toBeNull();
+      expect(useChatStore.getState().sseParseErrors).toBe(1);
+      expect(warnSpy).toHaveBeenCalled();
+    });
+
+    it('rejects step_confirm missing required fields', () => {
+      const callbacks = getSSECallbacks();
+      callbacks.onStepConfirm(JSON.stringify({ stepId: 's1', command: 'ls' }));
+
+      expect(useChatStore.getState().pendingConfirm).toBeNull();
+      expect(useChatStore.getState().sseParseErrors).toBe(1);
+    });
+
+    it('accepts valid step_confirm with all fields', () => {
+      const callbacks = getSSECallbacks();
+      callbacks.onStepConfirm(JSON.stringify({
+        stepId: 's1', command: 'apt install nginx', description: 'Install nginx', riskLevel: 'yellow',
+      }));
+
+      const state = useChatStore.getState();
+      expect(state.pendingConfirm).toEqual({
+        stepId: 's1', command: 'apt install nginx', description: 'Install nginx', riskLevel: 'yellow',
+      });
+      expect(state.sseParseErrors).toBe(0);
+    });
+
+    it('rejects step_start with empty stepId', () => {
+      const callbacks = getSSECallbacks();
+      callbacks.onStepStart(JSON.stringify({ stepId: '' }));
+
+      expect(useChatStore.getState().execution.activeStepId).toBeNull();
+      expect(useChatStore.getState().sseParseErrors).toBe(1);
+    });
+
+    it('rejects step_start missing stepId', () => {
+      const callbacks = getSSECallbacks();
+      callbacks.onStepStart(JSON.stringify({ id: 's1' }));
+
+      expect(useChatStore.getState().execution.activeStepId).toBeNull();
+      expect(useChatStore.getState().sseParseErrors).toBe(1);
+    });
+
+    it('rejects tool_call missing id', () => {
+      const callbacks = getSSECallbacks();
+      callbacks.onToolCall(JSON.stringify({ tool: 'execute_command' }));
+
+      expect(useChatStore.getState().toolCalls).toHaveLength(0);
+      expect(useChatStore.getState().sseParseErrors).toBe(1);
+    });
+
+    it('rejects tool_call with empty id', () => {
+      const callbacks = getSSECallbacks();
+      callbacks.onToolCall(JSON.stringify({ id: '', tool: 'execute_command' }));
+
+      expect(useChatStore.getState().toolCalls).toHaveLength(0);
+      expect(useChatStore.getState().sseParseErrors).toBe(1);
+    });
+
+    it('rejects tool_executing missing command', () => {
+      const callbacks = getSSECallbacks();
+      useChatStore.setState({
+        toolCalls: [{ id: 'tc-1', tool: 'execute_command', status: 'running' as const, output: '' }],
+      });
+
+      callbacks.onToolExecuting(JSON.stringify({ id: 'tc-1', tool: 'execute_command' }));
+
+      expect(useChatStore.getState().sseParseErrors).toBe(1);
+      expect(useChatStore.getState().toolCalls[0].command).toBeUndefined();
+    });
+
+    it('rejects tool_output missing content', () => {
+      const callbacks = getSSECallbacks();
+      callbacks.onToolOutput(JSON.stringify({ id: 'tc-1' }));
+
+      expect(useChatStore.getState().sseParseErrors).toBe(1);
+    });
+
+    it('rejects tool_result with invalid status value', () => {
+      const callbacks = getSSECallbacks();
+      useChatStore.setState({
+        streamingContent: '',
+        toolCalls: [{ id: 'tc-1', tool: 'execute_command', status: 'running' as const, output: '' }],
+      });
+
+      callbacks.onToolResult(JSON.stringify({
+        id: 'tc-1', tool: 'execute_command', status: 'unknown_status', exitCode: 0,
+      }));
+
+      expect(useChatStore.getState().sseParseErrors).toBe(1);
+      expect(useChatStore.getState().toolCalls[0].status).toBe('running');
+    });
+
+    it('accepts tool_result with valid status values', () => {
+      const callbacks = getSSECallbacks();
+      useChatStore.setState({
+        streamingContent: '',
+        toolCalls: [{ id: 'tc-1', tool: 'execute_command', status: 'running' as const, output: '' }],
+      });
+
+      callbacks.onToolResult(JSON.stringify({
+        id: 'tc-1', tool: 'execute_command', status: 'completed', exitCode: 0, duration: 100,
+      }));
+
+      expect(useChatStore.getState().sseParseErrors).toBe(0);
+      expect(useChatStore.getState().toolCalls[0].status).toBe('completed');
+    });
+
+    it('rejects confirm_required missing confirmId', () => {
+      const callbacks = getSSECallbacks();
+      callbacks.onConfirmRequired(JSON.stringify({
+        id: 'tc-1', command: 'rm -rf /', description: 'delete', riskLevel: 'critical',
+      }));
+
+      expect(useChatStore.getState().agenticConfirm).toBeNull();
+      expect(useChatStore.getState().sseParseErrors).toBe(1);
+    });
+
+    it('rejects confirm_required with empty confirmId', () => {
+      const callbacks = getSSECallbacks();
+      callbacks.onConfirmRequired(JSON.stringify({
+        id: 'tc-1', command: 'rm -rf /', description: 'delete', riskLevel: 'critical', confirmId: '',
+      }));
+
+      expect(useChatStore.getState().agenticConfirm).toBeNull();
+      expect(useChatStore.getState().sseParseErrors).toBe(1);
+    });
+
+    it('accepts confirm_required with valid confirmId', () => {
+      const callbacks = getSSECallbacks();
+      callbacks.onConfirmRequired(JSON.stringify({
+        id: 'tc-1', command: 'apt install nginx', description: 'Install', riskLevel: 'yellow', confirmId: 'conf-1',
+      }));
+
+      const state = useChatStore.getState();
+      expect(state.agenticConfirm).toEqual({
+        confirmId: 'conf-1', command: 'apt install nginx', description: 'Install', riskLevel: 'yellow',
+      });
+      expect(state.sseParseErrors).toBe(0);
+    });
+
+    it('rejects confirm_id with empty confirmId', () => {
+      const callbacks = getSSECallbacks();
+      useChatStore.setState({
+        agenticConfirm: { confirmId: 'old', command: 'cmd', description: 'desc', riskLevel: 'green' },
+      });
+
+      callbacks.onConfirmId(JSON.stringify({ confirmId: '' }));
+
+      expect(useChatStore.getState().agenticConfirm?.confirmId).toBe('old');
+      expect(useChatStore.getState().sseParseErrors).toBe(1);
+    });
+
+    it('rejects confirm_id missing confirmId field', () => {
+      const callbacks = getSSECallbacks();
+      useChatStore.setState({
+        agenticConfirm: { confirmId: 'old', command: 'cmd', description: 'desc', riskLevel: 'green' },
+      });
+
+      callbacks.onConfirmId(JSON.stringify({ id: 'conf-2' }));
+
+      expect(useChatStore.getState().agenticConfirm?.confirmId).toBe('old');
+      expect(useChatStore.getState().sseParseErrors).toBe(1);
+    });
+
+    it('rejects retry event missing required fields', () => {
+      const callbacks = getSSECallbacks();
+      callbacks.onRetry(JSON.stringify({ attempt: 1 }));
+
+      expect(useChatStore.getState().sseParseErrors).toBe(1);
+    });
+
+    it('respondToAgenticConfirm does nothing when confirmId is missing from state', async () => {
+      useChatStore.setState({
+        serverId: 'srv-1',
+        agenticConfirm: { confirmId: '', command: 'cmd', description: 'desc', riskLevel: 'green' },
+      });
+
+      await useChatStore.getState().respondToAgenticConfirm(true);
+
+      expect(apiRequest).not.toHaveBeenCalled();
+    });
+  });
 });

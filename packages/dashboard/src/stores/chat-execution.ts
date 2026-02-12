@@ -16,8 +16,14 @@ import {
   StepCompleteSchema,
   ExecutionCompleteSchema,
 } from '@/types/chat';
-import type { PendingConfirm, ToolCallEntry, ExecutionMode, ChatState } from './chat-types.js';
-import { INITIAL_EXECUTION, generateId, stripJsonPlan } from './chat-types.js';
+import type { ToolCallEntry, ExecutionMode, ChatState } from './chat-types.js';
+import {
+  INITIAL_EXECUTION, generateId, stripJsonPlan,
+  PendingConfirmSchema, StepStartSchema,
+  ToolCallEventSchema, ToolExecutingEventSchema, ToolOutputEventSchema, ToolResultEventSchema,
+  ConfirmRequiredEventSchema, ConfirmIdEventSchema,
+  MessageEventSchema, RetryEventSchema,
+} from './chat-types.js';
 
 /** Log SSE JSON parse failures to console.warn and bump counter. */
 function warnParseFail(set: SetFn, event: string, raw: string, err: unknown): void {
@@ -59,7 +65,7 @@ export function createConfirmPlan(set: SetFn, get: GetFn) {
       {
         onStepStart: (data) => {
           try {
-            const parsed = JSON.parse(data) as { stepId: string };
+            const parsed = StepStartSchema.parse(JSON.parse(data));
             set((s) => ({
               execution: { ...s.execution, activeStepId: parsed.stepId },
             }));
@@ -98,7 +104,7 @@ export function createConfirmPlan(set: SetFn, get: GetFn) {
 
         onStepConfirm: (data) => {
           try {
-            const parsed = JSON.parse(data) as PendingConfirm;
+            const parsed = PendingConfirmSchema.parse(JSON.parse(data));
             set({ pendingConfirm: parsed });
           } catch (e) { warnParseFail(set, 'step_confirm', data, e); }
         },
@@ -244,7 +250,7 @@ export function buildStreamingCallbacks(set: SetFn, get: GetFn): SSECallbacks {
   return {
     onMessage: (data) => {
       try {
-        const parsed = JSON.parse(data) as { content?: string; sessionId?: string };
+        const parsed = MessageEventSchema.parse(JSON.parse(data));
         if (parsed.sessionId) {
           set({ sessionId: parsed.sessionId });
         }
@@ -262,10 +268,7 @@ export function buildStreamingCallbacks(set: SetFn, get: GetFn): SSECallbacks {
 
     onRetry: (data) => {
       try {
-        const parsed = JSON.parse(data) as {
-          attempt: number; maxAttempts: number; errorCategory: string;
-          isFallback: boolean; fallbackProvider?: string;
-        };
+        const parsed = RetryEventSchema.parse(JSON.parse(data));
         const content = parsed.isFallback
           ? `Switching to backup AI provider (${parsed.fallbackProvider ?? 'unknown'})...`
           : `AI request failed (${parsed.errorCategory}), retrying (${parsed.attempt}/${parsed.maxAttempts})...`;
@@ -291,9 +294,9 @@ export function buildStreamingCallbacks(set: SetFn, get: GetFn): SSECallbacks {
       let mode: ExecutionMode = 'log';
 
       try {
-        const parsed = JSON.parse(data) as { plan?: unknown };
-        if (parsed.plan) {
-          plan = ExecutionPlanSchema.parse(parsed.plan);
+        const parsed: Record<string, unknown> = JSON.parse(data);
+        if (parsed['plan']) {
+          plan = ExecutionPlanSchema.parse(parsed['plan']);
           mode = 'inline';
         }
       } catch (e) { warnParseFail(set, 'auto_execute', data, e); }
@@ -333,7 +336,7 @@ export function buildStreamingCallbacks(set: SetFn, get: GetFn): SSECallbacks {
 
     onStepStart: (data) => {
       try {
-        const parsed = JSON.parse(data) as { stepId: string };
+        const parsed = StepStartSchema.parse(JSON.parse(data));
         set((state) => ({
           execution: { ...state.execution, activeStepId: parsed.stepId },
         }));
@@ -394,7 +397,7 @@ export function buildStreamingCallbacks(set: SetFn, get: GetFn): SSECallbacks {
 
     onStepConfirm: (data) => {
       try {
-        const parsed = JSON.parse(data) as PendingConfirm;
+        const parsed = PendingConfirmSchema.parse(JSON.parse(data));
         set({ pendingConfirm: parsed });
       } catch (e) { warnParseFail(set, 'step_confirm', data, e); }
     },
@@ -511,7 +514,7 @@ export function buildStreamingCallbacks(set: SetFn, get: GetFn): SSECallbacks {
 
     onToolCall: (data) => {
       try {
-        const parsed = JSON.parse(data) as { id: string; tool: string; status: string };
+        const parsed = ToolCallEventSchema.parse(JSON.parse(data));
         set((state) => ({
           isAgenticMode: true,
           toolCalls: [...state.toolCalls, {
@@ -526,7 +529,7 @@ export function buildStreamingCallbacks(set: SetFn, get: GetFn): SSECallbacks {
 
     onToolExecuting: (data) => {
       try {
-        const parsed = JSON.parse(data) as { id: string; tool: string; command: string };
+        const parsed = ToolExecutingEventSchema.parse(JSON.parse(data));
         set((state) => ({
           streamingContent: state.streamingContent + `\n\`\`\`bash\n$ ${parsed.command}\n`,
           toolCalls: state.toolCalls.map((tc) =>
@@ -538,7 +541,7 @@ export function buildStreamingCallbacks(set: SetFn, get: GetFn): SSECallbacks {
 
     onToolOutput: (data) => {
       try {
-        const parsed = JSON.parse(data) as { id: string; content: string };
+        const parsed = ToolOutputEventSchema.parse(JSON.parse(data));
         set((state) => ({
           streamingContent: state.streamingContent + parsed.content,
           toolCalls: state.toolCalls.map((tc) =>
@@ -550,11 +553,7 @@ export function buildStreamingCallbacks(set: SetFn, get: GetFn): SSECallbacks {
 
     onToolResult: (data) => {
       try {
-        const parsed = JSON.parse(data) as {
-          id: string; tool: string; status: string;
-          exitCode?: number; output?: string; duration?: number; error?: string;
-        };
-        const status = parsed.status as ToolCallEntry['status'];
+        const parsed = ToolResultEventSchema.parse(JSON.parse(data));
         set((state) => {
           const extra = parsed.output ?? '';
           const closingMark = '\n```\n';
@@ -562,7 +561,7 @@ export function buildStreamingCallbacks(set: SetFn, get: GetFn): SSECallbacks {
             streamingContent: state.streamingContent + extra + closingMark,
             toolCalls: state.toolCalls.map((tc) =>
               tc.id === parsed.id
-                ? { ...tc, status, exitCode: parsed.exitCode, duration: parsed.duration, output: tc.output + extra }
+                ? { ...tc, status: parsed.status, exitCode: parsed.exitCode, duration: parsed.duration, output: tc.output + extra }
                 : tc,
             ),
           };
@@ -572,13 +571,10 @@ export function buildStreamingCallbacks(set: SetFn, get: GetFn): SSECallbacks {
 
     onConfirmRequired: (data) => {
       try {
-        const parsed = JSON.parse(data) as {
-          id: string; command: string; description: string; riskLevel: string;
-          confirmId?: string;
-        };
+        const parsed = ConfirmRequiredEventSchema.parse(JSON.parse(data));
         set({
           agenticConfirm: {
-            confirmId: parsed.confirmId ?? '',
+            confirmId: parsed.confirmId,
             command: parsed.command,
             description: parsed.description,
             riskLevel: parsed.riskLevel,
@@ -589,7 +585,7 @@ export function buildStreamingCallbacks(set: SetFn, get: GetFn): SSECallbacks {
 
     onConfirmId: (data) => {
       try {
-        const parsed = JSON.parse(data) as { confirmId: string };
+        const parsed = ConfirmIdEventSchema.parse(JSON.parse(data));
         set((state) => ({
           agenticConfirm: state.agenticConfirm
             ? { ...state.agenticConfirm, confirmId: parsed.confirmId }

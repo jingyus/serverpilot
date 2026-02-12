@@ -5,6 +5,7 @@
  * Shared types for the chat store modules (chat.ts, chat-execution.ts, chat-sessions.ts).
  */
 
+import { z } from 'zod';
 import type { ChatMessage, ExecutionPlan, SessionSummary } from '@/types/chat';
 
 export interface ExecutionState {
@@ -41,6 +42,71 @@ export interface AgenticConfirm {
   description: string;
   riskLevel: string;
 }
+
+// ── Zod schemas for runtime validation of SSE event payloads ──
+
+export const PendingConfirmSchema = z.object({
+  stepId: z.string().min(1),
+  command: z.string(),
+  description: z.string(),
+  riskLevel: z.string(),
+});
+
+const ToolCallStatusSchema = z.enum(['running', 'completed', 'failed', 'blocked', 'rejected']);
+
+export const StepStartSchema = z.object({ stepId: z.string().min(1) });
+
+export const ToolCallEventSchema = z.object({
+  id: z.string().min(1),
+  tool: z.string(),
+  status: z.string().optional(),
+});
+
+export const ToolExecutingEventSchema = z.object({
+  id: z.string().min(1),
+  tool: z.string().optional(),
+  command: z.string(),
+});
+
+export const ToolOutputEventSchema = z.object({
+  id: z.string().min(1),
+  content: z.string(),
+});
+
+export const ToolResultEventSchema = z.object({
+  id: z.string().min(1),
+  tool: z.string().optional(),
+  status: ToolCallStatusSchema,
+  exitCode: z.number().optional(),
+  output: z.string().optional(),
+  duration: z.number().optional(),
+  error: z.string().optional(),
+});
+
+export const ConfirmRequiredEventSchema = z.object({
+  id: z.string().optional(),
+  command: z.string(),
+  description: z.string(),
+  riskLevel: z.string(),
+  confirmId: z.string().min(1),
+});
+
+export const ConfirmIdEventSchema = z.object({
+  confirmId: z.string().min(1),
+});
+
+export const MessageEventSchema = z.object({
+  content: z.string().optional(),
+  sessionId: z.string().optional(),
+});
+
+export const RetryEventSchema = z.object({
+  attempt: z.number(),
+  maxAttempts: z.number(),
+  errorCategory: z.string(),
+  isFallback: z.boolean(),
+  fallbackProvider: z.string().optional(),
+});
 
 /**
  * Execution mode determines how command output is displayed:

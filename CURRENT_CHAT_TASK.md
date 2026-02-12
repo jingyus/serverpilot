@@ -1,18 +1,17 @@
-### [pending] SessionSidebar 日期分组使用硬编码英文 — 与项目 i18n 不一致
+### [pending] StepConfirmBar 类型安全 — PendingConfirm 使用 `as` 断言无运行时验证
 
-**ID**: chat-031
+**ID**: chat-032
 **优先级**: P2
-**模块路径**: packages/dashboard/src/pages/Chat.tsx
-**发现的问题**: `Chat.tsx:501-514` 的 `getSessionDateGroup()` 函数和 `Chat.tsx:547` 的 `groupOrder` 数组使用硬编码英文字符串 `'Today'`、`'Yesterday'`、`'This Week'`、`'Older'`。项目使用 `react-i18next` 做国际化，其他所有 UI 文本都通过 `t()` 函数获取。SessionSidebar 中这些分组标题直接在 `Chat.tsx:584` 渲染为英文文本，与中文 UI 的其他部分不一致。
+**模块路径**: packages/dashboard/src/stores/chat-execution.ts
+**发现的问题**: `chat-execution.ts:101` 使用 `JSON.parse(data) as PendingConfirm` 类型断言，`chat-execution.ts:396` 同样如此。`PendingConfirm` 要求 `stepId`、`command`、`description`、`riskLevel` 四个字段（定义在 `chat-types.ts:20-25`）。如果服务端发送的 JSON 缺少任何字段（如 `description` 为 undefined），前端不会报错，但 `StepConfirmBar` 组件会渲染 `undefined` 文本。同理 `chat-execution.ts:531` 的 `parsed.status as ToolCallEntry['status']` 不验证 status 是否是合法联合类型值。`chat-execution.ts:549-551` 的 `confirmId` 可能为 undefined，被 `?? ''` 默认为空字符串，导致 `respondToAgenticConfirm`（行 186）因 `!agenticConfirm?.confirmId` 为 true 而直接 return。
 **改进方案**: 
-1. 将日期分组文本移入 i18n 翻译文件（`chat.sessionGroupToday`、`chat.sessionGroupYesterday` 等）
-2. `getSessionDateGroup` 返回 key（如 `'today'`），渲染时通过 `t(`chat.sessionGroup.${key}`)` 转换
-3. 或在 `SessionSidebar` 组件中使用 `useTranslation` 翻译分组标题
+1. 为 `PendingConfirm`、`ToolCallEntry` 状态更新和 `AgenticConfirm` 创建 Zod schema
+2. 替换 `as` 断言为 `schema.parse(JSON.parse(data))`，解析失败走 `warnParseFail`
+3. 或至少添加必填字段检查：`if (!parsed.stepId || !parsed.command) return`
 **验收标准**: 
-- 日期分组标题根据当前语言显示（中文环境显示"今天"、"昨天"等）
-- 所有现有 Chat 页面测试通过
-**影响范围**: packages/dashboard/src/pages/Chat.tsx, 国际化翻译文件
+- 畸形 SSE 数据不会导致 UI 渲染 undefined
+- 缺失 confirmId 时有明确的 console.warn 而非静默失败
+- 新增测试：验证畸形数据被正确拒绝
+**影响范围**: packages/dashboard/src/stores/chat-execution.ts, packages/dashboard/src/stores/chat-types.ts
 **创建时间**: (自动填充)
 **完成时间**: -
-
----

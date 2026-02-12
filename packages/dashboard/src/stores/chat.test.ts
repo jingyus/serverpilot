@@ -629,7 +629,8 @@ describe('useChatStore', () => {
       });
     });
 
-    it('onConfirmRequired defaults confirmId to empty when not in event', () => {
+    it('onConfirmRequired rejects payload missing confirmId (chat-032)', () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
       useChatStore.setState({ serverId: 'srv-1' });
       useChatStore.getState().sendMessage('hello');
 
@@ -641,9 +642,9 @@ describe('useChatStore', () => {
         riskLevel: 'red',
       }));
 
-      const confirm = useChatStore.getState().agenticConfirm;
-      expect(confirm).not.toBeNull();
-      expect(confirm!.confirmId).toBe('');
+      expect(useChatStore.getState().agenticConfirm).toBeNull();
+      expect(useChatStore.getState().sseParseErrors).toBe(1);
+      warnSpy.mockRestore();
     });
 
     it('onConfirmId updates an existing agenticConfirm with confirmId', () => {
@@ -651,16 +652,17 @@ describe('useChatStore', () => {
       useChatStore.getState().sendMessage('hello');
 
       const callbacks = getSSECallbacks();
-      // First set agenticConfirm via onConfirmRequired (without confirmId)
+      // Set agenticConfirm via onConfirmRequired (with confirmId)
       callbacks.onConfirmRequired(JSON.stringify({
         id: 'tool-1',
         command: 'apt install nginx',
         description: 'Install',
         riskLevel: 'yellow',
+        confirmId: 'session:initial',
       }));
-      expect(useChatStore.getState().agenticConfirm!.confirmId).toBe('');
+      expect(useChatStore.getState().agenticConfirm!.confirmId).toBe('session:initial');
 
-      // Then receive confirmId via separate event
+      // Then receive updated confirmId via separate event
       callbacks.onConfirmId(JSON.stringify({ confirmId: 'session:xyz' }));
 
       expect(useChatStore.getState().agenticConfirm!.confirmId).toBe('session:xyz');
