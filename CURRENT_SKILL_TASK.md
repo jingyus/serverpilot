@@ -1,21 +1,22 @@
-### [pending] Webhook 事件集成 — skill.completed/skill.failed 分发到 WebhookDispatcher
+### [pending] engine.ts 文件拆分 — 提取 Confirmation Flow 到独立模块
 
-**ID**: skill-060
+**ID**: skill-061
 **优先级**: P0
-**模块路径**: packages/server/src/core/skill/engine.ts, packages/server/src/db/schema.ts
-**当前状态**: 功能缺失 — SkillEngine 执行完成后仅通过 `emitTriggerEvent()` 通知 TriggerManager 做链式触发，未调用 `getWebhookDispatcher().dispatch()` 分发到外部 Webhook 订阅者。同时 `WebhookEventType` 联合类型不包含 `skill.completed` 和 `skill.failed`。
+**模块路径**: packages/server/src/core/skill/
+**当前状态**: `engine.ts` 793 行，逼近 800 行硬限制。Confirmation Flow（createPendingConfirmation, confirmExecution, rejectExecution, listPendingConfirmations, expirePendingConfirmations, executeConfirmed）占约 100 行，可独立为模块。
 **实现方案**: 
-1. 在 `packages/server/src/db/schema.ts` 的 `WebhookEventType` 联合类型中添加 `'skill.completed' | 'skill.failed'`
-2. 在 `engine.ts` 的 `execute()` 方法中，成功/失败后调用 `getWebhookDispatcher().dispatch({ type, userId, data })` — 放在 `emitTriggerEvent()` 之后
-3. 在 `executeConfirmed()` 方法中同样添加 webhook 分发
-4. 对应更新 `engine.test.ts` — mock `getWebhookDispatcher()` 并验证 dispatch 被调用
-5. 更新 `skills.test.ts` 路由测试中的 webhook 相关断言
+1. 创建 `packages/server/src/core/skill/engine-confirmation.ts`（约 120 行）
+2. 将 `createPendingConfirmation`, `confirmExecution`, `rejectExecution`, `listPendingConfirmations`, `expirePendingConfirmations`, `executeConfirmed` 方法提取为独立类 `SkillConfirmationManager`
+3. `SkillConfirmationManager` 接收 `SkillRepository` 和 `execute` 回调作为依赖注入
+4. `engine.ts` 中组合 `SkillConfirmationManager` 实例，委托调用
+5. 对应测试拆分到 `engine-confirmation.test.ts`
+6. 目标：`engine.ts` 降至 650 行以下
 **验收标准**: 
-- Skill 执行成功时发出 `skill.completed` webhook 事件
-- Skill 执行失败时发出 `skill.failed` webhook 事件  
-- 用户可以在 Webhook 配置页面订阅这两个事件类型
-- `engine.test.ts` 中有至少 2 个测试验证 webhook dispatch
-**影响范围**: packages/server/src/db/schema.ts, packages/server/src/core/skill/engine.ts, packages/server/src/core/skill/engine.test.ts
+- `engine.ts` ≤ 650 行
+- `engine-confirmation.ts` ≤ 200 行
+- 所有现有 engine 测试通过不变
+- Confirmation 相关测试迁移到独立测试文件
+**影响范围**: packages/server/src/core/skill/engine.ts, packages/server/src/core/skill/engine-confirmation.ts (新), packages/server/src/core/skill/engine-confirmation.test.ts (新)
 **创建时间**: (自动填充)
 **完成时间**: -
 

@@ -2,16 +2,7 @@
 // Copyright (c) 2024-2026 ServerPilot Contributors
 /**
  * SkillEngine — core orchestrator for the Skill plugin system.
- *
- * Manages the full skill lifecycle:
- * - Install / uninstall skills from disk
- * - Configure user-facing inputs
- * - Enable / pause / error status transitions
- * - Execute skills (manual trigger via AI SkillRunner)
- * - Query installed skills, available skills, and execution history
- *
- * Uses singleton pattern consistent with all other core services.
- *
+ * Manages lifecycle, execution, and queries for installed skills.
  * @module core/skill/engine
  */
 
@@ -21,7 +12,6 @@ import {
   loadSkillFromDir,
   scanSkillDirectories,
   resolvePromptTemplate,
-  checkRequirements,
   type ScannedSkill,
   type TemplateVars,
 } from './loader.js';
@@ -32,8 +22,8 @@ import {
 import {
   getServerRepository,
 } from '../../db/repositories/server-repository.js';
-import { getSkillEventBus } from './skill-event-bus.js';
 import { getWebhookDispatcher } from '../webhook/dispatcher.js';
+import { SkillConfirmationManager } from './engine-confirmation.js';
 import type { SkillManifest, SkillInput } from '@aiinstaller/shared';
 import type { SkillStatus } from '../../db/schema.js';
 import type {
@@ -52,20 +42,12 @@ import { TriggerManager, setTriggerManager, _resetTriggerManager } from './trigg
 
 const logger = createContextLogger({ module: 'skill-engine' });
 
-// ============================================================================
-// Constants
-// ============================================================================
+// --------------- Constants ---------------
 
-/** Default directories to scan for available skills (relative to project root). */
 const DEFAULT_SKILL_PATHS = ['skills/official', 'skills/community'];
 
-/** Maximum chain depth for skill.completed event-driven triggers. */
 const MAX_CHAIN_DEPTH = 5;
 
-/** TTL for pending confirmation executions before auto-cancellation (30 minutes). */
-const CONFIRMATION_TTL_MS = 30 * 60 * 1000;
-
-/** Valid status transitions. */
 const STATUS_TRANSITIONS: Record<SkillStatus, SkillStatus[]> = {
   installed:  ['configured', 'enabled', 'error'],
   configured: ['enabled', 'paused', 'error'],
@@ -74,25 +56,24 @@ const STATUS_TRANSITIONS: Record<SkillStatus, SkillStatus[]> = {
   error:      ['installed', 'enabled', 'paused'],
 };
 
-// ============================================================================
-// SkillEngine
-// ============================================================================
-
 export class SkillEngine {
   private projectRoot: string;
   private repo: SkillRepository;
   private running = false;
   private triggerManager: TriggerManager | null = null;
+  private confirmationManager: SkillConfirmationManager;
 
   constructor(projectRoot: string, repo?: SkillRepository) {
     this.projectRoot = resolve(projectRoot);
     this.repo = repo ?? getSkillRepository();
+    this.confirmationManager = new SkillConfirmationManager({
+      repo: this.repo,
+      buildServerVars: (serverId, userId) => this.buildServerVars(serverId, userId),
+      buildSkillVars: (skillId) => this.buildSkillVars(skillId),
+      dispatchWebhookEvent: (type, userId, data) => this.dispatchWebhookEvent(type, userId, data),
+    });
     logger.info({ projectRoot: this.projectRoot }, 'SkillEngine created');
   }
-
-  // --------------------------------------------------------------------------
-  // Lifecycle
-  // --------------------------------------------------------------------------
 
   /** Start background services including TriggerManager. */
   async start(): Promise<void> {
@@ -126,16 +107,7 @@ export class SkillEngine {
     logger.info('SkillEngine stopped');
   }
 
-  // --------------------------------------------------------------------------
-  // Install / Uninstall
-  // --------------------------------------------------------------------------
-
-  /**
-   * Install a skill from a directory.
-   *
-   * Loads and validates the skill.yaml, then persists to DB.
-   * Rejects duplicate installations (same user + skill name).
-   */
+  /** Install a skill from a directory. Rejects duplicate (same user + name). */
   async install(
     userId: string,
     skillDir: string,
@@ -170,11 +142,7 @@ export class SkillEngine {
     return skill;
   }
 
-  /**
-   * Uninstall a skill by ID.
-   *
-   * @throws Error if skill does not exist
-   */
+  /** Uninstall a skill by ID. */
   async uninstall(skillId: string): Promise<void> {
     const skill = await this.repo.findById(skillId);
     if (!skill) {
@@ -188,15 +156,7 @@ export class SkillEngine {
     logger.info({ skillId, name: skill.name }, 'Skill uninstalled');
   }
 
-  // --------------------------------------------------------------------------
-  // Configuration
-  // --------------------------------------------------------------------------
-
-  /**
-   * Update user configuration (input values) for an installed skill.
-   *
-   * @throws Error if skill does not exist
-   */
+  /** Update user configuration (input values) for an installed skill. */
   async configure(skillId: string, config: Record<string, unknown>): Promise<void> {
     const skill = await this.repo.findById(skillId);
     if (!skill) {
@@ -212,13 +172,7 @@ export class SkillEngine {
     logger.info({ skillId, name: skill.name }, 'Skill configured');
   }
 
-  /**
-   * Update the status of an installed skill.
-   *
-   * Validates state transitions — not all transitions are allowed.
-   *
-   * @throws Error if skill does not exist or transition is invalid
-   */
+  /** Update status with valid state transition enforcement. */
   async updateStatus(skillId: string, newStatus: SkillStatus): Promise<void> {
     const skill = await this.repo.findById(skillId);
     if (!skill) {
@@ -251,10 +205,6 @@ export class SkillEngine {
       'Skill status updated',
     );
   }
-
-  // --------------------------------------------------------------------------
-  // Execution
-  // --------------------------------------------------------------------------
 
   /** Execute a skill, dispatching to batch mode if server_scope is 'all' or 'tagged'. */
   async execute(params: SkillRunParams): Promise<SkillExecutionResult | BatchExecutionResult> {
@@ -327,7 +277,7 @@ export class SkillEngine {
       triggerType !== 'manual';
 
     if (needsConfirmation) {
-      return this.createPendingConfirmation(params, skill, manifest);
+      return this.confirmationManager.createPendingConfirmation(params, skill, manifest);
     }
 
     // Create execution record
@@ -467,183 +417,23 @@ export class SkillEngine {
     }
   }
 
-  // --------------------------------------------------------------------------
-  // Confirmation Flow
-  // --------------------------------------------------------------------------
-
-  private async createPendingConfirmation(
-    params: SkillRunParams,
-    skill: InstalledSkill,
-    _manifest: SkillManifest,
-  ): Promise<SkillExecutionResult> {
-    const { skillId, serverId, userId, triggerType } = params;
-
-    const execution = await this.repo.createExecution({
-      skillId, serverId, userId, triggerType,
-    });
-
-    await this.repo.completeExecution(execution.id, 'pending_confirmation', null, 0, 0);
-
-    const bus = getSkillEventBus();
-    bus.publish(execution.id, {
-      type: 'confirmation_required',
-      executionId: execution.id,
-      timestamp: new Date().toISOString(),
-      skillId,
-      skillName: skill.displayName ?? skill.name,
-      serverId,
-      triggerType,
-    });
-
-    logger.info(
-      { executionId: execution.id, skillId, triggerType },
-      'Skill execution awaiting confirmation',
-    );
-
-    return {
-      executionId: execution.id,
-      status: 'pending_confirmation',
-      stepsExecuted: 0,
-      duration: 0,
-      result: null,
-      errors: [],
-    };
-  }
-
   async confirmExecution(executionId: string, userId: string): Promise<SkillExecutionResult> {
-    const execution = await this.repo.findExecutionById(executionId);
-    if (!execution) {
-      throw new Error(`Execution not found: ${executionId}`);
-    }
-    if (execution.status !== 'pending_confirmation') {
-      throw new Error(
-        `Execution '${executionId}' is not pending confirmation (status=${execution.status})`,
-      );
-    }
-
-    const createdAt = new Date(execution.startedAt).getTime();
-    if (Date.now() - createdAt > CONFIRMATION_TTL_MS) {
-      await this.repo.completeExecution(executionId, 'cancelled', { reason: 'expired' }, 0, 0);
-      throw new Error(`Execution '${executionId}' has expired`);
-    }
-
-    return this.executeConfirmed(execution);
+    return this.confirmationManager.confirmExecution(executionId, userId);
   }
 
-  async rejectExecution(executionId: string, _userId: string): Promise<void> {
-    const execution = await this.repo.findExecutionById(executionId);
-    if (!execution) {
-      throw new Error(`Execution not found: ${executionId}`);
-    }
-    if (execution.status !== 'pending_confirmation') {
-      throw new Error(
-        `Execution '${executionId}' is not pending confirmation (status=${execution.status})`,
-      );
-    }
-
-    await this.repo.completeExecution(executionId, 'cancelled', { reason: 'rejected' }, 0, 0);
-    logger.info({ executionId }, 'Skill execution rejected');
+  async rejectExecution(executionId: string, userId: string): Promise<void> {
+    return this.confirmationManager.rejectExecution(executionId, userId);
   }
 
   async listPendingConfirmations(userId: string): Promise<SkillExecution[]> {
-    return this.repo.listPendingConfirmations(userId);
+    return this.confirmationManager.listPendingConfirmations(userId);
   }
 
   async expirePendingConfirmations(): Promise<number> {
-    const cutoff = new Date(Date.now() - CONFIRMATION_TTL_MS);
-    return this.repo.expirePendingConfirmations(cutoff);
+    return this.confirmationManager.expirePendingConfirmations();
   }
 
-  private async executeConfirmed(execution: SkillExecution): Promise<SkillExecutionResult> {
-    const startTime = Date.now();
-    const { skillId, serverId, userId } = execution;
-
-    const skill = await this.repo.findById(skillId);
-    if (!skill) {
-      throw new Error(`Skill not found: ${skillId}`);
-    }
-
-    if (skill.status !== 'enabled') {
-      await this.repo.completeExecution(execution.id, 'cancelled', { reason: 'skill_disabled' }, 0, 0);
-      throw new Error(`Skill '${skill.name}' is not enabled (status=${skill.status})`);
-    }
-
-    let manifest: SkillManifest;
-    try {
-      manifest = await loadSkillFromDir(skill.skillPath);
-    } catch (err) {
-      await this.repo.completeExecution(execution.id, 'failed', { error: (err as Error).message }, 0, 0);
-      throw new Error(`Failed to load skill manifest: ${(err as Error).message}`);
-    }
-
-    await this.repo.completeExecution(execution.id, 'running', null, 0, 0);
-
-    try {
-      const mergedConfig = { ...skill.config };
-      const serverVars = await this.buildServerVars(serverId, userId);
-      const skillVars = await this.buildSkillVars(skillId);
-
-      const templateVars: TemplateVars = {
-        input: mergedConfig,
-        server: serverVars,
-        skill: skillVars,
-        now: new Date().toISOString(),
-      };
-      const resolvedPrompt = resolvePromptTemplate(manifest.prompt, templateVars);
-
-      const runner = new SkillRunner();
-      const runResult = await runner.run({
-        manifest, resolvedPrompt, skillId, serverId, userId,
-        executionId: execution.id, config: mergedConfig,
-      });
-
-      const duration = Date.now() - startTime;
-      const status = runResult.status === 'success' ? 'success'
-        : runResult.status === 'timeout' ? 'timeout' : 'failed';
-
-      const result: Record<string, unknown> = {
-        output: runResult.output, toolResults: runResult.toolResults, errors: runResult.errors,
-      };
-
-      await this.repo.completeExecution(execution.id, status, result, runResult.stepsExecuted, duration);
-
-      this.dispatchWebhookEvent(
-        status === 'success' ? 'skill.completed' : 'skill.failed',
-        userId,
-        { serverId, skillId, skillName: skill.name, executionId: execution.id, status, duration },
-      );
-
-      return {
-        executionId: execution.id, status, stepsExecuted: runResult.stepsExecuted,
-        duration, result, errors: runResult.errors,
-      };
-    } catch (err) {
-      const duration = Date.now() - startTime;
-      const errorMessage = (err as Error).message;
-      await this.repo.completeExecution(execution.id, 'failed', { error: errorMessage }, 0, duration);
-
-      this.dispatchWebhookEvent('skill.failed', userId, {
-        serverId, skillId, skillName: skill.name, executionId: execution.id,
-        status: 'failed', duration, error: errorMessage,
-      });
-
-      return {
-        executionId: execution.id, status: 'failed', stepsExecuted: 0,
-        duration, result: null, errors: [errorMessage],
-      };
-    }
-  }
-
-  // --------------------------------------------------------------------------
-  // Template Variable Builders
-  // --------------------------------------------------------------------------
-
-  /**
-   * Build server-related template variables from the server repository.
-   *
-   * Returns { name, os, ip } for use in prompt templates like {{server.name}}.
-   * Gracefully returns empty strings if server or profile is not found.
-   */
+  /** Build server-related template variables from the server repository. */
   private async buildServerVars(
     serverId: string,
     userId: string,
@@ -674,22 +464,17 @@ export class SkillEngine {
     }
   }
 
-  /**
-   * Build skill-related template variables from execution history.
-   *
-   * Returns { last_run, last_result } from the most recent completed execution.
-   * Returns 'N/A' if no previous execution exists.
-   */
+  /** Build skill-related template variables from execution history. */
   private async buildSkillVars(
     skillId: string,
   ): Promise<{ last_run: string; last_result: string }> {
     try {
-      const executions = await this.repo.listExecutions(skillId, 1);
-      if (executions.length === 0 || !executions[0].completedAt) {
+      // Fetch a few recent executions — the newest may be the current in-progress one
+      const executions = await this.repo.listExecutions(skillId, 5);
+      const last = executions.find((e) => e.completedAt);
+      if (!last) {
         return { last_run: 'N/A', last_result: 'N/A' };
       }
-
-      const last = executions[0];
       const lastResult = last.result
         ? (typeof last.result['output'] === 'string'
             ? last.result['output']
@@ -706,22 +491,12 @@ export class SkillEngine {
     }
   }
 
-  // --------------------------------------------------------------------------
-  // Queries
-  // --------------------------------------------------------------------------
-
   /** List all installed skills for a user. */
   async listInstalled(userId: string): Promise<InstalledSkill[]> {
     return this.repo.findAll(userId);
   }
 
-  /**
-   * List installed skills enriched with manifest input definitions.
-   *
-   * Uses persisted `manifestInputs` from DB when available.
-   * Falls back to loading skill.yaml from disk if DB value is null
-   * (e.g. skills installed before this feature was added).
-   */
+  /** List installed skills enriched with manifest input definitions. */
   async listInstalledWithInputs(userId: string): Promise<InstalledSkillWithInputs[]> {
     const skills = await this.repo.findAll(userId);
     return Promise.all(
@@ -745,12 +520,7 @@ export class SkillEngine {
     return this.repo.findById(skillId);
   }
 
-  /**
-   * Get a single installed skill enriched with manifest input definitions.
-   *
-   * Uses persisted `manifestInputs` from DB when available,
-   * falls back to loading from disk.
-   */
+  /** Get a single installed skill enriched with manifest input definitions. */
   async getInstalledWithInputs(skillId: string): Promise<InstalledSkillWithInputs | null> {
     const skill = await this.repo.findById(skillId);
     if (!skill) return null;
@@ -766,11 +536,7 @@ export class SkillEngine {
     }
   }
 
-  /**
-   * List all available skills (official + community + local).
-   *
-   * Scans the default skill directories and marks each as installed or not.
-   */
+  /** List all available skills (official + community + local). */
   async listAvailable(userId: string): Promise<AvailableSkill[]> {
     const scanPaths = DEFAULT_SKILL_PATHS.map((p) => join(this.projectRoot, p));
     const scanned = await scanSkillDirectories(scanPaths);
@@ -796,18 +562,8 @@ export class SkillEngine {
   }
 }
 
-// ============================================================================
-// Singleton
-// ============================================================================
-
 let _instance: SkillEngine | null = null;
 
-/**
- * Get the global SkillEngine instance.
- *
- * @param projectRoot - Project root path (required on first call)
- * @returns The SkillEngine singleton
- */
 export function getSkillEngine(projectRoot?: string): SkillEngine {
   if (!_instance) {
     if (!projectRoot) {
@@ -818,12 +574,10 @@ export function getSkillEngine(projectRoot?: string): SkillEngine {
   return _instance;
 }
 
-/** Set a custom SkillEngine instance (for testing). */
 export function setSkillEngine(engine: SkillEngine): void {
   _instance = engine;
 }
 
-/** Reset the singleton (for testing). */
 export function _resetSkillEngine(): void {
   if (_instance) {
     _instance.stop();

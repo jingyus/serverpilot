@@ -3,13 +3,13 @@
 > 此队列专注于 Skill 插件系统的设计与实现
 > AI 自动扫描 → 发现缺失 → 设计实现 → 验证
 
-**最后更新**: 2026-02-13 05:01:36
+**最后更新**: 2026-02-13 05:02:07
 
 ## 📊 统计
 
 - **总任务数**: 36
-- **待完成** (pending): 7
-- **进行中** (in_progress): 0
+- **待完成** (pending): 6
+- **进行中** (in_progress): 1
 - **已完成** (completed): 29
 - **失败** (failed): 0
 
@@ -39,7 +39,7 @@
 
 ---
 
-### [pending] engine.ts 文件拆分 — 提取 Confirmation Flow 到独立模块
+### [in_progress] engine.ts 文件拆分 — 提取 Confirmation Flow 到独立模块
 
 **ID**: skill-061
 **优先级**: P0
