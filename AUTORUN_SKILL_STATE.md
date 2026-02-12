@@ -285,3 +285,12 @@
 
 ---
 
+
+### [2026-02-13 05:01:36] 第 29 轮
+
+**任务**: Webhook 事件集成 — skill.completed/skill.failed 分发到 WebhookDispatcher
+
+**状态**: ✅ 完成
+
+---
+

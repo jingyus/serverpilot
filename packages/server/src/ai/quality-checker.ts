@@ -15,21 +15,12 @@
 
 import { z } from 'zod';
 import type { InstallPlan, InstallStep, EnvironmentInfo } from '@aiinstaller/shared';
+import { RiskLevel } from '@aiinstaller/shared';
+export { RiskLevel } from '@aiinstaller/shared';
 
 // ============================================================================
 // Types
 // ============================================================================
-
-/** Risk level constants matching the agent's command classifier */
-export const RiskLevel = {
-  GREEN: 'green',
-  YELLOW: 'yellow',
-  RED: 'red',
-  CRITICAL: 'critical',
-  FORBIDDEN: 'forbidden',
-} as const;
-
-export type RiskLevel = (typeof RiskLevel)[keyof typeof RiskLevel];
 
 /** Result returned by a command classifier */
 export interface ClassificationResult {

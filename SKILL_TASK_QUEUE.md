@@ -3,20 +3,20 @@
 > 此队列专注于 Skill 插件系统的设计与实现
 > AI 自动扫描 → 发现缺失 → 设计实现 → 验证
 
-**最后更新**: 2026-02-13 04:50:45
+**最后更新**: 2026-02-13 05:01:36
 
 ## 📊 统计
 
 - **总任务数**: 36
 - **待完成** (pending): 7
-- **进行中** (in_progress): 1
-- **已完成** (completed): 28
+- **进行中** (in_progress): 0
+- **已完成** (completed): 29
 - **失败** (failed): 0
 
 ## 📋 任务列表
 
 ### [completed] DB Schema + Migration + SkillRepository 数据层 ✅
-### [in_progress] Webhook 事件集成 — skill.completed/skill.failed 分发到 WebhookDispatcher
+### [completed] Webhook 事件集成 — skill.completed/skill.failed 分发到 WebhookDispatcher ✅
 
 **ID**: skill-060
 **优先级**: P0
@@ -35,7 +35,7 @@
 - `engine.test.ts` 中有至少 2 个测试验证 webhook dispatch
 **影响范围**: packages/server/src/db/schema.ts, packages/server/src/core/skill/engine.ts, packages/server/src/core/skill/engine.test.ts
 **创建时间**: (自动填充)
-**完成时间**: -
+**完成时间**: 2026-02-13 05:01:36
 
 ---
 
