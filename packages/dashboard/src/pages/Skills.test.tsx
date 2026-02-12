@@ -105,8 +105,11 @@ function setupStore(
     isStreaming: false,
     isLoading: false,
     error: null,
+    stats: null,
+    isLoadingStats: false,
     fetchSkills: vi.fn().mockResolvedValue(undefined),
     fetchAvailable: vi.fn().mockResolvedValue(undefined),
+    fetchStats: vi.fn().mockResolvedValue(undefined),
     installSkill: vi.fn().mockResolvedValue(makeSkill()),
     uninstallSkill: vi.fn().mockResolvedValue(undefined),
     configureSkill: vi.fn().mockResolvedValue(undefined),
@@ -610,5 +613,49 @@ describe('Skills Page', () => {
     setupStore({ fetchPendingConfirmations });
     renderSkills();
     expect(fetchPendingConfirmations).toHaveBeenCalled();
+  });
+
+  // --------------------------------------------------------------------------
+  // Analytics Tab
+  // --------------------------------------------------------------------------
+
+  it('should render Analytics tab and show stats', async () => {
+    setupStore({
+      stats: {
+        totalExecutions: 42,
+        successRate: 0.85,
+        avgDuration: 2500,
+        topSkills: [{ skillId: 'sk-1', skillName: 'Nginx Setup', executionCount: 20, successCount: 18 }],
+        dailyTrend: [{ date: '2026-02-12', total: 5, success: 4, failed: 1 }],
+        triggerDistribution: [{ triggerType: 'manual', count: 30 }],
+      },
+    });
+    const user = userEvent.setup();
+    renderSkills();
+
+    // Click Analytics tab
+    await user.click(screen.getByText('Analytics'));
+
+    // Should show summary stats - use getAllByText since '42' appears in both tab badge and card
+    expect(screen.getByText('85%')).toBeInTheDocument();
+    expect(screen.getByText('2.5s')).toBeInTheDocument();
+    expect(screen.getByText('Total Executions')).toBeInTheDocument();
+    expect(screen.getByText('Success Rate')).toBeInTheDocument();
+  });
+
+  it('should show empty state when no stats available', async () => {
+    setupStore({ stats: null });
+    const user = userEvent.setup();
+    renderSkills();
+
+    await user.click(screen.getByText('Analytics'));
+    expect(screen.getByText('No execution data yet.')).toBeInTheDocument();
+  });
+
+  it('should call fetchStats on mount', () => {
+    const fetchStats = vi.fn().mockResolvedValue(undefined);
+    setupStore({ fetchStats });
+    renderSkills();
+    expect(fetchStats).toHaveBeenCalled();
   });
 });

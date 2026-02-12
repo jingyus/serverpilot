@@ -244,18 +244,18 @@ export class AgenticChatEngine {
         response.abort();
         return;
       }
-      this.writeSSE(stream, 'message', { content: delta }, abort).catch(() => {});
+      void this.writeSSE(stream, 'message', { content: delta }, abort);
     });
 
     // Track tool_use content blocks as they start
     response.on('contentBlock', (block: Anthropic.ContentBlock) => {
       if (block.type === 'tool_use') {
         // Notify frontend that a tool call is starting
-        this.writeSSE(stream, 'tool_call', {
+        void this.writeSSE(stream, 'tool_call', {
           id: block.id,
           tool: block.name,
           status: 'running',
-        }, abort).catch(() => {});
+        }, abort);
       }
     });
 
@@ -411,7 +411,11 @@ export class AgenticChatEngine {
         confirmId: confirmation.confirmId,
       }, abort);
 
-      const approved = await confirmation.approved;
+      // Race confirmation against abort to avoid hanging 5min when client disconnects
+      const approved = await Promise.race([
+        confirmation.approved,
+        this.awaitAbort(abort),
+      ]);
 
       if (!approved) {
         const msg = `用户拒绝执行: ${command}`;
@@ -444,10 +448,10 @@ export class AgenticChatEngine {
     executor.addProgressListener(toolCallId, (_executionId, _status, output) => {
       if (output) {
         hasStreamedOutput = true;
-        this.writeSSE(stream, 'tool_output', {
+        void this.writeSSE(stream, 'tool_output', {
           id: toolCallId,
           content: output,
-        }, abort).catch(() => {});
+        }, abort);
       }
     });
 
@@ -538,6 +542,27 @@ export class AgenticChatEngine {
       { command, description: `List files: ${input.path}` },
       serverId, userId, sessionId, clientId, stream, toolCallId, abort,
     );
+  }
+
+  /**
+   * Returns a Promise that resolves to `false` once abort.aborted becomes true.
+   * If already aborted, resolves immediately. Otherwise polls every 200ms.
+   * Used with Promise.race to unblock confirmation waits on client disconnect.
+   */
+  private awaitAbort(abort: AbortState): Promise<false> {
+    if (abort.aborted) return Promise.resolve(false as const);
+    return new Promise<false>((resolve) => {
+      const interval = setInterval(() => {
+        if (abort.aborted) {
+          clearInterval(interval);
+          resolve(false as const);
+        }
+      }, 200);
+      // Ensure the interval doesn't keep the process alive
+      if (typeof interval === 'object' && 'unref' in interval) {
+        interval.unref();
+      }
+    });
   }
 
   /** Write SSE event; on failure sets abort.aborted immediately. */

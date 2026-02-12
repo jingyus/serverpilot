@@ -25,6 +25,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { resolveRole, requirePermission } from '../middleware/rbac.js';
 import { ApiError } from '../middleware/error-handler.js';
 import { getSkillEngine } from '../../core/skill/engine.js';
+import { getSkillRepository } from '../../db/repositories/skill-repository.js';
 import { getSkillEventBus } from '../../core/skill/skill-event-bus.js';
 import { installFromGitUrl } from '../../core/skill/git-installer.js';
 import type {
@@ -64,6 +65,22 @@ skillsRoute.get('/available', requirePermission('skill:view'), async (c) => {
   const engine = getSkillEngine();
   const available = await engine.listAvailable(userId);
   return c.json({ skills: available });
+});
+
+// ============================================================================
+// GET /skills/stats — Aggregated execution analytics
+// ============================================================================
+
+skillsRoute.get('/stats', requirePermission('skill:view'), async (c) => {
+  const userId = c.get('userId');
+  const fromParam = c.req.query('from');
+  const toParam = c.req.query('to');
+  const from = fromParam ? new Date(fromParam) : undefined;
+  const to = toParam ? new Date(toParam) : undefined;
+
+  const repo = getSkillRepository();
+  const stats = await repo.getStats(userId, from, to);
+  return c.json({ stats });
 });
 
 // ============================================================================

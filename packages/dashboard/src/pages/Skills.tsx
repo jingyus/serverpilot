@@ -27,6 +27,7 @@ import { ExecutionHistory } from '@/components/skill/ExecutionHistory';
 import { ExecuteDialog } from '@/components/skill/ExecuteDialog';
 import { PendingConfirmationsBanner } from '@/components/skill/ConfirmationBanner';
 import { AvailableSkillCard } from '@/components/skill/AvailableSkillCard';
+import { AnalyticsTab } from '@/components/skill/AnalyticsTab';
 import type { InstalledSkill, AvailableSkill } from '@/types/skill';
 import type { SkillInputDef } from '@/components/skill/SkillConfigModal';
 
@@ -34,7 +35,7 @@ import type { SkillInputDef } from '@/components/skill/SkillConfigModal';
 // Tab Type
 // ============================================================================
 
-type Tab = 'installed' | 'available';
+type Tab = 'installed' | 'available' | 'analytics';
 
 // ============================================================================
 // Skills Page
@@ -62,6 +63,9 @@ export function Skills() {
     rejectExecution,
     clearSelectedExecution,
     clearError,
+    stats,
+    isLoadingStats,
+    fetchStats,
   } = useSkillsStore();
 
   const { servers, fetchServers } = useServersStore();
@@ -80,7 +84,8 @@ export function Skills() {
     fetchAvailable();
     fetchServers();
     fetchPendingConfirmations();
-  }, [fetchSkills, fetchAvailable, fetchServers, fetchPendingConfirmations]);
+    fetchStats();
+  }, [fetchSkills, fetchAvailable, fetchServers, fetchPendingConfirmations, fetchStats]);
 
   useEffect(() => {
     if (historyTarget) {
@@ -187,6 +192,12 @@ export function Skills() {
           label={t('skills.available')}
           count={available.length}
         />
+        <TabButton
+          active={activeTab === 'analytics'}
+          onClick={() => setActiveTab('analytics')}
+          label={t('skills.analytics')}
+          count={stats?.totalExecutions ?? 0}
+        />
       </div>
 
       {/* Content */}
@@ -203,11 +214,13 @@ export function Skills() {
           onUninstall={setDeleteTarget}
           onHistory={setHistoryTarget}
         />
-      ) : (
+      ) : activeTab === 'available' ? (
         <AvailableTab
           available={available}
           onInstall={handleInstall}
         />
+      ) : (
+        <AnalyticsTab stats={stats} isLoading={isLoadingStats} />
       )}
 
       {/* Config Modal */}

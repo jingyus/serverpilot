@@ -93,10 +93,12 @@ describe('ServerDetail Page', () => {
       isProfileLoading: false,
       isMetricsLoading: false,
       isStreaming: false,
+      isUpdatingTags: false,
       error: null,
       fetchServer: vi.fn(),
       fetchProfile: vi.fn(),
       fetchMetrics: vi.fn(),
+      updateTags: vi.fn(),
       setMetricsRange: vi.fn(),
       startMetricsStream: vi.fn(),
       stopMetricsStream: vi.fn(),
@@ -406,12 +408,13 @@ describe('ServerDetail Page', () => {
       expect(screen.queryByText(/Kernel:/)).not.toBeInTheDocument();
     });
 
-    it('renders server without tags', () => {
+    it('renders server without tags — shows empty tag editor', () => {
       useServerDetailStore.setState({
         server: { ...mockServer, tags: [] },
       });
       renderServerDetail();
       expect(screen.getByText('web-prod-01')).toBeInTheDocument();
+      expect(screen.getByTestId('tag-editor')).toBeInTheDocument();
       expect(screen.queryByText('production')).not.toBeInTheDocument();
     });
 
@@ -421,6 +424,77 @@ describe('ServerDetail Page', () => {
       });
       renderServerDetail();
       expect(screen.queryByText(/Last seen:/)).not.toBeInTheDocument();
+    });
+  });
+
+  describe('tag editor', () => {
+    it('renders tag editor with existing tags', () => {
+      renderServerDetail();
+      const editor = screen.getByTestId('tag-editor');
+      expect(within(editor).getByText('production')).toBeInTheDocument();
+      expect(within(editor).getByText('web')).toBeInTheDocument();
+    });
+
+    it('renders tag input and add button', () => {
+      renderServerDetail();
+      expect(screen.getByTestId('tag-input')).toBeInTheDocument();
+      expect(screen.getByTestId('add-tag-btn')).toBeInTheDocument();
+    });
+
+    it('adds a new tag on Enter key', async () => {
+      const user = userEvent.setup();
+      const updateTags = vi.fn();
+      useServerDetailStore.setState({ updateTags });
+
+      renderServerDetail();
+      const input = screen.getByTestId('tag-input');
+      await user.type(input, 'staging{Enter}');
+
+      expect(updateTags).toHaveBeenCalledWith('srv-1', ['production', 'web', 'staging']);
+    });
+
+    it('adds a new tag on button click', async () => {
+      const user = userEvent.setup();
+      const updateTags = vi.fn();
+      useServerDetailStore.setState({ updateTags });
+
+      renderServerDetail();
+      const input = screen.getByTestId('tag-input');
+      await user.type(input, 'staging');
+      await user.click(screen.getByTestId('add-tag-btn'));
+
+      expect(updateTags).toHaveBeenCalledWith('srv-1', ['production', 'web', 'staging']);
+    });
+
+    it('removes a tag on X button click', async () => {
+      const user = userEvent.setup();
+      const updateTags = vi.fn();
+      useServerDetailStore.setState({ updateTags });
+
+      renderServerDetail();
+      await user.click(screen.getByTestId('remove-tag-production'));
+
+      expect(updateTags).toHaveBeenCalledWith('srv-1', ['web']);
+    });
+
+    it('does not add duplicate tags', async () => {
+      const user = userEvent.setup();
+      const updateTags = vi.fn();
+      useServerDetailStore.setState({ updateTags });
+
+      renderServerDetail();
+      const input = screen.getByTestId('tag-input');
+      await user.type(input, 'production{Enter}');
+
+      expect(updateTags).not.toHaveBeenCalled();
+    });
+
+    it('disables input and buttons when saving', () => {
+      useServerDetailStore.setState({ isUpdatingTags: true });
+      renderServerDetail();
+
+      expect(screen.getByTestId('tag-input')).toBeDisabled();
+      expect(screen.getByTestId('add-tag-btn')).toBeDisabled();
     });
   });
 });

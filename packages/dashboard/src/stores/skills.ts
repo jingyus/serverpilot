@@ -10,6 +10,7 @@ import type {
   SkillExecutionResult,
   SkillStatus,
   SkillSource,
+  SkillStats,
   SkillsResponse,
   AvailableSkillsResponse,
   SkillResponse,
@@ -17,6 +18,7 @@ import type {
   ExecutionsResponse,
   ExecutionDetailResponse,
   PendingConfirmationsResponse,
+  SkillStatsResponse,
   SkillExecutionEvent,
 } from '@/types/skill';
 
@@ -31,9 +33,12 @@ interface SkillsState {
   isLoading: boolean;
   error: string | null;
   pendingConfirmations: SkillExecution[];
+  stats: SkillStats | null;
+  isLoadingStats: boolean;
 
   fetchSkills: () => Promise<void>;
   fetchAvailable: () => Promise<void>;
+  fetchStats: () => Promise<void>;
   installSkill: (skillDir: string, source: SkillSource) => Promise<InstalledSkill>;
   uninstallSkill: (id: string) => Promise<void>;
   configureSkill: (id: string, config: Record<string, unknown>) => Promise<void>;
@@ -63,6 +68,19 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
   isLoading: false,
   error: null,
   pendingConfirmations: [],
+  stats: null,
+  isLoadingStats: false,
+
+  fetchStats: async () => {
+    set({ isLoadingStats: true, error: null });
+    try {
+      const data = await apiRequest<SkillStatsResponse>('/skills/stats');
+      set({ stats: data.stats, isLoadingStats: false });
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to load stats';
+      set({ error: message, isLoadingStats: false });
+    }
+  },
 
   fetchSkills: async () => {
     set({ isLoading: true, error: null });

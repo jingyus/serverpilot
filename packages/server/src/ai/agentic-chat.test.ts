@@ -1134,6 +1134,129 @@ describe('AgenticChatEngine — writeSSE failure triggers abort', () => {
 });
 
 // ============================================================================
+// AgenticChatEngine — writeSSE never rejects (chat-055)
+// ============================================================================
+
+describe('AgenticChatEngine — writeSSE never rejects (no .catch needed)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should set abort.aborted via writeSSE internal catch when stream throws during text delta', async () => {
+    // writeSSE catches internally and sets abort.aborted = true.
+    // The fire-and-forget `void this.writeSSE(...)` in on('text') must not cause
+    // unhandled rejection — writeSSE should never reject.
+    let writeCount = 0;
+    const stream = {
+      writeSSE: vi.fn(async () => {
+        writeCount++;
+        // Fail on first writeSSE call (the text delta from on('text'))
+        if (writeCount === 1) throw new Error('stream closed');
+      }),
+      onAbort: vi.fn(),
+    } as unknown as SSEStreamingApi;
+
+    let apiCalls = 0;
+    const client = {
+      messages: {
+        stream: vi.fn(() => {
+          apiCalls++;
+          const listeners: Record<string, ((...args: unknown[]) => void)[]> = {};
+          return {
+            on: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
+              if (!listeners[event]) listeners[event] = [];
+              listeners[event].push(handler);
+            }),
+            abort: vi.fn(),
+            finalMessage: vi.fn(async () => {
+              // Emit text → triggers writeSSE → throws → abort set internally
+              for (const handler of (listeners['text'] ?? [])) {
+                handler('token');
+              }
+              return {
+                content: [
+                  { type: 'text', text: 'token' },
+                  { type: 'tool_use', id: 'tool-1', name: 'execute_command', input: { command: 'echo hi', description: 'test' } },
+                ],
+                stop_reason: 'tool_use',
+              };
+            }),
+          };
+        }),
+      },
+    } as unknown as Anthropic;
+
+    const engine = new AgenticChatEngine(client);
+    // Should not throw unhandled rejection
+    const result = await engine.run({
+      userMessage: 'test writeSSE no reject',
+      serverId: 'srv-1',
+      userId: 'usr-1',
+      sessionId: 'sess-1',
+      stream,
+    });
+
+    // Abort should have been detected — loop stops
+    expect(result.success).toBe(false);
+    expect(apiCalls).toBe(1);
+  });
+
+  it('should set abort.aborted via writeSSE internal catch when stream throws during contentBlock', async () => {
+    // writeSSE in the contentBlock handler is also fire-and-forget.
+    // It must not cause unhandled rejection.
+    let writeCount = 0;
+    const stream = {
+      writeSSE: vi.fn(async () => {
+        writeCount++;
+        throw new Error('connection reset');
+      }),
+      onAbort: vi.fn(),
+    } as unknown as SSEStreamingApi;
+
+    const client = {
+      messages: {
+        stream: vi.fn(() => {
+          const listeners: Record<string, ((...args: unknown[]) => void)[]> = {};
+          return {
+            on: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
+              if (!listeners[event]) listeners[event] = [];
+              listeners[event].push(handler);
+            }),
+            abort: vi.fn(),
+            finalMessage: vi.fn(async () => {
+              // Emit contentBlock → triggers writeSSE → throws → abort set
+              for (const handler of (listeners['contentBlock'] ?? [])) {
+                handler({ type: 'tool_use', id: 'tool-1', name: 'execute_command', input: {} });
+              }
+              return {
+                content: [
+                  { type: 'tool_use', id: 'tool-1', name: 'execute_command', input: { command: 'ls', description: 'list' } },
+                ],
+                stop_reason: 'tool_use',
+              };
+            }),
+          };
+        }),
+      },
+    } as unknown as Anthropic;
+
+    const engine = new AgenticChatEngine(client);
+    const result = await engine.run({
+      userMessage: 'test contentBlock writeSSE no reject',
+      serverId: 'srv-1',
+      userId: 'usr-1',
+      sessionId: 'sess-1',
+      stream,
+    });
+
+    // Abort detected, loop stopped
+    expect(result.success).toBe(false);
+    // writeSSE was called (even though it threw)
+    expect(writeCount).toBeGreaterThanOrEqual(1);
+  });
+});
+
+// ============================================================================
 // AgenticChatEngine — Anthropic stream abort on disconnect (chat-034)
 // ============================================================================
 
@@ -1234,5 +1357,240 @@ describe('AgenticChatEngine — Anthropic stream abort on disconnect', () => {
     expect(abortSpy).toHaveBeenCalled();
     // Loop should stop — abort detected after AI call
     expect(result.success).toBe(false);
+  });
+});
+
+// ============================================================================
+// AgenticChatEngine — confirmation + abort race (chat-056)
+// ============================================================================
+
+describe('AgenticChatEngine — confirmation abort race', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  /** Create a client that returns a single risky tool_use, then ends. */
+  function createRiskyToolClient() {
+    let callIndex = 0;
+    const client = {
+      messages: {
+        stream: vi.fn(() => {
+          callIndex++;
+          if (callIndex === 1) {
+            return {
+              on: vi.fn(),
+              finalMessage: vi.fn(async () => ({
+                content: [
+                  { type: 'tool_use', id: 'tool-risky', name: 'execute_command', input: { command: 'rm -rf /tmp/test', description: 'cleanup' } },
+                ],
+                stop_reason: 'tool_use',
+              })),
+            };
+          }
+          return {
+            on: vi.fn(),
+            finalMessage: vi.fn(async () => ({
+              content: [{ type: 'text', text: 'Done.' }],
+              stop_reason: 'end_turn',
+            })),
+          };
+        }),
+      },
+    } as unknown as Anthropic;
+    return { client, getCallCount: () => callIndex };
+  }
+
+  it('should unblock confirmation wait within 1s when client disconnects', async () => {
+    // Override validateCommand to return 'yellow' risk for this test
+    const { validateCommand } = await import('../core/security/command-validator.js');
+    vi.mocked(validateCommand).mockReturnValue({
+      action: 'allowed',
+      classification: { riskLevel: 'yellow', reason: 'potentially risky' },
+    } as ReturnType<typeof validateCommand>);
+
+    const { client } = createRiskyToolClient();
+    const engine = new AgenticChatEngine(client);
+    const { stream, simulateAbort, sseEvents } = createMockStream();
+
+    // Provide onConfirmRequired that never resolves (simulates user not responding)
+    const onConfirmRequired = vi.fn((_cmd: string, _risk: string, _desc: string) => ({
+      confirmId: 'sess-1:confirm-1',
+      approved: new Promise<boolean>(() => {
+        // Never resolves — simulates 5-min timeout scenario
+      }),
+    }));
+
+    const startTime = Date.now();
+
+    // Abort after 100ms to simulate client disconnect
+    setTimeout(() => simulateAbort(), 100);
+
+    const result = await engine.run({
+      userMessage: 'delete temp files',
+      serverId: 'srv-1',
+      userId: 'usr-1',
+      sessionId: 'sess-1',
+      stream,
+      onConfirmRequired,
+    });
+
+    const elapsed = Date.now() - startTime;
+
+    // Should have finished within 1 second (not 5 minutes)
+    expect(elapsed).toBeLessThan(1000);
+    expect(result.success).toBe(false);
+
+    // Confirmation was requested
+    expect(onConfirmRequired).toHaveBeenCalledOnce();
+
+    // A confirm_required SSE event was sent
+    const confirmEvents = sseEvents.filter((e) => e.event === 'confirm_required');
+    expect(confirmEvents).toHaveLength(1);
+  });
+
+  it('should resolve immediately when abort is already true before confirmation wait', async () => {
+    const { validateCommand } = await import('../core/security/command-validator.js');
+    vi.mocked(validateCommand).mockReturnValue({
+      action: 'allowed',
+      classification: { riskLevel: 'red', reason: 'dangerous' },
+    } as ReturnType<typeof validateCommand>);
+
+    const { client } = createRiskyToolClient();
+    const engine = new AgenticChatEngine(client);
+    const { stream, simulateAbort } = createMockStream();
+
+    // Abort BEFORE confirmation
+    simulateAbort();
+
+    const onConfirmRequired = vi.fn((_cmd: string, _risk: string, _desc: string) => ({
+      confirmId: 'sess-1:confirm-2',
+      approved: new Promise<boolean>(() => { /* never resolves */ }),
+    }));
+
+    const startTime = Date.now();
+    const result = await engine.run({
+      userMessage: 'risky command',
+      serverId: 'srv-1',
+      userId: 'usr-1',
+      sessionId: 'sess-1',
+      stream,
+      onConfirmRequired,
+    });
+    const elapsed = Date.now() - startTime;
+
+    // Should resolve nearly instantly (abort was pre-set)
+    expect(elapsed).toBeLessThan(500);
+    expect(result.success).toBe(false);
+  });
+
+  it('should still allow user approval when abort has not fired', async () => {
+    const { validateCommand } = await import('../core/security/command-validator.js');
+    vi.mocked(validateCommand).mockReturnValue({
+      action: 'allowed',
+      classification: { riskLevel: 'yellow', reason: 'needs confirmation' },
+    } as ReturnType<typeof validateCommand>);
+
+    const { client, getCallCount } = createRiskyToolClient();
+    const engine = new AgenticChatEngine(client);
+    const { stream, sseEvents } = createMockStream();
+
+    // User approves after 50ms
+    const onConfirmRequired = vi.fn((_cmd: string, _risk: string, _desc: string) => {
+      let resolveApproved!: (v: boolean) => void;
+      const approved = new Promise<boolean>((resolve) => { resolveApproved = resolve; });
+      setTimeout(() => resolveApproved(true), 50);
+      return { confirmId: 'sess-1:confirm-3', approved };
+    });
+
+    const result = await engine.run({
+      userMessage: 'do something risky',
+      serverId: 'srv-1',
+      userId: 'usr-1',
+      sessionId: 'sess-1',
+      stream,
+      onConfirmRequired,
+    });
+
+    // Should succeed — user approved, command executed
+    expect(result.success).toBe(true);
+    expect(getCallCount()).toBe(2); // 1st turn: tool_use, 2nd turn: end_turn
+
+    // A tool_executing event should have been sent (command was dispatched)
+    const executingEvents = sseEvents.filter((e) => e.event === 'tool_executing');
+    expect(executingEvents).toHaveLength(1);
+  });
+
+  it('should not execute command when abort fires during confirmation', async () => {
+    const { validateCommand } = await import('../core/security/command-validator.js');
+    vi.mocked(validateCommand).mockReturnValue({
+      action: 'allowed',
+      classification: { riskLevel: 'red', reason: 'destructive' },
+    } as ReturnType<typeof validateCommand>);
+
+    const { client } = createRiskyToolClient();
+    const engine = new AgenticChatEngine(client);
+    const { stream, simulateAbort, sseEvents } = createMockStream();
+
+    const onConfirmRequired = vi.fn((_cmd: string, _risk: string, _desc: string) => ({
+      confirmId: 'sess-1:confirm-4',
+      approved: new Promise<boolean>(() => { /* never resolves */ }),
+    }));
+
+    // Abort after 50ms
+    setTimeout(() => simulateAbort(), 50);
+
+    const result = await engine.run({
+      userMessage: 'dangerous command',
+      serverId: 'srv-1',
+      userId: 'usr-1',
+      sessionId: 'sess-1',
+      stream,
+      onConfirmRequired,
+    });
+
+    expect(result.success).toBe(false);
+
+    // No tool_executing event — command was never dispatched
+    const executingEvents = sseEvents.filter((e) => e.event === 'tool_executing');
+    expect(executingEvents).toHaveLength(0);
+  });
+
+  it('should handle user rejection (approved=false) normally without abort', async () => {
+    const { validateCommand } = await import('../core/security/command-validator.js');
+    vi.mocked(validateCommand).mockReturnValue({
+      action: 'allowed',
+      classification: { riskLevel: 'yellow', reason: 'risky' },
+    } as ReturnType<typeof validateCommand>);
+
+    const { client, getCallCount } = createRiskyToolClient();
+    const engine = new AgenticChatEngine(client);
+    const { stream, sseEvents } = createMockStream();
+
+    // User rejects after 30ms
+    const onConfirmRequired = vi.fn((_cmd: string, _risk: string, _desc: string) => {
+      let resolveApproved!: (v: boolean) => void;
+      const approved = new Promise<boolean>((resolve) => { resolveApproved = resolve; });
+      setTimeout(() => resolveApproved(false), 30);
+      return { confirmId: 'sess-1:confirm-5', approved };
+    });
+
+    const result = await engine.run({
+      userMessage: 'risky thing',
+      serverId: 'srv-1',
+      userId: 'usr-1',
+      sessionId: 'sess-1',
+      stream,
+      onConfirmRequired,
+    });
+
+    // AI sees rejection and responds, loop ends normally
+    expect(result.success).toBe(true);
+    expect(getCallCount()).toBe(2);
+
+    // A tool_result with 'rejected' status should have been sent
+    const rejectedEvents = sseEvents.filter(
+      (e) => e.event === 'tool_result' && (e.data as Record<string, unknown>).status === 'rejected',
+    );
+    expect(rejectedEvents).toHaveLength(1);
   });
 });

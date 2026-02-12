@@ -60,15 +60,35 @@ export async function executeBatch(
   let servers: { id: string; name: string }[];
 
   if (scope === 'tagged') {
-    // Tagged scope not yet implemented — degrade to single-server execution
-    const degradeMsg =
-      `server_scope 'tagged' is not yet supported (skill '${skill.name}'); ` +
-      `falling back to single server '${params.serverId}'`;
-    logger.warn({ batchId, skillId: skill.id, scope, serverId: params.serverId }, degradeMsg);
-    warnings.push(degradeMsg);
+    const serverTags = manifest.constraints?.server_tags;
+    if (!serverTags || serverTags.length === 0) {
+      const msg =
+        `server_scope 'tagged' requires server_tags in manifest (skill '${skill.name}'); ` +
+        `falling back to single server '${params.serverId}'`;
+      logger.warn({ batchId, skillId: skill.id, scope, serverId: params.serverId }, msg);
+      warnings.push(msg);
 
-    const server = await serverRepo.findById(params.serverId, userId);
-    servers = server ? [{ id: server.id, name: server.name }] : [];
+      const server = await serverRepo.findById(params.serverId, userId);
+      servers = server ? [{ id: server.id, name: server.name }] : [];
+    } else {
+      const tagged = await serverRepo.findByTags(userId, serverTags);
+      servers = tagged.map((s) => ({ id: s.id, name: s.name }));
+      if (servers.length === 0) {
+        const msg =
+          `server_scope 'tagged' matched 0 servers for tags [${serverTags.join(', ')}] ` +
+          `(skill '${skill.name}'); falling back to single server '${params.serverId}'`;
+        logger.warn({ batchId, skillId: skill.id, scope, serverTags, serverId: params.serverId }, msg);
+        warnings.push(msg);
+
+        const server = await serverRepo.findById(params.serverId, userId);
+        servers = server ? [{ id: server.id, name: server.name }] : [];
+      } else {
+        logger.info(
+          { batchId, skillId: skill.id, scope, serverTags, matchedCount: servers.length },
+          'Resolved tagged servers',
+        );
+      }
+    }
   } else {
     // scope === 'all': get all servers for this user
     const allServers = await serverRepo.findAllByUserId(userId);

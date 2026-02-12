@@ -150,6 +150,7 @@ export async function writeBatchSkillYaml(
 ): Promise<void> {
   const name = opts.name ?? 'batch-skill';
   const scope = opts.scope ?? 'all';
+  const tagsBlock = scope === 'tagged' ? '\n  server_tags:\n    - production' : '';
   const yaml = `kind: skill
 version: "1.0"
 
@@ -165,7 +166,7 @@ tools:
   - shell
 
 constraints:
-  server_scope: ${scope}
+  server_scope: ${scope}${tagsBlock}
 
 prompt: |
   Run a batch check across all servers. This prompt is long enough to pass the minimum 50 chars requirement.

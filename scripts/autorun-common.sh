@@ -986,8 +986,14 @@ autorun_main() {
             record_state $iteration "$task_name" "❌ 失败+回滚 ($error_msg)"
             show_progress $iteration "${RED}失败+回滚: $task_name${NC}"
 
-            send_notification "${MODULE_NAME}改进失败(已回滚): $task_name" \
-                "任务: $task_name\nID: $task_id\n失败: $error_msg\n代码已自动回滚" "error"
+            # 只有累计失败次数达到上限（不再自动重试）时才发送失败通知
+            local total_failures=$(get_failure_count "$task_id" "$TASK_QUEUE")
+            if [ "$total_failures" -ge "$MAX_TASK_FAILURES" ]; then
+                send_notification "${MODULE_NAME}改进失败(永久): $task_name" \
+                    "任务: $task_name\nID: $task_id\n失败: $error_msg\n累计失败 $total_failures 次，不再重试\n代码已自动回滚" "error"
+            else
+                log_info "任务 $task_id 累计失败 $total_failures/$MAX_TASK_FAILURES 次，下轮自动重试（跳过失败通知）"
+            fi
         fi
 
         log_info "等待 ${INTERVAL}秒 后继续下一轮..."

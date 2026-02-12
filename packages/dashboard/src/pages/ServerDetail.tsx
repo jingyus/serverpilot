@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { useEffect } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
@@ -20,10 +20,14 @@ import {
   Play,
   Square,
   AlertTriangle,
+  Plus,
+  X,
+  Tag,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import {
   Card,
   CardContent,
@@ -276,6 +280,87 @@ function SoftwareSection({ software }: { software: Software[] }) {
   );
 }
 
+function TagEditor({
+  tags,
+  onSave,
+  isSaving,
+}: {
+  tags: string[];
+  onSave: (tags: string[]) => void;
+  isSaving: boolean;
+}) {
+  const { t } = useTranslation();
+  const [inputValue, setInputValue] = useState('');
+
+  const addTag = useCallback(() => {
+    const trimmed = inputValue.trim().toLowerCase();
+    if (trimmed && !tags.includes(trimmed)) {
+      onSave([...tags, trimmed]);
+    }
+    setInputValue('');
+  }, [inputValue, tags, onSave]);
+
+  const removeTag = useCallback((tag: string) => {
+    onSave(tags.filter((t) => t !== tag));
+  }, [tags, onSave]);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        addTag();
+      }
+    },
+    [addTag],
+  );
+
+  return (
+    <div data-testid="tag-editor" className="space-y-2">
+      <div className="flex flex-wrap gap-1.5">
+        {tags.map((tag) => (
+          <Badge key={tag} variant="outline" className="gap-1 text-xs">
+            {tag}
+            <button
+              type="button"
+              onClick={() => removeTag(tag)}
+              disabled={isSaving}
+              className="ml-0.5 rounded-sm hover:bg-muted"
+              aria-label={t('serverDetail.removeTag', { tag })}
+              data-testid={`remove-tag-${tag}`}
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </Badge>
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <Input
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder={t('serverDetail.addTagPlaceholder')}
+          className="h-8 text-xs"
+          disabled={isSaving}
+          data-testid="tag-input"
+        />
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={addTag}
+          disabled={isSaving || !inputValue.trim()}
+          data-testid="add-tag-btn"
+        >
+          {isSaving ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <Plus className="h-3 w-3" />
+          )}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function ServerDetail() {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
@@ -289,10 +374,12 @@ export function ServerDetail() {
     isLoading,
     isProfileLoading,
     isMetricsLoading,
+    isUpdatingTags,
     error,
     fetchServer,
     fetchProfile,
     fetchMetrics,
+    updateTags,
     startMetricsStream,
     stopMetricsStream,
     clearError,
@@ -373,15 +460,19 @@ export function ServerDetail() {
             <StatusBadge status={server.status} />
           </div>
         </div>
-        {server.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1 pl-12">
-            {server.tags.map((tag) => (
-              <Badge key={tag} variant="outline" className="text-xs">
-                {tag}
-              </Badge>
-            ))}
+        <div className="pl-12">
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <Tag className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-xs font-medium text-muted-foreground">
+              {t('serverDetail.tags')}
+            </span>
           </div>
-        )}
+          <TagEditor
+            tags={server.tags}
+            onSave={(tags) => updateTags(server.id, tags)}
+            isSaving={isUpdatingTags}
+          />
+        </div>
         <Button onClick={() => navigate(`/chat/${server.id}`)} className="w-full sm:w-auto">
           <MessageCircle className="mr-2 h-4 w-4" />
           {t('serverDetail.chatWithAi')}

@@ -120,8 +120,12 @@ const SkillConstraintsSchema = z.object({
   max_steps: z.number().int().min(1).max(100).default(20),
   requires_confirmation: z.boolean().default(false),
   server_scope: z.enum(['single', 'all', 'tagged']).default('single'),
+  server_tags: z.array(z.string().min(1).max(50)).max(20).optional(),
   run_as: z.string().max(50).optional(),
-}).default({});
+}).refine(
+  (c) => c.server_scope !== 'tagged' || (c.server_tags && c.server_tags.length > 0),
+  { message: 'server_tags is required when server_scope is "tagged"', path: ['server_tags'] },
+).default({});
 
 // ============================================================================
 // Requires Schema

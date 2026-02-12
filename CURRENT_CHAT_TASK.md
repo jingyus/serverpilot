@@ -1,12 +1,12 @@
-### [pending] common-errors.ts 超出 800 行硬限制 — 853 行需要拆分
+### [pending] Agentic 确认流在客户端断连后仍继续等待 — confirmation.approved 未与 abort 联动
 
-**ID**: chat-054
-**优先级**: P0
-**模块路径**: packages/server/src/ai/common-errors.ts
-**发现的问题**: common-errors.ts 当前 853 行，超出 800 行硬限制 53 行。文件主要由 ERROR_RULES 纯数据数组（约 600 行）和匹配函数（约 150 行）组成。虽然 MEMORY.md 提到"pure data, exceeds 500 soft limit but acceptable"，但现在已经超过 800 行硬限制，不再 acceptable。
-**改进方案**: 按错误类别拆分 ERROR_RULES 数据：(1) `error-rules-permission.ts` — 权限类规则; (2) `error-rules-network.ts` — 网络类规则; (3) `error-rules-dependency.ts` — 依赖和构建类规则; (4) `common-errors.ts` 保留类型定义、匹配函数、以及合并后的 ERROR_RULES 导出。或者更简洁地：将整个 ERROR_RULES 数组提取到 `error-rules-data.ts`，主文件只保留函数。
-**验收标准**: (1) common-errors.ts 降至 300 行以内; (2) 数据文件可超 500 行但不超 800 行; (3) `matchCommonErrors()`、`getBestMatch()` 等函数行为不变; (4) 所有测试通过
-**影响范围**: packages/server/src/ai/common-errors.ts, 新文件(s)
+**ID**: chat-056
+**优先级**: P1
+**模块路径**: packages/server/src/ai/agentic-chat.ts
+**发现的问题**: agentic-chat.ts 第 491-514 行的确认流程中，第 502 行 `const approved = await confirmation.approved` 会无条件等待用户确认。如果客户端已断连（abort.aborted=true），这个 await 仍然会挂起最多 5 分钟（由 chat.ts 的 CONFIRM_TIMEOUT_MS 控制）。虽然第 517-520 行有 abort 检查，但只在确认 resolve 后才到达。这意味着一个已断连的客户端会让服务端的 agentic 循环挂起 5 分钟，占用内存和协程资源。
+**改进方案**: 使用 `Promise.race()` 将 `confirmation.approved` 与一个 abort 感知的 Promise 竞争。当 abort.aborted 为 true 时立即 resolve(false)。可以实现为：`const approved = await Promise.race([confirmation.approved, this.waitForAbort(abort)])` 其中 waitForAbort 定期检查 abort 状态或监听 abort 事件。
+**验收标准**: (1) 客户端断连后确认等待在 1 秒内结束; (2) 不再有 5 分钟挂起; (3) abort 后工具执行不会继续; (4) 测试覆盖断连+确认竞态场景
+**影响范围**: packages/server/src/ai/agentic-chat.ts, packages/server/src/api/routes/chat.ts
 **创建时间**: (自动填充)
 **完成时间**: -
 

@@ -669,7 +669,7 @@ describe('SkillEngine batch execution (server_scope)', () => {
     expect(batch.serverScope).toBe('tagged');
     expect(batch.warnings).toBeDefined();
     expect(batch.warnings!.length).toBeGreaterThan(0);
-    expect(batch.warnings![0]).toContain("server_scope 'tagged' is not yet supported");
+    expect(batch.warnings![0]).toContain("server_scope 'tagged'");
     expect(batch.warnings![0]).toContain('falling back to single server');
   });
 

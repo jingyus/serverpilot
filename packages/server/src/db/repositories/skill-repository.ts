@@ -24,6 +24,7 @@ import type {
 import type {
   InstalledSkill,
   SkillExecution,
+  SkillStats,
 } from '../../core/skill/types.js';
 
 // ============================================================================
@@ -75,6 +76,8 @@ export interface SkillRepository {
   findExecutionById(id: string): Promise<SkillExecution | null>;
   listPendingConfirmations(userId: string): Promise<SkillExecution[]>;
   expirePendingConfirmations(cutoff: Date): Promise<number>;
+
+  getStats(userId: string, from?: Date, to?: Date): Promise<SkillStats>;
 }
 
 // ============================================================================
@@ -253,6 +256,33 @@ export class DrizzleSkillRepository implements SkillRepository {
     return expired;
   }
 
+  async getStats(userId: string, from?: Date, to?: Date): Promise<SkillStats> {
+    // Default range: last 30 days
+    const rangeFrom = from ?? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const rangeTo = to ?? new Date();
+
+    // Fetch user's skill ids for name mapping
+    const userSkills = this.db
+      .select()
+      .from(installedSkills)
+      .where(eq(installedSkills.userId, userId))
+      .all();
+    const skillNameMap = new Map(userSkills.map((s) => [s.id, s.displayName ?? s.name]));
+
+    // Fetch executions in range for this user
+    const rows = this.db
+      .select()
+      .from(skillExecutions)
+      .where(eq(skillExecutions.userId, userId))
+      .all()
+      .filter((r) => {
+        const ts = r.startedAt?.getTime() ?? 0;
+        return ts >= rangeFrom.getTime() && ts <= rangeTo.getTime();
+      });
+
+    return computeStats(rows, skillNameMap);
+  }
+
   // --------------------------------------------------------------------------
   // Private helpers
   // --------------------------------------------------------------------------
@@ -428,6 +458,108 @@ export class InMemorySkillRepository implements SkillRepository {
     }
     return expired;
   }
+
+  async getStats(userId: string, from?: Date, to?: Date): Promise<SkillStats> {
+    const rangeFrom = from ?? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const rangeTo = to ?? new Date();
+    const rangeFromStr = rangeFrom.toISOString();
+    const rangeToStr = rangeTo.toISOString();
+
+    // Build skill name map
+    const userSkills = this.skills.filter((s) => s.userId === userId);
+    const skillNameMap = new Map(userSkills.map((s) => [s.id, s.displayName ?? s.name]));
+
+    // Filter executions in range for this user
+    const rows = this.executions
+      .filter((e) => e.userId === userId && e.startedAt >= rangeFromStr && e.startedAt <= rangeToStr)
+      .map((e) => ({
+        id: e.id,
+        skillId: e.skillId,
+        status: e.status,
+        triggerType: e.triggerType,
+        startedAt: new Date(e.startedAt),
+        duration: e.duration,
+      }));
+
+    return computeStats(rows, skillNameMap);
+  }
+}
+
+// ============================================================================
+// Shared Stats Computation
+// ============================================================================
+
+interface StatsRow {
+  skillId: string;
+  status: string;
+  triggerType: string;
+  startedAt: Date | null;
+  duration: number | null;
+}
+
+function computeStats(
+  rows: StatsRow[],
+  skillNameMap: Map<string, string>,
+): SkillStats {
+  const totalExecutions = rows.length;
+  const successCount = rows.filter((r) => r.status === 'success').length;
+  const successRate = totalExecutions > 0 ? successCount / totalExecutions : 0;
+
+  const durations = rows.filter((r) => r.duration != null).map((r) => r.duration!);
+  const avgDuration = durations.length > 0
+    ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)
+    : 0;
+
+  // Top skills by execution count (top 5)
+  const skillCounts = new Map<string, { count: number; success: number }>();
+  for (const r of rows) {
+    const entry = skillCounts.get(r.skillId) ?? { count: 0, success: 0 };
+    entry.count++;
+    if (r.status === 'success') entry.success++;
+    skillCounts.set(r.skillId, entry);
+  }
+  const topSkills = [...skillCounts.entries()]
+    .sort((a, b) => b[1].count - a[1].count)
+    .slice(0, 5)
+    .map(([skillId, { count, success }]) => ({
+      skillId,
+      skillName: skillNameMap.get(skillId) ?? skillId,
+      executionCount: count,
+      successCount: success,
+    }));
+
+  // Daily trend
+  const dailyMap = new Map<string, { total: number; success: number; failed: number }>();
+  for (const r of rows) {
+    const date = r.startedAt ? r.startedAt.toISOString().slice(0, 10) : 'unknown';
+    const entry = dailyMap.get(date) ?? { total: 0, success: 0, failed: 0 };
+    entry.total++;
+    if (r.status === 'success') entry.success++;
+    if (r.status === 'failed' || r.status === 'timeout') entry.failed++;
+    dailyMap.set(date, entry);
+  }
+  const dailyTrend = [...dailyMap.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([date, { total, success, failed }]) => ({ date, total, success, failed }));
+
+  // Trigger distribution
+  const triggerMap = new Map<string, number>();
+  for (const r of rows) {
+    triggerMap.set(r.triggerType, (triggerMap.get(r.triggerType) ?? 0) + 1);
+  }
+  const triggerDistribution = [...triggerMap.entries()].map(([triggerType, count]) => ({
+    triggerType: triggerType as import('../../db/schema.js').SkillTriggerType,
+    count,
+  }));
+
+  return {
+    totalExecutions,
+    successRate,
+    avgDuration,
+    topSkills,
+    dailyTrend,
+    triggerDistribution,
+  };
 }
 
 // ============================================================================

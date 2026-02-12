@@ -13,7 +13,7 @@ import {
 } from './skill-repository.js';
 
 import type { DrizzleDB } from '../connection.js';
-import type { SkillSource, SkillStatus } from '../schema.js';
+import type { SkillSource, SkillStatus, SkillTriggerType } from '../schema.js';
 
 // ============================================================================
 // Helpers
@@ -274,5 +274,78 @@ describe('InMemorySkillRepository.findAllEnabled', () => {
 
     const result = await repo.findAllEnabled();
     expect(result).toHaveLength(2);
+  });
+});
+
+// ============================================================================
+// InMemorySkillRepository — getStats
+// ============================================================================
+
+describe('InMemorySkillRepository.getStats', () => {
+  let repo: InMemorySkillRepository;
+
+  beforeEach(() => {
+    repo = new InMemorySkillRepository();
+  });
+
+  it('should return zero stats when no executions exist', async () => {
+    const stats = await repo.getStats('user-1');
+    expect(stats.totalExecutions).toBe(0);
+    expect(stats.successRate).toBe(0);
+    expect(stats.avgDuration).toBe(0);
+    expect(stats.topSkills).toEqual([]);
+    expect(stats.dailyTrend).toEqual([]);
+    expect(stats.triggerDistribution).toEqual([]);
+  });
+
+  it('should compute correct stats with mixed executions', async () => {
+    const skill = await repo.install(makeInstallInput({ name: 'stats-skill', userId: 'user-1' }));
+    const skill2 = await repo.install(makeInstallInput({ name: 'stats-skill-2', userId: 'user-1' }));
+
+    // Create executions
+    const e1 = await repo.createExecution({ skillId: skill.id, serverId: 's1', userId: 'user-1', triggerType: 'manual' as SkillTriggerType });
+    await repo.completeExecution(e1.id, 'success', null, 3, 1000);
+    const e2 = await repo.createExecution({ skillId: skill.id, serverId: 's1', userId: 'user-1', triggerType: 'cron' as SkillTriggerType });
+    await repo.completeExecution(e2.id, 'failed', null, 1, 2000);
+    const e3 = await repo.createExecution({ skillId: skill2.id, serverId: 's1', userId: 'user-1', triggerType: 'manual' as SkillTriggerType });
+    await repo.completeExecution(e3.id, 'success', null, 5, 3000);
+
+    const stats = await repo.getStats('user-1');
+
+    expect(stats.totalExecutions).toBe(3);
+    expect(stats.successRate).toBeCloseTo(2 / 3);
+    expect(stats.avgDuration).toBe(2000); // (1000+2000+3000)/3
+
+    // Top skills — skill has 2 executions, skill2 has 1
+    expect(stats.topSkills).toHaveLength(2);
+    expect(stats.topSkills[0].skillId).toBe(skill.id);
+    expect(stats.topSkills[0].executionCount).toBe(2);
+    expect(stats.topSkills[0].successCount).toBe(1);
+
+    // Trigger distribution
+    const manualTrigger = stats.triggerDistribution.find((t) => t.triggerType === 'manual');
+    expect(manualTrigger?.count).toBe(2);
+    const cronTrigger = stats.triggerDistribution.find((t) => t.triggerType === 'cron');
+    expect(cronTrigger?.count).toBe(1);
+  });
+
+  it('should filter by date range', async () => {
+    const skill = await repo.install(makeInstallInput({ name: 'range-skill', userId: 'user-1' }));
+
+    // Manually create an execution with old date
+    const e1 = await repo.createExecution({ skillId: skill.id, serverId: 's1', userId: 'user-1', triggerType: 'manual' as SkillTriggerType });
+    await repo.completeExecution(e1.id, 'success', null, 1, 500);
+
+    // Get stats with a future range that excludes current executions
+    const futureFrom = new Date(Date.now() + 100_000);
+    const futureTo = new Date(Date.now() + 200_000);
+    const stats = await repo.getStats('user-1', futureFrom, futureTo);
+    expect(stats.totalExecutions).toBe(0);
+
+    // Get stats with range that includes current executions
+    const pastFrom = new Date(Date.now() - 100_000);
+    const pastTo = new Date(Date.now() + 100_000);
+    const stats2 = await repo.getStats('user-1', pastFrom, pastTo);
+    expect(stats2.totalExecutions).toBe(1);
   });
 });

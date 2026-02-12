@@ -340,6 +340,51 @@ function sharedTests(
     });
 
     // ================================================================
+    // findByTags (multi-tag matching)
+    // ================================================================
+
+    it('should find servers matching any of the given tags', async () => {
+      await repo.create({ name: 'srv-web', userId: 'user-1', tags: ['web', 'prod'] });
+      await repo.create({ name: 'srv-db', userId: 'user-1', tags: ['db', 'prod'] });
+      await repo.create({ name: 'srv-cache', userId: 'user-1', tags: ['cache'] });
+
+      const result = await repo.findByTags('user-1', ['web', 'db']);
+      expect(result).toHaveLength(2);
+      expect(result.map((s) => s.name).sort()).toEqual(['srv-db', 'srv-web']);
+    });
+
+    it('should return empty array for empty tags list', async () => {
+      await repo.create({ name: 'srv-a', userId: 'user-1', tags: ['web'] });
+
+      const result = await repo.findByTags('user-1', []);
+      expect(result).toHaveLength(0);
+    });
+
+    it('should filter by tags case-insensitively in findByTags', async () => {
+      await repo.create({ name: 'srv-a', userId: 'user-1', tags: ['Production'] });
+
+      const result = await repo.findByTags('user-1', ['production']);
+      expect(result).toHaveLength(1);
+      expect(result[0].name).toBe('srv-a');
+    });
+
+    it('should not return other users servers in findByTags', async () => {
+      await repo.create({ name: 'my-srv', userId: 'user-1', tags: ['web'] });
+      await repo.create({ name: 'other-srv', userId: 'user-2', tags: ['web'] });
+
+      const result = await repo.findByTags('user-1', ['web']);
+      expect(result).toHaveLength(1);
+      expect(result[0].name).toBe('my-srv');
+    });
+
+    it('should return empty when no servers match tags', async () => {
+      await repo.create({ name: 'srv-a', userId: 'user-1', tags: ['web'] });
+
+      const result = await repo.findByTags('user-1', ['db']);
+      expect(result).toHaveLength(0);
+    });
+
+    // ================================================================
     // updateStatus
     // ================================================================
 

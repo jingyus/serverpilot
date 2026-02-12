@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 ServerPilot Contributors
 /**
  * Tests for BatchExecutor — multi-server batch execution with
- * graceful degradation for unsupported scopes.
+ * tag-based server filtering for scope='tagged'.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -215,11 +215,93 @@ describe('BatchExecutor', () => {
   });
 
   // --------------------------------------------------------------------------
-  // scope='tagged' graceful degradation tests
+  // scope='tagged' — real tag-based server filtering
   // --------------------------------------------------------------------------
 
-  describe('scope=tagged (graceful degradation)', () => {
-    it('does not throw — degrades to single-server execution', async () => {
+  describe('scope=tagged', () => {
+    it('executes only on servers matching manifest server_tags', async () => {
+      const s1 = await serverRepo.create({
+        name: 'Web Server',
+        userId: TEST_USER_ID,
+        tags: ['web', 'prod'],
+      });
+      await serverRepo.create({
+        name: 'DB Server',
+        userId: TEST_USER_ID,
+        tags: ['db', 'prod'],
+      });
+      const s3 = await serverRepo.create({
+        name: 'Cache Server',
+        userId: TEST_USER_ID,
+        tags: ['web', 'cache'],
+      });
+
+      const manifest = makeManifest({
+        constraints: {
+          server_scope: 'tagged',
+          server_tags: ['web'],
+          risk_level_max: 'yellow',
+          timeout: '5m',
+          max_steps: 20,
+          requires_confirmation: false,
+        },
+      });
+
+      const executeFn: SingleExecuteFn = vi
+        .fn()
+        .mockResolvedValue(makeSuccessResult());
+
+      const result = await executeBatch(
+        makeParams(),
+        makeSkill(),
+        manifest,
+        'tagged',
+        executeFn,
+      );
+
+      expect(result.serverScope).toBe('tagged');
+      expect(result.results).toHaveLength(2);
+      expect(result.successCount).toBe(2);
+      expect(result.warnings).toBeUndefined();
+
+      const serverIds = result.results.map((r) => r.serverId);
+      expect(serverIds).toContain(s1.id);
+      expect(serverIds).toContain(s3.id);
+    });
+
+    it('returns empty results when no servers match tags', async () => {
+      await serverRepo.create({
+        name: 'Web Server',
+        userId: TEST_USER_ID,
+        tags: ['web'],
+      });
+
+      const manifest = makeManifest({
+        constraints: {
+          server_scope: 'tagged',
+          server_tags: ['nonexistent-tag'],
+          risk_level_max: 'yellow',
+          timeout: '5m',
+          max_steps: 20,
+          requires_confirmation: false,
+        },
+      });
+
+      const executeFn: SingleExecuteFn = vi.fn();
+
+      const result = await executeBatch(
+        makeParams(),
+        makeSkill(),
+        manifest,
+        'tagged',
+        executeFn,
+      );
+
+      expect(result.results).toHaveLength(0);
+      expect(executeFn).not.toHaveBeenCalled();
+    });
+
+    it('degrades to single-server when manifest has no server_tags', async () => {
       const server = await serverRepo.create({
         name: 'Fallback Server',
         userId: TEST_USER_ID,
@@ -230,6 +312,7 @@ describe('BatchExecutor', () => {
         .fn()
         .mockResolvedValue(makeSuccessResult());
 
+      // No server_tags in constraints
       const result = await executeBatch(
         params,
         makeSkill(),
@@ -238,20 +321,31 @@ describe('BatchExecutor', () => {
         executeFn,
       );
 
-      expect(result.serverScope).toBe('tagged');
       expect(result.results).toHaveLength(1);
-      expect(result.successCount).toBe(1);
-      expect(result.failureCount).toBe(0);
       expect(result.results[0].serverId).toBe(server.id);
-      expect(result.results[0].serverName).toBe('Fallback Server');
+      expect(result.warnings).toBeDefined();
+      expect(result.warnings).toHaveLength(1);
+      expect(result.warnings![0]).toContain('requires server_tags');
+      expect(result.warnings![0]).toContain('falling back to single server');
     });
 
-    it('includes degradation warning in result', async () => {
+    it('degrades when server_tags is empty array', async () => {
       const server = await serverRepo.create({
-        name: 'Warned Server',
+        name: 'Fallback Server',
         userId: TEST_USER_ID,
       });
       const params = makeParams({ serverId: server.id });
+
+      const manifest = makeManifest({
+        constraints: {
+          server_scope: 'tagged',
+          server_tags: [],
+          risk_level_max: 'yellow',
+          timeout: '5m',
+          max_steps: 20,
+          requires_confirmation: false,
+        },
+      });
 
       const executeFn: SingleExecuteFn = vi
         .fn()
@@ -260,52 +354,80 @@ describe('BatchExecutor', () => {
       const result = await executeBatch(
         params,
         makeSkill(),
-        makeManifest(),
+        manifest,
         'tagged',
         executeFn,
       );
 
-      expect(result.warnings).toBeDefined();
       expect(result.warnings).toHaveLength(1);
-      expect(result.warnings![0]).toContain("server_scope 'tagged' is not yet supported");
-      expect(result.warnings![0]).toContain('falling back to single server');
-      expect(result.warnings![0]).toContain(server.id);
+      expect(result.warnings![0]).toContain('requires server_tags');
     });
 
-    it('returns empty results when fallback serverId is not found', async () => {
-      const params = makeParams({ serverId: 'nonexistent-server' });
-      const executeFn: SingleExecuteFn = vi.fn();
+    it('does not include other users servers when filtering by tags', async () => {
+      await serverRepo.create({
+        name: 'My Server',
+        userId: TEST_USER_ID,
+        tags: ['web'],
+      });
+      await serverRepo.create({
+        name: 'Other Server',
+        userId: 'other-user',
+        tags: ['web'],
+      });
+
+      const manifest = makeManifest({
+        constraints: {
+          server_scope: 'tagged',
+          server_tags: ['web'],
+          risk_level_max: 'yellow',
+          timeout: '5m',
+          max_steps: 20,
+          requires_confirmation: false,
+        },
+      });
+
+      const executeFn: SingleExecuteFn = vi
+        .fn()
+        .mockResolvedValue(makeSuccessResult());
 
       const result = await executeBatch(
-        params,
+        makeParams(),
         makeSkill(),
-        makeManifest(),
+        manifest,
         'tagged',
         executeFn,
       );
 
-      expect(result.results).toHaveLength(0);
-      expect(result.successCount).toBe(0);
-      expect(result.failureCount).toBe(0);
-      expect(result.warnings).toHaveLength(1);
-      expect(executeFn).not.toHaveBeenCalled();
+      expect(result.results).toHaveLength(1);
+      expect(result.results[0].serverName).toBe('My Server');
     });
 
-    it('handles execution failure on fallback server', async () => {
-      const server = await serverRepo.create({
+    it('handles execution failure on tagged server', async () => {
+      await serverRepo.create({
         name: 'Fail Server',
         userId: TEST_USER_ID,
+        tags: ['web'],
       });
-      const params = makeParams({ serverId: server.id });
+
+      const manifest = makeManifest({
+        constraints: {
+          server_scope: 'tagged',
+          server_tags: ['web'],
+          risk_level_max: 'yellow',
+          timeout: '5m',
+          max_steps: 20,
+          requires_confirmation: false,
+        },
+      });
 
       const executeFn: SingleExecuteFn = vi
         .fn()
         .mockRejectedValue(new Error('agent offline'));
 
       const result = await executeBatch(
-        params,
+        makeParams(),
         makeSkill(),
-        makeManifest(),
+        manifest,
         'tagged',
         executeFn,
       );
@@ -313,7 +435,6 @@ describe('BatchExecutor', () => {
       expect(result.failureCount).toBe(1);
       expect(result.successCount).toBe(0);
       expect(result.results[0].result.errors).toContain('agent offline');
-      expect(result.warnings).toHaveLength(1);
     });
   });
 

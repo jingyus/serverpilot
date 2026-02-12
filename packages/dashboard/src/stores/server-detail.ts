@@ -32,10 +32,12 @@ interface ServerDetailState {
   isProfileLoading: boolean;
   isMetricsLoading: boolean;
   isStreaming: boolean;
+  isUpdatingTags: boolean;
   error: string | null;
   fetchServer: (id: string) => Promise<void>;
   fetchProfile: (id: string) => Promise<void>;
   fetchMetrics: (id: string, range?: MetricsRange) => Promise<void>;
+  updateTags: (id: string, tags: string[]) => Promise<void>;
   setMetricsRange: (range: MetricsRange) => void;
   startMetricsStream: (serverId: string) => void;
   stopMetricsStream: () => void;
@@ -53,6 +55,7 @@ const initialState = {
   isProfileLoading: false,
   isMetricsLoading: false,
   isStreaming: false,
+  isUpdatingTags: false,
   error: null,
 };
 
@@ -120,6 +123,23 @@ export const useServerDetailStore = create<ServerDetailState>((set, get) => ({
           ? err.message
           : 'Failed to load server metrics';
       set({ error: message, isMetricsLoading: false });
+    }
+  },
+
+  updateTags: async (id, tags) => {
+    set({ isUpdatingTags: true, error: null });
+    try {
+      const data = await apiRequest<ServerDetailResponse>(`/servers/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ tags }),
+      });
+      set({ server: data.server, isUpdatingTags: false });
+    } catch (err) {
+      const message =
+        err instanceof ApiError
+          ? err.message
+          : 'Failed to update tags';
+      set({ error: message, isUpdatingTags: false });
     }
   },
 

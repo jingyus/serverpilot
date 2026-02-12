@@ -155,6 +155,42 @@ export interface PendingConfirmationsResponse {
 }
 
 // ============================================================================
+// Skill Analytics / Stats
+// ============================================================================
+
+export interface SkillRanking {
+  skillId: string;
+  skillName: string;
+  executionCount: number;
+  successCount: number;
+}
+
+export interface DailyExecution {
+  date: string;
+  total: number;
+  success: number;
+  failed: number;
+}
+
+export interface TriggerCount {
+  triggerType: SkillTriggerType;
+  count: number;
+}
+
+export interface SkillStats {
+  totalExecutions: number;
+  successRate: number;
+  avgDuration: number;
+  topSkills: SkillRanking[];
+  dailyTrend: DailyExecution[];
+  triggerDistribution: TriggerCount[];
+}
+
+export interface SkillStatsResponse {
+  stats: SkillStats;
+}
+
+// ============================================================================
 // Skill Execution Streaming Events
 // ============================================================================
 

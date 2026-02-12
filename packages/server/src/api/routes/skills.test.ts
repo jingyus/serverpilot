@@ -53,6 +53,14 @@ vi.mock('../../core/skill/skill-event-bus.js', () => ({
   getSkillEventBus: () => mockSkillEventBus,
 }));
 
+const mockSkillRepo = {
+  getStats: vi.fn(),
+};
+
+vi.mock('../../db/repositories/skill-repository.js', () => ({
+  getSkillRepository: () => mockSkillRepo,
+}));
+
 let mockUserRole = 'owner';
 
 vi.mock('../middleware/auth.js', () => ({
@@ -693,6 +701,51 @@ describe('GET /skills/:id/executions/:eid', () => {
     mockEngine.getExecution.mockResolvedValue(makeExecution());
 
     const res = await app.request('/skills/skill-1/executions/exec-1');
+    expect(res.status).toBe(200);
+  });
+});
+
+// ============================================================================
+// GET /skills/stats — Aggregated execution analytics
+// ============================================================================
+
+describe('GET /skills/stats', () => {
+  const sampleStats = {
+    totalExecutions: 10,
+    successRate: 0.8,
+    avgDuration: 1500,
+    topSkills: [{ skillId: 'skill-1', skillName: 'Nginx Hardening', executionCount: 7, successCount: 6 }],
+    dailyTrend: [{ date: '2026-02-12', total: 5, success: 4, failed: 1 }],
+    triggerDistribution: [{ triggerType: 'manual', count: 8 }, { triggerType: 'cron', count: 2 }],
+  };
+
+  it('should return aggregated stats', async () => {
+    mockSkillRepo.getStats.mockResolvedValue(sampleStats);
+
+    const res = await app.request('/skills/stats');
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.stats).toEqual(sampleStats);
+    expect(mockSkillRepo.getStats).toHaveBeenCalledWith('user-1', undefined, undefined);
+  });
+
+  it('should pass date range query params', async () => {
+    mockSkillRepo.getStats.mockResolvedValue(sampleStats);
+
+    const res = await app.request('/skills/stats?from=2026-01-01&to=2026-02-01');
+    expect(res.status).toBe(200);
+    expect(mockSkillRepo.getStats).toHaveBeenCalledWith(
+      'user-1',
+      new Date('2026-01-01'),
+      new Date('2026-02-01'),
+    );
+  });
+
+  it('should be accessible by member role (skill:view)', async () => {
+    mockUserRole = 'member';
+    mockSkillRepo.getStats.mockResolvedValue(sampleStats);
+
+    const res = await app.request('/skills/stats');
     expect(res.status).toBe(200);
   });
 });

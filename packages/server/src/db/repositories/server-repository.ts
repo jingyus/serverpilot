@@ -115,6 +115,7 @@ export interface PaginationOptions {
 export interface ServerRepository {
   findAllByUserId(userId: string, filters?: ServerFilterOptions): Promise<Server[]>;
   findById(id: string, userId: string): Promise<Server | null>;
+  findByTags(userId: string, tags: string[]): Promise<Server[]>;
   create(input: CreateServerInput): Promise<Server>;
   update(id: string, userId: string, input: UpdateServerInput): Promise<Server | null>;
   updateStatus(serverId: string, status: ServerStatus): Promise<boolean>;
@@ -177,6 +178,21 @@ export class DrizzleServerRepository implements ServerRepository {
       .all();
 
     return rows[0] ? this.toServer(rows[0]) : null;
+  }
+
+  async findByTags(userId: string, tags: string[]): Promise<Server[]> {
+    if (tags.length === 0) return [];
+
+    const rows = this.db
+      .select()
+      .from(servers)
+      .where(eq(servers.userId, userId))
+      .all();
+
+    const tagsLower = new Set(tags.map((t) => t.toLowerCase()));
+    return rows
+      .map((row) => this.toServer(row))
+      .filter((s) => s.tags.some((t) => tagsLower.has(t.toLowerCase())));
   }
 
   async create(input: CreateServerInput): Promise<Server> {
@@ -406,6 +422,15 @@ export class InMemoryServerRepository implements ServerRepository {
     const server = this.servers.get(id);
     if (!server || server.userId !== userId) return null;
     return server;
+  }
+
+  async findByTags(userId: string, tags: string[]): Promise<Server[]> {
+    if (tags.length === 0) return [];
+
+    const tagsLower = new Set(tags.map((t) => t.toLowerCase()));
+    return [...this.servers.values()].filter(
+      (s) => s.userId === userId && s.tags.some((t) => tagsLower.has(t.toLowerCase())),
+    );
   }
 
   async create(input: CreateServerInput): Promise<Server> {

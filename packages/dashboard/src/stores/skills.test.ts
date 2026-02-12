@@ -73,6 +73,8 @@ describe('useSkillsStore', () => {
       isLoadingDetail: false,
       isLoading: false,
       error: null,
+      stats: null,
+      isLoadingStats: false,
     });
   });
 
@@ -606,6 +608,46 @@ describe('useSkillsStore', () => {
       useSkillsStore.getState().clearSelectedExecution();
 
       expect(useSkillsStore.getState().selectedExecution).toBeNull();
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // fetchStats
+  // --------------------------------------------------------------------------
+
+  describe('fetchStats', () => {
+    const sampleStats = {
+      totalExecutions: 10,
+      successRate: 0.8,
+      avgDuration: 1500,
+      topSkills: [{ skillId: 'sk-1', skillName: 'Nginx Setup', executionCount: 7, successCount: 6 }],
+      dailyTrend: [{ date: '2026-02-12', total: 5, success: 4, failed: 1 }],
+      triggerDistribution: [{ triggerType: 'manual' as const, count: 8 }],
+    };
+
+    it('should fetch stats successfully', async () => {
+      mockApiRequest.mockResolvedValueOnce({ stats: sampleStats });
+
+      await useSkillsStore.getState().fetchStats();
+
+      const state = useSkillsStore.getState();
+      expect(state.stats).toEqual(sampleStats);
+      expect(state.isLoadingStats).toBe(false);
+      expect(state.error).toBeNull();
+      expect(mockApiRequest).toHaveBeenCalledWith('/skills/stats');
+    });
+
+    it('should handle error on fetchStats', async () => {
+      const { ApiError } = await import('@/api/client');
+      mockApiRequest.mockRejectedValueOnce(
+        new ApiError(500, 'INTERNAL_ERROR', 'Stats unavailable'),
+      );
+
+      await useSkillsStore.getState().fetchStats();
+
+      const state = useSkillsStore.getState();
+      expect(state.error).toBe('Stats unavailable');
+      expect(state.isLoadingStats).toBe(false);
     });
   });
 

@@ -132,3 +132,45 @@ export interface ChainContext {
   /** Ordered list of skill IDs in the chain (for cycle detection). */
   trail: string[];
 }
+
+// ============================================================================
+// Skill Analytics / Stats
+// ============================================================================
+
+/** Aggregated skill execution statistics. */
+export interface SkillStats {
+  /** Total number of executions. */
+  totalExecutions: number;
+  /** Success rate as a decimal (0.0–1.0). */
+  successRate: number;
+  /** Average execution duration in milliseconds. */
+  avgDuration: number;
+  /** Top skills ranked by execution count. */
+  topSkills: SkillRanking[];
+  /** Daily execution counts for the trend chart. */
+  dailyTrend: DailyExecution[];
+  /** Distribution of trigger types. */
+  triggerDistribution: TriggerCount[];
+}
+
+/** A skill ranked by execution count. */
+export interface SkillRanking {
+  skillId: string;
+  skillName: string;
+  executionCount: number;
+  successCount: number;
+}
+
+/** Daily execution count for trend analysis. */
+export interface DailyExecution {
+  date: string;
+  total: number;
+  success: number;
+  failed: number;
+}
+
+/** Trigger type distribution entry. */
+export interface TriggerCount {
+  triggerType: SkillTriggerType;
+  count: number;
+}
