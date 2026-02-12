@@ -49,7 +49,7 @@ describe('ChatMessage', () => {
     expect(screen.getByText(/2025/)).toBeInTheDocument();
   });
 
-  it('preserves whitespace in content', () => {
+  it('preserves whitespace in user messages', () => {
     render(
       <ChatMessage
         message={createMessage({ content: 'line1\nline2\nline3' })}
@@ -77,5 +77,66 @@ describe('ChatMessage', () => {
     render(<ChatMessage message={createMessage({ role: 'system' })} />);
     const container = screen.getByTestId('chat-message-system');
     expect(container).toHaveClass('justify-center');
+  });
+
+  it('renders assistant message with MarkdownRenderer', () => {
+    render(
+      <ChatMessage
+        message={createMessage({ role: 'assistant', content: '**bold text**' })}
+      />
+    );
+    expect(screen.getByTestId('markdown-content')).toBeInTheDocument();
+    const bold = screen.getByText('bold text');
+    expect(bold.tagName).toBe('STRONG');
+  });
+
+  it('user messages do NOT use MarkdownRenderer', () => {
+    render(
+      <ChatMessage
+        message={createMessage({ role: 'user', content: '**not bold**' })}
+      />
+    );
+    expect(screen.queryByTestId('markdown-content')).not.toBeInTheDocument();
+    // Content shown as plain text including markdown syntax
+    expect(screen.getByText('**not bold**')).toBeInTheDocument();
+  });
+
+  it('assistant message renders code blocks', () => {
+    render(
+      <ChatMessage
+        message={createMessage({
+          role: 'assistant',
+          content: '```bash\necho "hello"\n```',
+        })}
+      />
+    );
+    expect(screen.getByTestId('code-block')).toBeInTheDocument();
+    expect(screen.getByText('bash')).toBeInTheDocument();
+    expect(screen.getByTestId('copy-code-button')).toBeInTheDocument();
+  });
+
+  it('assistant message renders lists', () => {
+    render(
+      <ChatMessage
+        message={createMessage({
+          role: 'assistant',
+          content: '- Item A\n- Item B\n- Item C',
+        })}
+      />
+    );
+    const items = screen.getAllByRole('listitem');
+    expect(items).toHaveLength(3);
+  });
+
+  it('assistant message renders headings', () => {
+    render(
+      <ChatMessage
+        message={createMessage({
+          role: 'assistant',
+          content: '## Section Title\nSome paragraph text',
+        })}
+      />
+    );
+    expect(screen.getByText('Section Title').tagName).toBe('H2');
   });
 });

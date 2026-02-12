@@ -17,6 +17,7 @@ import {
 } from '../../db/repositories/session-repository.js';
 import type { SessionRepository } from '../../db/repositories/session-repository.js';
 import type { SessionMessage } from '../../db/schema.js';
+import { estimateTokens } from '../../ai/profile-context.js';
 
 // ============================================================================
 // Types
@@ -239,6 +240,121 @@ export class SessionManager {
     return session.messages
       .map((m) => `${m.role}: ${m.content}`)
       .join('\n\n');
+  }
+
+  /**
+   * Build conversation context with a token budget limit.
+   *
+   * Strategy: keep the most recent messages that fit within the budget.
+   * When truncation occurs, prepends a `[Earlier conversation summarized]` marker.
+   *
+   * @param sessionId - Session to build context from
+   * @param maxTokens - Maximum token budget for the context string (default: 8000)
+   * @returns Formatted context string within the token budget
+   */
+  buildContextWithLimit(sessionId: string, maxTokens = 8000): string {
+    const session = this.cache.get(sessionId);
+    if (!session || session.messages.length === 0) {
+      return '';
+    }
+
+    const messages = session.messages;
+    const formatted = messages.map((m) => `${m.role}: ${m.content}`);
+
+    // Check if all messages fit within the budget
+    const fullText = formatted.join('\n\n');
+    if (estimateTokens(fullText) <= maxTokens) {
+      return fullText;
+    }
+
+    // Truncation needed: keep messages from the end, within budget
+    const marker = '[Earlier conversation summarized — only recent messages shown]\n\n';
+    const markerTokens = estimateTokens(marker);
+    const availableTokens = maxTokens - markerTokens;
+
+    const selected: string[] = [];
+    let usedTokens = 0;
+
+    // Walk backwards, keeping recent messages
+    for (let i = formatted.length - 1; i >= 0; i--) {
+      const msgTokens = estimateTokens(formatted[i]);
+      // Account for separator between messages
+      const separatorTokens = selected.length > 0 ? estimateTokens('\n\n') : 0;
+
+      if (usedTokens + msgTokens + separatorTokens > availableTokens) {
+        break;
+      }
+
+      selected.unshift(formatted[i]);
+      usedTokens += msgTokens + separatorTokens;
+    }
+
+    // If we kept all messages, no marker needed (edge case: budget barely fits)
+    if (selected.length === formatted.length) {
+      return selected.join('\n\n');
+    }
+
+    return marker + selected.join('\n\n');
+  }
+
+  /**
+   * Build conversation history as a message array with token limit.
+   *
+   * Used by the agentic engine which needs `{ role, content }[]` format.
+   * Keeps the most recent messages that fit within the token budget.
+   *
+   * @param sessionId - Session to build history from
+   * @param maxTokens - Maximum token budget (default: 40000)
+   * @returns Array of messages within budget, excluding the latest user message
+   */
+  buildHistoryWithLimit(
+    sessionId: string,
+    maxTokens = 40000,
+  ): Array<{ role: 'user' | 'assistant'; content: string }> {
+    const session = this.cache.get(sessionId);
+    if (!session || session.messages.length === 0) {
+      return [];
+    }
+
+    // Filter to user/assistant only, exclude the last message (current user message)
+    const eligible = session.messages
+      .filter((m) => m.role === 'user' || m.role === 'assistant')
+      .slice(0, -1);
+
+    if (eligible.length === 0) {
+      return [];
+    }
+
+    // Check if everything fits
+    const totalTokens = eligible.reduce(
+      (sum, m) => sum + estimateTokens(m.content),
+      0,
+    );
+
+    if (totalTokens <= maxTokens) {
+      return eligible.map((m) => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+      }));
+    }
+
+    // Keep recent messages within budget
+    const selected: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+    let usedTokens = 0;
+
+    for (let i = eligible.length - 1; i >= 0; i--) {
+      const msgTokens = estimateTokens(eligible[i].content);
+      if (usedTokens + msgTokens > maxTokens) {
+        break;
+      }
+      selected.unshift({
+        role: eligible[i].role as 'user' | 'assistant',
+        content: eligible[i].content,
+      });
+      usedTokens += msgTokens;
+    }
+
+    return selected;
   }
 
   /** Convert DB session to in-memory Session format. */

@@ -422,14 +422,8 @@ chat.post('/:serverId', requirePermission('chat:use'), validateBody(ChatMessageB
       // ====== AGENTIC MODE ======
       // AI autonomously calls tools, observes results, and adapts
       try {
-        // Build conversation history from session (already in cache from getOrCreate)
-        const history = (session.messages ?? [])
-          .filter((m) => m.role === 'user' || m.role === 'assistant')
-          .slice(0, -1) // Exclude the current message (already in userMessage)
-          .map((m) => ({
-            role: m.role as 'user' | 'assistant',
-            content: m.content,
-          }));
+        // Build conversation history with token limit to prevent context overflow
+        const history = sessionMgr.buildHistoryWithLimit(session.id, 40000);
 
         const result = await agenticEngine.run({
           userMessage: body.message,
@@ -511,7 +505,7 @@ chat.post('/:serverId', requirePermission('chat:use'), validateBody(ChatMessageB
     try {
       const profileCtx = buildProfileContext(fullProfile, server.name);
       const caveats = buildProfileCaveats(fullProfile);
-      const conversationContext = sessionMgr.buildContext(session.id);
+      const conversationContext = sessionMgr.buildContextWithLimit(session.id, 8000);
       const serverLabel = `Server: ${server.name}`;
 
       // Search knowledge base

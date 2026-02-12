@@ -95,10 +95,10 @@ describe('ROLE_PERMISSIONS', () => {
     );
   });
 
-  it('member should only have read permissions and chat', () => {
+  it('member should only have read/view permissions and chat', () => {
     for (const perm of ROLE_PERMISSIONS.member) {
-      const isRead = perm.endsWith(':read') || perm === 'chat:use';
-      expect(isRead).toBe(true);
+      const isReadOrView = perm.endsWith(':read') || perm.endsWith(':view') || perm === 'chat:use';
+      expect(isReadOrView).toBe(true);
     }
   });
 

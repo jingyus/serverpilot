@@ -30,6 +30,12 @@ import { logger } from '../utils/logger.js';
 /** Maximum agentic loop iterations to prevent runaway */
 const MAX_TURNS = 25;
 
+/** Maximum estimated tokens for the messages array before trimming */
+const MAX_MESSAGES_TOKENS = 150_000;
+
+/** Rough chars-per-token constant (matches profile-context.ts) */
+const CHARS_PER_TOKEN = 4;
+
 /** Timeout for waiting on user confirmation (5 minutes) */
 const CONFIRM_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -263,6 +269,10 @@ export class AgenticChatEngine {
         // Append assistant response + tool results to conversation
         messages.push({ role: 'assistant', content: collected.rawContent });
         messages.push({ role: 'user', content: toolResults });
+
+        // Trim older messages if the array exceeds the token budget.
+        // Keep the first message (original user query) and the most recent pairs.
+        trimMessagesIfNeeded(messages, MAX_MESSAGES_TOKENS);
       }
 
       await this.writeSSE(stream, 'complete', { success: true, turns, toolCallCount });
@@ -674,6 +684,61 @@ You operate like an experienced sysadmin with SSH access — directly executing 
 - Check if software is already installed before attempting installation.
 - After making changes, verify they took effect.
 - If something fails, check logs and system state before retrying.`;
+}
+
+// ============================================================================
+// Message trimming
+// ============================================================================
+
+/**
+ * Estimate the total token count of the Anthropic messages array.
+ * Handles both string content and structured content blocks.
+ */
+function estimateMessagesTokens(messages: Anthropic.MessageParam[]): number {
+  let chars = 0;
+  for (const msg of messages) {
+    if (typeof msg.content === 'string') {
+      chars += msg.content.length;
+    } else if (Array.isArray(msg.content)) {
+      for (const block of msg.content) {
+        if ('text' in block && typeof block.text === 'string') {
+          chars += block.text.length;
+        } else if ('content' in block && typeof block.content === 'string') {
+          chars += block.content.length;
+        } else {
+          // tool_use input, tool_result, etc. — rough estimate
+          chars += JSON.stringify(block).length;
+        }
+      }
+    }
+  }
+  return Math.ceil(chars / CHARS_PER_TOKEN);
+}
+
+/**
+ * Trim the messages array in-place if it exceeds the token budget.
+ *
+ * Strategy: keep the first message (original user query) and trim from
+ * the middle, removing oldest assistant/user turn pairs. Anthropic requires
+ * alternating user/assistant roles, so we remove in pairs.
+ */
+export function trimMessagesIfNeeded(
+  messages: Anthropic.MessageParam[],
+  maxTokens: number,
+): void {
+  if (messages.length <= 3) return; // first user + one turn pair minimum
+
+  let currentTokens = estimateMessagesTokens(messages);
+  if (currentTokens <= maxTokens) return;
+
+  // Remove pairs from index 1 (after the first user message) until under budget.
+  // Each "pair" is an assistant message + a user message (tool results).
+  while (currentTokens > maxTokens && messages.length > 3) {
+    // Remove messages at index 1 and 2 (oldest assistant + user pair after first msg)
+    const removed = messages.splice(1, 2);
+    const removedTokens = estimateMessagesTokens(removed);
+    currentTokens -= removedTokens;
+  }
 }
 
 // ============================================================================

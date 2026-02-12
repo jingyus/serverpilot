@@ -299,6 +299,148 @@ describe('buildContext', () => {
 });
 
 // ============================================================================
+// Context Window Management
+// ============================================================================
+
+describe('buildContextWithLimit', () => {
+  it('should return empty string for empty session', async () => {
+    const session = await mgr.getOrCreate(SERVER_ID, USER_ID);
+    expect(mgr.buildContextWithLimit(session.id)).toBe('');
+  });
+
+  it('should return empty string for non-existent session', () => {
+    expect(mgr.buildContextWithLimit('nonexistent')).toBe('');
+  });
+
+  it('should return full context when within token limit', async () => {
+    const session = await mgr.getOrCreate(SERVER_ID, USER_ID);
+    await mgr.addMessage(session.id, USER_ID, 'user', 'Hello');
+    await mgr.addMessage(session.id, USER_ID, 'assistant', 'Hi there');
+
+    const result = mgr.buildContextWithLimit(session.id, 8000);
+    expect(result).toContain('user: Hello');
+    expect(result).toContain('assistant: Hi there');
+    expect(result).not.toContain('[Earlier conversation summarized');
+  });
+
+  it('should truncate old messages when exceeding token limit', async () => {
+    const session = await mgr.getOrCreate(SERVER_ID, USER_ID);
+    // Each message ~250 chars = ~63 tokens. With 10 messages = ~630 tokens
+    for (let i = 0; i < 10; i++) {
+      const role = i % 2 === 0 ? 'user' : 'assistant';
+      await mgr.addMessage(session.id, USER_ID, role as 'user' | 'assistant', `Message ${i}: ${'x'.repeat(200)}`);
+    }
+
+    // Set a very low limit (200 tokens = ~800 chars) to force truncation
+    const result = mgr.buildContextWithLimit(session.id, 200);
+    expect(result).toContain('[Earlier conversation summarized');
+    // Should contain the most recent messages
+    expect(result).toContain('Message 9');
+    // Should not contain the oldest messages
+    expect(result).not.toContain('Message 0');
+  });
+
+  it('should keep most recent messages when truncating', async () => {
+    const session = await mgr.getOrCreate(SERVER_ID, USER_ID);
+    for (let i = 0; i < 20; i++) {
+      const role = i % 2 === 0 ? 'user' : 'assistant';
+      await mgr.addMessage(session.id, USER_ID, role as 'user' | 'assistant', `Msg-${i}: ${'a'.repeat(100)}`);
+    }
+
+    // Limit to ~500 tokens (about 4-5 messages)
+    const result = mgr.buildContextWithLimit(session.id, 500);
+    expect(result).toContain('[Earlier conversation summarized');
+    // Most recent should be present
+    expect(result).toContain('Msg-19');
+    expect(result).toContain('Msg-18');
+  });
+
+  it('should use default maxTokens of 8000', async () => {
+    const session = await mgr.getOrCreate(SERVER_ID, USER_ID);
+    await mgr.addMessage(session.id, USER_ID, 'user', 'Short message');
+    // Default should not truncate short conversations
+    const result = mgr.buildContextWithLimit(session.id);
+    expect(result).toContain('user: Short message');
+    expect(result).not.toContain('[Earlier conversation summarized');
+  });
+});
+
+describe('buildHistoryWithLimit', () => {
+  it('should return empty array for empty session', async () => {
+    const session = await mgr.getOrCreate(SERVER_ID, USER_ID);
+    expect(mgr.buildHistoryWithLimit(session.id)).toEqual([]);
+  });
+
+  it('should return empty array for non-existent session', () => {
+    expect(mgr.buildHistoryWithLimit('nonexistent')).toEqual([]);
+  });
+
+  it('should exclude the last message (current user message)', async () => {
+    const session = await mgr.getOrCreate(SERVER_ID, USER_ID);
+    await mgr.addMessage(session.id, USER_ID, 'user', 'First');
+    await mgr.addMessage(session.id, USER_ID, 'assistant', 'Reply');
+    await mgr.addMessage(session.id, USER_ID, 'user', 'Current question');
+
+    const result = mgr.buildHistoryWithLimit(session.id);
+    expect(result).toHaveLength(2);
+    expect(result[0]).toEqual({ role: 'user', content: 'First' });
+    expect(result[1]).toEqual({ role: 'assistant', content: 'Reply' });
+  });
+
+  it('should exclude system messages', async () => {
+    const session = await mgr.getOrCreate(SERVER_ID, USER_ID);
+    await mgr.addMessage(session.id, USER_ID, 'user', 'Question');
+    await mgr.addMessage(session.id, USER_ID, 'system', 'System note');
+    await mgr.addMessage(session.id, USER_ID, 'assistant', 'Answer');
+    await mgr.addMessage(session.id, USER_ID, 'user', 'Follow up');
+
+    const result = mgr.buildHistoryWithLimit(session.id);
+    expect(result).toHaveLength(2);
+    expect(result.every((m) => m.role !== 'system')).toBe(true);
+  });
+
+  it('should return all history when within token limit', async () => {
+    const session = await mgr.getOrCreate(SERVER_ID, USER_ID);
+    await mgr.addMessage(session.id, USER_ID, 'user', 'Q1');
+    await mgr.addMessage(session.id, USER_ID, 'assistant', 'A1');
+    await mgr.addMessage(session.id, USER_ID, 'user', 'Q2');
+    await mgr.addMessage(session.id, USER_ID, 'assistant', 'A2');
+    await mgr.addMessage(session.id, USER_ID, 'user', 'Q3');
+
+    const result = mgr.buildHistoryWithLimit(session.id, 40000);
+    expect(result).toHaveLength(4); // Q1, A1, Q2, A2 (Q3 excluded as latest)
+  });
+
+  it('should trim old messages when exceeding token limit', async () => {
+    const session = await mgr.getOrCreate(SERVER_ID, USER_ID);
+    // Create a long conversation
+    for (let i = 0; i < 20; i++) {
+      const role = i % 2 === 0 ? 'user' : 'assistant';
+      await mgr.addMessage(session.id, USER_ID, role as 'user' | 'assistant', `Msg-${i}: ${'x'.repeat(200)}`);
+    }
+    // Add one more user message (this is the "current" one, will be excluded)
+    await mgr.addMessage(session.id, USER_ID, 'user', 'Current');
+
+    // Very small budget forces truncation
+    const result = mgr.buildHistoryWithLimit(session.id, 200);
+    // Should have fewer messages than original
+    expect(result.length).toBeLessThan(20);
+    expect(result.length).toBeGreaterThan(0);
+    // Most recent messages should be kept
+    const lastMsg = result[result.length - 1];
+    expect(lastMsg.content).toContain('Msg-19');
+  });
+
+  it('should return empty array when only one message exists', async () => {
+    const session = await mgr.getOrCreate(SERVER_ID, USER_ID);
+    await mgr.addMessage(session.id, USER_ID, 'user', 'Only message');
+
+    const result = mgr.buildHistoryWithLimit(session.id);
+    expect(result).toEqual([]);
+  });
+});
+
+// ============================================================================
 // Persistence across restarts
 // ============================================================================
 

@@ -17,6 +17,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ChatMessage } from '@/components/chat/ChatMessage';
+import { MarkdownRenderer } from '@/components/chat/MarkdownRenderer';
 import { PlanPreview } from '@/components/chat/PlanPreview';
 import { MessageInput } from '@/components/chat/MessageInput';
 import { ExecutionLog } from '@/components/chat/ExecutionLog';
@@ -189,7 +190,7 @@ export function Chat() {
                           <Bot className="h-4 w-4" />
                         </div>
                         <div className="max-w-[90%] rounded-2xl bg-muted px-3 py-2 text-sm sm:max-w-[85%] sm:px-4 sm:py-2.5">
-                          <pre className="whitespace-pre-wrap break-words font-sans text-sm">{displayText}</pre>
+                          <MarkdownRenderer content={displayText} />
                           <Loader2 className="mt-1 h-3 w-3 animate-spin text-muted-foreground" />
                         </div>
                       </div>
@@ -218,7 +219,7 @@ export function Chat() {
                         <Bot className="h-4 w-4" />
                       </div>
                       <div className="max-w-[85%] rounded-2xl bg-muted px-3 py-2 text-sm sm:max-w-[75%] sm:px-4 sm:py-2.5">
-                        <p className="whitespace-pre-wrap">{displayText}</p>
+                        <MarkdownRenderer content={displayText} />
                         <Loader2 className="mt-1 h-3 w-3 animate-spin text-muted-foreground" />
                       </div>
                     </div>

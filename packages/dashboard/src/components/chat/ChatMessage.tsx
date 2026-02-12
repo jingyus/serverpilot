@@ -4,6 +4,7 @@ import { Bot, User, Info } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { formatDate } from '@/utils/format';
+import { MarkdownRenderer } from './MarkdownRenderer';
 import type { ChatMessage as ChatMessageType } from '@/types/chat';
 
 interface ChatMessageProps {
@@ -66,7 +67,11 @@ export function ChatMessage({ message }: ChatMessageProps) {
 
       <div className={cn('max-w-[85%] space-y-1 sm:max-w-[75%]', isUser && 'items-end')}>
         <div className={cn('rounded-2xl px-3 py-2 text-sm sm:px-4 sm:py-2.5', config.bubble)}>
-          <p className="whitespace-pre-wrap break-words">{message.content}</p>
+          {isUser ? (
+            <p className="whitespace-pre-wrap break-words">{message.content}</p>
+          ) : (
+            <MarkdownRenderer content={message.content} />
+          )}
         </div>
         <p className="px-1 text-xs text-muted-foreground">
           {formatDate(message.timestamp)}

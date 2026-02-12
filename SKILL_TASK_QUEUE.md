@@ -3,13 +3,13 @@
 > 此队列专注于 Skill 插件系统的设计与实现
 > AI 自动扫描 → 发现缺失 → 设计实现 → 验证
 
-**最后更新**: 2026-02-12 22:04:30
+**最后更新**: 2026-02-12 22:10:27
 
 ## 📊 统计
 
 - **总任务数**: 5
-- **待完成** (pending): 3
-- **进行中** (in_progress): 1
+- **待完成** (pending): 1
+- **进行中** (in_progress): 3
 - **已完成** (completed): 1
 - **失败** (failed): 0
 
@@ -92,7 +92,7 @@
 
 ---
 
-### [pending] SkillEngine 核心引擎 — 单例编排 + 手动执行流程
+### [in_progress] SkillEngine 核心引擎 — 单例编排 + 手动执行流程
 
 **ID**: skill-003
 **优先级**: P0
@@ -146,7 +146,7 @@
 
 ---
 
-### [pending] RBAC 权限 + REST API 路由 + 服务注册
+### [in_progress] RBAC 权限 + REST API 路由 + 服务注册
 
 **ID**: skill-004
 **优先级**: P0

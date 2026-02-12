@@ -3,14 +3,14 @@
 > 此队列专注于 Chat 和 AI 对话系统的质量改进
 > AI 自动发现问题 → 生成任务 → 实现 → 验证
 
-**最后更新**: 2026-02-12 22:04:06
+**最后更新**: 2026-02-12 22:20:39
 
 ## 📊 统计
 
 - **总任务数**: 5
-- **待完成** (pending): 4
-- **进行中** (in_progress): 0
-- **已完成** (completed): 1
+- **待完成** (pending): 2
+- **进行中** (in_progress): 1
+- **已完成** (completed): 2
 - **失败** (failed): 0
 
 ## 📋 任务列表
@@ -57,7 +57,7 @@
 
 ---
 
-### [pending] 对话上下文窗口管理 — 长对话超出 token 限制导致 AI 请求失败
+### [completed] 对话上下文窗口管理 — 长对话超出 token 限制导致 AI 请求失败 ✅
 
 **ID**: chat-002
 **优先级**: P0
@@ -93,11 +93,11 @@
 - `packages/server/src/core/session/manager.test.ts` — 新增测试
 
 **创建时间**: 2026-02-12
-**完成时间**: -
+**完成时间**: 2026-02-12 22:20:39
 
 ---
 
-### [pending] ChatMessage 组件缺少 Markdown 渲染 — AI 回复丢失格式和代码高亮
+### [in_progress] ChatMessage 组件缺少 Markdown 渲染 — AI 回复丢失格式和代码高亮
 
 **ID**: chat-003
 **优先级**: P1

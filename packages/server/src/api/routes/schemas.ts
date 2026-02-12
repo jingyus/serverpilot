@@ -437,3 +437,39 @@ export const AcceptInvitationBodySchema = z.object({
   password: z.string().min(8, 'Password must be at least 8 characters'),
 });
 export type AcceptInvitationBody = z.infer<typeof AcceptInvitationBodySchema>;
+
+// ============================================================================
+// Skill Schemas
+// ============================================================================
+
+/** Install a skill from a specific source directory */
+export const InstallSkillBodySchema = z.object({
+  skillDir: z.string().min(1, 'Skill directory is required').max(1000),
+  source: z.enum(['official', 'community', 'local']),
+});
+export type InstallSkillBody = z.infer<typeof InstallSkillBodySchema>;
+
+/** Configure a skill's user-facing inputs */
+export const ConfigureSkillBodySchema = z.object({
+  config: z.record(z.string(), z.unknown()),
+});
+export type ConfigureSkillBody = z.infer<typeof ConfigureSkillBodySchema>;
+
+/** Update a skill's status (enable / pause) */
+export const UpdateSkillStatusBodySchema = z.object({
+  status: z.enum(['enabled', 'paused']),
+});
+export type UpdateSkillStatusBody = z.infer<typeof UpdateSkillStatusBodySchema>;
+
+/** Execute a skill manually on a target server */
+export const ExecuteSkillBodySchema = z.object({
+  serverId: z.string().min(1, 'Server ID is required'),
+  config: z.record(z.string(), z.unknown()).optional(),
+});
+export type ExecuteSkillBody = z.infer<typeof ExecuteSkillBodySchema>;
+
+/** Query skill executions */
+export const SkillExecutionQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+export type SkillExecutionQuery = z.infer<typeof SkillExecutionQuerySchema>;

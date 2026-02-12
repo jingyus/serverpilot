@@ -84,6 +84,11 @@ export const PERMISSIONS = [
   'member:update-role',
   'member:remove',
 
+  // Skills
+  'skill:view',
+  'skill:execute',
+  'skill:manage',
+
   // Tenant management
   'tenant:read',
   'tenant:update',
@@ -115,6 +120,7 @@ const MEMBER_PERMISSIONS: readonly Permission[] = [
   'doc-source:read',
   'metrics:read',
   'snapshot:read',
+  'skill:view',
   'member:read',
   'tenant:read',
 ];
@@ -141,6 +147,8 @@ const ADMIN_PERMISSIONS: readonly Permission[] = [
   'doc-source:update',
   'doc-source:delete',
   'snapshot:create',
+  'skill:execute',
+  'skill:manage',
   'member:invite',
   'member:remove',
 ];

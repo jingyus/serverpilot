@@ -1,39 +1,37 @@
-### [pending] 聊天会话持久化到 SQLite — 消除服务器重启丢失对话的致命问题
+### [pending] ChatMessage 组件缺少 Markdown 渲染 — AI 回复丢失格式和代码高亮
 
-**ID**: chat-001
-**优先级**: P0
-**模块路径**: packages/server/src/core/session/manager.ts, packages/server/src/db/
+**ID**: chat-003
+**优先级**: P1
+**模块路径**: packages/dashboard/src/components/chat/ChatMessage.tsx
 **发现的问题**:
-`SessionManager` 类 (manager.ts:70-176) 使用纯内存 `Map<string, Session>` 存储所有会话数据。服务器重启、进程崩溃或 OOM kill 后，所有聊天记录永久丢失。这是生产环境中最严重的数据丢失风险。
+`ChatMessage.tsx:69` 使用纯 `<p className="whitespace-pre-wrap break-words">{message.content}</p>` 渲染消息内容。AI 回复通常包含大量 Markdown 格式（标题、列表、代码块、加粗等），全部以纯文本展示，严重影响可读性。
 
-具体问题：
-1. `manager.ts:72` — `private sessions = new Map<string, Session>()` 纯内存存储
-2. `manager.ts:98-113` — `addMessage()` 只写入 Map，无任何持久化
-3. `manager.ts:116-123` — `storePlan()` 同样纯内存
-4. 随着对话累积，内存持续增长无上限（无 TTL、无 LRU 淘汰），可能导致 OOM
+具体表现：
+1. 代码块 (\`\`\`bash...\`\`\`) 没有语法高亮，没有复制按钮
+2. 列表、标题、粗体等 Markdown 语法直接显示为原始字符
+3. Agentic 模式中，streaming content（Chat.tsx:192）同样是 `<pre>` 纯文本
+4. 对比 ChatGPT / Claude.ai，Markdown 渲染是 AI 聊天应用的基本要求
 
 **改进方案**:
-1. 新建 `chat_sessions` 和 `chat_messages` 两张 SQLite 表（Drizzle schema）
-2. 创建 `DrizzleSessionRepository` 实现，使用与项目现有模式一致的 Repository + singleton 模式
-3. `addMessage()` 同步写入 SQLite；`getSession()` 先查内存缓存再查 DB
-4. 保留 `InMemorySessionRepository` 供测试使用
-5. 添加迁移脚本 `0009_chat_sessions.sql`
-6. 可选：添加 TTL / max-sessions-per-server 限制以防无限增长
+1. 安装 `react-markdown` + `remark-gfm`（GFM 表格/删除线支持）
+2. 安装 `react-syntax-highlighter` 或使用 Shiki 进行代码高亮
+3. 在 `ChatMessage.tsx` 中将 assistant 消息通过 `<ReactMarkdown>` 渲染
+4. 为代码块添加复制按钮（Copy to clipboard）
+5. 用户消息保持纯文本（用户输入通常不含 Markdown）
+6. 流式内容（streaming）也需要支持 Markdown 实时渲染
 
 **验收标准**:
-- 服务器重启后，之前的聊天会话和消息仍可通过 API 查询
-- Dashboard 加载历史会话列表正常
-- 现有 chat.test.ts 和 session manager 测试全部通过
-- 新增 DrizzleSessionRepository 测试覆盖 CRUD + 边界场景
-- 无 N+1 查询问题
+- AI 回复中的代码块有语法高亮和复制按钮
+- 标题、列表、粗体、链接正确渲染
+- 流式输出过程中 Markdown 能逐步渲染（不等到完成）
+- 不影响用户消息的展示
+- ChatMessage.test.tsx 更新覆盖 Markdown 渲染场景
 
 **影响范围**:
-- `packages/server/src/core/session/manager.ts` — 重构为 Repository 接口
-- `packages/server/src/db/schema.ts` — 新增表定义
-- `packages/server/src/db/repositories/` — 新增 session-repository.ts
-- `packages/server/src/db/migrations/` — 新增迁移文件
-- `packages/server/src/api/routes/chat.ts` — 使用新的 Repository
-- `packages/server/src/core/session/manager.test.ts` — 适配新接口
+- `packages/dashboard/src/components/chat/ChatMessage.tsx` — 主要修改
+- `packages/dashboard/src/pages/Chat.tsx` — streaming 内容的渲染
+- `packages/dashboard/package.json` — 新增依赖
+- `packages/dashboard/src/components/chat/ChatMessage.test.tsx` — 更新测试
 
 **创建时间**: 2026-02-12
 **完成时间**: -

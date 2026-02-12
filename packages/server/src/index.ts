@@ -47,6 +47,7 @@ import { startMetricsCleanupScheduler, stopMetricsCleanupScheduler } from './cor
 import { getWebhookDispatcher } from './core/webhook/dispatcher.js';
 import { getServerRepository } from './db/repositories/server-repository.js';
 import { getServerStatusBus } from './core/server-status-bus.js';
+import { getSkillEngine } from './core/skill/engine.js';
 
 // ============================================================================
 // Constants
@@ -317,6 +318,9 @@ export function createServer(serverConfig: ServerConfig): InstallServer {
     }, `AgenticChatEngine initialized with model: ${model}`);
   }
 
+  // Initialize the skill engine (lazy singleton — first call sets projectRoot)
+  getSkillEngine(process.cwd());
+
   // Initialize services that depend on the server instance
   // Note: TaskExecutor must be initialized before TaskScheduler
   initAgentConnector(server);
@@ -400,6 +404,7 @@ export function registerShutdownHandlers(server: InstallServer, httpServer?: Htt
       getAlertEvaluator().stop();
       getTaskScheduler().stop();
       getWebhookDispatcher().stop();
+      getSkillEngine().stop();
       stopMetricsCleanupScheduler();
       if (_docAutoFetcher) {
         _docAutoFetcher.stop();
@@ -568,6 +573,11 @@ export async function startServer(): Promise<InstallServer> {
     // Initialization errors are logged inside RAGPipeline — no action needed
   });
   logger.info({ operation: 'startup' }, 'RAG pipeline initialized');
+
+  // Start the skill engine
+  const skillEngine = getSkillEngine();
+  skillEngine.start();
+  logger.info({ operation: 'startup' }, 'Skill engine started');
 
   // Start the metrics cleanup scheduler
   startMetricsCleanupScheduler();
