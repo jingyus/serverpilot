@@ -1,12 +1,12 @@
-### [pending] Agentic confirm 超时、legacy confirm 成功路径、step-decision 成功路径零测试
+### [pending] executePlanSteps 中 blocked/step-confirm/AI-summary/auto-diagnosis 四个分支零测试
 
-**ID**: chat-046
-**优先级**: P1
-**模块路径**: packages/server/src/api/routes/chat.ts, chat-execution.ts
-**发现的问题**: 三个关键用户交互流程缺少测试：1) `chat.ts` 第 141-144 行 — agentic confirm 的 5 分钟超时 auto-reject（`setTimeout` → `resolve(false)`），仅测了 404 路径 2) `chat.ts` POST confirm 路由第 336-351 行的成功路径（找到 pending → clearTimeout → resolve → delete）从未被测试 3) `chat-execution.ts` POST step-decision 第 140-152 行 `resolveStepDecision()` 成功路径未被测试。
-**改进方案**: 在 `chat.test.ts` 中补充：1) 设置 pending confirmation → 等待超时 → 验证 resolve(false) 2) 设置 pending confirmation → POST confirm → 验证 resolve(true) + 清理 3) 在 `chat-execution.test.ts` 中补充 waitForStepDecision + resolveStepDecision 集成测试。
-**验收标准**: 1) confirm 超时路径有测试 2) confirm 成功路径有测试 3) step-decision 成功路径有测试 4) 新增 6+ 测试用例
-**影响范围**: `packages/server/src/api/routes/chat.test.ts`, `chat-execution.test.ts`
+**ID**: chat-047
+**优先级**: P2
+**模块路径**: packages/server/src/api/routes/chat-execution.ts
+**发现的问题**: `executePlanSteps()` 内部多个重要分支未测试：1) 第 342-353 行 — `blocked` 命令处理（emit step_start + BLOCKED output + step_complete → break） 2) 第 356-378 行 — step-confirm 模式（reject → break, allow_all → skip 后续确认） 3) 第 477-508 行 — 执行后 AI 摘要生成（summaryPrompt 构建、streaming、错误处理） 4) 第 430-444/455-463 行 — 步骤失败后 auto-diagnosis SSE 事件。
+**改进方案**: 在 `chat-execution.test.ts` 新增专门的 `executePlanSteps` 集成测试 describe 块，mock executor 返回不同结果，验证每个分支的 SSE 事件输出序列。
+**验收标准**: 1) blocked 路径有测试（验证 SSE 事件序列） 2) step-confirm allow/reject/allow_all 有测试 3) AI summary 生成有测试 4) auto-diagnosis 集成有测试 5) 新增 8+ 测试用例
+**影响范围**: `packages/server/src/api/routes/chat-execution.test.ts`
 **创建时间**: (自动填充)
 **完成时间**: -
 

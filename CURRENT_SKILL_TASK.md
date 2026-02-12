@@ -1,24 +1,22 @@
-### [pending] batch-executor.ts 单元测试
+### [pending] engine.test.ts 拆分 — 1689 行远超 800 行硬限制
 
-**ID**: skill-067
-**优先级**: P2
-**模块路径**: packages/server/src/core/skill/batch-executor.test.ts (新)
-**当前状态**: `batch-executor.ts`（144 行）是唯一没有对应测试文件的核心 Skill 模块。`skill-integration.test.ts` 可能有部分覆盖，但无独立的单元测试。
+**ID**: skill-068
+**优先级**: P0
+**模块路径**: packages/server/src/core/skill/
+**当前状态**: `engine.test.ts` 1689 行，是 800 行硬限制的 2.1 倍。包含 14 个 describe 块，覆盖 lifecycle、install、uninstall、configure、updateStatus、execute、webhook dispatch、chain context、template variable injection、queries、singleton、listAvailable、full lifecycle、batch execution。
 **实现方案**: 
-1. 创建 `batch-executor.test.ts`
-2. mock `getServerRepository()` 返回不同数量的服务器
-3. 测试用例：
-   - scope='all' 正常执行 3 台服务器
-   - scope='all' 空服务器列表返回空结果
-   - 部分服务器失败不影响其余服务器
-   - 单台服务器异常被正确 catch 并记录
-   - successCount/failureCount 计数正确
-   - batchId 唯一性
-4. 使用 vi.fn() mock `executeSingleFn` 回调
+1. 创建 `engine-execute.test.ts` — 提取 `SkillEngine.execute` (L513-719) + `SkillEngine batch execution` (L1381-end) + `SkillEngine template variable injection` (L918-1101) ≈ 600 行
+2. 创建 `engine-webhook.test.ts` — 提取 `SkillEngine webhook dispatch` (L720-831) + `SkillEngine chain context` (L832-917) ≈ 200 行
+3. 创建 `engine-queries.test.ts` — 提取 `SkillEngine queries` (L1102-1227) + `SkillEngine singleton` (L1228-1270) + `SkillEngine.listAvailable` (L1271-1312) + `SkillEngine full lifecycle` (L1313-1380) ≈ 400 行
+4. 原 `engine.test.ts` 保留 lifecycle + install + uninstall + configure + updateStatus ≈ 500 行
+5. 共享 mock 和 helpers 提取到 `engine-test-utils.ts`（如果需要避免重复）
 **验收标准**: 
-- 至少 8 个测试用例
-- 覆盖成功、失败、部分失败、空列表所有路径
-- mock 模式与 skill-integration.test.ts 一致
-**影响范围**: packages/server/src/core/skill/batch-executor.test.ts (新)
+- `engine.test.ts` ≤ 550 行
+- 3 个新测试文件各 ≤ 650 行
+- 所有 414 个 skill 测试仍通过
+- `pnpm vitest run packages/server/src/core/skill/engine` 无失败
+**影响范围**: packages/server/src/core/skill/engine.test.ts, packages/server/src/core/skill/engine-execute.test.ts (新), packages/server/src/core/skill/engine-webhook.test.ts (新), packages/server/src/core/skill/engine-queries.test.ts (新)
 **创建时间**: (自动填充)
 **完成时间**: -
+
+---

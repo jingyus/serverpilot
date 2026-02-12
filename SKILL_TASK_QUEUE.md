@@ -3,19 +3,259 @@
 > 此队列专注于 Skill 插件系统的设计与实现
 > AI 自动扫描 → 发现缺失 → 设计实现 → 验证
 
-**最后更新**: 2026-02-13 05:39:01
+**最后更新**: 2026-02-13 05:50:23
 
 ## 📊 统计
 
-- **总任务数**: 36
-- **待完成** (pending): 0
-- **进行中** (in_progress): 0
+- **总任务数**: 47
+- **待完成** (pending): 10
+- **进行中** (in_progress): 1
 - **已完成** (completed): 36
 - **失败** (failed): 0
 
 ## 📋 任务列表
 
 ### [completed] DB Schema + Migration + SkillRepository 数据层 ✅
+### [in_progress] engine.test.ts 拆分 — 1689 行远超 800 行硬限制
+
+**ID**: skill-068
+**优先级**: P0
+**模块路径**: packages/server/src/core/skill/
+**当前状态**: `engine.test.ts` 1689 行，是 800 行硬限制的 2.1 倍。包含 14 个 describe 块，覆盖 lifecycle、install、uninstall、configure、updateStatus、execute、webhook dispatch、chain context、template variable injection、queries、singleton、listAvailable、full lifecycle、batch execution。
+**实现方案**: 
+1. 创建 `engine-execute.test.ts` — 提取 `SkillEngine.execute` (L513-719) + `SkillEngine batch execution` (L1381-end) + `SkillEngine template variable injection` (L918-1101) ≈ 600 行
+2. 创建 `engine-webhook.test.ts` — 提取 `SkillEngine webhook dispatch` (L720-831) + `SkillEngine chain context` (L832-917) ≈ 200 行
+3. 创建 `engine-queries.test.ts` — 提取 `SkillEngine queries` (L1102-1227) + `SkillEngine singleton` (L1228-1270) + `SkillEngine.listAvailable` (L1271-1312) + `SkillEngine full lifecycle` (L1313-1380) ≈ 400 行
+4. 原 `engine.test.ts` 保留 lifecycle + install + uninstall + configure + updateStatus ≈ 500 行
+5. 共享 mock 和 helpers 提取到 `engine-test-utils.ts`（如果需要避免重复）
+**验收标准**: 
+- `engine.test.ts` ≤ 550 行
+- 3 个新测试文件各 ≤ 650 行
+- 所有 414 个 skill 测试仍通过
+- `pnpm vitest run packages/server/src/core/skill/engine` 无失败
+**影响范围**: packages/server/src/core/skill/engine.test.ts, packages/server/src/core/skill/engine-execute.test.ts (新), packages/server/src/core/skill/engine-webhook.test.ts (新), packages/server/src/core/skill/engine-queries.test.ts (新)
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] runner.test.ts 拆分 — 1240 行超出 800 行硬限制
+
+**ID**: skill-069
+**优先级**: P0
+**模块路径**: packages/server/src/core/skill/
+**当前状态**: `runner.test.ts` 1240 行，超出硬限制 55%。包含 3 个顶层 describe: `parseTimeout` (L174)、`buildToolDefinitions` (L203)、`SkillRunner` (L244)。其中 `SkillRunner` 块占约 1000 行，是主要的 AI agentic loop 测试。
+**实现方案**: 
+1. 将 `parseTimeout` 和 `buildToolDefinitions` 测试已经在 `runner-tools.test.ts` (225 行) 中有独立覆盖 — 从 `runner.test.ts` 中删除这两个 describe 块（约 70 行），避免重复
+2. 将 `SkillRunner` 按场景拆分: 创建 `runner-agentic-loop.test.ts` — 提取 AI 循环多步骤、超时、max_steps、SSE 事件发布等测试（约 500 行）
+3. 原 `runner.test.ts` 保留基础运行、单步执行、安全拒绝、错误处理（约 650 行）
+**验收标准**: 
+- `runner.test.ts` ≤ 700 行
+- `runner-agentic-loop.test.ts` ≤ 600 行
+- 无重复测试（删除与 runner-tools.test.ts 重叠的用例）
+- 所有测试仍通过
+**影响范围**: packages/server/src/core/skill/runner.test.ts, packages/server/src/core/skill/runner-agentic-loop.test.ts (新)
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] trigger-manager.test.ts 拆分 — 1175 行超出 800 行硬限制
+
+**ID**: skill-070
+**优先级**: P0
+**模块路径**: packages/server/src/core/skill/
+**当前状态**: `trigger-manager.test.ts` 1175 行，超出硬限制 47%。包含 11 个 describe 块: lifecycle、cron triggers、event triggers、threshold triggers、debounce、register/unregister、singleton、error handling、chain triggers、startup loading、subscribeToDispatcher。
+**实现方案**: 
+1. 创建 `trigger-manager-triggers.test.ts` — 提取 `cron triggers` (L164-235) + `event triggers` (L236-344) + `threshold triggers` (L345-469) ≈ 400 行
+2. 创建 `trigger-manager-advanced.test.ts` — 提取 `chain triggers` (L693-874) + `startup loading` (L875-1008) + `subscribeToDispatcher` (L1009-end) ≈ 400 行
+3. 原 `trigger-manager.test.ts` 保留 lifecycle + debounce + register/unregister + singleton + error handling ≈ 400 行
+**验收标准**: 
+- 3 个文件各 ≤ 500 行
+- 所有触发器相关测试仍通过
+- `pnpm vitest run packages/server/src/core/skill/trigger-manager` 全部绿色
+**影响范围**: packages/server/src/core/skill/trigger-manager.test.ts, packages/server/src/core/skill/trigger-manager-triggers.test.ts (新), packages/server/src/core/skill/trigger-manager-advanced.test.ts (新)
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] skill-integration.test.ts 拆分 — 1083 行超出 800 行硬限制
+
+**ID**: skill-071
+**优先级**: P0
+**模块路径**: packages/server/src/core/skill/
+**当前状态**: `skill-integration.test.ts` 1083 行，超出硬限制 35%。包含 8 个 describe 块: full lifecycle、SSE event streaming、TriggerManager integration、RBAC skill permission enforcement、error recovery、multi-step execution、chain depth/cycle detection、status transition validation。
+**实现方案**: 
+1. 创建 `skill-integration-advanced.test.ts` — 提取 `RBAC skill permission enforcement` (L672-814) + `error recovery` (L815-908) + `multi-step execution` (L909-1004) + `chain depth/cycle detection` (L1005-1054) + `status transition validation` (L1055-end) ≈ 450 行
+2. 原 `skill-integration.test.ts` 保留 `full lifecycle` + `SSE event streaming` + `TriggerManager integration` ≈ 650 行
+**验收标准**: 
+- `skill-integration.test.ts` ≤ 700 行
+- `skill-integration-advanced.test.ts` ≤ 500 行
+- 所有集成测试通过
+**影响范围**: packages/server/src/core/skill/skill-integration.test.ts, packages/server/src/core/skill/skill-integration-advanced.test.ts (新)
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] skills.test.ts (routes) 拆分 — 1031 行超出 800 行硬限制
+
+**ID**: skill-072
+**优先级**: P0
+**模块路径**: packages/server/src/api/routes/
+**当前状态**: `skills.test.ts` 1031 行，超出硬限制 29%。包含 14 个 describe 块覆盖所有 REST 端点: GET /skills、GET /skills/available、POST /skills/install、DELETE /:id、PUT /:id/config、PUT /:id/status、POST /:id/execute、GET /:id/executions、GET /:id/executions/:eid、RBAC integration、GET /pending-confirmations、POST /confirm、POST /reject、GET /stream。
+**实现方案**: 
+1. 创建 `skills-confirmation.test.ts` — 提取 `GET /pending-confirmations` (L806) + `POST /confirm` (L843) + `POST /reject` (L915) + `GET /stream` (L966) ≈ 250 行
+2. 创建 `skills-rbac.test.ts` — 提取 `RBAC integration` (L704-805) ≈ 120 行，加入更多角色细分测试
+3. 原 `skills.test.ts` 保留 CRUD + execute + executions 查询 ≈ 700 行
+**验收标准**: 
+- `skills.test.ts` ≤ 750 行
+- 2 个新测试文件各 ≤ 400 行
+- 所有 61 个路由测试仍通过
+**影响范围**: packages/server/src/api/routes/skills.test.ts, packages/server/src/api/routes/skills-confirmation.test.ts (新), packages/server/src/api/routes/skills-rbac.test.ts (新)
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] runner-executor.test.ts 拆分 — 847 行超出 800 行硬限制
+
+**ID**: skill-073
+**优先级**: P0
+**模块路径**: packages/server/src/core/skill/
+**当前状态**: `runner-executor.test.ts` 847 行，略超 800 行硬限制。包含 8 个 describe 块: executeShell (196 行)、executeReadFile、executeWriteFile、executeNotify、executeHttp (111 行)、executeStore (129 行)、auditShell、executeTool dispatch。
+**实现方案**: 
+1. 创建 `runner-executor-network.test.ts` — 提取 `executeNotify` (L504-560) + `executeHttp` (L561-671) + `executeStore` (L672-800) ≈ 300 行
+2. 原 `runner-executor.test.ts` 保留 `executeShell` + `executeReadFile` + `executeWriteFile` + `auditShell` + `executeTool dispatch` ≈ 550 行
+**验收标准**: 
+- `runner-executor.test.ts` ≤ 600 行
+- `runner-executor-network.test.ts` ≤ 400 行
+- 所有执行器测试通过
+**影响范围**: packages/server/src/core/skill/runner-executor.test.ts, packages/server/src/core/skill/runner-executor-network.test.ts (新)
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] Dashboard Skill 组件测试补全 — AvailableSkillCard / ConfirmationBanner / ExecuteDialog
+
+**ID**: skill-074
+**优先级**: P1
+**模块路径**: packages/dashboard/src/components/skill/
+**当前状态**: 8 个 Skill 组件中仅 5 个有测试 (SkillCard, SkillConfigModal, ExecutionHistory, ExecutionStream, ExecutionDetail)。`AvailableSkillCard.tsx` (76 行)、`ConfirmationBanner.tsx` (77 行)、`ExecuteDialog.tsx` (111 行) 共 264 行无测试覆盖。Dashboard 组件测试覆盖率 5/8 = 62.5%，低于 70% 标准。
+**实现方案**: 
+1. 创建 `AvailableSkillCard.test.tsx` — 测试: 名称/描述渲染、标签显示、安装按钮点击回调、loading 状态（约 5 个用例）
+2. 创建 `ConfirmationBanner.test.tsx` — 测试: 待确认列表渲染、确认按钮回调、拒绝按钮回调、空列表不渲染（约 5 个用例）
+3. 创建 `ExecuteDialog.test.tsx` — 测试: 服务器选择下拉、执行按钮回调、ExecutionStream 子组件挂载、关闭回调（约 5 个用例）
+**验收标准**: 
+- 3 个新测试文件共约 15 个测试用例
+- 所有组件的核心交互被覆盖
+- 使用 @testing-library/react + vitest 标准模式
+- Skill 组件测试覆盖率达到 8/8 = 100%
+**影响范围**: packages/dashboard/src/components/skill/AvailableSkillCard.test.tsx (新), packages/dashboard/src/components/skill/ConfirmationBanner.test.tsx (新), packages/dashboard/src/components/skill/ExecuteDialog.test.tsx (新)
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] run_as 执行身份约束实现 — SKILL_SPEC 已定义但后端完全未使用
+
+**ID**: skill-075
+**优先级**: P1
+**模块路径**: packages/server/src/core/skill/runner-executor.ts
+**当前状态**: 功能缺失 — `SKILL_SPEC.md` (line 157) 定义 `run_as: string` 约束，`shared/src/skill-schema.ts` (line 123) 已在 Zod schema 中验证此字段。但整个 `core/skill/` 目录中无任何 `run_as` 或 `runAs` 引用。当 Skill 声明 `run_as: root` 时，命令仍以 Agent 默认用户身份执行，不符合规范。
+**实现方案**: 
+1. 在 `runner-executor.ts` 的 `executeShell()` 方法中，当 `constraints.run_as` 有值时，将命令包装为 `sudo -u <run_as> -- <command>`（Linux）或相应的身份切换命令
+2. 安全约束: `run_as` 为 `root` 时，自动将风险级别提升一级（yellow → red），需记入审计日志
+3. 在 `runner.ts` 的 `run()` 方法中，从 manifest.constraints 读取 `run_as` 并传递给工具执行器
+4. 在 `types.ts` 的 `SkillRunParams` 或工具执行上下文中添加 `runAs?: string` 字段
+5. 测试: executeShell 有 run_as 时包装 sudo、run_as=root 风险提升、审计日志记录 run_as 信息
+**验收标准**: 
+- `run_as` 约束被读取并传递到命令执行层
+- 命令被正确包装为身份切换形式
+- `run_as: root` 触发风险等级提升
+- 审计日志记录实际执行身份
+- 测试 ≥ 6 个新增
+**影响范围**: packages/server/src/core/skill/runner-executor.ts, packages/server/src/core/skill/runner.ts, packages/server/src/core/skill/types.ts, packages/server/src/core/skill/runner-executor.test.ts
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] Agent 版本检查实现 — requires.agent 字段被跳过
+
+**ID**: skill-076
+**优先级**: P2
+**模块路径**: packages/server/src/core/skill/loader.ts
+**当前状态**: 功能缺失 — `loader.ts` line 267-268 显示 `requires.agent` 被 `logger.debug('Agent version check deferred')` 跳过，永远不执行版本比较。SKILL_SPEC.md 定义了 `requires.agent: ">=1.0.0"` 语义版本约束，但 Agent 协议尚未标准化版本号格式。
+**实现方案**: 
+1. 在 Agent 认证时，要求 Agent 报告版本号（已有 `device.info` 或 `env.report` 中可能包含版本）
+2. 在 `loader.ts` 的 `checkRequirements()` 中，通过 Server 的已连接 Agent 信息获取版本
+3. 使用 SemVer 比较库（`semver` npm 包或手写简单比较）验证 `requires.agent` 约束
+4. 如果 Agent 未报告版本，降级为警告（不阻断执行），而非静默跳过
+5. 添加测试: 版本匹配通过、版本不匹配拒绝、无版本信息降级警告
+**验收标准**: 
+- `requires.agent` 约束被实际检查（非静默跳过）
+- 版本不满足时返回明确的 `missing` 错误信息
+- Agent 无版本时降级为 warning 而非 error
+- 测试 ≥ 5 个新增
+**影响范围**: packages/server/src/core/skill/loader.ts, packages/server/src/core/skill/loader.test.ts
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] Server 标签系统 — 支持 server_scope: 'tagged' 真正按标签筛选
+
+**ID**: skill-077
+**优先级**: P2
+**模块路径**: packages/server/src/db/schema.ts, packages/server/src/core/skill/batch-executor.ts
+**当前状态**: 功能缺失 — `batch-executor.ts` 在 `server_scope: 'tagged'` 时优雅降级到单服务器执行（产生 warning），但实际的标签筛选功能从未实现。`servers` 表无 `tags` 列，Dashboard 无标签管理 UI。
+**实现方案**: 
+1. 在 `db/schema.ts` 的 `servers` 表添加 `tags: text('tags')` 列（JSON string array）
+2. 创建 migration `0012_server_tags.sql`
+3. 在 `ServerRepository` 添加 `findByTags(userId, tags[])` 方法
+4. 在 `batch-executor.ts` 中，scope='tagged' 时调用 `findByTags()` 替代降级逻辑
+5. Skill manifest 的 `constraints.server_scope` 为 `'tagged'` 时，需要配合 `constraints.server_tags: string[]` 字段
+6. 更新 `shared/src/skill-schema.ts` 添加 `server_tags` 约束字段
+7. Dashboard: Server 详情页添加标签编辑 UI
+8. 测试: findByTags 查询、batch-executor tagged 筛选、schema 验证
+**验收标准**: 
+- servers 表支持 tags 字段
+- `server_scope: 'tagged'` 按标签真正筛选服务器
+- Dashboard 可以给服务器添加/删除标签
+- 至少 10 个新测试
+**影响范围**: packages/server/src/db/schema.ts, packages/server/src/db/migrations/0012_server_tags.sql (新), packages/server/src/db/repositories/server-repository.ts, packages/server/src/core/skill/batch-executor.ts, packages/shared/src/skill-schema.ts, packages/dashboard/src/pages/ServerDetail.tsx
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] Skill 执行分析 Dashboard — 成功率、耗时趋势、热门 Skill 统计
+
+**ID**: skill-078
+**优先级**: P2
+**模块路径**: packages/server/src/api/routes/skills.ts, packages/dashboard/src/pages/Skills.tsx
+**当前状态**: 功能缺失 — 当前 Dashboard Skills 页面只有 "Installed" 和 "Available" 两个 tab，没有执行统计视图。`skill_executions` 表已有完整的执行记录（status、duration、stepsExecuted），但无聚合查询 API 和可视化展示。
+**实现方案**: 
+1. 新增 API: `GET /api/v1/skills/stats` — 返回聚合统计:
+   - 总执行次数、成功率、平均耗时
+   - 按 Skill 分组的执行次数排名 (top 5)
+   - 按日期分组的执行趋势 (最近 30 天)
+   - 按触发类型分组的分布 (manual/cron/event/threshold)
+2. `SkillRepository` 添加 `getStats(userId, dateRange?)` 聚合方法
+3. Dashboard: 在 Skills 页面添加第三个 tab "Analytics"，展示统计图表
+4. 使用简单的 CSS 进度条或文本统计（不引入重量级图表库）
+**验收标准**: 
+- `/api/v1/skills/stats` 返回结构化统计数据
+- Dashboard 展示执行成功率、平均耗时、Top Skills
+- RBAC: `skill:view` 权限即可查看统计
+- 测试 ≥ 8 个（API 3 + repo 3 + dashboard 2）
+**影响范围**: packages/server/src/api/routes/skills.ts, packages/server/src/db/repositories/skill-repository.ts, packages/dashboard/src/pages/Skills.tsx, packages/dashboard/src/stores/skills.ts, packages/dashboard/src/types/skill.ts
+**创建时间**: (自动填充)
+**完成时间**: -
+
 ### [completed] Webhook 事件集成 — skill.completed/skill.failed 分发到 WebhookDispatcher ✅
 
 **ID**: skill-060

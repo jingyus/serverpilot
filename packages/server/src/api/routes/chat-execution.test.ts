@@ -80,6 +80,21 @@ import {
 } from './chat-execution.js';
 import { validateCommand } from '../../core/security/command-validator.js';
 
+/** Return a green 'allowed' validation for any command — used to reset validateCommand mock. */
+function allowedValidation() {
+  return {
+    action: 'allowed' as const,
+    reasons: [] as string[],
+    classification: {
+      riskLevel: 'green' as const,
+      reason: 'safe command',
+      command: 'echo test',
+      type: 'system' as const,
+      matchedPattern: '',
+    },
+  };
+}
+
 beforeEach(() => {
   _resetActiveExecutions();
   _resetPendingDecisions();
@@ -569,5 +584,578 @@ describe('resolveStepDecision success path', () => {
 
     resolveStepDecision('plan-w', 'step-4', 'reject');
     expect(resolvedDecision).toBe('reject');
+  });
+});
+
+// ============================================================================
+// executePlanSteps — blocked command path (chat-047)
+// ============================================================================
+
+describe('executePlanSteps — blocked command path', () => {
+  it('should emit step_start, BLOCKED output, and step_complete for a blocked command', async () => {
+    const mockValidateCommand = vi.mocked(validateCommand);
+    mockValidateCommand.mockReturnValue({
+      action: 'blocked' as const,
+      reasons: ['forbidden command'],
+      classification: {
+        riskLevel: 'critical' as const,
+        reason: 'Command is forbidden',
+        command: 'rm -rf /',
+        type: 'system',
+        matchedPattern: 'rm -rf /',
+      },
+    });
+
+    const { stream, sseEvents } = createMockStream();
+    const plan: StoredPlan = {
+      planId: 'plan-blocked',
+      description: 'Blocked plan',
+      steps: [
+        { id: 'step-1', description: 'Dangerous step', command: 'rm -rf /', riskLevel: 'critical' as const, timeout: 5000, canRollback: false },
+        { id: 'step-2', description: 'Next step', command: 'echo done', riskLevel: 'green' as const, timeout: 5000, canRollback: false },
+      ],
+      totalRisk: 'critical' as const,
+      requiresConfirmation: true,
+    };
+
+    const result = await executePlanSteps(makeExecOpts(plan, stream));
+
+    expect(result.success).toBe(false);
+    expect(result.failedAtStep).toBe('step-1');
+
+    // Verify SSE event sequence: step_start → output (BLOCKED) → step_complete
+    const stepEvents = sseEvents.filter((e) => e.event === 'step_start' || e.event === 'output' || e.event === 'step_complete');
+    expect(stepEvents.length).toBeGreaterThanOrEqual(3);
+
+    const startEvt = sseEvents.find((e) => e.event === 'step_start');
+    expect(startEvt).toBeDefined();
+    expect(JSON.parse(startEvt!.data).stepId).toBe('step-1');
+
+    const blockedOutput = sseEvents.find((e) => e.event === 'output' && e.data.includes('[BLOCKED]'));
+    expect(blockedOutput).toBeDefined();
+    expect(JSON.parse(blockedOutput!.data).content).toContain('Command is forbidden');
+
+    const completeEvt = sseEvents.find((e) => e.event === 'step_complete');
+    expect(completeEvt).toBeDefined();
+    const completeData = JSON.parse(completeEvt!.data);
+    expect(completeData.stepId).toBe('step-1');
+    expect(completeData.exitCode).toBe(-1);
+    expect(completeData.success).toBe(false);
+    expect(completeData.blocked).toBe(true);
+  });
+
+  it('should break after blocked step — subsequent steps are not executed', async () => {
+    const { _mockExecutor } = await import('../../core/task/executor.js') as { _mockExecutor: { executeCommand: ReturnType<typeof vi.fn> } };
+    const mockValidateCommand = vi.mocked(validateCommand);
+    mockValidateCommand.mockReturnValue({
+      action: 'blocked' as const,
+      reasons: ['forbidden'],
+      classification: {
+        riskLevel: 'critical' as const,
+        reason: 'Forbidden',
+        command: 'rm -rf /',
+        type: 'system',
+        matchedPattern: 'rm -rf /',
+      },
+    });
+
+    const { stream } = createMockStream();
+    const plan: StoredPlan = {
+      planId: 'plan-blocked2',
+      description: 'Blocked plan',
+      steps: [
+        { id: 'step-1', description: 'Blocked', command: 'rm -rf /', riskLevel: 'critical' as const, timeout: 5000, canRollback: false },
+        { id: 'step-2', description: 'Never', command: 'echo never', riskLevel: 'green' as const, timeout: 5000, canRollback: false },
+      ],
+      totalRisk: 'critical' as const,
+      requiresConfirmation: true,
+    };
+
+    await executePlanSteps(makeExecOpts(plan, stream));
+
+    expect(_mockExecutor.executeCommand).not.toHaveBeenCalled();
+  });
+});
+
+// ============================================================================
+// executePlanSteps — step-confirm mode branches (chat-047)
+// ============================================================================
+
+describe('executePlanSteps — step-confirm mode', () => {
+  function setupConfirmMocks(): void {
+    const mockValidateCommand = vi.mocked(validateCommand);
+    mockValidateCommand.mockReturnValue({
+      action: 'requires_confirmation' as const,
+      reasons: ['yellow risk'],
+      classification: {
+        riskLevel: 'yellow' as const,
+        reason: 'requires confirmation',
+        command: 'systemctl restart nginx',
+        type: 'system',
+        matchedPattern: 'systemctl restart',
+      },
+    });
+  }
+
+  function makeConfirmPlan(stepCount: number): StoredPlan {
+    return {
+      planId: 'plan-confirm',
+      description: 'Confirm plan',
+      steps: Array.from({ length: stepCount }, (_, i) => ({
+        id: `step-${i + 1}`,
+        description: `Risky step ${i + 1}`,
+        command: `systemctl restart nginx${i + 1}`,
+        riskLevel: 'yellow' as const,
+        timeout: 5000,
+        canRollback: false,
+      })),
+      totalRisk: 'yellow' as const,
+      requiresConfirmation: true,
+    };
+  }
+
+  it('should cancel execution when user rejects a step', async () => {
+    setupConfirmMocks();
+
+    const { stream, sseEvents } = createMockStream();
+    const plan = makeConfirmPlan(2);
+    const opts = makeExecOpts(plan, stream);
+    opts.mode = 'step_confirm';
+
+    const execPromise = executePlanSteps(opts);
+    await new Promise((r) => setTimeout(r, 50));
+
+    // User rejects the step
+    resolveStepDecision('plan-confirm', 'step-1', 'reject');
+    const result = await execPromise;
+
+    expect(result.cancelled).toBe(true);
+    expect(result.success).toBe(false);
+    expect(result.failedAtStep).toBe('step-1');
+
+    // Should have emitted step_confirm event
+    const confirmEvent = sseEvents.find((e) => e.event === 'step_confirm');
+    expect(confirmEvent).toBeDefined();
+  });
+
+  it('should allow individual step and continue to next step', async () => {
+    const { _mockExecutor } = await import('../../core/task/executor.js') as { _mockExecutor: { executeCommand: ReturnType<typeof vi.fn> } };
+    setupConfirmMocks();
+
+    const { stream, sseEvents } = createMockStream();
+    const plan = makeConfirmPlan(2);
+    const opts = makeExecOpts(plan, stream);
+    opts.mode = 'step_confirm';
+
+    const execPromise = executePlanSteps(opts);
+
+    // Allow step-1
+    await new Promise((r) => setTimeout(r, 50));
+    resolveStepDecision('plan-confirm', 'step-1', 'allow');
+
+    // Step-2 should also pause for confirmation
+    await new Promise((r) => setTimeout(r, 50));
+    resolveStepDecision('plan-confirm', 'step-2', 'allow');
+
+    const result = await execPromise;
+
+    expect(result.success).toBe(true);
+    expect(_mockExecutor.executeCommand).toHaveBeenCalledTimes(2);
+
+    // Both step_confirm events should have been emitted
+    const confirmEvents = sseEvents.filter((e) => e.event === 'step_confirm');
+    expect(confirmEvents).toHaveLength(2);
+  });
+
+  it('should skip subsequent confirmations when user chooses allow_all', async () => {
+    const { _mockExecutor } = await import('../../core/task/executor.js') as { _mockExecutor: { executeCommand: ReturnType<typeof vi.fn> } };
+    setupConfirmMocks();
+
+    const { stream, sseEvents } = createMockStream();
+    const plan = makeConfirmPlan(3);
+    const opts = makeExecOpts(plan, stream);
+    opts.mode = 'step_confirm';
+
+    const execPromise = executePlanSteps(opts);
+
+    // allow_all on step-1 — steps 2 and 3 should execute without confirmation
+    await new Promise((r) => setTimeout(r, 50));
+    resolveStepDecision('plan-confirm', 'step-1', 'allow_all');
+
+    const result = await execPromise;
+
+    expect(result.success).toBe(true);
+    expect(_mockExecutor.executeCommand).toHaveBeenCalledTimes(3);
+
+    // Only one step_confirm event (step-1); steps 2 and 3 skip confirmation
+    const confirmEvents = sseEvents.filter((e) => e.event === 'step_confirm');
+    expect(confirmEvents).toHaveLength(1);
+    expect(JSON.parse(confirmEvents[0].data).stepId).toBe('step-1');
+  });
+
+  it('should not pause for confirmation on green steps in step_confirm mode', async () => {
+    const { _mockExecutor } = await import('../../core/task/executor.js') as { _mockExecutor: { executeCommand: ReturnType<typeof vi.fn> } };
+    const mockValidateCommand = vi.mocked(validateCommand);
+
+    // Return 'allowed' (green) for all steps
+    mockValidateCommand.mockReturnValue({
+      action: 'allowed' as const,
+      reasons: [],
+      classification: {
+        riskLevel: 'green' as const,
+        reason: 'safe command',
+        command: 'echo test',
+        type: 'system',
+        matchedPattern: '',
+      },
+    });
+
+    const { stream, sseEvents } = createMockStream();
+    const plan = makeTestPlan(2);
+    const opts = makeExecOpts(plan, stream);
+    opts.mode = 'step_confirm';
+
+    const result = await executePlanSteps(opts);
+
+    expect(result.success).toBe(true);
+    expect(_mockExecutor.executeCommand).toHaveBeenCalledTimes(2);
+
+    // No step_confirm events for green steps
+    const confirmEvents = sseEvents.filter((e) => e.event === 'step_confirm');
+    expect(confirmEvents).toHaveLength(0);
+  });
+});
+
+// ============================================================================
+// executePlanSteps — AI summary generation (chat-047)
+// ============================================================================
+
+describe('executePlanSteps — AI summary generation', () => {
+  beforeEach(() => {
+    // Reset validateCommand to return 'allowed' so echo/test commands pass
+    vi.mocked(validateCommand).mockReturnValue(allowedValidation());
+  });
+
+  it('should call AI agent for summary when steps complete successfully', async () => {
+    const { getChatAIAgent } = await import('./chat-ai.js') as { getChatAIAgent: ReturnType<typeof vi.fn> };
+    const mockChat = vi.fn(async (_msg: string, _ctx: string, _hist: string, callbacks?: { onToken?: (t: string) => Promise<void> }) => {
+      if (callbacks?.onToken) {
+        await callbacks.onToken('Summary');
+      }
+      return { text: 'Summary', plan: null };
+    });
+    getChatAIAgent.mockReturnValue({ chat: mockChat });
+
+    const { stream, sseEvents } = createMockStream();
+    const plan = makeTestPlan(1);
+
+    await executePlanSteps(makeExecOpts(plan, stream));
+
+    expect(mockChat).toHaveBeenCalledOnce();
+
+    // Verify summary prompt mentions "successfully"
+    const promptArg = mockChat.mock.calls[0][0] as string;
+    expect(promptArg).toContain('executed successfully');
+
+    // Verify AI summary tokens are streamed as 'message' events
+    const messageEvents = sseEvents.filter((e) => e.event === 'message');
+    expect(messageEvents.length).toBeGreaterThan(0);
+    expect(JSON.parse(messageEvents[0].data).content).toBe('Summary');
+  });
+
+  it('should include failure context in summary prompt when steps fail', async () => {
+    const { getChatAIAgent } = await import('./chat-ai.js') as { getChatAIAgent: ReturnType<typeof vi.fn> };
+    const { _mockExecutor } = await import('../../core/task/executor.js') as { _mockExecutor: { executeCommand: ReturnType<typeof vi.fn> } };
+
+    const mockChat = vi.fn(async () => ({ text: 'Failure summary', plan: null }));
+    getChatAIAgent.mockReturnValue({ chat: mockChat });
+
+    _mockExecutor.executeCommand.mockResolvedValueOnce({
+      stdout: 'output', stderr: 'error msg', exitCode: 1, success: false,
+      operationId: 'op-1', duration: 100, error: null, timedOut: false, executionId: 'exec-1',
+    });
+
+    const { stream } = createMockStream();
+    const plan = makeTestPlan(1);
+
+    await executePlanSteps(makeExecOpts(plan, stream));
+
+    expect(mockChat).toHaveBeenCalledOnce();
+    const promptArg = mockChat.mock.calls[0][0] as string;
+    expect(promptArg).toContain('some failed');
+    expect(promptArg).toContain('Exit code: 1');
+  });
+
+  it('should skip AI summary when cancelled', async () => {
+    const { getChatAIAgent } = await import('./chat-ai.js') as { getChatAIAgent: ReturnType<typeof vi.fn> };
+    const { _mockExecutor } = await import('../../core/task/executor.js') as { _mockExecutor: { executeCommand: ReturnType<typeof vi.fn> } };
+
+    const mockChat = vi.fn(async () => ({ text: 'Summary', plan: null }));
+    getChatAIAgent.mockReturnValue({ chat: mockChat });
+
+    // Simulate cancellation via error='Cancelled'
+    _mockExecutor.executeCommand.mockResolvedValueOnce({
+      stdout: '', stderr: '', exitCode: 0, success: true,
+      operationId: 'op-1', duration: 10, error: 'Cancelled',
+      timedOut: false, executionId: 'exec-1',
+    });
+
+    const { stream } = createMockStream();
+    const plan = makeTestPlan(1);
+
+    await executePlanSteps(makeExecOpts(plan, stream));
+
+    expect(mockChat).not.toHaveBeenCalled();
+  });
+
+  it('should skip AI summary when no steps completed', async () => {
+    const { getChatAIAgent } = await import('./chat-ai.js') as { getChatAIAgent: ReturnType<typeof vi.fn> };
+    const mockChat = vi.fn(async () => ({ text: 'Summary', plan: null }));
+    getChatAIAgent.mockReturnValue({ chat: mockChat });
+
+    // Blocked step → 0 completed steps
+    vi.mocked(validateCommand).mockReturnValue({
+      action: 'blocked' as const,
+      reasons: ['forbidden'],
+      classification: {
+        riskLevel: 'critical' as const, reason: 'forbidden', command: 'rm -rf /',
+        type: 'system', matchedPattern: 'rm -rf /',
+      },
+    });
+
+    const { stream } = createMockStream();
+    const plan: StoredPlan = {
+      planId: 'plan-nosummary',
+      description: 'No summary plan',
+      steps: [{ id: 'step-1', description: 'Blocked', command: 'rm -rf /', riskLevel: 'critical' as const, timeout: 5000, canRollback: false }],
+      totalRisk: 'critical' as const,
+      requiresConfirmation: true,
+    };
+
+    await executePlanSteps(makeExecOpts(plan, stream));
+
+    expect(mockChat).not.toHaveBeenCalled();
+  });
+
+  it('should gracefully handle AI summary errors', async () => {
+    const { getChatAIAgent } = await import('./chat-ai.js') as { getChatAIAgent: ReturnType<typeof vi.fn> };
+    getChatAIAgent.mockReturnValue({
+      chat: vi.fn(async () => { throw new Error('AI unavailable'); }),
+    });
+
+    const { stream, sseEvents } = createMockStream();
+    const plan = makeTestPlan(1);
+
+    // Should not throw
+    const result = await executePlanSteps(makeExecOpts(plan, stream));
+
+    expect(result.success).toBe(true);
+    // complete event should still be emitted
+    const completeEvent = sseEvents.find((e) => e.event === 'complete');
+    expect(completeEvent).toBeDefined();
+  });
+
+  it('should skip AI summary when getChatAIAgent returns null', async () => {
+    const { getChatAIAgent } = await import('./chat-ai.js') as { getChatAIAgent: ReturnType<typeof vi.fn> };
+    getChatAIAgent.mockReturnValue(null);
+
+    const { stream, sseEvents } = createMockStream();
+    const plan = makeTestPlan(1);
+
+    const result = await executePlanSteps(makeExecOpts(plan, stream));
+
+    expect(result.success).toBe(true);
+    // No message events from AI summary
+    const messageEvents = sseEvents.filter((e) => e.event === 'message');
+    expect(messageEvents).toHaveLength(0);
+  });
+});
+
+// ============================================================================
+// executePlanSteps — auto-diagnosis SSE events (chat-047)
+// ============================================================================
+
+describe('executePlanSteps — auto-diagnosis on step failure', () => {
+  beforeEach(() => {
+    // Reset validateCommand to return 'allowed' so echo/test commands pass
+    vi.mocked(validateCommand).mockReturnValue(allowedValidation());
+  });
+
+  it('should emit diagnosis SSE event when step fails with non-zero exit code', async () => {
+    const { _mockExecutor } = await import('../../core/task/executor.js') as { _mockExecutor: { executeCommand: ReturnType<typeof vi.fn> } };
+    const { autoDiagnoseStepFailure } = await import('../../ai/error-diagnosis-service.js') as { autoDiagnoseStepFailure: ReturnType<typeof vi.fn> };
+
+    _mockExecutor.executeCommand.mockResolvedValueOnce({
+      stdout: '', stderr: 'command not found', exitCode: 127, success: false,
+      operationId: 'op-1', duration: 50, error: null, timedOut: false, executionId: 'exec-1',
+    });
+
+    autoDiagnoseStepFailure.mockResolvedValueOnce({
+      success: true, errorType: 'command_not_found', rootCause: 'nginx not installed',
+      explanation: 'The command was not found', severity: 'medium',
+      fixSuggestions: [{ description: 'Install nginx', commands: ['apt install nginx'], confidence: 0.9, risk: 'low', requiresSudo: true }],
+      usedRuleLibrary: true,
+    });
+
+    const { stream, sseEvents } = createMockStream();
+    const plan = makeTestPlan(1);
+
+    const result = await executePlanSteps(makeExecOpts(plan, stream));
+
+    expect(result.success).toBe(false);
+    expect(result.failedAtStep).toBe('step-1');
+
+    // Verify diagnosis was called with correct parameters
+    expect(autoDiagnoseStepFailure).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stepId: 'step-1',
+        exitCode: 127,
+        stderr: 'command not found',
+        serverId: 'srv-1',
+        previousSteps: [], // First step has no predecessors
+      }),
+    );
+
+    // Verify diagnosis SSE event
+    const diagEvent = sseEvents.find((e) => e.event === 'diagnosis');
+    expect(diagEvent).toBeDefined();
+    const diagData = JSON.parse(diagEvent!.data);
+    expect(diagData.success).toBe(true);
+    expect(diagData.rootCause).toBe('nginx not installed');
+    expect(diagData.fixSuggestions).toHaveLength(1);
+  });
+
+  it('should store diagnosis in session when diagnosis succeeds', async () => {
+    const { _mockExecutor } = await import('../../core/task/executor.js') as { _mockExecutor: { executeCommand: ReturnType<typeof vi.fn> } };
+    const { _mockSessionMgr } = await import('../../core/session/manager.js') as { _mockSessionMgr: { addMessage: ReturnType<typeof vi.fn> } };
+    const { autoDiagnoseStepFailure } = await import('../../ai/error-diagnosis-service.js') as { autoDiagnoseStepFailure: ReturnType<typeof vi.fn> };
+
+    _mockExecutor.executeCommand.mockResolvedValueOnce({
+      stdout: '', stderr: 'permission denied', exitCode: 1, success: false,
+      operationId: 'op-1', duration: 50, error: null, timedOut: false, executionId: 'exec-1',
+    });
+
+    autoDiagnoseStepFailure.mockResolvedValueOnce({
+      success: true, errorType: 'permission_error', rootCause: 'insufficient permissions',
+      explanation: 'Need sudo', severity: 'medium',
+      fixSuggestions: [{ description: 'Run with sudo', commands: ['sudo echo step1'], confidence: 0.8, risk: 'low', requiresSudo: true }],
+      usedRuleLibrary: true,
+    });
+
+    const { stream } = createMockStream();
+    const plan = makeTestPlan(1);
+
+    await executePlanSteps(makeExecOpts(plan, stream));
+
+    // Session message should include diagnosis info
+    const diagCall = _mockSessionMgr.addMessage.mock.calls.find(
+      (call: unknown[]) => typeof call[3] === 'string' && (call[3] as string).includes('Error diagnosis'),
+    );
+    expect(diagCall).toBeDefined();
+    expect((diagCall![3] as string)).toContain('insufficient permissions');
+    expect((diagCall![3] as string)).toContain('Suggested fix');
+  });
+
+  it('should emit diagnosis SSE event on exception (catch block)', async () => {
+    const { _mockExecutor } = await import('../../core/task/executor.js') as { _mockExecutor: { executeCommand: ReturnType<typeof vi.fn> } };
+    const { autoDiagnoseStepFailure } = await import('../../ai/error-diagnosis-service.js') as { autoDiagnoseStepFailure: ReturnType<typeof vi.fn> };
+
+    // Executor throws instead of returning result
+    _mockExecutor.executeCommand.mockRejectedValueOnce(new Error('Connection timeout'));
+
+    autoDiagnoseStepFailure.mockResolvedValueOnce({
+      success: true, errorType: 'connection_error', rootCause: 'Agent connection lost',
+      explanation: 'Timeout', severity: 'high',
+      fixSuggestions: [], usedRuleLibrary: false,
+    });
+
+    const { stream, sseEvents } = createMockStream();
+    const plan = makeTestPlan(1);
+
+    const result = await executePlanSteps(makeExecOpts(plan, stream));
+
+    expect(result.success).toBe(false);
+
+    // Verify diagnosis called with exitCode: -1 and error in stderr
+    expect(autoDiagnoseStepFailure).toHaveBeenCalledWith(
+      expect.objectContaining({
+        exitCode: -1,
+        stderr: 'Connection timeout',
+        stdout: '',
+      }),
+    );
+
+    // Verify diagnosis SSE event
+    const diagEvent = sseEvents.find((e) => e.event === 'diagnosis');
+    expect(diagEvent).toBeDefined();
+    expect(JSON.parse(diagEvent!.data).rootCause).toBe('Agent connection lost');
+
+    // Verify error output was emitted
+    const errorOutput = sseEvents.find((e) => e.event === 'output' && e.data.includes('[ERROR]'));
+    expect(errorOutput).toBeDefined();
+  });
+
+  it('should gracefully handle diagnosis failure without crashing', async () => {
+    const { _mockExecutor } = await import('../../core/task/executor.js') as { _mockExecutor: { executeCommand: ReturnType<typeof vi.fn> } };
+    const { autoDiagnoseStepFailure } = await import('../../ai/error-diagnosis-service.js') as { autoDiagnoseStepFailure: ReturnType<typeof vi.fn> };
+
+    _mockExecutor.executeCommand.mockResolvedValueOnce({
+      stdout: '', stderr: 'error', exitCode: 1, success: false,
+      operationId: 'op-1', duration: 50, error: null, timedOut: false, executionId: 'exec-1',
+    });
+
+    // Diagnosis itself throws
+    autoDiagnoseStepFailure.mockRejectedValueOnce(new Error('Diagnosis service down'));
+
+    const { stream, sseEvents } = createMockStream();
+    const plan = makeTestPlan(1);
+
+    // Should NOT throw
+    const result = await executePlanSteps(makeExecOpts(plan, stream));
+
+    expect(result.success).toBe(false);
+
+    // No diagnosis event emitted (it threw)
+    const diagEvent = sseEvents.find((e) => e.event === 'diagnosis');
+    expect(diagEvent).toBeUndefined();
+
+    // Complete event should still be emitted
+    const completeEvent = sseEvents.find((e) => e.event === 'complete');
+    expect(completeEvent).toBeDefined();
+  });
+
+  it('should pass previousSteps context to diagnosis when later step fails', async () => {
+    const { _mockExecutor } = await import('../../core/task/executor.js') as { _mockExecutor: { executeCommand: ReturnType<typeof vi.fn> } };
+    const { autoDiagnoseStepFailure } = await import('../../ai/error-diagnosis-service.js') as { autoDiagnoseStepFailure: ReturnType<typeof vi.fn> };
+
+    // Step 1 succeeds, step 2 fails
+    _mockExecutor.executeCommand
+      .mockResolvedValueOnce({
+        stdout: 'step1 ok', stderr: '', exitCode: 0, success: true,
+        operationId: 'op-1', duration: 100, error: null, timedOut: false, executionId: 'exec-1',
+      })
+      .mockResolvedValueOnce({
+        stdout: '', stderr: 'step2 failed', exitCode: 2, success: false,
+        operationId: 'op-2', duration: 50, error: null, timedOut: false, executionId: 'exec-2',
+      });
+
+    autoDiagnoseStepFailure.mockResolvedValueOnce({
+      success: true, errorType: 'generic', rootCause: 'dependency issue',
+      explanation: 'Step 2 failed because step 1 output was unexpected', severity: 'medium',
+      fixSuggestions: [], usedRuleLibrary: true,
+    });
+
+    const { stream } = createMockStream();
+    const plan = makeTestPlan(2);
+
+    await executePlanSteps(makeExecOpts(plan, stream));
+
+    // The diagnosis call should receive step-1 as a previousStep
+    const diagCall = autoDiagnoseStepFailure.mock.calls[0][0] as Record<string, unknown>;
+    expect(diagCall.stepId).toBe('step-2');
+    const prevSteps = diagCall.previousSteps as Array<{ stepId: string; success: boolean }>;
+    expect(prevSteps).toHaveLength(1);
+    expect(prevSteps[0].stepId).toBe('step-1');
+    expect(prevSteps[0].success).toBe(true);
   });
 });
