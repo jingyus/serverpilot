@@ -455,6 +455,44 @@ describe('Chat Page', () => {
     });
   });
 
+  describe('cleanup on unmount', () => {
+    it('calls cleanup when component unmounts', () => {
+      const cleanupFn = vi.fn();
+      useChatStore.setState({
+        cleanup: cleanupFn as unknown as () => void,
+        fetchSessions: vi.fn() as unknown as (serverId: string) => Promise<void>,
+      });
+
+      const { unmount } = renderChat('/chat/srv-1');
+      unmount();
+
+      expect(cleanupFn).toHaveBeenCalled();
+    });
+
+    it('calls cleanup when navigating away from chat during streaming', () => {
+      const cleanupFn = vi.fn();
+      useChatStore.setState({
+        isStreaming: true,
+        streamingContent: 'partial response',
+        cleanup: cleanupFn as unknown as () => void,
+        fetchSessions: vi.fn() as unknown as (serverId: string) => Promise<void>,
+        messages: [
+          {
+            id: 'msg-1',
+            role: 'user',
+            content: 'Hello',
+            timestamp: '2025-01-01T00:00:00Z',
+          },
+        ],
+      });
+
+      const { unmount } = renderChat('/chat/srv-1');
+      unmount();
+
+      expect(cleanupFn).toHaveBeenCalled();
+    });
+  });
+
   describe('session sidebar', () => {
     it('shows session sidebar when sessions exist', () => {
       // Override fetchSessions to prevent it from clearing our test state

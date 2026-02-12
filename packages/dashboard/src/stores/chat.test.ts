@@ -537,4 +537,66 @@ describe('useChatStore', () => {
       expect(state.execution.cancelled).toBe(true);
     });
   });
+
+  describe('cleanup', () => {
+    it('aborts active SSE connection', () => {
+      const abortFn = vi.fn();
+      (createSSEConnection as Mock).mockReturnValueOnce({
+        abort: abortFn,
+        controller: new AbortController(),
+      });
+
+      useChatStore.setState({ serverId: 'srv-1' });
+      useChatStore.getState().sendMessage('hello');
+
+      useChatStore.getState().cleanup();
+
+      expect(abortFn).toHaveBeenCalled();
+    });
+
+    it('resets streaming state but preserves messages and session', () => {
+      useChatStore.setState({
+        serverId: 'srv-1',
+        sessionId: 'sess-1',
+        messages: [
+          { id: '1', role: 'user', content: 'hi', timestamp: '' },
+        ],
+        isStreaming: true,
+        isReconnecting: true,
+        streamingContent: 'partial',
+        executionMode: 'inline',
+        pendingConfirm: {
+          stepId: 's1',
+          command: 'rm -rf /',
+          description: 'danger',
+          riskLevel: 'critical',
+        },
+        agenticConfirm: {
+          confirmId: 'c1',
+          command: 'rm -rf /',
+          description: 'danger',
+          riskLevel: 'critical',
+        },
+      });
+
+      useChatStore.getState().cleanup();
+
+      const state = useChatStore.getState();
+      // Streaming state reset
+      expect(state.isStreaming).toBe(false);
+      expect(state.isReconnecting).toBe(false);
+      expect(state.streamingContent).toBe('');
+      expect(state.executionMode).toBe('none');
+      expect(state.pendingConfirm).toBeNull();
+      expect(state.agenticConfirm).toBeNull();
+      // Messages and session preserved
+      expect(state.messages).toHaveLength(1);
+      expect(state.sessionId).toBe('sess-1');
+      expect(state.serverId).toBe('srv-1');
+    });
+
+    it('is safe to call when no active SSE connection exists', () => {
+      expect(() => useChatStore.getState().cleanup()).not.toThrow();
+    });
+  });
 });

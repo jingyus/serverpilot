@@ -64,6 +64,7 @@ export function Chat() {
     deleteSession,
     newSession,
     cancelStream,
+    cleanup,
     clearError,
   } = useChatStore();
 
@@ -83,6 +84,11 @@ export function Chat() {
       setServerId(null);
     }
   }, [serverId, setServerId, fetchSessions]);
+
+  // Abort active SSE connection when unmounting to prevent leaked connections
+  useEffect(() => {
+    return () => cleanup();
+  }, [cleanup]);
 
   const scrollToBottom = useCallback(() => {
     if (typeof messagesEndRef.current?.scrollIntoView === 'function') {

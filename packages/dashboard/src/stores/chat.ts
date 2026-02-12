@@ -111,6 +111,7 @@ interface ChatState {
   deleteSession: (serverId: string, sessionId: string) => Promise<void>;
   newSession: () => void;
   cancelStream: () => void;
+  cleanup: () => void;
   clearError: () => void;
 }
 
@@ -909,6 +910,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
     } else {
       set({ isStreaming: false, streamingContent: '' });
     }
+  },
+
+  cleanup: () => {
+    activeHandle?.abort();
+    activeHandle = null;
+    set({
+      isStreaming: false,
+      isReconnecting: false,
+      streamingContent: '',
+      executionMode: 'none',
+      pendingConfirm: null,
+      agenticConfirm: null,
+    });
   },
 
   clearError: () => set({ error: null }),
