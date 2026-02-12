@@ -4,18 +4,13 @@ import { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Puzzle,
-  Plus,
   Loader2,
   AlertCircle,
   Download,
   History,
-  ShieldAlert,
-  Check,
-  X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -29,9 +24,10 @@ import { useServersStore } from '@/stores/servers';
 import { SkillCard } from '@/components/skill/SkillCard';
 import { SkillConfigModal } from '@/components/skill/SkillConfigModal';
 import { ExecutionHistory } from '@/components/skill/ExecutionHistory';
-import { ExecutionStream } from '@/components/skill/ExecutionStream';
-import type { InstalledSkill, AvailableSkill, SkillExecution } from '@/types/skill';
-import { SKILL_SOURCE_LABELS } from '@/types/skill';
+import { ExecuteDialog } from '@/components/skill/ExecuteDialog';
+import { PendingConfirmationsBanner } from '@/components/skill/ConfirmationBanner';
+import { AvailableSkillCard } from '@/components/skill/AvailableSkillCard';
+import type { InstalledSkill, AvailableSkill } from '@/types/skill';
 import type { SkillInputDef } from '@/components/skill/SkillConfigModal';
 
 // ============================================================================
@@ -248,7 +244,6 @@ export function Skills() {
               onReExecute={(skillId, serverId) => {
                 clearSelectedExecution();
                 setHistoryTarget(null);
-                // Find the skill and open execute dialog
                 const skill = skills.find((s) => s.id === skillId);
                 if (skill) {
                   setExecuteTarget(skill);
@@ -403,67 +398,6 @@ function AvailableTab({
 }
 
 // ============================================================================
-// Available Skill Card
-// ============================================================================
-
-function AvailableSkillCard({
-  skill,
-  onInstall,
-}: {
-  skill: AvailableSkill;
-  onInstall: () => void;
-}) {
-  const { t } = useTranslation();
-
-  return (
-    <Card>
-      <CardContent className="flex flex-col gap-3 p-4">
-        <div className="flex items-start justify-between gap-2">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <h3 className="font-medium text-foreground">{skill.manifest.displayName}</h3>
-              <Badge variant="outline" className="text-xs">
-                v{skill.manifest.version}
-              </Badge>
-              <Badge variant="secondary" className="text-xs">
-                {SKILL_SOURCE_LABELS[skill.source]}
-              </Badge>
-            </div>
-            <p className="text-xs text-muted-foreground">{skill.manifest.description}</p>
-            {skill.manifest.tags.length > 0 && (
-              <div className="flex flex-wrap gap-1 pt-1">
-                {skill.manifest.tags.map((tag) => (
-                  <Badge key={tag} variant="outline" className="text-xs">
-                    {tag}
-                  </Badge>
-                ))}
-              </div>
-            )}
-          </div>
-          <Button
-            size="sm"
-            onClick={onInstall}
-            disabled={skill.installed}
-          >
-            {skill.installed ? (
-              t('skills.alreadyInstalled')
-            ) : (
-              <>
-                <Plus className="mr-1 h-3 w-3" />
-                {t('skills.install')}
-              </>
-            )}
-          </Button>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          by {skill.manifest.author}
-        </p>
-      </CardContent>
-    </Card>
-  );
-}
-
-// ============================================================================
 // Delete Confirmation Dialog
 // ============================================================================
 
@@ -498,171 +432,10 @@ function DeleteDialog({
 }
 
 // ============================================================================
-// Execute Dialog
-// ============================================================================
-
-function ExecuteDialog({
-  open,
-  skillName,
-  servers,
-  selectedServerId,
-  onServerChange,
-  executionId,
-  isExecuting,
-  onExecute,
-  onClose,
-}: {
-  open: boolean;
-  skillName: string;
-  servers: { id: string; name: string; status: string }[];
-  selectedServerId: string;
-  onServerChange: (id: string) => void;
-  executionId: string | null;
-  isExecuting: boolean;
-  onExecute: () => void;
-  onClose: () => void;
-}) {
-  const { t } = useTranslation();
-  const onlineServers = servers.filter((s) => s.status === 'online');
-
-  return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{t('skills.executeSkill')}</DialogTitle>
-          <DialogDescription>{skillName}</DialogDescription>
-        </DialogHeader>
-
-        {executionId ? (
-          <ExecutionStream executionId={executionId} />
-        ) : (
-          <div className="space-y-4">
-            {onlineServers.length === 0 ? (
-              <p className="text-sm text-muted-foreground">{t('skills.noServers')}</p>
-            ) : (
-              <div className="space-y-2">
-                <label htmlFor="exec-server" className="text-sm font-medium">
-                  {t('skills.selectServer')}
-                </label>
-                <select
-                  id="exec-server"
-                  value={selectedServerId}
-                  onChange={(e) => onServerChange(e.target.value)}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  data-testid="exec-server-select"
-                >
-                  <option value="">{t('skills.selectServer')}</option>
-                  {onlineServers.map((s) => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-          </div>
-        )}
-
-        <DialogFooter>
-          {executionId ? (
-            <Button onClick={onClose}>{t('common.dismiss')}</Button>
-          ) : (
-            <>
-              <Button variant="outline" onClick={onClose}>{t('common.cancel')}</Button>
-              <Button
-                onClick={onExecute}
-                disabled={!selectedServerId || isExecuting}
-              >
-                {isExecuting ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    {t('skills.executing')}
-                  </>
-                ) : (
-                  t('skills.execute')
-                )}
-              </Button>
-            </>
-          )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// ============================================================================
-// Pending Confirmations Banner
-// ============================================================================
-
-function PendingConfirmationsBanner({
-  executions,
-  skills,
-  onConfirm,
-  onReject,
-}: {
-  executions: SkillExecution[];
-  skills: InstalledSkill[];
-  onConfirm: (executionId: string) => void;
-  onReject: (executionId: string) => void;
-}) {
-  const { t } = useTranslation();
-  const skillMap = new Map(skills.map((s) => [s.id, s]));
-
-  return (
-    <div className="rounded-md border border-yellow-500/50 bg-yellow-500/10 p-4 space-y-3" data-testid="pending-confirmations">
-      <div className="flex items-center gap-2 text-sm font-medium text-yellow-600 dark:text-yellow-400">
-        <ShieldAlert className="h-4 w-4" />
-        {t('skills.pendingConfirmations', { count: executions.length })}
-      </div>
-      <div className="space-y-2">
-        {executions.map((exec) => {
-          const skill = skillMap.get(exec.skillId);
-          return (
-            <div key={exec.id} className="flex items-center justify-between rounded-md bg-background p-3 text-sm">
-              <div>
-                <span className="font-medium">{skill?.displayName ?? skill?.name ?? exec.skillId}</span>
-                <span className="ml-2 text-muted-foreground">
-                  {t('skills.triggeredBy', { type: exec.triggerType })}
-                </span>
-                <span className="ml-2 text-xs text-muted-foreground">
-                  {new Date(exec.startedAt).toLocaleString()}
-                </span>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onReject(exec.id)}
-                  data-testid={`reject-${exec.id}`}
-                >
-                  <X className="mr-1 h-3 w-3" />
-                  {t('skills.reject')}
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={() => onConfirm(exec.id)}
-                  data-testid={`confirm-${exec.id}`}
-                >
-                  <Check className="mr-1 h-3 w-3" />
-                  {t('skills.confirm')}
-                </Button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ============================================================================
 // Helpers
 // ============================================================================
 
-/**
- * Extract SkillInputDef[] from the skill's manifest inputs (provided by server API).
- * Falls back to inferring from config keys for backward compatibility.
- */
 function getSkillInputs(skill: InstalledSkill): SkillInputDef[] {
-  // Prefer manifest inputs from server API
   if (skill.inputs && skill.inputs.length > 0) {
     return skill.inputs.map((input) => ({
       name: input.name,
@@ -674,7 +447,6 @@ function getSkillInputs(skill: InstalledSkill): SkillInputDef[] {
     }));
   }
 
-  // Fallback: infer from config keys (backward compatibility)
   if (!skill.config) return [];
   return Object.entries(skill.config).map(([key, value]) => ({
     name: key,
