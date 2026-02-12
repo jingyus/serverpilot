@@ -9,6 +9,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   TokenTracker,
+  DEFAULT_MAX_ENTRIES,
   estimateCost,
   getPricing,
   fromApiUsage,
@@ -638,6 +639,150 @@ describe('TokenTracker', () => {
         (800 / 1e6) * 0.3;
 
       expect(stats.totalCostUsd).toBeCloseTo(expected, 10);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // maxEntries / eviction
+  // --------------------------------------------------------------------------
+
+  describe('maxEntries eviction', () => {
+    it('should default maxEntries to DEFAULT_MAX_ENTRIES', () => {
+      expect(tracker.maxEntries).toBe(DEFAULT_MAX_ENTRIES);
+    });
+
+    it('should accept custom maxEntries via constructor', () => {
+      const custom = new TokenTracker({ maxEntries: 500 });
+      expect(custom.maxEntries).toBe(500);
+    });
+
+    it('should evict oldest entries when exceeding maxEntries', () => {
+      const small = new TokenTracker({ maxEntries: 3 });
+
+      recordSample(small, { requestId: 'r1', timestamp: 1000 });
+      recordSample(small, { requestId: 'r2', timestamp: 2000 });
+      recordSample(small, { requestId: 'r3', timestamp: 3000 });
+      expect(small.size).toBe(3);
+
+      // 4th entry should trigger eviction of r1
+      recordSample(small, { requestId: 'r4', timestamp: 4000 });
+      expect(small.size).toBe(3);
+
+      const entries = small.getEntries();
+      expect(entries[0].requestId).toBe('r2');
+      expect(entries[1].requestId).toBe('r3');
+      expect(entries[2].requestId).toBe('r4');
+    });
+
+    it('should keep stats accurate after eviction', () => {
+      const small = new TokenTracker({ maxEntries: 2 });
+
+      recordSample(small, {
+        requestId: 'r1',
+        usage: { inputTokens: 100 },
+        timestamp: 1000,
+      });
+      recordSample(small, {
+        requestId: 'r2',
+        usage: { inputTokens: 200 },
+        timestamp: 2000,
+      });
+      // r1 is evicted
+      recordSample(small, {
+        requestId: 'r3',
+        usage: { inputTokens: 300 },
+        timestamp: 3000,
+      });
+
+      const stats = small.getStats();
+      expect(stats.totalRequests).toBe(2);
+      // Only r2 (200) + r3 (300) remain
+      expect(stats.totalInputTokens).toBe(500);
+    });
+
+    it('should handle bulk overflow correctly', () => {
+      const small = new TokenTracker({ maxEntries: 3 });
+
+      for (let i = 0; i < 10; i++) {
+        recordSample(small, { requestId: `r${i}`, timestamp: i * 1000 });
+      }
+
+      expect(small.size).toBe(3);
+      const entries = small.getEntries();
+      expect(entries[0].requestId).toBe('r7');
+      expect(entries[1].requestId).toBe('r8');
+      expect(entries[2].requestId).toBe('r9');
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // prune
+  // --------------------------------------------------------------------------
+
+  describe('prune', () => {
+    it('should remove entries older than the given age', () => {
+      const now = Date.now();
+      const small = new TokenTracker();
+
+      small.record({
+        requestId: 'old',
+        sessionId: 's1',
+        model: 'claude-sonnet-4-20250514',
+        usage: makeUsage(),
+        timestamp: now - 60_000, // 60s ago
+      });
+      small.record({
+        requestId: 'recent',
+        sessionId: 's1',
+        model: 'claude-sonnet-4-20250514',
+        usage: makeUsage(),
+        timestamp: now - 5_000, // 5s ago
+      });
+
+      const removed = small.prune(30_000); // prune older than 30s
+
+      expect(removed).toBe(1);
+      expect(small.size).toBe(1);
+      expect(small.getEntries()[0].requestId).toBe('recent');
+    });
+
+    it('should return 0 when nothing to prune', () => {
+      const now = Date.now();
+      tracker.record({
+        requestId: 'r1',
+        sessionId: 's1',
+        model: 'claude-sonnet-4-20250514',
+        usage: makeUsage(),
+        timestamp: now,
+      });
+
+      const removed = tracker.prune(60_000);
+      expect(removed).toBe(0);
+      expect(tracker.size).toBe(1);
+    });
+
+    it('should remove all entries when all are expired', () => {
+      const now = Date.now();
+      const small = new TokenTracker();
+
+      small.record({
+        requestId: 'r1',
+        sessionId: 's1',
+        model: 'claude-sonnet-4-20250514',
+        usage: makeUsage(),
+        timestamp: now - 120_000,
+      });
+      small.record({
+        requestId: 'r2',
+        sessionId: 's1',
+        model: 'claude-sonnet-4-20250514',
+        usage: makeUsage(),
+        timestamp: now - 90_000,
+      });
+
+      const removed = small.prune(60_000);
+      expect(removed).toBe(2);
+      expect(small.size).toBe(0);
     });
   });
 });

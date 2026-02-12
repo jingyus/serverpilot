@@ -115,18 +115,20 @@ const DEFAULT_PRICING: ModelPricing = {
 // TokenTracker
 // ============================================================================
 
+/** Default maximum number of entries before eviction kicks in */
+export const DEFAULT_MAX_ENTRIES = 10_000;
+
 /**
  * Tracks and aggregates token usage from Anthropic API calls.
  *
- * Maintains an in-memory history of token usage entries that can be
- * queried per session, per model, or globally. Provides cost estimation
- * based on model-specific pricing.
+ * Maintains a bounded in-memory history of token usage entries that can be
+ * queried per session, per model, or globally. When the entry count exceeds
+ * `maxEntries`, the oldest entries are automatically evicted.
  *
  * @example
  * ```ts
- * const tracker = new TokenTracker();
+ * const tracker = new TokenTracker({ maxEntries: 5000 });
  *
- * // Record usage from an API response
  * tracker.record({
  *   requestId: 'req-1',
  *   sessionId: 'session-1',
@@ -134,19 +136,24 @@ const DEFAULT_PRICING: ModelPricing = {
  *   usage: { inputTokens: 500, outputTokens: 200, cacheCreationInputTokens: 0, cacheReadInputTokens: 0 },
  * });
  *
- * // Get statistics
  * const stats = tracker.getStats();
  * console.log(`Total cost: $${stats.totalCostUsd.toFixed(4)}`);
  * ```
  */
 export class TokenTracker {
   private readonly entries: TokenUsageEntry[] = [];
+  readonly maxEntries: number;
+
+  constructor(options?: { maxEntries?: number }) {
+    this.maxEntries = options?.maxEntries ?? DEFAULT_MAX_ENTRIES;
+  }
 
   /**
    * Record a token usage entry from an API response.
    *
    * Calculates estimated cost based on model pricing and stores
-   * the entry for aggregation.
+   * the entry for aggregation. Evicts oldest entries when the
+   * capacity limit is exceeded.
    *
    * @param params - The usage data to record
    * @returns The created entry with calculated cost
@@ -170,6 +177,7 @@ export class TokenTracker {
     };
 
     this.entries.push(entry);
+    this.evictIfNeeded();
     return entry;
   }
 
@@ -223,6 +231,27 @@ export class TokenTracker {
   }
 
   /**
+   * Remove entries older than the given age in milliseconds.
+   *
+   * @param olderThanMs - Remove entries whose timestamp is older than `Date.now() - olderThanMs`
+   * @returns Number of entries removed
+   */
+  prune(olderThanMs: number): number {
+    const cutoff = Date.now() - olderThanMs;
+    const before = this.entries.length;
+    let writeIdx = 0;
+
+    for (let i = 0; i < this.entries.length; i++) {
+      if (this.entries[i].timestamp >= cutoff) {
+        this.entries[writeIdx++] = this.entries[i];
+      }
+    }
+
+    this.entries.length = writeIdx;
+    return before - writeIdx;
+  }
+
+  /**
    * Get the total number of recorded entries.
    */
   get size(): number {
@@ -234,6 +263,14 @@ export class TokenTracker {
    */
   reset(): void {
     this.entries.length = 0;
+  }
+
+  /** Evict oldest entries when capacity is exceeded */
+  private evictIfNeeded(): void {
+    if (this.entries.length > this.maxEntries) {
+      const overflow = this.entries.length - this.maxEntries;
+      this.entries.splice(0, overflow);
+    }
   }
 }
 
