@@ -1065,6 +1065,143 @@ describe('SkillRunner', () => {
   });
 
   // --------------------------------------------------------------------------
+  // Output schema validation
+  // --------------------------------------------------------------------------
+
+  it('parses structured outputs from AI text when manifest declares outputs', async () => {
+    const manifest = createManifest({
+      outputs: [
+        { name: 'report', type: 'string', description: 'Summary' },
+        { name: 'count', type: 'number', description: 'Count' },
+      ],
+    });
+
+    const provider = createMockProvider([
+      {
+        content: 'Task done.\n```json\n{"report": "All healthy", "count": 42}\n```',
+        usage: { inputTokens: 100, outputTokens: 50 },
+        stopReason: 'end_turn',
+      },
+    ]);
+
+    const runner = new SkillRunner(provider);
+    const result = await runner.run(createRunnerParams({ manifest }));
+
+    expect(result.success).toBe(true);
+    expect(result.parsedOutputs).toBeDefined();
+    expect(result.parsedOutputs!.values).toEqual({
+      report: 'All healthy',
+      count: 42,
+    });
+    expect(result.parsedOutputs!.warnings).toHaveLength(0);
+  });
+
+  it('includes warnings when AI output is missing declared fields', async () => {
+    const manifest = createManifest({
+      outputs: [
+        { name: 'report', type: 'string', description: 'Summary' },
+        { name: 'missing_field', type: 'boolean', description: 'Nope' },
+      ],
+    });
+
+    const provider = createMockProvider([
+      {
+        content: '```json\n{"report": "Partial"}\n```',
+        usage: { inputTokens: 100, outputTokens: 50 },
+        stopReason: 'end_turn',
+      },
+    ]);
+
+    const runner = new SkillRunner(provider);
+    const result = await runner.run(createRunnerParams({ manifest }));
+
+    expect(result.parsedOutputs).toBeDefined();
+    expect(result.parsedOutputs!.values.report).toBe('Partial');
+    expect(result.parsedOutputs!.warnings.length).toBeGreaterThan(0);
+    expect(result.parsedOutputs!.warnings[0]).toContain('missing_field');
+  });
+
+  it('omits parsedOutputs when manifest has no outputs declared', async () => {
+    const provider = createMockProvider([
+      {
+        content: 'Done.',
+        usage: { inputTokens: 100, outputTokens: 50 },
+        stopReason: 'end_turn',
+      },
+    ]);
+
+    const runner = new SkillRunner(provider);
+    const result = await runner.run(createRunnerParams());
+
+    expect(result.parsedOutputs).toBeUndefined();
+  });
+
+  it('includes output instructions in system prompt when outputs are declared', async () => {
+    const manifest = createManifest({
+      outputs: [
+        { name: 'status', type: 'string', description: 'Health status' },
+      ],
+    });
+
+    const provider = createMockProvider([
+      {
+        content: '```json\n{"status": "ok"}\n```',
+        usage: { inputTokens: 100, outputTokens: 50 },
+        stopReason: 'end_turn',
+      },
+    ]);
+
+    const runner = new SkillRunner(provider);
+    await runner.run(createRunnerParams({ manifest }));
+
+    // Verify the system prompt was passed with output instructions
+    const chatCall = (provider.chat as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(chatCall.system).toContain('IMPORTANT');
+    expect(chatCall.system).toContain('"status"');
+    expect(chatCall.system).toContain('<string>');
+  });
+
+  it('still returns parsedOutputs on timeout when outputs are declared', async () => {
+    const manifest = createManifest({
+      outputs: [
+        { name: 'partial', type: 'string', description: 'Partial result' },
+      ],
+      constraints: {
+        risk_level_max: 'yellow',
+        timeout: '1s',
+        max_steps: 100,
+        requires_confirmation: false,
+        server_scope: 'single',
+      },
+    });
+
+    // Slow provider that will timeout
+    const provider: AIProviderInterface = {
+      name: 'slow-provider',
+      tier: 1,
+      chat: vi.fn(async () => {
+        // First return some text, then timeout on second call
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        return {
+          content: 'Still working...',
+          usage: { inputTokens: 100, outputTokens: 50 },
+          stopReason: 'end_turn',
+        };
+      }),
+      stream: vi.fn(),
+      isAvailable: vi.fn(async () => true),
+    };
+
+    const runner = new SkillRunner(provider);
+    const result = await runner.run(createRunnerParams({ manifest }));
+
+    expect(result.status).toBe('timeout');
+    // parsedOutputs should be defined (even if no JSON found)
+    expect(result.parsedOutputs).toBeDefined();
+    expect(result.parsedOutputs!.warnings.length).toBeGreaterThan(0);
+  }, 10_000);
+
+  // --------------------------------------------------------------------------
   // Risk level: red allowed when max is red
   // --------------------------------------------------------------------------
 

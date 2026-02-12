@@ -128,6 +128,7 @@ export class SessionManager {
   private cache = new Map<string, CacheEntry>();
   private cacheOptions: SessionCacheOptions;
   private sweepTimer: ReturnType<typeof setInterval> | null = null;
+  private cacheReloadCount = 0;
 
   constructor(repo?: SessionRepository, cacheOptions?: Partial<SessionCacheOptions>) {
     this.repo = repo ?? getSessionRepository();
@@ -243,6 +244,11 @@ export class SessionManager {
     return this.cache.size;
   }
 
+  /** Get count of sessions reloaded from DB after cache eviction (for monitoring/testing). */
+  get cacheReloads(): number {
+    return this.cacheReloadCount;
+  }
+
   // ==========================================================================
   // Public API
   // ==========================================================================
@@ -281,16 +287,28 @@ export class SessionManager {
     return session;
   }
 
-  /** Add a message to a session. Persists to DB. */
+  /** Add a message to a session. Persists to DB. Auto-reloads from DB on cache miss. */
   async addMessage(
     sessionId: string,
     userId: string,
     role: ChatMessage['role'],
     content: string,
   ): Promise<ChatMessage> {
-    const entry = this.cache.get(sessionId);
+    let entry = this.cache.get(sessionId);
     if (!entry) {
-      throw new Error(`Session ${sessionId} not found`);
+      // Cache miss — attempt to reload from DB (session may have been evicted)
+      const dbSession = await this.repo.getById(sessionId, userId);
+      if (!dbSession) {
+        throw new Error(`Session ${sessionId} not found`);
+      }
+      const session = this.dbToSession(dbSession);
+      this.cachePut(session);
+      entry = this.cache.get(sessionId)!;
+      this.cacheReloadCount++;
+      logger.info(
+        { sessionId, cacheReloadCount: this.cacheReloadCount },
+        'Session reloaded from DB after cache eviction',
+      );
     }
     this.touchEntry(entry);
 

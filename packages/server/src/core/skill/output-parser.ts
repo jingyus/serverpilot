@@ -63,15 +63,14 @@ export function extractJsonFromText(text: string): Record<string, unknown> | nul
     match = fenceRe.exec(text);
   }
 
-  // Strategy 3: bare JSON object (last { ... } in the text, greedy)
-  const bareRe = /\{[\s\S]*\}/g;
-  const bareMatches = text.match(bareRe);
-  if (bareMatches) {
-    // Try from the largest match (usually the most complete object)
-    for (let i = bareMatches.length - 1; i >= 0; i--) {
-      const parsed = tryParseJson(bareMatches[i]);
-      if (parsed) return parsed;
-    }
+  // Strategy 3: bare JSON objects — find all { positions and try to parse
+  for (let i = text.lastIndexOf('}'); i >= 0; i = text.lastIndexOf('}', i - 1)) {
+    // Find matching opening brace by scanning backward
+    const openIdx = text.lastIndexOf('{', i);
+    if (openIdx < 0) break;
+    const candidate = text.slice(openIdx, i + 1);
+    const parsed = tryParseJson(candidate);
+    if (parsed) return parsed;
   }
 
   return null;

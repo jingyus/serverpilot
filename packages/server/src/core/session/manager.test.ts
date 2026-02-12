@@ -970,6 +970,103 @@ describe('cache eviction', () => {
     });
   });
 
+  describe('addMessage after cache eviction (auto-reload)', () => {
+    it('should auto-reload session from DB when evicted before addMessage', async () => {
+      const smallMgr = new SessionManager(repo, { maxSize: 2, sweepIntervalMs: 0 });
+
+      const s1 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
+      await smallMgr.addMessage(s1.id, USER_ID, 'user', 'Before eviction');
+
+      // Wait for persistence
+      await new Promise((r) => setTimeout(r, 10));
+
+      // Fill cache to evict s1
+      const s2 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
+      const s3 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
+      expect(smallMgr.cacheSize).toBe(2); // s1 evicted
+
+      // addMessage on evicted session should auto-reload, not throw
+      const msg = await smallMgr.addMessage(s1.id, USER_ID, 'user', 'After eviction');
+      expect(msg.content).toBe('After eviction');
+      expect(msg.role).toBe('user');
+
+      // Session should now be back in cache with both messages
+      const session = await smallMgr.getSession(s1.id, USER_ID);
+      expect(session).toBeDefined();
+      expect(session!.messages).toHaveLength(2);
+      expect(session!.messages[0].content).toBe('Before eviction');
+      expect(session!.messages[1].content).toBe('After eviction');
+
+      smallMgr.stopSweep();
+    });
+
+    it('should increment cacheReloads counter on auto-reload', async () => {
+      const smallMgr = new SessionManager(repo, { maxSize: 1, sweepIntervalMs: 0 });
+
+      const s1 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
+      await new Promise((r) => setTimeout(r, 10));
+
+      // Evict s1
+      const s2 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
+      expect(smallMgr.cacheReloads).toBe(0);
+
+      // Auto-reload via addMessage
+      await smallMgr.addMessage(s1.id, USER_ID, 'user', 'Reloaded');
+      expect(smallMgr.cacheReloads).toBe(1);
+
+      smallMgr.stopSweep();
+    });
+
+    it('should log reload event on cache miss', async () => {
+      const smallMgr = new SessionManager(repo, { maxSize: 1, sweepIntervalMs: 0 });
+      const infoSpy = vi.spyOn(logger, 'info');
+
+      const s1 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
+      await new Promise((r) => setTimeout(r, 10));
+
+      // Evict s1
+      await smallMgr.getOrCreate(SERVER_ID, USER_ID);
+
+      await smallMgr.addMessage(s1.id, USER_ID, 'user', 'Hello');
+
+      expect(infoSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ sessionId: s1.id, cacheReloadCount: 1 }),
+        expect.stringContaining('reloaded from DB after cache eviction'),
+      );
+
+      infoSpy.mockRestore();
+      smallMgr.stopSweep();
+    });
+
+    it('should still throw for truly non-existent session (not in DB)', async () => {
+      await expect(
+        mgr.addMessage('totally-nonexistent', USER_ID, 'user', 'Hello'),
+      ).rejects.toThrow('Session totally-nonexistent not found');
+    });
+
+    it('should auto-reload after TTL sweep eviction', async () => {
+      const ttlMgr = new SessionManager(repo, { ttlMs: 50, sweepIntervalMs: 0 });
+
+      const s1 = await ttlMgr.getOrCreate(SERVER_ID, USER_ID);
+      await ttlMgr.addMessage(s1.id, USER_ID, 'user', 'Original');
+      await new Promise((r) => setTimeout(r, 10)); // persistence
+
+      // Wait for TTL to expire, then sweep
+      await new Promise((r) => setTimeout(r, 60));
+      (ttlMgr as unknown as { sweepExpired: () => void }).sweepExpired();
+      expect(ttlMgr.cacheSize).toBe(0);
+
+      // addMessage should auto-reload from DB
+      const msg = await ttlMgr.addMessage(s1.id, USER_ID, 'user', 'After TTL');
+      expect(msg.content).toBe('After TTL');
+
+      const session = await ttlMgr.getSession(s1.id, USER_ID);
+      expect(session!.messages).toHaveLength(2);
+
+      ttlMgr.stopSweep();
+    });
+  });
+
   describe('deleteSession removes from cache', () => {
     it('should decrease cache size on delete', async () => {
       const session = await mgr.getOrCreate(SERVER_ID, USER_ID);

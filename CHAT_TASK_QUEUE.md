@@ -3,13 +3,13 @@
 > 此队列专注于 Chat 和 AI 对话系统的质量改进
 > AI 自动发现问题 → 生成任务 → 实现 → 验证
 
-**最后更新**: 2026-02-13 04:35:03
+**最后更新**: 2026-02-13 04:35:35
 
 ## 📊 统计
 
 - **总任务数**: 49
-- **待完成** (pending): 12
-- **进行中** (in_progress): 0
+- **待完成** (pending): 11
+- **进行中** (in_progress): 1
 - **已完成** (completed): 37
 - **失败** (failed): 0
 
@@ -86,7 +86,7 @@
 
 ---
 
-### [pending] addMessage 在 cache eviction 后抛异常 — 高并发下用户丢消息
+### [in_progress] addMessage 在 cache eviction 后抛异常 — 高并发下用户丢消息
 
 **ID**: chat-038
 **优先级**: P1

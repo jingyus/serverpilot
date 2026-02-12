@@ -1,12 +1,12 @@
-### [pending] listSessions 加载全部消息仅取 lastMessage — N+1 查询性能问题
+### [pending] addMessage 在 cache eviction 后抛异常 — 高并发下用户丢消息
 
-**ID**: chat-037
+**ID**: chat-038
 **优先级**: P1
 **模块路径**: packages/server/src/core/session/manager.ts
-**发现的问题**: `listSessions()`（第 340-358 行）调用 `this.repo.listByServer()` 获取所有 session，然后对每个 session 的 `messages` 做 `map(toChatMessage)` 转换全部消息，仅为了取 `messages[messages.length - 1]?.content.slice(0, 100)` 作为 `lastMessage`。对于有 100 个 session、每个 session 平均 50 条消息的服务器，这意味着加载和转换 5000 条消息对象，仅使用其中 100 条的前 100 字符。
-**改进方案**: 1) 在 `SessionRepository` 接口添加 `listSummaries()` 方法，在 SQL 层只查询 session 元数据 + 最后一条消息 2) 使用子查询或 window function 获取 lastMessage 3) DrizzleSessionRepository 实现中用 `SELECT ... (SELECT content FROM messages WHERE session_id = s.id ORDER BY created_at DESC LIMIT 1) as last_message`。
-**验收标准**: 1) listSessions 不再加载全部消息 2) SQL 查询数量从 N+1 降为 1 3) 返回结果格式不变 4) 新增性能测试验证改进
-**影响范围**: `packages/server/src/core/session/manager.ts`, `packages/server/src/core/session/repository.ts`
+**发现的问题**: `addMessage()`（第 285-311 行）在第 292 行检查 `this.cache.get(sessionId)`，如果返回 null 则抛出 `Error('Session ${sessionId} not found')`。但在高负载场景下，用户调用 `getOrCreate()` 后 session 进入 cache，若在 `addMessage()` 调用前另一个请求触发了 `evictIfNeeded()`（第 174-204 行），该 session 可能已被 LRU 驱逐。此时用户会收到 500 错误，且消息丢失。`evictIfNeeded` 虽然保护 active session（`plans.size > 0`），但普通聊天 session 无 plan 时不受保护。
+**改进方案**: `addMessage()` 在 cache miss 时不抛异常，而是自动从 DB 重新加载 session（调用 `loadSessionFromDb`），然后继续添加消息。添加 `cache_reload` 计数器监控此场景频率。
+**验收标准**: 1) cache miss 时自动 reload，用户无感知 2) 消息不再丢失 3) 新增测试：evict session 后 addMessage 仍成功 4) 日志记录 reload 事件
+**影响范围**: `packages/server/src/core/session/manager.ts`
 **创建时间**: (自动填充)
 **完成时间**: -
 
