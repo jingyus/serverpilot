@@ -87,6 +87,8 @@ export interface BatchExecutionResult {
   failureCount: number;
   /** Total duration across all servers (wall-clock, serial). */
   totalDuration: number;
+  /** Warnings generated during execution (e.g. scope degradation). */
+  warnings?: string[];
 }
 
 /** Per-server result within a batch execution. */

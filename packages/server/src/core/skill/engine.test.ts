@@ -1575,21 +1575,27 @@ prompt: |
     expect(batch.totalDuration).toBe(0);
   });
 
-  it('should throw for server_scope "tagged" (not yet supported)', async () => {
+  it('should degrade server_scope "tagged" to single-server with warnings', async () => {
     const skillDir = await createTempDir('batch-skill-');
     await writeBatchSkillYaml(skillDir, { scope: 'tagged' });
 
     const skill = await engine.install('user-1', skillDir, 'local');
     await engine.updateStatus(skill.id, 'enabled');
 
-    await expect(
-      engine.execute({
-        skillId: skill.id,
-        serverId: 'server-1',
-        userId: 'user-1',
-        triggerType: 'manual',
-      }),
-    ).rejects.toThrow(/server_scope 'tagged' is not yet supported/);
+    const result = await engine.execute({
+      skillId: skill.id,
+      serverId: 'server-1',
+      userId: 'user-1',
+      triggerType: 'manual',
+    });
+
+    // Should return a batch result with degradation warnings, not throw
+    const batch = result as BatchExecutionResult;
+    expect(batch.serverScope).toBe('tagged');
+    expect(batch.warnings).toBeDefined();
+    expect(batch.warnings!.length).toBeGreaterThan(0);
+    expect(batch.warnings![0]).toContain("server_scope 'tagged' is not yet supported");
+    expect(batch.warnings![0]).toContain('falling back to single server');
   });
 
   it('should still use single-server mode for default scope (no constraints)', async () => {

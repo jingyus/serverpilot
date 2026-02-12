@@ -55,16 +55,25 @@ export async function executeBatch(
 
   // Resolve target servers
   const serverRepo = getServerRepository();
+  const warnings: string[] = [];
+
+  let servers: { id: string; name: string }[];
 
   if (scope === 'tagged') {
-    throw new Error(
-      `server_scope 'tagged' is not yet supported (skill '${skill.name}')`,
-    );
-  }
+    // Tagged scope not yet implemented — degrade to single-server execution
+    const degradeMsg =
+      `server_scope 'tagged' is not yet supported (skill '${skill.name}'); ` +
+      `falling back to single server '${params.serverId}'`;
+    logger.warn({ batchId, skillId: skill.id, scope, serverId: params.serverId }, degradeMsg);
+    warnings.push(degradeMsg);
 
-  // scope === 'all': get all servers for this user
-  const allServers = await serverRepo.findAllByUserId(userId);
-  const servers = allServers.map((s) => ({ id: s.id, name: s.name }));
+    const server = await serverRepo.findById(params.serverId, userId);
+    servers = server ? [{ id: server.id, name: server.name }] : [];
+  } else {
+    // scope === 'all': get all servers for this user
+    const allServers = await serverRepo.findAllByUserId(userId);
+    servers = allServers.map((s) => ({ id: s.id, name: s.name }));
+  }
 
   if (servers.length === 0) {
     logger.warn({ skillId: skill.id, userId, scope }, 'No servers found for batch execution');
@@ -75,6 +84,7 @@ export async function executeBatch(
       successCount: 0,
       failureCount: 0,
       totalDuration: 0,
+      ...(warnings.length > 0 ? { warnings } : {}),
     };
   }
 
@@ -139,5 +149,6 @@ export async function executeBatch(
     successCount,
     failureCount,
     totalDuration,
+    ...(warnings.length > 0 ? { warnings } : {}),
   };
 }

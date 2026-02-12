@@ -1,22 +1,21 @@
-### [pending] Pending Confirmation 过期自动清理定时器
+### [pending] server_scope: 'tagged' 优雅降级替代硬错误
 
-**ID**: skill-062
+**ID**: skill-063
 **优先级**: P1
-**模块路径**: packages/server/src/core/skill/engine.ts, packages/server/src/index.ts
-**当前状态**: `expirePendingConfirmations()` 方法已实现但从未被定时调用。Pending confirmation 会无限积累，不会自动过期清理。
+**模块路径**: packages/server/src/core/skill/batch-executor.ts
+**当前状态**: `batch-executor.ts` 第 59-62 行 `server_scope: 'tagged'` 时直接 `throw new Error()`，导致整个 Skill 执行失败。应改为优雅降级到单服务器模式。
 **实现方案**: 
-1. 在 `SkillEngine.start()` 方法中添加 `setInterval` 定时器，每 10 分钟调用 `this.expirePendingConfirmations()`
-2. 定时器句柄保存为 `private confirmationCleanupTimer: NodeJS.Timeout | null`
-3. `stop()` 方法中 `clearInterval(this.confirmationCleanupTimer)`
-4. 定时器使用 `.unref()` 避免阻止进程退出
-5. 添加日志记录过期清理的数量
-6. 添加对应测试 — 验证定时器启停和清理调用
+1. 将 `throw new Error(...)` 替换为 `logger.warn(...)` 日志警告
+2. 当 scope 为 `tagged` 时，回退到 `params.serverId` 单服务器执行
+3. 在返回的 `BatchExecutionResult` 中添加 `warnings?: string[]` 字段，记录降级信息
+4. 更新 `types.ts` 中 `BatchExecutionResult` 类型定义
+5. 创建 `batch-executor.test.ts` 测试文件，覆盖 scope='all'、scope='tagged' 降级、空服务器列表、部分失败等场景
 **验收标准**: 
-- `start()` 启动后自动每 10 分钟清理过期 pending confirmations
-- `stop()` 正确清除定时器
-- 清理结果有日志输出
-- 至少 2 个测试验证定时器行为
-**影响范围**: packages/server/src/core/skill/engine.ts, packages/server/src/core/skill/engine.test.ts
+- `server_scope: 'tagged'` 不再抛出异常
+- 降级时产生 warning 日志 + 返回 warnings 数组
+- 回退到 `params.serverId` 单服务器执行并成功完成
+- `batch-executor.test.ts` 至少 8 个测试用例
+**影响范围**: packages/server/src/core/skill/batch-executor.ts, packages/server/src/core/skill/types.ts, packages/server/src/core/skill/batch-executor.test.ts (新)
 **创建时间**: (自动填充)
 **完成时间**: -
 

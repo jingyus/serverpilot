@@ -11,7 +11,7 @@
  */
 
 import type { EnvironmentInfo, InstallPlan, ErrorContext, FixStrategy } from '@aiinstaller/shared';
-import type { EnvironmentAnalysis, ErrorDiagnosis } from './agent.js';
+import type { EnvironmentAnalysis, ErrorDiagnosis } from './schemas.js';
 
 // ============================================================================
 // Types

@@ -1,12 +1,12 @@
-### [pending] token-counting.ts 7 处 `any` 类型 — TypeScript strict 模式下的类型安全漏洞
+### [pending] agent.ts (882行) 超出 800 行硬限制 — 需拆分模块
 
-**ID**: chat-042
+**ID**: chat-043
 **优先级**: P2
-**模块路径**: packages/server/src/ai/token-counting.ts
-**发现的问题**: 第 72、110、139、156、192、354、373 行共 7 处使用 `any` 类型参数。例如 `extractClaudeTokens(response: any)` — 调用方可传入任意值（string、null、undefined）且编译器不会报错。`isValidTokenUsage(usage: any)` 和 `safeTokenUsage(usage: any)` 是 type guard 函数但用 `any` 入参，丧失了 TypeScript 的类型收窄优势。
-**改进方案**: 1) 将所有 `any` 改为 `unknown` 2) 在函数体内使用类型收窄（`typeof`/`in` 检查）访问属性 3) 对 `isValidTokenUsage` 使用 `is` 类型谓词 `(usage: unknown): usage is TokenUsage` 4) 所有 extract 函数入参改为 `unknown`。
-**验收标准**: 1) token-counting.ts 零 `any` 类型 2) 所有函数使用 `unknown` + 运行时类型收窄 3) 现有测试全部通过 4) TypeScript strict 无新增错误
-**影响范围**: `packages/server/src/ai/token-counting.ts`
+**模块路径**: packages/server/src/ai/agent.ts
+**发现的问题**: `agent.ts` 共 882 行，超出项目 800 行硬限制。文件包含：`InstallAIAgent` 类（环境分析、计划生成、流式计划生成、错误诊断、修复建议）、多个 Zod schema（`DetectedCapabilitiesSchema`/`EnvironmentAnalysisSchema`/`ErrorDiagnosisSchema`）、JSON 解析工具函数、以及 AI 调用基础设施（`callAI`/`callAIStreaming`）。职责过多。
+**改进方案**: 1) 提取 Zod schemas 到 `ai/schemas.ts`（约 80 行） 2) 提取 `callAI`/`callAIStreaming`/`parseJSON` 到 `ai/api-call.ts`（约 200 行） 3) `agent.ts` 保留 `InstallAIAgent` 类的业务方法，降至约 600 行。
+**验收标准**: 1) agent.ts < 500 行 2) 拆分后的模块各自职责单一 3) 所有现有测试通过（import path 调整后） 4) 无循环依赖
+**影响范围**: `packages/server/src/ai/agent.ts`, 新文件 `ai/schemas.ts`, `ai/api-call.ts`
 **创建时间**: (自动填充)
 **完成时间**: -
 

@@ -23,114 +23,38 @@ import {
   FixStrategySchema,
 } from '@aiinstaller/shared';
 import { z } from 'zod';
-import type { AIProviderInterface, ProviderStreamCallbacks } from './providers/base.js';
+import type { AIProviderInterface } from './providers/base.js';
 import { getActiveProvider } from './providers/provider-factory.js';
 import {
-  retryWithBackoff,
   getPresetEnvironmentAnalysis,
   getPresetInstallPlan,
   getPresetErrorDiagnosis,
   getPresetFixStrategies,
   DEFAULT_RETRY_CONFIG,
 } from './fault-tolerance.js';
-import type { RetryConfig } from './fault-tolerance.js';
+import { callAI, callAIStreaming } from './api-call.js';
+import type { AICallConfig } from './api-call.js';
+import { EnvironmentAnalysisSchema, ErrorDiagnosisSchema } from './schemas.js';
+import type {
+  StreamCallbacks,
+  AIAgentOptions,
+  AIAnalysisResult,
+  EnvironmentAnalysis,
+  ErrorDiagnosis,
+} from './schemas.js';
 
-// ============================================================================
-// Types
-// ============================================================================
-
-/** Streaming callbacks re-exported from provider base for API compatibility */
-export type StreamCallbacks = ProviderStreamCallbacks;
-
-/** Configuration options for the InstallAIAgent */
-export interface AIAgentOptions {
-  /** AI provider instance (preferred — uses ProviderFactory abstraction) */
-  provider?: AIProviderInterface;
-  /** Request timeout in milliseconds (default: 60000) */
-  timeoutMs?: number;
-  /** Maximum retry attempts on failure (default: 2) */
-  maxRetries?: number;
-  /** Enable fallback to preset templates when AI fails (default: true) */
-  enablePresetFallback?: boolean;
-  /** Custom retry configuration */
-  retryConfig?: RetryConfig;
-}
-
-/** Token usage from AI API response */
-export interface TokenUsage {
-  inputTokens: number;
-  outputTokens: number;
-}
-
-/** Result of an AI analysis operation */
-export interface AIAnalysisResult<T> {
-  /** Whether the operation succeeded */
-  success: boolean;
-  /** The parsed result data (present when success is true) */
-  data?: T;
-  /** Error message (present when success is false) */
-  error?: string;
-  /** Type of error - used to determine if preset fallback should be used */
-  errorType?: 'validation' | 'network' | 'auth' | 'other';
-  /** Token usage statistics from the AI API call */
-  usage?: TokenUsage;
-}
-
-/** Detected environment capabilities from AI analysis */
-export const DetectedCapabilitiesSchema = z.object({
-  /** Whether the required runtime (e.g. Node.js) is present */
-  hasRequiredRuntime: z.boolean(),
-  /** Whether a suitable package manager is available */
-  hasPackageManager: z.boolean(),
-  /** Whether network access to registries is available */
-  hasNetworkAccess: z.boolean(),
-  /** Whether the user has sufficient permissions to install */
-  hasSufficientPermissions: z.boolean(),
-});
-
-export type DetectedCapabilities = z.infer<typeof DetectedCapabilitiesSchema>;
-
-/** Environment analysis result from the AI */
-export const EnvironmentAnalysisSchema = z.object({
-  /** Summary of the environment assessment */
-  summary: z.string(),
-  /** Whether the environment is ready for installation */
-  ready: z.boolean(),
-  /** List of identified issues or warnings */
-  issues: z.array(z.string()),
-  /** Recommended actions before installation */
-  recommendations: z.array(z.string()),
-  /** Detected environment capabilities */
-  detectedCapabilities: DetectedCapabilitiesSchema,
-});
-
-export type EnvironmentAnalysis = z.infer<typeof EnvironmentAnalysisSchema>;
-
-/** Error diagnosis result from the AI */
-export const ErrorDiagnosisSchema = z.object({
-  /** Root cause description */
-  rootCause: z.string(),
-  /** Error category */
-  category: z.enum(['network', 'permission', 'dependency', 'version', 'configuration', 'unknown']),
-  /** Error type (alias for category, used by rule-based analysis) */
-  errorType: z.string().optional(),
-  /** Detailed explanation */
-  explanation: z.string(),
-  /** Severity of the error */
-  severity: z.enum(['low', 'medium', 'high', 'critical']),
-  /** The specific component or tool affected */
-  affectedComponent: z.string(),
-  /** Multiple affected components (used by rule-based analysis) */
-  affectedComponents: z.array(z.string()).optional(),
-  /** Whether the error is permanent or transient */
-  isPermanent: z.boolean().optional(),
-  /** Whether the error requires manual intervention */
-  requiresManualIntervention: z.boolean().optional(),
-  /** Suggested next steps to resolve the issue (2-3 items) */
-  suggestedNextSteps: z.array(z.string()).min(1),
-});
-
-export type ErrorDiagnosis = z.infer<typeof ErrorDiagnosisSchema>;
+// Re-export types and schemas for backward compatibility
+export { EnvironmentAnalysisSchema, ErrorDiagnosisSchema } from './schemas.js';
+export { DetectedCapabilitiesSchema } from './schemas.js';
+export type {
+  StreamCallbacks,
+  AIAgentOptions,
+  TokenUsage,
+  AIAnalysisResult,
+  DetectedCapabilities,
+  EnvironmentAnalysis,
+  ErrorDiagnosis,
+} from './schemas.js';
 
 // ============================================================================
 // InstallAIAgent
@@ -156,9 +80,8 @@ export type ErrorDiagnosis = z.infer<typeof ErrorDiagnosisSchema>;
 export class InstallAIAgent {
   private readonly provider: AIProviderInterface;
   private readonly timeoutMs: number;
-  private readonly maxRetries: number;
   private readonly enablePresetFallback: boolean;
-  private readonly retryConfig: RetryConfig;
+  private readonly apiCallConfig: AICallConfig;
 
   constructor(options: AIAgentOptions = {}) {
     const provider = options.provider ?? getActiveProvider();
@@ -170,11 +93,18 @@ export class InstallAIAgent {
     }
     this.provider = provider;
     this.timeoutMs = options.timeoutMs ?? 60000;
-    this.maxRetries = options.maxRetries ?? 2;
     this.enablePresetFallback = options.enablePresetFallback ?? true;
-    this.retryConfig = options.retryConfig ?? {
+
+    const maxRetries = options.maxRetries ?? 2;
+    const retryConfig = options.retryConfig ?? {
       ...DEFAULT_RETRY_CONFIG,
-      maxRetries: this.maxRetries,
+      maxRetries,
+    };
+
+    this.apiCallConfig = {
+      provider: this.provider,
+      timeoutMs: this.timeoutMs,
+      retryConfig,
     };
   }
 
@@ -182,58 +112,15 @@ export class InstallAIAgent {
   // Public API
   // --------------------------------------------------------------------------
 
-  /**
-   * Analyze the client's environment for installation readiness.
-   *
-   * Sends the environment information to the AI model to determine
-   * whether the system is ready for installation, identify issues,
-   * and provide recommendations.
-   *
-   * Uses fault-tolerant fallback: AI analysis → preset template fallback.
-   *
-   * @param environment - The client's environment information
-   * @param software - The software to be installed
-   * @returns Analysis result with readiness assessment
-   */
   async analyzeEnvironment(
     environment: EnvironmentInfo,
     software: string,
   ): Promise<AIAnalysisResult<EnvironmentAnalysis>> {
     const prompt = this.buildEnvAnalysisPrompt(environment, software);
-
-    // Try AI analysis with retry
-    const result = await this.callAI<EnvironmentAnalysis>(prompt, EnvironmentAnalysisSchema);
-
-    // If AI fails and preset fallback is enabled, use preset template
-    // But don't fall back for validation or auth errors - those indicate bugs or config issues, not transient failures
-    if (!result.success && this.enablePresetFallback &&
-        result.errorType !== 'auth' && result.errorType !== 'validation') {
-      const presetAnalysis = getPresetEnvironmentAnalysis(environment, software);
-      return {
-        success: true,
-        data: presetAnalysis,
-        error: `AI analysis failed, using preset template: ${result.error}`,
-      };
-    }
-
-    return result;
+    const result = await callAI<EnvironmentAnalysis>(prompt, EnvironmentAnalysisSchema, this.apiCallConfig);
+    return this.withPresetFallback(result, () => getPresetEnvironmentAnalysis(environment, software));
   }
 
-  /**
-   * Generate an installation plan based on the environment.
-   *
-   * Creates a step-by-step installation plan tailored to the client's
-   * specific environment, including appropriate commands, timeouts,
-   * and error handling strategies.
-   *
-   * Uses fault-tolerant fallback: AI plan generation → preset template fallback.
-   *
-   * @param environment - The client's environment information
-   * @param software - The software to install
-   * @param version - Optional target version
-   * @param knowledgeContext - Optional knowledge base context
-   * @returns The generated installation plan
-   */
   async generateInstallPlan(
     environment: EnvironmentInfo,
     software: string,
@@ -241,153 +128,42 @@ export class InstallAIAgent {
     knowledgeContext?: string,
   ): Promise<AIAnalysisResult<InstallPlan>> {
     const prompt = this.buildInstallPlanPrompt(environment, software, version, knowledgeContext);
-
-    // Try AI plan generation with retry
-    const result = await this.callAI<InstallPlan>(prompt, InstallPlanSchema);
-
-    // If AI fails and preset fallback is enabled, use preset template
-    // But don't fall back for validation or auth errors - those indicate bugs or config issues, not transient failures
-    if (!result.success && this.enablePresetFallback &&
-        result.errorType !== 'auth' && result.errorType !== 'validation') {
-      const presetPlan = getPresetInstallPlan(environment, software);
-      return {
-        success: true,
-        data: presetPlan,
-        error: `AI plan generation failed, using preset template: ${result.error}`,
-      };
-    }
-
-    return result;
+    const result = await callAI<InstallPlan>(prompt, InstallPlanSchema, this.apiCallConfig);
+    return this.withPresetFallback(result, () => getPresetInstallPlan(environment, software));
   }
 
-  /**
-   * Diagnose an error that occurred during installation.
-   *
-   * Analyzes the error context including the command, output, environment,
-   * and execution history to determine the root cause.
-   *
-   * Uses fault-tolerant fallback: AI diagnosis → preset diagnosis fallback.
-   *
-   * @param errorContext - The full error context from the client
-   * @returns Diagnosis with root cause and category
-   */
   async diagnoseError(
     errorContext: ErrorContext,
   ): Promise<AIAnalysisResult<ErrorDiagnosis>> {
     const prompt = this.buildErrorDiagnosisPrompt(errorContext);
-
-    // Try AI diagnosis with retry
-    const result = await this.callAI<ErrorDiagnosis>(prompt, ErrorDiagnosisSchema);
-
-    // If AI fails and preset fallback is enabled, use preset template
-    // But don't fall back for validation or auth errors - those indicate bugs or config issues, not transient failures
-    if (!result.success && this.enablePresetFallback &&
-        result.errorType !== 'auth' && result.errorType !== 'validation') {
-      const presetDiagnosis = getPresetErrorDiagnosis(errorContext);
-      return {
-        success: true,
-        data: presetDiagnosis,
-        error: `AI diagnosis failed, using preset template: ${result.error}`,
-      };
-    }
-
-    return result;
+    const result = await callAI<ErrorDiagnosis>(prompt, ErrorDiagnosisSchema, this.apiCallConfig);
+    return this.withPresetFallback(result, () => getPresetErrorDiagnosis(errorContext));
   }
 
-  /**
-   * Suggest fix strategies for a diagnosed error.
-   *
-   * Generates multiple fix strategies ranked by confidence,
-   * each with specific commands to execute.
-   *
-   * Uses fault-tolerant fallback: AI fix suggestions → preset fix strategies.
-   *
-   * @param errorContext - The full error context from the client
-   * @param diagnosis - Optional prior diagnosis to inform suggestions
-   * @returns Array of fix strategies ordered by confidence
-   */
   async suggestFixes(
     errorContext: ErrorContext,
     diagnosis?: ErrorDiagnosis,
   ): Promise<AIAnalysisResult<FixStrategy[]>> {
     const prompt = this.buildFixSuggestionPrompt(errorContext, diagnosis);
     const schema = z.array(FixStrategySchema);
-
-    // Try AI fix suggestions with retry
-    const result = await this.callAI<FixStrategy[]>(prompt, schema);
-
-    // If AI fails and preset fallback is enabled, use preset strategies
-    // But don't fall back for validation or auth errors - those indicate bugs or config issues, not transient failures
-    if (!result.success && this.enablePresetFallback &&
-        result.errorType !== 'auth' && result.errorType !== 'validation') {
-      const presetStrategies = getPresetFixStrategies(errorContext);
-      return {
-        success: true,
-        data: presetStrategies,
-        error: `AI fix suggestions failed, using preset strategies: ${result.error}`,
-      };
-    }
-
-    return result;
+    const result = await callAI<FixStrategy[]>(prompt, schema, this.apiCallConfig);
+    return this.withPresetFallback(result, () => getPresetFixStrategies(errorContext));
   }
 
   // --------------------------------------------------------------------------
   // Streaming Public API
   // --------------------------------------------------------------------------
 
-  /**
-   * Analyze environment with streaming response.
-   *
-   * Same as `analyzeEnvironment()` but streams tokens in real-time
-   * via the provided callbacks, allowing the UI to show the AI's
-   * thinking process as it happens.
-   *
-   * Uses fault-tolerant fallback: AI analysis → preset template fallback.
-   *
-   * @param environment - The client's environment information
-   * @param software - The software to be installed
-   * @param callbacks - Streaming event callbacks
-   * @returns Analysis result with readiness assessment
-   */
   async analyzeEnvironmentStreaming(
     environment: EnvironmentInfo,
     software: string,
     callbacks?: StreamCallbacks,
   ): Promise<AIAnalysisResult<EnvironmentAnalysis>> {
     const prompt = this.buildEnvAnalysisPrompt(environment, software);
-
-    // Try AI analysis with streaming
-    const result = await this.callAIStreaming<EnvironmentAnalysis>(prompt, EnvironmentAnalysisSchema, callbacks);
-
-    // If AI fails and preset fallback is enabled, use preset template
-    // But don't fall back for validation or auth errors - those indicate bugs or config issues, not transient failures
-    if (!result.success && this.enablePresetFallback &&
-        result.errorType !== 'auth' && result.errorType !== 'validation') {
-      const presetAnalysis = getPresetEnvironmentAnalysis(environment, software);
-      return {
-        success: true,
-        data: presetAnalysis,
-        error: `AI analysis failed, using preset template: ${result.error}`,
-      };
-    }
-
-    return result;
+    const result = await callAIStreaming<EnvironmentAnalysis>(prompt, EnvironmentAnalysisSchema, this.apiCallConfig, callbacks);
+    return this.withPresetFallback(result, () => getPresetEnvironmentAnalysis(environment, software));
   }
 
-  /**
-   * Generate install plan with streaming response.
-   *
-   * Same as `generateInstallPlan()` but streams tokens in real-time.
-   *
-   * Uses fault-tolerant fallback: AI plan generation → preset template fallback.
-   *
-   * @param environment - The client's environment information
-   * @param software - The software to install
-   * @param version - Optional target version
-   * @param callbacks - Streaming event callbacks
-   * @param knowledgeContext - Optional knowledge base context
-   * @returns The generated installation plan
-   */
   async generateInstallPlanStreaming(
     environment: EnvironmentInfo,
     software: string,
@@ -396,72 +172,19 @@ export class InstallAIAgent {
     knowledgeContext?: string,
   ): Promise<AIAnalysisResult<InstallPlan>> {
     const prompt = this.buildInstallPlanPrompt(environment, software, version, knowledgeContext);
-
-    // Try AI plan generation with streaming
-    const result = await this.callAIStreaming<InstallPlan>(prompt, InstallPlanSchema, callbacks);
-
-    // If AI fails and preset fallback is enabled, use preset template
-    // But don't fall back for validation or auth errors - those indicate bugs or config issues, not transient failures
-    if (!result.success && this.enablePresetFallback &&
-        result.errorType !== 'auth' && result.errorType !== 'validation') {
-      const presetPlan = getPresetInstallPlan(environment, software);
-      return {
-        success: true,
-        data: presetPlan,
-        error: `AI plan generation failed, using preset template: ${result.error}`,
-      };
-    }
-
-    return result;
+    const result = await callAIStreaming<InstallPlan>(prompt, InstallPlanSchema, this.apiCallConfig, callbacks);
+    return this.withPresetFallback(result, () => getPresetInstallPlan(environment, software));
   }
 
-  /**
-   * Diagnose error with streaming response.
-   *
-   * Same as `diagnoseError()` but streams tokens in real-time.
-   *
-   * Uses fault-tolerant fallback: AI diagnosis → preset diagnosis fallback.
-   *
-   * @param errorContext - The full error context from the client
-   * @param callbacks - Streaming event callbacks
-   * @returns Diagnosis with root cause and category
-   */
   async diagnoseErrorStreaming(
     errorContext: ErrorContext,
     callbacks?: StreamCallbacks,
   ): Promise<AIAnalysisResult<ErrorDiagnosis>> {
     const prompt = this.buildErrorDiagnosisPrompt(errorContext);
-
-    // Try AI diagnosis with streaming
-    const result = await this.callAIStreaming<ErrorDiagnosis>(prompt, ErrorDiagnosisSchema, callbacks);
-
-    // If AI fails and preset fallback is enabled, use preset template
-    // But don't fall back for validation or auth errors - those indicate bugs or config issues, not transient failures
-    if (!result.success && this.enablePresetFallback &&
-        result.errorType !== 'auth' && result.errorType !== 'validation') {
-      const presetDiagnosis = getPresetErrorDiagnosis(errorContext);
-      return {
-        success: true,
-        data: presetDiagnosis,
-        error: `AI diagnosis failed, using preset template: ${result.error}`,
-      };
-    }
-
-    return result;
+    const result = await callAIStreaming<ErrorDiagnosis>(prompt, ErrorDiagnosisSchema, this.apiCallConfig, callbacks);
+    return this.withPresetFallback(result, () => getPresetErrorDiagnosis(errorContext));
   }
 
-  /**
-   * Suggest fixes with streaming response.
-   *
-   * Same as `suggestFixes()` but streams tokens in real-time.
-   *
-   * Uses fault-tolerant fallback: AI fix suggestions → preset fix strategies.
-   *
-   * @param errorContext - The full error context from the client
-   * @param diagnosis - Optional prior diagnosis to inform suggestions
-   * @param callbacks - Streaming event callbacks
-   * @returns Array of fix strategies ordered by confidence
-   */
   async suggestFixesStreaming(
     errorContext: ErrorContext,
     diagnosis?: ErrorDiagnosis,
@@ -469,192 +192,33 @@ export class InstallAIAgent {
   ): Promise<AIAnalysisResult<FixStrategy[]>> {
     const prompt = this.buildFixSuggestionPrompt(errorContext, diagnosis);
     const schema = z.array(FixStrategySchema);
+    const result = await callAIStreaming<FixStrategy[]>(prompt, schema, this.apiCallConfig, callbacks);
+    return this.withPresetFallback(result, () => getPresetFixStrategies(errorContext));
+  }
 
-    // Try AI fix suggestions with streaming
-    const result = await this.callAIStreaming<FixStrategy[]>(prompt, schema, callbacks);
+  // --------------------------------------------------------------------------
+  // Preset Fallback
+  // --------------------------------------------------------------------------
 
-    // If AI fails and preset fallback is enabled, use preset strategies
-    // But don't fall back for validation or auth errors - those indicate bugs or config issues, not transient failures
+  private withPresetFallback<T>(
+    result: AIAnalysisResult<T>,
+    getPreset: () => T,
+  ): AIAnalysisResult<T> {
     if (!result.success && this.enablePresetFallback &&
         result.errorType !== 'auth' && result.errorType !== 'validation') {
-      const presetStrategies = getPresetFixStrategies(errorContext);
       return {
         success: true,
-        data: presetStrategies,
-        error: `AI fix suggestions failed, using preset strategies: ${result.error}`,
+        data: getPreset(),
+        error: `AI analysis failed, using preset template: ${result.error}`,
       };
     }
-
     return result;
-  }
-
-  // --------------------------------------------------------------------------
-  // AI Communication
-  // --------------------------------------------------------------------------
-
-  /**
-   * Send a prompt to the AI and parse the JSON response.
-   *
-   * Uses exponential backoff retry for transient errors.
-   * Delegates to the configured AIProviderInterface.chat().
-   *
-   * @param prompt - The user prompt to send
-   * @param schema - Zod schema to validate the response
-   * @returns Parsed and validated result
-   */
-  private async callAI<T>(
-    prompt: string,
-    schema: z.ZodType<T>,
-  ): Promise<AIAnalysisResult<T>> {
-    let detectedErrorType: 'validation' | 'auth' | undefined;
-    let usage: TokenUsage | undefined;
-
-    const result = await retryWithBackoff(
-      async () => {
-        const response = await this.provider.chat({
-          messages: [{ role: 'user', content: prompt }],
-          system: 'You are a software installation expert. Always respond with valid JSON only. No markdown, no code fences, no extra text.',
-          maxTokens: 4096,
-          timeoutMs: this.timeoutMs,
-        });
-
-        usage = {
-          inputTokens: response.usage.inputTokens,
-          outputTokens: response.usage.outputTokens,
-        };
-
-        const parsed = this.parseJSON(response.content);
-        const validated = schema.parse(parsed);
-
-        return validated;
-      },
-      this.retryConfig,
-      (error) => {
-        const isZodError = error.constructor.name === 'ZodError' ||
-                          (error && typeof error === 'object' && 'issues' in error);
-        const isSyntaxError = error.constructor.name === 'SyntaxError' ||
-                             error.name === 'SyntaxError' ||
-                             error.message.includes('JSON') ||
-                             error.message.includes('Unexpected token');
-
-        if (isZodError || isSyntaxError ||
-            error.message.includes('validation') ||
-            error.message.includes('No text content')) {
-          detectedErrorType = 'validation';
-          return false;
-        }
-        if (error.message.includes('authentication') || error.message.includes('401')) {
-          detectedErrorType = 'auth';
-          return false;
-        }
-        return true;
-      },
-    );
-
-    if (result.success && result.data) {
-      return { success: true, data: result.data, usage };
-    }
-
-    const errorType = detectedErrorType ?? this.classifyErrorMessage(result.error ?? '');
-
-    return { success: false, error: result.error, errorType, usage };
-  }
-
-  /**
-   * Send a prompt to the AI with streaming and parse the JSON response.
-   *
-   * Uses the provider's stream() method for real-time token delivery while
-   * still parsing and validating the final response as JSON. Falls back
-   * to non-streaming chat() if streaming fails with a non-transient error.
-   * Uses exponential backoff retry for transient errors.
-   *
-   * @param prompt - The user prompt to send
-   * @param schema - Zod schema to validate the response
-   * @param callbacks - Optional streaming callbacks
-   * @returns Parsed and validated result
-   */
-  private async callAIStreaming<T>(
-    prompt: string,
-    schema: z.ZodType<T>,
-    callbacks?: StreamCallbacks,
-  ): Promise<AIAnalysisResult<T>> {
-    let callbacksUsed = false;
-    let detectedErrorType: 'validation' | 'auth' | undefined;
-    let usage: TokenUsage | undefined;
-
-    const retryResult = await retryWithBackoff(
-      async () => {
-        const streamResult = await this.provider.stream(
-          {
-            messages: [{ role: 'user', content: prompt }],
-            system: 'You are a software installation expert. Always respond with valid JSON only. No markdown, no code fences, no extra text.',
-            maxTokens: 4096,
-            timeoutMs: this.timeoutMs,
-          },
-          !callbacksUsed ? callbacks : undefined,
-        );
-
-        callbacksUsed = true;
-
-        usage = {
-          inputTokens: streamResult.usage.inputTokens,
-          outputTokens: streamResult.usage.outputTokens,
-        };
-
-        if (!streamResult.success) {
-          throw new Error(streamResult.error ?? 'Streaming request failed');
-        }
-
-        const parsed = this.parseJSON(streamResult.content);
-        const validated = schema.parse(parsed);
-
-        return validated;
-      },
-      this.retryConfig,
-      (error) => {
-        if (error.constructor.name === 'ZodError' ||
-            error.constructor.name === 'SyntaxError' ||
-            error.message.includes('validation') ||
-            error.message.includes('No text content')) {
-          detectedErrorType = 'validation';
-          return false;
-        }
-        if (error.message.includes('authentication') || error.message.includes('401')) {
-          detectedErrorType = 'auth';
-          return false;
-        }
-        return true;
-      },
-    );
-
-    if (retryResult.success && retryResult.data) {
-      return { success: true, data: retryResult.data, usage };
-    }
-
-    const errorType = detectedErrorType ?? this.classifyErrorMessage(retryResult.error ?? '');
-
-    return { success: false, error: retryResult.error, errorType, usage };
-  }
-
-  /**
-   * Parse a JSON string, stripping markdown code fences if present.
-   */
-  private parseJSON(text: string): unknown {
-    // Strip markdown code fences if the model wraps the response
-    let cleaned = text.trim();
-    if (cleaned.startsWith('```')) {
-      cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
-    }
-    return JSON.parse(cleaned);
   }
 
   // --------------------------------------------------------------------------
   // Prompt Builders
   // --------------------------------------------------------------------------
 
-  /**
-   * Build the prompt for environment analysis.
-   */
   private buildEnvAnalysisPrompt(environment: EnvironmentInfo, software: string): string {
     return `Analyze this environment for installing "${software}".
 
@@ -676,9 +240,6 @@ Respond with a JSON object:
 }`;
   }
 
-  /**
-   * Build the prompt for install plan generation.
-   */
   private buildInstallPlanPrompt(
     environment: EnvironmentInfo,
     software: string,
@@ -725,9 +286,6 @@ Include prerequisite checks, installation steps, and verification.
 Use appropriate commands for the detected OS and package managers.`;
   }
 
-  /**
-   * Build the prompt for error diagnosis.
-   */
   private buildErrorDiagnosisPrompt(errorContext: ErrorContext): string {
     const prevStepsSummary = errorContext.previousSteps
       .map((s) => `  - ${s.stepId}: ${s.success ? 'OK' : 'FAILED'} (exit ${s.exitCode})`)
@@ -775,9 +333,6 @@ Respond with a JSON object:
 }`;
   }
 
-  /**
-   * Build the prompt for fix suggestions.
-   */
   private buildFixSuggestionPrompt(
     errorContext: ErrorContext,
     diagnosis?: ErrorDiagnosis,
@@ -832,41 +387,6 @@ Rules:
   // Helpers
   // --------------------------------------------------------------------------
 
-  /**
-   * Classify error type from an error message string.
-   * Used as fallback when error type was not captured during retry.
-   */
-  private classifyErrorMessage(errorMsg: string): 'validation' | 'network' | 'auth' | 'other' {
-    const msg = errorMsg.toLowerCase();
-
-    if (msg.includes('json') || msg.includes('validation') ||
-        msg.includes('zoderror') || msg.includes('expected') ||
-        msg.includes('invalid') || msg.includes('no text content') ||
-        msg.includes('content blocks') || msg.includes('parse') ||
-        msg.includes('schema') || msg.includes('unexpected token') ||
-        msg.includes('invalid_type') || msg.includes('required')) {
-      return 'validation';
-    }
-
-    if (msg.includes('authentication') || msg.includes('401') ||
-        msg.includes('unauthorized') || msg.includes('api key')) {
-      return 'auth';
-    }
-
-    if (msg.includes('network') || msg.includes('timeout') ||
-        msg.includes('econnrefused') || msg.includes('connection') ||
-        msg.includes('etimedout') || msg.includes('fetch failed') ||
-        msg.includes('dropped') || msg.includes('enotfound') ||
-        msg.includes('stream') || msg.includes('request failed')) {
-      return 'network';
-    }
-
-    return 'other';
-  }
-
-  /**
-   * Format package managers for display in prompts.
-   */
   private formatPackageManagers(
     pm: EnvironmentInfo['packageManagers'],
   ): string {

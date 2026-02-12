@@ -3,14 +3,14 @@
 > 此队列专注于 Skill 插件系统的设计与实现
 > AI 自动扫描 → 发现缺失 → 设计实现 → 验证
 
-**最后更新**: 2026-02-13 05:17:46
+**最后更新**: 2026-02-13 05:23:17
 
 ## 📊 统计
 
 - **总任务数**: 36
-- **待完成** (pending): 5
+- **待完成** (pending): 4
 - **进行中** (in_progress): 0
-- **已完成** (completed): 31
+- **已完成** (completed): 32
 - **失败** (failed): 0
 
 ## 📋 任务列表
@@ -87,7 +87,7 @@
 
 ---
 
-### [pending] server_scope: 'tagged' 优雅降级替代硬错误
+### [completed] server_scope: 'tagged' 优雅降级替代硬错误 ✅
 
 **ID**: skill-063
 **优先级**: P1
@@ -106,7 +106,7 @@
 - `batch-executor.test.ts` 至少 8 个测试用例
 **影响范围**: packages/server/src/core/skill/batch-executor.ts, packages/server/src/core/skill/types.ts, packages/server/src/core/skill/batch-executor.test.ts (新)
 **创建时间**: (自动填充)
-**完成时间**: -
+**完成时间**: 2026-02-13 05:23:17
 
 ---
 
