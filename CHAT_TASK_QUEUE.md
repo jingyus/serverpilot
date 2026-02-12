@@ -3,19 +3,255 @@
 > 此队列专注于 Chat 和 AI 对话系统的质量改进
 > AI 自动发现问题 → 生成任务 → 实现 → 验证
 
-**最后更新**: 2026-02-13 03:13:04
+**最后更新**: 2026-02-13 03:23:05
 
 ## 📊 统计
 
-- **总任务数**: 32
-- **待完成** (pending): 0
-- **进行中** (in_progress): 0
+- **总任务数**: 49
+- **待完成** (pending): 16
+- **进行中** (in_progress): 1
 - **已完成** (completed): 32
 - **失败** (failed): 0
 
 ## 📋 任务列表
 
 ### [completed] 聊天会话持久化到 SQLite — 消除服务器重启丢失对话的致命问题 ✅
+### [in_progress] Agentic tool_use input 缺少运行时验证 — AI 返回畸形输入可导致命令注入
+
+**ID**: chat-033
+**优先级**: P0
+**模块路径**: packages/server/src/ai/agentic-chat.ts
+**发现的问题**: `executeToolCall()` 在第 394、401、407 行对 AI 返回的 tool `input` 直接使用 `as` 类型断言，无任何运行时验证。例如第 394 行 `input as { command: string; description: string; timeout_seconds?: number }` — 如果 Claude 返回 `{ command: 123 }` (number 而非 string)，后续 `toolExecuteCommand` 会将 `123` 传入 shell 执行。更严重的是，如果 `command` 字段缺失，`undefined` 会被传入命令调度器。
+**改进方案**: 为每个 tool 的 input 定义 Zod schema（`ExecuteCommandInputSchema`、`ReadFileInputSchema`、`ListFilesInputSchema`），在 `executeToolCall` 的 switch 分支中先 `safeParse`，失败则返回 `Error: Invalid tool input: ${issues}` 给 AI 进行自我修正，不实际执行命令。
+**验收标准**: 1) 所有 tool input 经过 Zod 验证后才执行 2) 畸形 input 返回描述性错误字符串而非崩溃 3) 新增 3+ 测试覆盖畸形 input 场景 4) 无 `as` 类型断言用于 tool input
+**影响范围**: `packages/server/src/ai/agentic-chat.ts`
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] Agentic 循环不感知客户端断连 — writeSSE 静默吞错导致工具继续执行
+
+**ID**: chat-034
+**优先级**: P0
+**模块路径**: packages/server/src/ai/agentic-chat.ts
+**发现的问题**: `writeSSE()` 在第 662-672 行对所有写入错误静默 catch（`// Stream closed, ignore`）。虽然第 192 行有 `stream.onAbort` 设置 `streamAborted` 标志，但在 `run()` 的主循环中，只在循环开头（约第 219 行 `if (streamAborted) break`）检查此标志。如果断连发生在 `executeToolCall()` 执行中途（如长时间命令），AI 会继续在服务器上执行后续工具调用，浪费资源且无人接收结果。`streamAnthropicCall()` 内部也无断连检查。
+**改进方案**: 1) 在 `executeToolCall` 每个 tool 方法开头检查 `streamAborted` 2) 在 `streamAnthropicCall` 中 token 回调时检查 `streamAborted` 并提前 abort Anthropic stream 3) `writeSSE` 检测到写入失败时主动设置 `streamAborted = true`（不依赖 onAbort 回调延迟）。
+**验收标准**: 1) 客户端断连后 500ms 内停止所有工具调用 2) Anthropic API stream 也被中断（节省 token） 3) 新增 2+ 测试验证断连后循环终止
+**影响范围**: `packages/server/src/ai/agentic-chat.ts`
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] TokenTracker 内存无上限增长 — 长运行服务器必定 OOM
+
+**ID**: chat-035
+**优先级**: P0
+**模块路径**: packages/server/src/ai/token-tracker.ts
+**发现的问题**: `TokenTracker.entries` 数组（第 143 行）只有 `push()` 没有任何淘汰机制。`record()` 方法（第 154 行）每次 AI 调用都追加条目。对于长时间运行的生产服务器，假设每分钟 10 次 AI 调用，每天 14,400 条 × 每条约 200 字节 = 每天 ~3MB，一个月 ~90MB 纯 entries 数组。`reset()` 方法（第 267 行）标注为测试用途。`getStats()` 和 `getStatsBySession()` 每次调用都遍历全量 entries。
+**改进方案**: 1) 添加 `maxEntries` 配置（默认 10000） 2) `record()` 时检查长度，超出则移除最旧 entries 3) 可选：按 sessionId 分桶，evict 最旧 session 的所有 entries 4) 添加 `prune(olderThanMs)` 方法供定时清理。
+**验收标准**: 1) entries 数组有上限，不再无限增长 2) 超出上限时自动淘汰旧条目 3) getStats 仍返回正确的近期统计 4) 新增 3+ 测试覆盖淘汰行为
+**影响范围**: `packages/server/src/ai/token-tracker.ts`
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] trimMessagesIfNeeded 静默丢弃上下文 — AI 无感知导致幻觉
+
+**ID**: chat-036
+**优先级**: P1
+**模块路径**: packages/server/src/ai/agentic-chat.ts
+**发现的问题**: `trimMessagesIfNeeded()`（第 764-779 行）当消息 token 超过 `MAX_MESSAGES_TOKENS`(150K) 时，从 index 1 开始 splice 删除 assistant/user 消息对。问题：1) 被删除的可能包含关键文件内容（tool_result）或重要执行上下文 2) AI 模型完全不知道部分上下文已丢失，可能基于不完整信息做出错误决策 3) 没有日志记录删除了多少消息/token。
+**改进方案**: 1) 在 trim 后注入一条 system message 说明 "Earlier tool results and conversation turns were trimmed to fit context window. {N} messages ({M}K tokens) removed." 2) 添加 debug 级别日志记录 trim 事件 3) 优先保留最近的 tool_result（包含文件内容）而非简单按位置删除。
+**验收标准**: 1) trim 后 messages 数组包含一条上下文丢失提示 2) AI 能在后续回复中意识到可能缺失上下文 3) 日志记录 trim 的消息数和 token 数 4) 新增 2+ 测试验证提示注入
+**影响范围**: `packages/server/src/ai/agentic-chat.ts`
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] listSessions 加载全部消息仅取 lastMessage — N+1 查询性能问题
+
+**ID**: chat-037
+**优先级**: P1
+**模块路径**: packages/server/src/core/session/manager.ts
+**发现的问题**: `listSessions()`（第 340-358 行）调用 `this.repo.listByServer()` 获取所有 session，然后对每个 session 的 `messages` 做 `map(toChatMessage)` 转换全部消息，仅为了取 `messages[messages.length - 1]?.content.slice(0, 100)` 作为 `lastMessage`。对于有 100 个 session、每个 session 平均 50 条消息的服务器，这意味着加载和转换 5000 条消息对象，仅使用其中 100 条的前 100 字符。
+**改进方案**: 1) 在 `SessionRepository` 接口添加 `listSummaries()` 方法，在 SQL 层只查询 session 元数据 + 最后一条消息 2) 使用子查询或 window function 获取 lastMessage 3) DrizzleSessionRepository 实现中用 `SELECT ... (SELECT content FROM messages WHERE session_id = s.id ORDER BY created_at DESC LIMIT 1) as last_message`。
+**验收标准**: 1) listSessions 不再加载全部消息 2) SQL 查询数量从 N+1 降为 1 3) 返回结果格式不变 4) 新增性能测试验证改进
+**影响范围**: `packages/server/src/core/session/manager.ts`, `packages/server/src/core/session/repository.ts`
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] addMessage 在 cache eviction 后抛异常 — 高并发下用户丢消息
+
+**ID**: chat-038
+**优先级**: P1
+**模块路径**: packages/server/src/core/session/manager.ts
+**发现的问题**: `addMessage()`（第 285-311 行）在第 292 行检查 `this.cache.get(sessionId)`，如果返回 null 则抛出 `Error('Session ${sessionId} not found')`。但在高负载场景下，用户调用 `getOrCreate()` 后 session 进入 cache，若在 `addMessage()` 调用前另一个请求触发了 `evictIfNeeded()`（第 174-204 行），该 session 可能已被 LRU 驱逐。此时用户会收到 500 错误，且消息丢失。`evictIfNeeded` 虽然保护 active session（`plans.size > 0`），但普通聊天 session 无 plan 时不受保护。
+**改进方案**: `addMessage()` 在 cache miss 时不抛异常，而是自动从 DB 重新加载 session（调用 `loadSessionFromDb`），然后继续添加消息。添加 `cache_reload` 计数器监控此场景频率。
+**验收标准**: 1) cache miss 时自动 reload，用户无感知 2) 消息不再丢失 3) 新增测试：evict session 后 addMessage 仍成功 4) 日志记录 reload 事件
+**影响范围**: `packages/server/src/core/session/manager.ts`
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] waitForStepDecision 超时无 SSE 反馈 — 用户等 5 分钟后无任何提示
+
+**ID**: chat-039
+**优先级**: P1
+**模块路径**: packages/server/src/api/routes/chat-execution.ts
+**发现的问题**: `waitForStepDecision()`（第 121-133 行）创建 Promise，5 分钟后 `setTimeout` 自动 resolve('reject')。但超时发生时：1) 没有 SSE 事件通知前端 2) 前端仍显示 step confirm UI，用户以为还在等待 3) `pendingDecisions.delete(key)` 后，如果用户此时点击 approve，`resolveStepDecision()` 返回 false（未找到），前端收到 404 但不知道原因。
+**改进方案**: 1) 超时时发送 SSE 事件 `step_decision_timeout`（含 stepId 和原因） 2) 前端收到此事件后自动关闭 confirm UI 并显示 "Step confirmation timed out" 提示 3) 前端 step confirm UI 显示倒计时。
+**验收标准**: 1) 超时发送 SSE 事件 2) 前端自动关闭过期的 confirm UI 3) 新增 2+ 测试覆盖超时场景 4) 用户体验无"静默失败"
+**影响范围**: `packages/server/src/api/routes/chat-execution.ts`, `packages/dashboard/src/stores/chat-execution.ts`
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] planner.ts 使用 console.* 而非 pino logger — 生产环境日志不可见
+
+**ID**: chat-040
+**优先级**: P2
+**模块路径**: packages/server/src/ai/planner.ts
+**发现的问题**: 第 69 行 `console.error(...)`, 第 75 行 `console.error(...)`, 第 95 行 `console.log(...)`, 第 99 行 `console.warn(...)` — 项目全局使用 pino 结构化日志，但 `planner.ts` 仍使用 `console.*`。这导致：1) 生产环境 JSON 日志流中出现非结构化文本 2) 日志级别不受 pino 配置控制 3) 无法通过日志聚合工具（ELK/Loki）过滤这些日志。
+**改进方案**: 导入项目 pino logger，将所有 `console.*` 替换为对应的 `logger.error/warn/info`，附带结构化上下文 `{ operation: 'generate_plan', software, error }`。
+**验收标准**: 1) planner.ts 零 `console.*` 调用 2) 所有日志使用 pino logger 3) 日志包含结构化上下文字段
+**影响范围**: `packages/server/src/ai/planner.ts`
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] quality-checker.ts 重复定义 RiskLevel — 与 shared 模块不同步风险
+
+**ID**: chat-041
+**优先级**: P2
+**模块路径**: packages/server/src/ai/quality-checker.ts
+**发现的问题**: 第 24-32 行定义了本地 `RiskLevel` 常量 `{ GREEN, YELLOW, RED, CRITICAL, FORBIDDEN }`，而 `@aiinstaller/shared/security` 已有完整的 RiskLevel 定义（5 个级别 + 类型）。两份定义需要手动保持同步。如果 shared 模块新增一个风险级别（如 `ORANGE`），`quality-checker.ts` 不会自动感知。
+**改进方案**: 删除 `quality-checker.ts` 中的本地 `RiskLevel` 定义，改为从 `@aiinstaller/shared` 导入。检查值映射是否完全一致（shared 用 `'green'|'yellow'|'red'|'critical'|'forbidden'` 字符串），确保 quality-checker 的 switch/if 逻辑兼容。
+**验收标准**: 1) quality-checker.ts 不再有本地 RiskLevel 定义 2) 从 shared 导入并正常工作 3) 类型检查通过 4) 现有测试不变
+**影响范围**: `packages/server/src/ai/quality-checker.ts`
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] token-counting.ts 7 处 `any` 类型 — TypeScript strict 模式下的类型安全漏洞
+
+**ID**: chat-042
+**优先级**: P2
+**模块路径**: packages/server/src/ai/token-counting.ts
+**发现的问题**: 第 72、110、139、156、192、354、373 行共 7 处使用 `any` 类型参数。例如 `extractClaudeTokens(response: any)` — 调用方可传入任意值（string、null、undefined）且编译器不会报错。`isValidTokenUsage(usage: any)` 和 `safeTokenUsage(usage: any)` 是 type guard 函数但用 `any` 入参，丧失了 TypeScript 的类型收窄优势。
+**改进方案**: 1) 将所有 `any` 改为 `unknown` 2) 在函数体内使用类型收窄（`typeof`/`in` 检查）访问属性 3) 对 `isValidTokenUsage` 使用 `is` 类型谓词 `(usage: unknown): usage is TokenUsage` 4) 所有 extract 函数入参改为 `unknown`。
+**验收标准**: 1) token-counting.ts 零 `any` 类型 2) 所有函数使用 `unknown` + 运行时类型收窄 3) 现有测试全部通过 4) TypeScript strict 无新增错误
+**影响范围**: `packages/server/src/ai/token-counting.ts`
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] agent.ts (882行) 超出 800 行硬限制 — 需拆分模块
+
+**ID**: chat-043
+**优先级**: P2
+**模块路径**: packages/server/src/ai/agent.ts
+**发现的问题**: `agent.ts` 共 882 行，超出项目 800 行硬限制。文件包含：`InstallAIAgent` 类（环境分析、计划生成、流式计划生成、错误诊断、修复建议）、多个 Zod schema（`DetectedCapabilitiesSchema`/`EnvironmentAnalysisSchema`/`ErrorDiagnosisSchema`）、JSON 解析工具函数、以及 AI 调用基础设施（`callAI`/`callAIStreaming`）。职责过多。
+**改进方案**: 1) 提取 Zod schemas 到 `ai/schemas.ts`（约 80 行） 2) 提取 `callAI`/`callAIStreaming`/`parseJSON` 到 `ai/api-call.ts`（约 200 行） 3) `agent.ts` 保留 `InstallAIAgent` 类的业务方法，降至约 600 行。
+**验收标准**: 1) agent.ts < 500 行 2) 拆分后的模块各自职责单一 3) 所有现有测试通过（import path 调整后） 4) 无循环依赖
+**影响范围**: `packages/server/src/ai/agent.ts`, 新文件 `ai/schemas.ts`, `ai/api-call.ts`
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] error-analyzer.ts (914行) 超出 800 行硬限制 — 需拆分模块
+
+**ID**: chat-044
+**优先级**: P2
+**模块路径**: packages/server/src/ai/error-analyzer.ts
+**发现的问题**: `error-analyzer.ts` 共 914 行，超出项目 800 行硬限制。文件包含大量错误匹配规则、分析函数、修复策略生成。与 `common-errors.ts`（853 行，也超限）共同构成错误分析子系统，但两者分工不够清晰。
+**改进方案**: 1) 将 `error-analyzer.ts` 中的错误模式匹配规则（regex patterns + match functions）提取到 `ai/error-patterns.ts` 2) 保留核心 `analyzeError()` 和 `buildFixStrategies()` 在 `error-analyzer.ts` 中 3) 目标：两个文件各 < 500 行。
+**验收标准**: 1) error-analyzer.ts < 500 行 2) 新模块职责清晰 3) 所有现有测试通过 4) 导出接口不变
+**影响范围**: `packages/server/src/ai/error-analyzer.ts`, 新文件 `ai/error-patterns.ts`
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] ChatAIAgent.chat() 重试逻辑和 chatWithFallback() 零测试覆盖
+
+**ID**: chat-045
+**优先级**: P1
+**模块路径**: packages/server/src/api/routes/chat-ai.ts
+**发现的问题**: `ChatAIAgent.chat()` 的重试循环（第 219-276 行）包含错误分类、退避延迟、`notifyRetry` 回调、`ChatRetryExhaustedError`，但**无任何测试**。`chatWithFallback()`（第 282-323 行）包含 fallback provider 解析、provider 切换、fallback 失败处理，也**无任何测试**。`resolveFallbackProvider()`（第 440-454 行）和 `resolveFallbackConfig()`（第 457-481 行）同样无测试。这是 AI 调用链的核心可靠性机制。
+**改进方案**: 新增 `chat-ai.test.ts` 测试文件，覆盖：1) chat() 正常响应 2) chat() 重试（transient error → success） 3) chat() 重试耗尽 → ChatRetryExhaustedError 4) chatWithFallback() 成功切换 5) chatWithFallback() 无可用 fallback 6) extractPlan() 正规化 7) resolveFallbackProvider() 遍历优先级。
+**验收标准**: 1) 新增 15+ 测试用例 2) chat-ai.ts 核心路径覆盖率 > 80% 3) 所有 retry/fallback 场景有测试 4) Mock AI provider 不实际调用 API
+**影响范围**: 新文件 `packages/server/src/api/routes/chat-ai.test.ts`
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] Agentic confirm 超时、legacy confirm 成功路径、step-decision 成功路径零测试
+
+**ID**: chat-046
+**优先级**: P1
+**模块路径**: packages/server/src/api/routes/chat.ts, chat-execution.ts
+**发现的问题**: 三个关键用户交互流程缺少测试：1) `chat.ts` 第 141-144 行 — agentic confirm 的 5 分钟超时 auto-reject（`setTimeout` → `resolve(false)`），仅测了 404 路径 2) `chat.ts` POST confirm 路由第 336-351 行的成功路径（找到 pending → clearTimeout → resolve → delete）从未被测试 3) `chat-execution.ts` POST step-decision 第 140-152 行 `resolveStepDecision()` 成功路径未被测试。
+**改进方案**: 在 `chat.test.ts` 中补充：1) 设置 pending confirmation → 等待超时 → 验证 resolve(false) 2) 设置 pending confirmation → POST confirm → 验证 resolve(true) + 清理 3) 在 `chat-execution.test.ts` 中补充 waitForStepDecision + resolveStepDecision 集成测试。
+**验收标准**: 1) confirm 超时路径有测试 2) confirm 成功路径有测试 3) step-decision 成功路径有测试 4) 新增 6+ 测试用例
+**影响范围**: `packages/server/src/api/routes/chat.test.ts`, `chat-execution.test.ts`
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] executePlanSteps 中 blocked/step-confirm/AI-summary/auto-diagnosis 四个分支零测试
+
+**ID**: chat-047
+**优先级**: P2
+**模块路径**: packages/server/src/api/routes/chat-execution.ts
+**发现的问题**: `executePlanSteps()` 内部多个重要分支未测试：1) 第 342-353 行 — `blocked` 命令处理（emit step_start + BLOCKED output + step_complete → break） 2) 第 356-378 行 — step-confirm 模式（reject → break, allow_all → skip 后续确认） 3) 第 477-508 行 — 执行后 AI 摘要生成（summaryPrompt 构建、streaming、错误处理） 4) 第 430-444/455-463 行 — 步骤失败后 auto-diagnosis SSE 事件。
+**改进方案**: 在 `chat-execution.test.ts` 新增专门的 `executePlanSteps` 集成测试 describe 块，mock executor 返回不同结果，验证每个分支的 SSE 事件输出序列。
+**验收标准**: 1) blocked 路径有测试（验证 SSE 事件序列） 2) step-confirm allow/reject/allow_all 有测试 3) AI summary 生成有测试 4) auto-diagnosis 集成有测试 5) 新增 8+ 测试用例
+**影响范围**: `packages/server/src/api/routes/chat-execution.test.ts`
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] fire-and-forget persistMessage 双重失败时用户无感知 — 消息静默丢失
+
+**ID**: chat-048
+**优先级**: P1
+**模块路径**: packages/server/src/core/session/manager.ts
+**发现的问题**: `persistMessage()`（第 502-525 行）在第一次 DB 写入失败后重试一次，如果再次失败仅 `logger.error` 记录，不抛异常也不通知调用方。`addMessage()`（第 307-308 行）以 fire-and-forget 方式调用 `persistMessage`（无 await、无 .catch），意味着消息仅存在于内存 cache。如果此后 session 被 evict 或服务器重启，该消息永久丢失。用户看到消息已发送（因为内存中存在），但刷新页面后消息消失。
+**改进方案**: 1) `addMessage()` 返回的 `ChatMessage` 增加 `persisted: boolean` 字段 2) `persistMessage` 失败时将消息标记为 `persisted: false` 3) 定期扫描未持久化消息并重试（write-behind pattern） 4) 前端可选展示 "消息可能未保存" 状态图标。或更简单：对用户消息使用 await persistMessage（只有 AI 流式响应用 fire-and-forget）。
+**验收标准**: 1) 用户发送的消息（role=user）同步持久化 2) AI 响应可异步持久化但有重试队列 3) 持久化失败有告警日志 + 前端提示 4) 新增测试验证双重失败后消息仍可通过重试队列恢复
+**影响范围**: `packages/server/src/core/session/manager.ts`
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] TokenUsage 类型不一致 — token-tracker 和 token-counting 使用不同的字段定义
+
+**ID**: chat-049
+**优先级**: P2
+**模块路径**: packages/server/src/ai/token-tracker.ts, packages/server/src/ai/token-counting.ts
+**发现的问题**: `token-tracker.ts` 第 18-27 行定义的 `TokenUsage` 包含 `cacheCreationInputTokens` 和 `cacheReadInputTokens` 字段，而 `token-counting.ts` 的 extract 函数返回的 `TokenUsage` 只有 `inputTokens` 和 `outputTokens`。使用 `extractClaudeTokens()` 的结果去调用 `tokenTracker.record()` 时，cache 相关字段为 undefined，导致成本估算可能不准确（Claude API 的 cache tokens 按不同价格计费）。
+**改进方案**: 1) 统一 TokenUsage 定义到一个文件（如 `token-tracker.ts` 或新的 `ai/types.ts`） 2) 所有 extract 函数返回完整 TokenUsage（含 cache 字段，默认 0） 3) `extractClaudeTokens` 读取 `usage.cache_creation_input_tokens` 和 `usage.cache_read_input_tokens`。
+**验收标准**: 1) 全局唯一 TokenUsage 类型定义 2) Claude cache tokens 被正确提取 3) 成本估算包含 cache token 费用 4) 现有测试全部通过
+**影响范围**: `packages/server/src/ai/token-tracker.ts`, `packages/server/src/ai/token-counting.ts`
+**创建时间**: (自动填充)
+**完成时间**: -
+
 ### [completed] loadSession 未重置执行/Agentic 状态 — 切换会话后显示旧执行数据 ✅
 
 **ID**: chat-021

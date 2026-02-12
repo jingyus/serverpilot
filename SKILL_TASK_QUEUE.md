@@ -3,14 +3,14 @@
 > 此队列专注于 Skill 插件系统的设计与实现
 > AI 自动扫描 → 发现缺失 → 设计实现 → 验证
 
-**最后更新**: 2026-02-13 03:18:48
+**最后更新**: 2026-02-13 03:26:49
 
 ## 📊 统计
 
 - **总任务数**: 28
-- **待完成** (pending): 4
+- **待完成** (pending): 3
 - **进行中** (in_progress): 0
-- **已完成** (completed): 24
+- **已完成** (completed): 25
 - **失败** (failed): 0
 
 ## 📋 任务列表
@@ -77,7 +77,7 @@
 
 ---
 
-### [pending] Prompt 模板变量注入缺失 — engine.ts 未传递 server/skill 上下文
+### [completed] Prompt 模板变量注入缺失 — engine.ts 未传递 server/skill 上下文 ✅
 
 **ID**: skill-025
 **优先级**: P0
@@ -101,7 +101,7 @@
 - `packages/server/src/core/skill/engine.ts` (修改 — execute 方法)
 - `packages/server/src/core/skill/engine.test.ts` (修改 — 新增变量注入测试)
 **创建时间**: (自动填充)
-**完成时间**: -
+**完成时间**: 2026-02-13 03:26:49
 
 ---
 

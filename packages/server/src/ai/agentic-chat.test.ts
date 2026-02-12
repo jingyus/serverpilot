@@ -44,7 +44,10 @@ vi.mock('../knowledge/rag-pipeline.js', () => ({
   getRagPipeline: vi.fn(() => null),
 }));
 
-import { trimMessagesIfNeeded, estimateMessagesTokens, AgenticChatEngine } from './agentic-chat.js';
+import {
+  trimMessagesIfNeeded, estimateMessagesTokens, AgenticChatEngine,
+  ExecuteCommandInputSchema, ReadFileInputSchema, ListFilesInputSchema,
+} from './agentic-chat.js';
 
 function makeMessage(role: 'user' | 'assistant', content: string): Anthropic.MessageParam {
   return { role, content };
@@ -575,5 +578,327 @@ describe('AgenticChatEngine — stream abort', () => {
     // No complete event should have been sent
     const completeEvents = sseEvents.filter((e) => e.event === 'complete');
     expect(completeEvents).toHaveLength(0);
+  });
+});
+
+// Tool Input Schema validation
+
+describe('Tool Input Schemas — runtime validation', () => {
+  describe('ExecuteCommandInputSchema', () => {
+    it('should accept valid input', () => {
+      const result = ExecuteCommandInputSchema.safeParse({
+        command: 'ls -la',
+        description: 'List files',
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('should accept valid input with optional timeout_seconds', () => {
+      const result = ExecuteCommandInputSchema.safeParse({
+        command: 'apt update',
+        description: 'Update packages',
+        timeout_seconds: 120,
+      });
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data.timeout_seconds).toBe(120);
+    });
+
+    it('should reject when command is missing', () => {
+      const result = ExecuteCommandInputSchema.safeParse({
+        description: 'no command',
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('should reject when command is a number instead of string', () => {
+      const result = ExecuteCommandInputSchema.safeParse({
+        command: 123,
+        description: 'bad type',
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('should reject when command is an empty string', () => {
+      const result = ExecuteCommandInputSchema.safeParse({
+        command: '',
+        description: 'empty command',
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('should reject when description is missing', () => {
+      const result = ExecuteCommandInputSchema.safeParse({
+        command: 'ls',
+      });
+      expect(result.success).toBe(false);
+    });
+
+    it('should reject null input', () => {
+      const result = ExecuteCommandInputSchema.safeParse(null);
+      expect(result.success).toBe(false);
+    });
+
+    it('should reject when timeout_seconds is a string', () => {
+      const result = ExecuteCommandInputSchema.safeParse({
+        command: 'ls',
+        description: 'list',
+        timeout_seconds: '30',
+      });
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('ReadFileInputSchema', () => {
+    it('should accept valid input', () => {
+      const result = ReadFileInputSchema.safeParse({ path: '/etc/nginx/nginx.conf' });
+      expect(result.success).toBe(true);
+    });
+
+    it('should accept valid input with optional max_lines', () => {
+      const result = ReadFileInputSchema.safeParse({ path: '/var/log/syslog', max_lines: 50 });
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data.max_lines).toBe(50);
+    });
+
+    it('should reject when path is missing', () => {
+      const result = ReadFileInputSchema.safeParse({});
+      expect(result.success).toBe(false);
+    });
+
+    it('should reject when path is a number', () => {
+      const result = ReadFileInputSchema.safeParse({ path: 42 });
+      expect(result.success).toBe(false);
+    });
+
+    it('should reject when path is an empty string', () => {
+      const result = ReadFileInputSchema.safeParse({ path: '' });
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('ListFilesInputSchema', () => {
+    it('should accept valid input', () => {
+      const result = ListFilesInputSchema.safeParse({ path: '/home' });
+      expect(result.success).toBe(true);
+    });
+
+    it('should accept valid input with optional show_hidden', () => {
+      const result = ListFilesInputSchema.safeParse({ path: '/etc', show_hidden: true });
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data.show_hidden).toBe(true);
+    });
+
+    it('should reject when path is missing', () => {
+      const result = ListFilesInputSchema.safeParse({});
+      expect(result.success).toBe(false);
+    });
+
+    it('should reject when show_hidden is a string instead of boolean', () => {
+      const result = ListFilesInputSchema.safeParse({ path: '/tmp', show_hidden: 'yes' });
+      expect(result.success).toBe(false);
+    });
+  });
+});
+
+// AgenticChatEngine — malformed tool input handling (integration)
+
+describe('AgenticChatEngine — malformed tool input', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function createClientWithMalformedToolInput(toolName: string, malformedInput: unknown) {
+    const client = {
+      messages: {
+        stream: vi.fn(() => ({
+          on: vi.fn(),
+          finalMessage: vi.fn(async () => ({
+            content: [
+              { type: 'tool_use', id: 'tool-bad', name: toolName, input: malformedInput },
+            ],
+            stop_reason: 'tool_use',
+          })),
+        })),
+      },
+    } as unknown as Anthropic;
+    return client;
+  }
+
+  function createClientTwoTurns(toolName: string, malformedInput: unknown) {
+    let callIndex = 0;
+    const client = {
+      messages: {
+        stream: vi.fn(() => {
+          callIndex++;
+          if (callIndex === 1) {
+            return {
+              on: vi.fn(),
+              finalMessage: vi.fn(async () => ({
+                content: [
+                  { type: 'tool_use', id: 'tool-bad', name: toolName, input: malformedInput },
+                ],
+                stop_reason: 'tool_use',
+              })),
+            };
+          }
+          // Second turn: AI sees the error and responds with text
+          return {
+            on: vi.fn(),
+            finalMessage: vi.fn(async () => ({
+              content: [{ type: 'text', text: 'I see the input was invalid, let me fix that.' }],
+              stop_reason: 'end_turn',
+            })),
+          };
+        }),
+      },
+    } as unknown as Anthropic;
+    return { client, getCallCount: () => callIndex };
+  }
+
+  it('should return error string for execute_command with numeric command', async () => {
+    const { client, getCallCount } = createClientTwoTurns('execute_command', {
+      command: 123,
+      description: 'bad',
+    });
+    const engine = new AgenticChatEngine(client);
+    const { stream, sseEvents } = createMockStream();
+
+    const result = await engine.run({
+      userMessage: 'test',
+      serverId: 'srv-1',
+      userId: 'usr-1',
+      sessionId: 'sess-1',
+      stream,
+    });
+
+    // AI should get 2 turns: first returns invalid tool → error, second ends
+    expect(getCallCount()).toBe(2);
+    expect(result.success).toBe(true);
+
+    // The tool result fed back to AI should contain validation error
+    // Check that no tool_executing event was sent (command was never dispatched)
+    const executingEvents = sseEvents.filter((e) => e.event === 'tool_executing');
+    expect(executingEvents).toHaveLength(0);
+  });
+
+  it('should return error string for execute_command with missing fields', async () => {
+    const { client, getCallCount } = createClientTwoTurns('execute_command', {});
+    const engine = new AgenticChatEngine(client);
+    const { stream } = createMockStream();
+
+    const result = await engine.run({
+      userMessage: 'test',
+      serverId: 'srv-1',
+      userId: 'usr-1',
+      sessionId: 'sess-1',
+      stream,
+    });
+
+    expect(getCallCount()).toBe(2);
+    expect(result.success).toBe(true);
+    expect(result.toolCallCount).toBe(1);
+  });
+
+  it('should return error string for read_file with missing path', async () => {
+    const { client, getCallCount } = createClientTwoTurns('read_file', { max_lines: 100 });
+    const engine = new AgenticChatEngine(client);
+    const { stream } = createMockStream();
+
+    const result = await engine.run({
+      userMessage: 'read something',
+      serverId: 'srv-1',
+      userId: 'usr-1',
+      sessionId: 'sess-1',
+      stream,
+    });
+
+    expect(getCallCount()).toBe(2);
+    expect(result.success).toBe(true);
+    expect(result.toolCallCount).toBe(1);
+  });
+
+  it('should return error string for list_files with non-string path', async () => {
+    const { client, getCallCount } = createClientTwoTurns('list_files', { path: 42 });
+    const engine = new AgenticChatEngine(client);
+    const { stream } = createMockStream();
+
+    const result = await engine.run({
+      userMessage: 'list files',
+      serverId: 'srv-1',
+      userId: 'usr-1',
+      sessionId: 'sess-1',
+      stream,
+    });
+
+    expect(getCallCount()).toBe(2);
+    expect(result.success).toBe(true);
+    expect(result.toolCallCount).toBe(1);
+  });
+
+  it('should return error for null tool input without crashing', async () => {
+    const { client, getCallCount } = createClientTwoTurns('execute_command', null);
+    const engine = new AgenticChatEngine(client);
+    const { stream } = createMockStream();
+
+    const result = await engine.run({
+      userMessage: 'test null',
+      serverId: 'srv-1',
+      userId: 'usr-1',
+      sessionId: 'sess-1',
+      stream,
+    });
+
+    expect(getCallCount()).toBe(2);
+    expect(result.success).toBe(true);
+  });
+
+  it('should execute valid tool input normally after validation', async () => {
+    // Valid execute_command input should still work end-to-end
+    let callIndex = 0;
+    const client = {
+      messages: {
+        stream: vi.fn(() => {
+          callIndex++;
+          if (callIndex === 1) {
+            return {
+              on: vi.fn(),
+              finalMessage: vi.fn(async () => ({
+                content: [
+                  {
+                    type: 'tool_use', id: 'tool-ok', name: 'execute_command',
+                    input: { command: 'echo hello', description: 'Test echo' },
+                  },
+                ],
+                stop_reason: 'tool_use',
+              })),
+            };
+          }
+          return {
+            on: vi.fn(),
+            finalMessage: vi.fn(async () => ({
+              content: [{ type: 'text', text: 'Done.' }],
+              stop_reason: 'end_turn',
+            })),
+          };
+        }),
+      },
+    } as unknown as Anthropic;
+
+    const engine = new AgenticChatEngine(client);
+    const { stream, sseEvents } = createMockStream();
+
+    const result = await engine.run({
+      userMessage: 'run echo',
+      serverId: 'srv-1',
+      userId: 'usr-1',
+      sessionId: 'sess-1',
+      stream,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.toolCallCount).toBe(1);
+    // Should have a tool_executing event (command was dispatched)
+    const executingEvents = sseEvents.filter((e) => e.event === 'tool_executing');
+    expect(executingEvents).toHaveLength(1);
   });
 });

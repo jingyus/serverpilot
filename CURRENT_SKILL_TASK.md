@@ -1,29 +1,26 @@
-### [pending] runner-executor.test.ts — 6 种工具执行器单元测试 + 安全审计验证
+### [pending] Prompt 模板变量注入缺失 — engine.ts 未传递 server/skill 上下文
 
-**ID**: skill-024
+**ID**: skill-025
 **优先级**: P0
-**模块路径**: packages/server/src/core/skill/
-**当前状态**: 文件不存在 — `runner-executor.ts` (414 行) 实现了 `executeShell`、`executeReadFile`、`executeWriteFile`、`executeNotify`、`executeHttp`、`executeStore` 六个工具执行方法，以及 `auditShell` 审计辅助函数。这些是 Skill 命令执行的最终出口，涉及安全分级 (`classifyCommand`)、审计日志 (`getAuditLogger`)、Agent 通信 (`getTaskExecutor`)，完全无测试覆盖
+**模块路径**: packages/server/src/core/skill/engine.ts
+**当前状态**: 功能缺失 — `engine.ts:314` 调用 `resolvePromptTemplate(manifest.prompt, { input, now })` 仅传递了 `input` 和 `now` 两个变量命名空间。但 `loader.ts` 的 `resolveVariable()` 支持 4 个命名空间: `input`, `server`, `skill`, `env`。SKILL_SPEC.md 明确列出 `{{server.name}}`, `{{server.os}}`, `{{server.ip}}`, `{{skill.last_run}}`, `{{skill.last_result}}` 为可用变量。当前所有使用这些变量的 Skill prompt 将无法正确解析（变量原样保留）
 **实现方案**:
-创建 `runner-executor.test.ts`，Mock 外部依赖 (TaskExecutor, AuditLogger, WebhookDispatcher, SkillKVStore, Agent):
-1. **executeShell** (~10 tests):
-   - 正常执行: command → classifyCommand → 安全通过 → Agent 执行 → 返回 stdout
-   - 安全拒绝: red 命令 + yellow max → isError=true + blocked 消息
-   - forbidden 命令永远拒绝
-   - 审计日志: 每次 shell 调用都记录到 auditLogger
-   - Agent 未连接: 返回错误信息
-2. **executeReadFile** (~3 tests): 路径正常/Agent 错误/空文件
-3. **executeWriteFile** (~3 tests): 写入成功/Agent 错误/空内容
-4. **executeNotify** (~3 tests): 正常分发/dispatcher 异常/缺少参数
-5. **executeHttp** (~4 tests): GET/POST 成功, 超时, 非 200 响应
-6. **executeStore** (~4 tests): get/set/delete/list 操作
-7. **auditShell** (~2 tests): 记录格式正确, 包含 skillId/serverId/command
+1. **engine.ts execute() 方法** — 补充 `server` 和 `skill` 变量:
+   - 通过 `getServerRepository().findById(serverId)` 获取 server 信息 (name, os, hostname/ip)
+   - 通过 `this.repo.listExecutions(skillId, 1)` 获取上次执行记录 → `skill.last_run` (completedAt) + `skill.last_result` (result summary)
+   - 传递完整 TemplateVars: `{ input, server: { name, os, ip }, skill: { last_run, last_result }, now }`
+2. **可选 — env 变量**: 根据 skill manifest 的 `requires` 或配置决定是否传入 env (当前可跳过，低优先)
+3. **测试**:
+   - engine.test.ts 新增: 验证 resolvedPrompt 包含 server.name 替换
+   - engine.test.ts 新增: 验证 skill.last_run 从上次执行记录获取
+   - engine.test.ts 新增: 无上次执行时 skill.last_run 为空字符串或 "N/A"
 **验收标准**:
-- 测试 ≥ 28 个，覆盖所有 6 种执行器 + 审计函数
-- 安全相关测试验证 `classifyCommand()` 与 `exceedsRiskLimit()` 的联动
-- `pnpm vitest run packages/server/src/core/skill/runner-executor.test.ts` 全部通过
+- `resolvePromptTemplate` 接收完整 4 命名空间变量
+- 官方 Skill 的 `{{server.os}}` 等模板变量能正确替换
+- 测试 ≥ 4 个新增
 **影响范围**:
-- `packages/server/src/core/skill/runner-executor.test.ts` (新建)
+- `packages/server/src/core/skill/engine.ts` (修改 — execute 方法)
+- `packages/server/src/core/skill/engine.test.ts` (修改 — 新增变量注入测试)
 **创建时间**: (自动填充)
 **完成时间**: -
 

@@ -1,19 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-/**
- * Agentic Chat Engine — autonomous AI loop with tool_use.
- *
- * Replaces the one-shot plan generation pattern with a Claude Code-style
- * autonomous loop: think → call tools → observe results → think again.
- *
- * The AI decides what commands to run, observes results, and adapts its
- * approach — including retrying with alternative commands on failure.
- *
- * @module ai/agentic-chat
- */
+/** Agentic Chat Engine — autonomous AI loop with tool_use. */
 
 import Anthropic from '@anthropic-ai/sdk';
 import type { SSEStreamingApi } from 'hono/streaming';
+import { z } from 'zod';
 import { classifyCommand, RiskLevel } from '@aiinstaller/shared';
 import { getTaskExecutor } from '../core/task/executor.js';
 import { findConnectedAgent } from '../core/agent/agent-connector.js';
@@ -23,9 +14,7 @@ import { buildProfileContext, buildProfileCaveats, estimateTokens } from './prof
 import { getRagPipeline } from '../knowledge/rag-pipeline.js';
 import { logger } from '../utils/logger.js';
 
-// ============================================================================
 // Constants
-// ============================================================================
 
 /** Maximum agentic loop iterations to prevent runaway */
 const MAX_TURNS = 25;
@@ -36,9 +25,7 @@ const MAX_MESSAGES_TOKENS = 150_000;
 /** Default model */
 const DEFAULT_MODEL = 'claude-sonnet-4-20250514';
 
-// ============================================================================
 // Tool Definitions
-// ============================================================================
 
 const TOOLS: Anthropic.Tool[] = [
   {
@@ -112,9 +99,25 @@ const TOOLS: Anthropic.Tool[] = [
   },
 ];
 
-// ============================================================================
+// Tool Input Schemas (runtime validation for AI-returned inputs)
+
+export const ExecuteCommandInputSchema = z.object({
+  command: z.string().min(1, 'command must be a non-empty string'),
+  description: z.string().min(1, 'description must be a non-empty string'),
+  timeout_seconds: z.number().optional(),
+});
+
+export const ReadFileInputSchema = z.object({
+  path: z.string().min(1, 'path must be a non-empty string'),
+  max_lines: z.number().optional(),
+});
+
+export const ListFilesInputSchema = z.object({
+  path: z.string().min(1, 'path must be a non-empty string'),
+  show_hidden: z.boolean().optional(),
+});
+
 // Types
-// ============================================================================
 
 export interface AgenticRunOptions {
   /** User's chat message */
@@ -152,9 +155,7 @@ export interface AgenticRunResult {
   finalText: string;
 }
 
-// ============================================================================
 // AgenticChatEngine
-// ============================================================================
 
 export class AgenticChatEngine {
   private readonly client: Anthropic;
@@ -389,24 +390,39 @@ export class AgenticChatEngine {
 
     try {
       switch (name) {
-        case 'execute_command':
+        case 'execute_command': {
+          const parsed = ExecuteCommandInputSchema.safeParse(input);
+          if (!parsed.success) {
+            return `Error: Invalid tool input for execute_command: ${parsed.error.issues.map((i) => i.message).join('; ')}`;
+          }
           return await this.toolExecuteCommand(
-            input as { command: string; description: string; timeout_seconds?: number },
+            parsed.data,
             serverId, userId, sessionId, clientId, stream, toolCall.id,
             onConfirmRequired,
           );
+        }
 
-        case 'read_file':
+        case 'read_file': {
+          const parsed = ReadFileInputSchema.safeParse(input);
+          if (!parsed.success) {
+            return `Error: Invalid tool input for read_file: ${parsed.error.issues.map((i) => i.message).join('; ')}`;
+          }
           return await this.toolReadFile(
-            input as { path: string; max_lines?: number },
+            parsed.data,
             serverId, userId, sessionId, clientId, stream, toolCall.id,
           );
+        }
 
-        case 'list_files':
+        case 'list_files': {
+          const parsed = ListFilesInputSchema.safeParse(input);
+          if (!parsed.success) {
+            return `Error: Invalid tool input for list_file: ${parsed.error.issues.map((i) => i.message).join('; ')}`;
+          }
           return await this.toolListFiles(
-            input as { path: string; show_hidden?: boolean },
+            parsed.data,
             serverId, userId, sessionId, clientId, stream, toolCall.id,
           );
+        }
 
         default:
           return `Error: Unknown tool "${name}"`;
@@ -677,9 +693,7 @@ export class AgenticChatEngine {
   }
 }
 
-// ============================================================================
 // System Prompt (Agentic Mode)
-// ============================================================================
 
 function buildAgenticSystemPrompt(): string {
   return `You are ServerPilot, an autonomous AI DevOps agent that manages servers.
@@ -711,16 +725,9 @@ You operate like an experienced sysadmin with SSH access — directly executing 
 - If something fails, check logs and system state before retrying.`;
 }
 
-// ============================================================================
 // Message trimming
-// ============================================================================
 
-/**
- * Extract text from a single content block for token estimation.
- * For text blocks, returns the text directly.
- * For tool_use blocks, extracts the JSON input.
- * For tool_result blocks, extracts the content string.
- */
+/** Extract text from a content block for token estimation. */
 function extractBlockText(block: Record<string, unknown>): string {
   if ('text' in block && typeof block.text === 'string') {
     return block.text;
@@ -732,13 +739,7 @@ function extractBlockText(block: Record<string, unknown>): string {
   return JSON.stringify(block);
 }
 
-/**
- * Estimate the total token count of the Anthropic messages array.
- *
- * Uses CJK-aware `estimateTokens()` from profile-context.ts, which
- * handles mixed Chinese/English text properly (~1.5 chars/token for CJK
- * vs ~4 chars/token for ASCII).
- */
+/** Estimate total token count of the messages array (CJK-aware). */
 export function estimateMessagesTokens(messages: Anthropic.MessageParam[]): number {
   let tokens = 0;
   for (const msg of messages) {
@@ -754,13 +755,7 @@ export function estimateMessagesTokens(messages: Anthropic.MessageParam[]): numb
   return tokens;
 }
 
-/**
- * Trim the messages array in-place if it exceeds the token budget.
- *
- * Strategy: keep the first message (original user query) and trim from
- * the middle, removing oldest assistant/user turn pairs. Anthropic requires
- * alternating user/assistant roles, so we remove in pairs.
- */
+/** Trim messages in-place if over token budget, keeping first message and newest pairs. */
 export function trimMessagesIfNeeded(
   messages: Anthropic.MessageParam[],
   maxTokens: number,
@@ -778,9 +773,7 @@ export function trimMessagesIfNeeded(
   }
 }
 
-// ============================================================================
 // Singleton
-// ============================================================================
 
 let _engine: AgenticChatEngine | null = null;
 

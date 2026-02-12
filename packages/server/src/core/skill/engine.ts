@@ -24,11 +24,13 @@ import {
   resolvePromptTemplate,
   checkRequirements,
   type ScannedSkill,
+  type TemplateVars,
 } from './loader.js';
 import {
   getSkillRepository,
   type SkillRepository,
 } from '../../db/repositories/skill-repository.js';
+import { getServerRepository } from '../../db/repositories/server-repository.js';
 import type { SkillManifest, SkillInput } from '@aiinstaller/shared';
 import type { SkillStatus } from '../../db/schema.js';
 import type {
@@ -311,10 +313,20 @@ export class SkillEngine {
     try {
       // Resolve prompt template with available variables
       const mergedConfig = { ...skill.config, ...params.config };
-      const resolvedPrompt = resolvePromptTemplate(manifest.prompt, {
+
+      // Build server context from repository
+      const serverVars = await this.buildServerVars(serverId, userId);
+
+      // Build skill context from last execution
+      const skillVars = await this.buildSkillVars(skillId);
+
+      const templateVars: TemplateVars = {
         input: mergedConfig,
+        server: serverVars,
+        skill: skillVars,
         now: new Date().toISOString(),
-      });
+      };
+      const resolvedPrompt = resolvePromptTemplate(manifest.prompt, templateVars);
 
       // Run via AI SkillRunner
       const runner = new SkillRunner();
@@ -420,6 +432,78 @@ export class SkillEngine {
         result: null,
         errors: [errorMessage],
       };
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // Template Variable Builders
+  // --------------------------------------------------------------------------
+
+  /**
+   * Build server-related template variables from the server repository.
+   *
+   * Returns { name, os, ip } for use in prompt templates like {{server.name}}.
+   * Gracefully returns empty strings if server or profile is not found.
+   */
+  private async buildServerVars(
+    serverId: string,
+    userId: string,
+  ): Promise<{ name: string; os: string; ip: string }> {
+    try {
+      const serverRepo = getServerRepository();
+      const server = await serverRepo.findById(serverId, userId);
+      if (!server) {
+        return { name: '', os: '', ip: '' };
+      }
+
+      let os = '';
+      let ip = '';
+      try {
+        const profile = await serverRepo.getProfile(serverId, userId);
+        if (profile?.osInfo) {
+          os = profile.osInfo.platform;
+          ip = profile.osInfo.hostname;
+        }
+      } catch {
+        // Profile may not be available; use empty strings
+      }
+
+      return { name: server.name, os, ip };
+    } catch {
+      logger.debug({ serverId }, 'Failed to fetch server info for template vars');
+      return { name: '', os: '', ip: '' };
+    }
+  }
+
+  /**
+   * Build skill-related template variables from execution history.
+   *
+   * Returns { last_run, last_result } from the most recent completed execution.
+   * Returns 'N/A' if no previous execution exists.
+   */
+  private async buildSkillVars(
+    skillId: string,
+  ): Promise<{ last_run: string; last_result: string }> {
+    try {
+      const executions = await this.repo.listExecutions(skillId, 1);
+      if (executions.length === 0 || !executions[0].completedAt) {
+        return { last_run: 'N/A', last_result: 'N/A' };
+      }
+
+      const last = executions[0];
+      const lastResult = last.result
+        ? (typeof last.result['output'] === 'string'
+            ? last.result['output']
+            : JSON.stringify(last.result))
+        : 'N/A';
+
+      return {
+        last_run: last.completedAt,
+        last_result: lastResult,
+      };
+    } catch {
+      logger.debug({ skillId }, 'Failed to fetch skill execution history for template vars');
+      return { last_run: 'N/A', last_result: 'N/A' };
     }
   }
 

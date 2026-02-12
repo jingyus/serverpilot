@@ -1,17 +1,13 @@
-### [pending] StepConfirmBar 类型安全 — PendingConfirm 使用 `as` 断言无运行时验证
+### [pending] Agentic tool_use input 缺少运行时验证 — AI 返回畸形输入可导致命令注入
 
-**ID**: chat-032
-**优先级**: P2
-**模块路径**: packages/dashboard/src/stores/chat-execution.ts
-**发现的问题**: `chat-execution.ts:101` 使用 `JSON.parse(data) as PendingConfirm` 类型断言，`chat-execution.ts:396` 同样如此。`PendingConfirm` 要求 `stepId`、`command`、`description`、`riskLevel` 四个字段（定义在 `chat-types.ts:20-25`）。如果服务端发送的 JSON 缺少任何字段（如 `description` 为 undefined），前端不会报错，但 `StepConfirmBar` 组件会渲染 `undefined` 文本。同理 `chat-execution.ts:531` 的 `parsed.status as ToolCallEntry['status']` 不验证 status 是否是合法联合类型值。`chat-execution.ts:549-551` 的 `confirmId` 可能为 undefined，被 `?? ''` 默认为空字符串，导致 `respondToAgenticConfirm`（行 186）因 `!agenticConfirm?.confirmId` 为 true 而直接 return。
-**改进方案**: 
-1. 为 `PendingConfirm`、`ToolCallEntry` 状态更新和 `AgenticConfirm` 创建 Zod schema
-2. 替换 `as` 断言为 `schema.parse(JSON.parse(data))`，解析失败走 `warnParseFail`
-3. 或至少添加必填字段检查：`if (!parsed.stepId || !parsed.command) return`
-**验收标准**: 
-- 畸形 SSE 数据不会导致 UI 渲染 undefined
-- 缺失 confirmId 时有明确的 console.warn 而非静默失败
-- 新增测试：验证畸形数据被正确拒绝
-**影响范围**: packages/dashboard/src/stores/chat-execution.ts, packages/dashboard/src/stores/chat-types.ts
+**ID**: chat-033
+**优先级**: P0
+**模块路径**: packages/server/src/ai/agentic-chat.ts
+**发现的问题**: `executeToolCall()` 在第 394、401、407 行对 AI 返回的 tool `input` 直接使用 `as` 类型断言，无任何运行时验证。例如第 394 行 `input as { command: string; description: string; timeout_seconds?: number }` — 如果 Claude 返回 `{ command: 123 }` (number 而非 string)，后续 `toolExecuteCommand` 会将 `123` 传入 shell 执行。更严重的是，如果 `command` 字段缺失，`undefined` 会被传入命令调度器。
+**改进方案**: 为每个 tool 的 input 定义 Zod schema（`ExecuteCommandInputSchema`、`ReadFileInputSchema`、`ListFilesInputSchema`），在 `executeToolCall` 的 switch 分支中先 `safeParse`，失败则返回 `Error: Invalid tool input: ${issues}` 给 AI 进行自我修正，不实际执行命令。
+**验收标准**: 1) 所有 tool input 经过 Zod 验证后才执行 2) 畸形 input 返回描述性错误字符串而非崩溃 3) 新增 3+ 测试覆盖畸形 input 场景 4) 无 `as` 类型断言用于 tool input
+**影响范围**: `packages/server/src/ai/agentic-chat.ts`
 **创建时间**: (自动填充)
 **完成时间**: -
+
+---

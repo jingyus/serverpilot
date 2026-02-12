@@ -17,7 +17,13 @@ import {
   setSkillRepository,
   _resetSkillRepository,
 } from '../../db/repositories/skill-repository.js';
+import {
+  InMemoryServerRepository,
+  setServerRepository,
+  _resetServerRepository,
+} from '../../db/repositories/server-repository.js';
 import type { SkillRunParams } from './types.js';
+import { SkillRunner } from './runner.js';
 
 // Mock SkillRunner to avoid AI provider dependency in engine tests
 vi.mock('./runner.js', () => ({
@@ -126,15 +132,20 @@ prompt: |
 }
 
 let repo: InMemorySkillRepository;
+let serverRepo: InMemoryServerRepository;
 let engine: SkillEngine;
 let projectRoot: string;
 
 beforeEach(async () => {
   _resetSkillEngine();
   _resetSkillRepository();
+  _resetServerRepository();
 
   repo = new InMemorySkillRepository();
   setSkillRepository(repo);
+
+  serverRepo = new InMemoryServerRepository();
+  setServerRepository(serverRepo);
 
   projectRoot = await createTempDir('engine-root-');
   engine = new SkillEngine(projectRoot, repo);
@@ -143,6 +154,7 @@ beforeEach(async () => {
 afterEach(async () => {
   _resetSkillEngine();
   _resetSkillRepository();
+  _resetServerRepository();
 
   for (const dir of tempDirs) {
     await rm(dir, { recursive: true, force: true }).catch(() => {});
@@ -708,6 +720,190 @@ describe('SkillEngine chain context', () => {
     });
 
     expect(result.status).toBe('success');
+  });
+});
+
+// ============================================================================
+// Template Variable Injection
+// ============================================================================
+
+describe('SkillEngine template variable injection', () => {
+  it('should inject server.name into prompt template', async () => {
+    // Create a server in the repository
+    const server = await serverRepo.create({
+      name: 'prod-web-01',
+      userId: 'user-1',
+    });
+
+    const skillDir = await createTempDir('skill-tpl-');
+    await writeTemplatedSkillYaml(skillDir);
+
+    const skill = await engine.install('user-1', skillDir, 'local');
+    await engine.updateStatus(skill.id, 'enabled');
+
+    const result = await engine.execute({
+      skillId: skill.id,
+      serverId: server.id,
+      userId: 'user-1',
+      triggerType: 'manual',
+    });
+
+    expect(result.status).toBe('success');
+
+    // Verify the SkillRunner received a resolved prompt with server.name
+    const runnerInstance = vi.mocked(SkillRunner).mock.results.at(-1)?.value;
+    const runCall = runnerInstance.run.mock.calls[0][0];
+    expect(runCall.resolvedPrompt).toContain('prod-web-01');
+    expect(runCall.resolvedPrompt).not.toContain('{{server.name}}');
+  });
+
+  it('should inject skill.last_run from previous execution', async () => {
+    const server = await serverRepo.create({
+      name: 'test-server',
+      userId: 'user-1',
+    });
+
+    const skillDir = await createTempDir('skill-tpl-');
+    await writeTemplatedSkillYaml(skillDir);
+
+    const skill = await engine.install('user-1', skillDir, 'local');
+    await engine.updateStatus(skill.id, 'enabled');
+
+    // First execution — no previous run, should get N/A
+    const resultsBeforeFirst = vi.mocked(SkillRunner).mock.results.length;
+    await engine.execute({
+      skillId: skill.id,
+      serverId: server.id,
+      userId: 'user-1',
+      triggerType: 'manual',
+    });
+
+    const firstRunnerInstance = vi.mocked(SkillRunner).mock.results[resultsBeforeFirst].value;
+    const firstCall = firstRunnerInstance.run.mock.calls[0][0];
+    expect(firstCall.resolvedPrompt).toContain('N/A');
+    expect(firstCall.resolvedPrompt).not.toContain('{{skill.last_run}}');
+
+    // Second execution — should have last_run from first execution
+    const resultsBeforeSecond = vi.mocked(SkillRunner).mock.results.length;
+    await engine.execute({
+      skillId: skill.id,
+      serverId: server.id,
+      userId: 'user-1',
+      triggerType: 'manual',
+    });
+
+    const secondRunnerInstance = vi.mocked(SkillRunner).mock.results[resultsBeforeSecond].value;
+    const secondCall = secondRunnerInstance.run.mock.calls[0][0];
+    // last_run should be an ISO date string (not N/A)
+    expect(secondCall.resolvedPrompt).not.toContain('N/A');
+    expect(secondCall.resolvedPrompt).not.toContain('{{skill.last_run}}');
+  });
+
+  it('should use N/A for skill.last_run when no previous execution exists', async () => {
+    const server = await serverRepo.create({
+      name: 'test-server',
+      userId: 'user-1',
+    });
+
+    const skillDir = await createTempDir('skill-tpl-');
+    await writeTemplatedSkillYaml(skillDir);
+
+    const skill = await engine.install('user-1', skillDir, 'local');
+    await engine.updateStatus(skill.id, 'enabled');
+
+    await engine.execute({
+      skillId: skill.id,
+      serverId: server.id,
+      userId: 'user-1',
+      triggerType: 'manual',
+    });
+
+    const runnerInstance = vi.mocked(SkillRunner).mock.results.at(-1)?.value;
+    const runCall = runnerInstance.run.mock.calls[0][0];
+    // Template: "Last run: {{skill.last_run}}"
+    expect(runCall.resolvedPrompt).toContain('Last run: N/A');
+  });
+
+  it('should use empty strings for server vars when server not found', async () => {
+    const skillDir = await createTempDir('skill-tpl-');
+    await writeTemplatedSkillYaml(skillDir);
+
+    const skill = await engine.install('user-1', skillDir, 'local');
+    await engine.updateStatus(skill.id, 'enabled');
+
+    // Use a non-existent serverId
+    const result = await engine.execute({
+      skillId: skill.id,
+      serverId: 'non-existent-server',
+      userId: 'user-1',
+      triggerType: 'manual',
+    });
+
+    expect(result.status).toBe('success');
+
+    const runnerInstance = vi.mocked(SkillRunner).mock.results.at(-1)?.value;
+    const runCall = runnerInstance.run.mock.calls[0][0];
+    // server.name replaced with empty string (not left as template)
+    expect(runCall.resolvedPrompt).not.toContain('{{server.name}}');
+    expect(runCall.resolvedPrompt).toContain('on server .');
+  });
+
+  it('should inject server.os from profile when available', async () => {
+    const server = await serverRepo.create({
+      name: 'linux-box',
+      userId: 'user-1',
+    });
+
+    // Update profile osInfo via the in-memory reference
+    const profile = await serverRepo.getProfile(server.id, 'user-1');
+    if (profile) {
+      profile.osInfo = {
+        platform: 'Ubuntu 22.04',
+        arch: 'x86_64',
+        version: '22.04',
+        kernel: '5.15.0',
+        hostname: '192.168.1.100',
+        uptime: 86400,
+      };
+    }
+
+    const skillDir = await createTempDir('skill-os-');
+    const yaml = `kind: skill
+version: "1.0"
+
+metadata:
+  name: os-check-skill
+  displayName: "OS Check"
+  version: "1.0.0"
+
+triggers:
+  - type: manual
+
+tools:
+  - shell
+
+prompt: |
+  Check the system running {{server.os}} at {{server.ip}}.
+  This prompt is long enough to meet the minimum 50-character validation requirement.
+`;
+    await writeFile(join(skillDir, 'skill.yaml'), yaml, 'utf-8');
+
+    const skill = await engine.install('user-1', skillDir, 'local');
+    await engine.updateStatus(skill.id, 'enabled');
+
+    await engine.execute({
+      skillId: skill.id,
+      serverId: server.id,
+      userId: 'user-1',
+      triggerType: 'manual',
+    });
+
+    const runnerInstance = vi.mocked(SkillRunner).mock.results.at(-1)?.value;
+    const runCall = runnerInstance.run.mock.calls[0][0];
+    expect(runCall.resolvedPrompt).toContain('Ubuntu 22.04');
+    expect(runCall.resolvedPrompt).toContain('192.168.1.100');
+    expect(runCall.resolvedPrompt).not.toContain('{{server.os}}');
+    expect(runCall.resolvedPrompt).not.toContain('{{server.ip}}');
   });
 });
 
