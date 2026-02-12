@@ -32,6 +32,40 @@ describe('extractClaudeTokens', () => {
     });
   });
 
+  it('should extract cache tokens from Claude response', () => {
+    const response = {
+      usage: {
+        input_tokens: 100,
+        output_tokens: 50,
+        cache_creation_input_tokens: 200,
+        cache_read_input_tokens: 300,
+      },
+    };
+
+    const result = extractClaudeTokens(response);
+    expect(result).toEqual({
+      inputTokens: 100,
+      outputTokens: 50,
+      cacheCreationInputTokens: 200,
+      cacheReadInputTokens: 300,
+    });
+  });
+
+  it('should default non-numeric cache fields to 0', () => {
+    const response = {
+      usage: {
+        input_tokens: 100,
+        output_tokens: 50,
+        cache_creation_input_tokens: null,
+        cache_read_input_tokens: undefined,
+      },
+    };
+
+    const result = extractClaudeTokens(response);
+    expect(result?.cacheCreationInputTokens).toBe(0);
+    expect(result?.cacheReadInputTokens).toBe(0);
+  });
+
   it('should return null for invalid response', () => {
     expect(extractClaudeTokens(null)).toBeNull();
     expect(extractClaudeTokens({})).toBeNull();
@@ -85,6 +119,30 @@ describe('mergeTokenUsage', () => {
       cacheCreationInputTokens: 0,
       cacheReadInputTokens: 0,
     });
+  });
+
+  it('should merge cache token fields', () => {
+    const usages = [
+      { inputTokens: 100, outputTokens: 50, cacheCreationInputTokens: 10, cacheReadInputTokens: 20 },
+      { inputTokens: 80, outputTokens: 40, cacheCreationInputTokens: 30, cacheReadInputTokens: 40 },
+    ];
+
+    const result = mergeTokenUsage(usages);
+    expect(result.cacheCreationInputTokens).toBe(40);
+    expect(result.cacheReadInputTokens).toBe(60);
+  });
+
+  it('should handle usage objects without cache fields (optional)', () => {
+    const usages = [
+      { inputTokens: 100, outputTokens: 50 },
+      { inputTokens: 80, outputTokens: 40, cacheCreationInputTokens: 30, cacheReadInputTokens: 40 },
+    ];
+
+    const result = mergeTokenUsage(usages);
+    expect(result.inputTokens).toBe(180);
+    expect(result.outputTokens).toBe(90);
+    expect(result.cacheCreationInputTokens).toBe(30);
+    expect(result.cacheReadInputTokens).toBe(40);
   });
 });
 

@@ -310,10 +310,10 @@ export function mergeTokenUsage(usages: TokenUsage[]): TokenUsage {
     (acc, usage) => ({
       inputTokens: acc.inputTokens + usage.inputTokens,
       outputTokens: acc.outputTokens + usage.outputTokens,
-      cacheCreationInputTokens: acc.cacheCreationInputTokens + usage.cacheCreationInputTokens,
-      cacheReadInputTokens: acc.cacheReadInputTokens + usage.cacheReadInputTokens,
+      cacheCreationInputTokens: (acc.cacheCreationInputTokens ?? 0) + (usage.cacheCreationInputTokens ?? 0),
+      cacheReadInputTokens: (acc.cacheReadInputTokens ?? 0) + (usage.cacheReadInputTokens ?? 0),
     }),
-    { inputTokens: 0, outputTokens: 0, cacheCreationInputTokens: 0, cacheReadInputTokens: 0 }
+    { inputTokens: 0, outputTokens: 0, cacheCreationInputTokens: 0, cacheReadInputTokens: 0 } as TokenUsage
   );
 }
 
