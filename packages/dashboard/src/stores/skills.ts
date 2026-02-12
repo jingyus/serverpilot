@@ -110,7 +110,9 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
       });
       set({
         skills: get().skills.map((s) =>
-          s.id === id ? { ...s, config, status: 'configured' as SkillStatus } : s,
+          s.id === id
+            ? { ...s, config, ...(s.status === 'installed' ? { status: 'configured' as SkillStatus } : {}) }
+            : s,
         ),
       });
     } catch (err) {

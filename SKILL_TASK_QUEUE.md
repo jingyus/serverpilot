@@ -3,13 +3,13 @@
 > 此队列专注于 Skill 插件系统的设计与实现
 > AI 自动扫描 → 发现缺失 → 设计实现 → 验证
 
-**最后更新**: 2026-02-13 02:10:34
+**最后更新**: 2026-02-13 02:11:05
 
 ## 📊 统计
 
 - **总任务数**: 22
-- **待完成** (pending): 7
-- **进行中** (in_progress): 0
+- **待完成** (pending): 6
+- **进行中** (in_progress): 1
 - **已完成** (completed): 15
 - **失败** (failed): 0
 
@@ -132,7 +132,7 @@
 
 ---
 
-### [pending] configureSkill store 盲写 status='configured' — 覆盖已启用/暂停状态
+### [in_progress] configureSkill store 盲写 status='configured' — 覆盖已启用/暂停状态
 
 **ID**: skill-016
 **优先级**: P1

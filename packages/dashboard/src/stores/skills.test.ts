@@ -253,6 +253,30 @@ describe('useSkillsStore', () => {
       });
     });
 
+    it('should preserve enabled status when configuring', async () => {
+      useSkillsStore.setState({ skills: [makeSkill({ id: 'sk-1', status: 'enabled' })] });
+      mockApiRequest.mockResolvedValueOnce({ success: true });
+
+      const config = { port: 9090 };
+      await useSkillsStore.getState().configureSkill('sk-1', config);
+
+      const skill = useSkillsStore.getState().skills[0];
+      expect(skill.config).toEqual(config);
+      expect(skill.status).toBe('enabled');
+    });
+
+    it('should preserve paused status when configuring', async () => {
+      useSkillsStore.setState({ skills: [makeSkill({ id: 'sk-1', status: 'paused' })] });
+      mockApiRequest.mockResolvedValueOnce({ success: true });
+
+      const config = { workers: 4 };
+      await useSkillsStore.getState().configureSkill('sk-1', config);
+
+      const skill = useSkillsStore.getState().skills[0];
+      expect(skill.config).toEqual(config);
+      expect(skill.status).toBe('paused');
+    });
+
     it('should use fallback message for non-ApiError on configure', async () => {
       useSkillsStore.setState({ skills: [makeSkill()] });
       mockApiRequest.mockRejectedValueOnce(new Error('timeout'));
