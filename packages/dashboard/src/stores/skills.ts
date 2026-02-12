@@ -2,6 +2,7 @@
 // Copyright (c) 2024-2026 ServerPilot Contributors
 import { create } from 'zustand';
 import { apiRequest, ApiError } from '@/api/client';
+import { createSkillExecutionSSE } from '@/api/sse';
 import type {
   InstalledSkill,
   AvailableSkill,
@@ -14,12 +15,15 @@ import type {
   SkillResponse,
   ExecutionResponse,
   ExecutionsResponse,
+  SkillExecutionEvent,
 } from '@/types/skill';
 
 interface SkillsState {
   skills: InstalledSkill[];
   available: AvailableSkill[];
   executions: SkillExecution[];
+  executionEvents: SkillExecutionEvent[];
+  isStreaming: boolean;
   isLoading: boolean;
   error: string | null;
 
@@ -31,6 +35,8 @@ interface SkillsState {
   updateStatus: (id: string, status: SkillStatus) => Promise<void>;
   executeSkill: (id: string, serverId: string, config?: Record<string, unknown>) => Promise<SkillExecutionResult>;
   fetchExecutions: (id: string) => Promise<void>;
+  startExecutionStream: (executionId: string) => void;
+  stopExecutionStream: () => void;
   clearError: () => void;
 }
 

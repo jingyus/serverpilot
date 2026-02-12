@@ -502,6 +502,132 @@ export function createServerStatusSSE(
 }
 
 // ============================================================================
+// GET-based SSE for skill execution progress streaming
+// ============================================================================
+
+export interface SkillExecutionSSECallbacks {
+  onConnected?: (data: string) => void;
+  onStep?: (data: string) => void;
+  onLog?: (data: string) => void;
+  onCompleted?: (data: string) => void;
+  onError?: (error: Error) => void;
+}
+
+/**
+ * Create a GET-based SSE connection for real-time skill execution progress.
+ *
+ * Subscribes to /skills/executions/:eid/stream to receive step, log,
+ * and completion events. Auto-closes when execution completes.
+ *
+ * @returns Object with abort() to close connection
+ */
+export function createSkillExecutionSSE(
+  executionId: string,
+  callbacks: SkillExecutionSSECallbacks,
+): { abort: () => void } {
+  const controller = new AbortController();
+  let stopped = false;
+
+  function cleanup() {
+    stopped = true;
+    controller.abort();
+  }
+
+  async function connect() {
+    if (stopped) return;
+
+    const token = localStorage.getItem('auth_token');
+    const headers: Record<string, string> = {
+      Accept: 'text/event-stream',
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    try {
+      let response = await fetch(
+        `${API_BASE_URL}/skills/executions/${executionId}/stream`,
+        { method: 'GET', headers, signal: controller.signal },
+      );
+
+      // On 401, attempt token refresh and retry once
+      if (response.status === 401) {
+        const newToken = await refreshAccessToken();
+        if (newToken) {
+          headers['Authorization'] = `Bearer ${newToken}`;
+          response = await fetch(
+            `${API_BASE_URL}/skills/executions/${executionId}/stream`,
+            { method: 'GET', headers, signal: controller.signal },
+          );
+        }
+      }
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        const msg = (errorBody as Record<string, string>).error
+          ?? `Stream failed: ${response.status}`;
+        throw new Error(msg);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('No response body');
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        let currentEvent = 'step';
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            currentEvent = line.slice(7).trim();
+          } else if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (currentEvent === 'step') {
+              callbacks.onStep?.(data);
+            } else if (currentEvent === 'log') {
+              callbacks.onLog?.(data);
+            } else if (currentEvent === 'completed') {
+              callbacks.onCompleted?.(data);
+              // Auto-close on completion
+              cleanup();
+              return;
+            } else if (currentEvent === 'connected') {
+              callbacks.onConnected?.(data);
+            } else if (currentEvent === 'error') {
+              try {
+                const parsed = JSON.parse(data) as { message?: string };
+                callbacks.onError?.(new Error(parsed.message ?? 'Execution error'));
+              } catch {
+                callbacks.onError?.(new Error(data));
+              }
+              cleanup();
+              return;
+            }
+          } else if (line === '') {
+            currentEvent = 'step';
+          }
+        }
+      }
+    } catch (err: unknown) {
+      if (stopped || controller.signal.aborted) return;
+      const error = err instanceof Error ? err : new Error('SSE connection failed');
+      callbacks.onError?.(error);
+    }
+  }
+
+  connect();
+
+  return { abort: cleanup };
+}
+
+// ============================================================================
 // SSE Event Dispatch
 // ============================================================================
 

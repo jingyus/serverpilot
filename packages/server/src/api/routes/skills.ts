@@ -10,6 +10,7 @@
  */
 
 import { Hono } from 'hono';
+import { streamSSE } from 'hono/streaming';
 import {
   InstallSkillBodySchema,
   ConfigureSkillBodySchema,
@@ -22,6 +23,7 @@ import { requireAuth } from '../middleware/auth.js';
 import { resolveRole, requirePermission } from '../middleware/rbac.js';
 import { ApiError } from '../middleware/error-handler.js';
 import { getSkillEngine } from '../../core/skill/engine.js';
+import { getSkillEventBus } from '../../core/skill/skill-event-bus.js';
 import type {
   InstallSkillBody,
   ConfigureSkillBody,
@@ -208,6 +210,57 @@ skillsRoute.get('/:id/executions/:eid', requirePermission('skill:view'), async (
   }
 
   return c.json({ execution });
+});
+
+// ============================================================================
+// GET /skills/executions/:eid/stream — SSE execution progress stream
+// ============================================================================
+
+skillsRoute.get('/executions/:eid/stream', requirePermission('skill:view'), async (c) => {
+  const executionId = c.req.param('eid');
+  const engine = getSkillEngine();
+
+  // Verify execution exists
+  const execution = await engine.getExecution(executionId);
+  if (!execution) {
+    throw ApiError.notFound('Execution');
+  }
+
+  return streamSSE(c, async (stream) => {
+    let unsubscribe: (() => void) | null = null;
+
+    stream.onAbort(() => {
+      unsubscribe?.();
+    });
+
+    const bus = getSkillEventBus();
+    unsubscribe = bus.subscribe(executionId, async (event) => {
+      try {
+        await stream.writeSSE({
+          event: event.type,
+          data: JSON.stringify(event),
+        });
+
+        // Auto-close stream when execution finishes
+        if (event.type === 'completed' || event.type === 'error') {
+          unsubscribe?.();
+        }
+      } catch {
+        // Client disconnected — cleanup handled by onAbort
+      }
+    });
+
+    // Send initial connected event
+    await stream.writeSSE({
+      event: 'connected',
+      data: JSON.stringify({ executionId }),
+    });
+
+    // Keep connection open until client disconnects or execution completes
+    await new Promise<void>((resolve) => {
+      stream.onAbort(() => resolve());
+    });
+  });
 });
 
 export { skillsRoute };

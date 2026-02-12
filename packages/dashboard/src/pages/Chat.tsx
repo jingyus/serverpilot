@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
@@ -90,15 +90,52 @@ export function Chat() {
     return () => cleanup();
   }, [cleanup]);
 
-  const scrollToBottom = useCallback(() => {
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
     if (typeof messagesEndRef.current?.scrollIntoView === 'function') {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      messagesEndRef.current.scrollIntoView({ behavior });
     }
   }, []);
 
+  // Throttled instant scroll for streaming — avoids animation pile-up
+  const throttledStreamScroll = useMemo(() => {
+    let lastCall = 0;
+    let pending: ReturnType<typeof setTimeout> | null = null;
+    const THROTTLE_MS = 100;
+
+    const fn = (scrollFn: (behavior: ScrollBehavior) => void) => {
+      const now = Date.now();
+      if (now - lastCall >= THROTTLE_MS) {
+        lastCall = now;
+        scrollFn('auto');
+      } else if (!pending) {
+        pending = setTimeout(() => {
+          pending = null;
+          lastCall = Date.now();
+          scrollFn('auto');
+        }, THROTTLE_MS - (now - lastCall));
+      }
+    };
+    fn.cancel = () => {
+      if (pending) {
+        clearTimeout(pending);
+        pending = null;
+      }
+    };
+    return fn;
+  }, []);
+
+  // Smooth scroll on new messages
   useEffect(() => {
-    scrollToBottom();
-  }, [messages.length, streamingContent, scrollToBottom]);
+    scrollToBottom('smooth');
+  }, [messages.length, scrollToBottom]);
+
+  // Throttled instant scroll during streaming
+  useEffect(() => {
+    if (streamingContent) {
+      throttledStreamScroll(scrollToBottom);
+    }
+    return () => throttledStreamScroll.cancel();
+  }, [streamingContent, scrollToBottom, throttledStreamScroll]);
 
   const prevPlanStatus = useRef(planStatus);
   useEffect(() => {

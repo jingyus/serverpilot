@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, act } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { Chat } from './Chat';
 import { useChatStore } from '@/stores/chat';
@@ -587,6 +587,142 @@ describe('Chat Page', () => {
 
       await user.click(screen.getByTestId('session-group-toggle-Today'));
       expect(screen.getByText('Collapsible session')).toBeInTheDocument();
+    });
+  });
+
+  describe('scroll behavior optimization', () => {
+    let scrollIntoViewMock: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      scrollIntoViewMock = vi.fn();
+      // Mock scrollIntoView on all elements
+      Element.prototype.scrollIntoView = scrollIntoViewMock;
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('uses smooth scroll when a new message is added', () => {
+      useChatStore.setState({
+        messages: [
+          {
+            id: 'msg-1',
+            role: 'user',
+            content: 'Hello',
+            timestamp: '2025-01-01T00:00:00Z',
+          },
+        ],
+      });
+      renderChat('/chat/srv-1');
+
+      // scrollIntoView should be called with smooth behavior
+      const smoothCalls = scrollIntoViewMock.mock.calls.filter(
+        (call: [ScrollIntoViewOptions]) => call[0]?.behavior === 'smooth'
+      );
+      expect(smoothCalls.length).toBeGreaterThan(0);
+    });
+
+    it('uses auto (instant) scroll during streaming content updates', () => {
+      useChatStore.setState({
+        isStreaming: true,
+        streamingContent: 'partial',
+        messages: [
+          {
+            id: 'msg-1',
+            role: 'user',
+            content: 'Hello',
+            timestamp: '2025-01-01T00:00:00Z',
+          },
+        ],
+      });
+      renderChat('/chat/srv-1');
+
+      scrollIntoViewMock.mockClear();
+
+      // Advance time so the throttle window has passed since initial render
+      vi.advanceTimersByTime(200);
+
+      // Simulate streaming content update
+      act(() => {
+        useChatStore.setState({ streamingContent: 'partial response' });
+      });
+
+      // Flush any pending throttled calls
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+
+      // The streaming scroll should use 'auto' behavior
+      const autoCalls = scrollIntoViewMock.mock.calls.filter(
+        (call: [ScrollIntoViewOptions]) => call[0]?.behavior === 'auto'
+      );
+      expect(autoCalls.length).toBeGreaterThan(0);
+    });
+
+    it('throttles scroll calls during rapid streaming updates', () => {
+      useChatStore.setState({
+        isStreaming: true,
+        streamingContent: 'chunk1',
+        messages: [
+          {
+            id: 'msg-1',
+            role: 'user',
+            content: 'Hello',
+            timestamp: '2025-01-01T00:00:00Z',
+          },
+        ],
+      });
+      renderChat('/chat/srv-1');
+
+      scrollIntoViewMock.mockClear();
+
+      // Simulate many rapid streaming updates within the throttle window
+      for (let i = 0; i < 20; i++) {
+        act(() => {
+          useChatStore.setState({ streamingContent: `chunk${i + 2}` });
+        });
+      }
+
+      // Should be throttled — far fewer calls than 20
+      const callCount = scrollIntoViewMock.mock.calls.filter(
+        (call: [ScrollIntoViewOptions]) => call[0]?.behavior === 'auto'
+      ).length;
+      expect(callCount).toBeLessThan(20);
+
+      // Flush pending throttled calls
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+    });
+
+    it('does not scroll on streaming when streamingContent is empty', () => {
+      useChatStore.setState({
+        isStreaming: true,
+        streamingContent: '',
+        messages: [
+          {
+            id: 'msg-1',
+            role: 'user',
+            content: 'Hello',
+            timestamp: '2025-01-01T00:00:00Z',
+          },
+        ],
+      });
+      renderChat('/chat/srv-1');
+
+      scrollIntoViewMock.mockClear();
+
+      act(() => {
+        useChatStore.setState({ streamingContent: '' });
+      });
+
+      // No auto scroll should be triggered for empty content
+      const autoCalls = scrollIntoViewMock.mock.calls.filter(
+        (call: [ScrollIntoViewOptions]) => call[0]?.behavior === 'auto'
+      );
+      expect(autoCalls).toHaveLength(0);
     });
   });
 });

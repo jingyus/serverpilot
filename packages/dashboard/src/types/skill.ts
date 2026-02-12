@@ -117,3 +117,51 @@ export interface ExecutionResponse {
 export interface ExecutionsResponse {
   executions: SkillExecution[];
 }
+
+// ============================================================================
+// Skill Execution Streaming Events
+// ============================================================================
+
+export type SkillExecutionEventType = 'step' | 'log' | 'completed' | 'error';
+
+export interface SkillStepEvent {
+  type: 'step';
+  executionId: string;
+  timestamp: string;
+  tool: string;
+  input?: Record<string, unknown>;
+  result?: string;
+  success?: boolean;
+  duration?: number;
+  phase: 'start' | 'complete';
+}
+
+export interface SkillLogEvent {
+  type: 'log';
+  executionId: string;
+  timestamp: string;
+  text: string;
+}
+
+export interface SkillCompletedEvent {
+  type: 'completed';
+  executionId: string;
+  timestamp: string;
+  status: 'success' | 'failed' | 'timeout';
+  stepsExecuted: number;
+  duration: number;
+  output: string;
+}
+
+export interface SkillErrorEvent {
+  type: 'error';
+  executionId: string;
+  timestamp: string;
+  message: string;
+}
+
+export type SkillExecutionEvent =
+  | SkillStepEvent
+  | SkillLogEvent
+  | SkillCompletedEvent
+  | SkillErrorEvent;

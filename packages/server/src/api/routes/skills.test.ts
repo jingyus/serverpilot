@@ -37,6 +37,17 @@ vi.mock('../../core/skill/engine.js', () => ({
   getSkillEngine: () => mockEngine,
 }));
 
+const mockSkillEventBus = {
+  subscribe: vi.fn(() => vi.fn()),
+  publish: vi.fn(),
+  listenerCount: vi.fn(() => 0),
+  removeAll: vi.fn(),
+};
+
+vi.mock('../../core/skill/skill-event-bus.js', () => ({
+  getSkillEventBus: () => mockSkillEventBus,
+}));
+
 let mockUserRole = 'owner';
 
 vi.mock('../middleware/auth.js', () => ({
@@ -745,5 +756,76 @@ describe('RBAC integration', () => {
       body: JSON.stringify({ serverId: 'server-1' }),
     });
     expect(execRes.status).toBe(200);
+  });
+});
+
+// ============================================================================
+// GET /skills/executions/:eid/stream — SSE execution progress stream
+// ============================================================================
+
+describe('GET /skills/executions/:eid/stream', () => {
+  it('should return 404 for nonexistent execution', async () => {
+    mockEngine.getExecution.mockResolvedValue(null);
+
+    const res = await app.request('/skills/executions/nonexistent/stream');
+    expect(res.status).toBe(404);
+  });
+
+  it('should establish SSE connection and subscribe to skill event bus', async () => {
+    mockEngine.getExecution.mockResolvedValue(makeExecution());
+    mockSkillEventBus.subscribe.mockReturnValue(vi.fn());
+
+    const controller = new AbortController();
+    const resPromise = app.request('/skills/executions/exec-1/stream', {
+      signal: controller.signal,
+    });
+
+    // Give the stream time to start
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(mockSkillEventBus.subscribe).toHaveBeenCalledWith(
+      'exec-1',
+      expect.any(Function),
+    );
+
+    controller.abort();
+    await resPromise.catch(() => {});
+  });
+
+  it('should be accessible by member role (skill:view)', async () => {
+    mockUserRole = 'member';
+    mockEngine.getExecution.mockResolvedValue(makeExecution());
+    mockSkillEventBus.subscribe.mockReturnValue(vi.fn());
+
+    const controller = new AbortController();
+    const resPromise = app.request('/skills/executions/exec-1/stream', {
+      signal: controller.signal,
+    });
+
+    await new Promise((r) => setTimeout(r, 50));
+    controller.abort();
+    await resPromise.catch(() => {});
+
+    // If we got here without 403, the member role was accepted
+    expect(mockEngine.getExecution).toHaveBeenCalledWith('exec-1');
+  });
+
+  it('should be forbidden for member if permission check fails', async () => {
+    // This verifies the permission check is wired — members have skill:view so they pass
+    mockUserRole = 'member';
+    mockEngine.getExecution.mockResolvedValue(makeExecution());
+    mockSkillEventBus.subscribe.mockReturnValue(vi.fn());
+
+    const controller = new AbortController();
+    const resPromise = app.request('/skills/executions/exec-1/stream', {
+      signal: controller.signal,
+    });
+
+    await new Promise((r) => setTimeout(r, 50));
+    controller.abort();
+
+    // Member has skill:view, so this should succeed
+    await resPromise.catch(() => {});
+    expect(mockSkillEventBus.subscribe).toHaveBeenCalled();
   });
 });

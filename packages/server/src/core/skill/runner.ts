@@ -35,6 +35,7 @@ import { getAuditLogger } from '../security/audit-logger.js';
 import { getWebhookDispatcher } from '../webhook/dispatcher.js';
 import { parseTimeout, exceedsRiskLimit, buildToolDefinitions } from './runner-tools.js';
 import { getSkillKVStore } from './store.js';
+import { getSkillEventBus } from './skill-event-bus.js';
 import type { SkillRunParams } from './types.js';
 
 const logger = createContextLogger({ module: 'skill-runner' });
@@ -126,6 +127,7 @@ export class SkillRunner {
     const riskLevelMax = constraints.risk_level_max;
     const tools = buildToolDefinitions(manifest.tools);
 
+    const bus = getSkillEventBus();
     const toolResults: ToolCallRecord[] = [];
     const errors: string[] = [];
     let stepsExecuted = 0;
@@ -163,6 +165,12 @@ export class SkillRunner {
         // Collect text output
         if (response.content) {
           output += (output ? '\n' : '') + response.content;
+          bus.publish(executionId, {
+            type: 'log',
+            executionId,
+            timestamp: new Date().toISOString(),
+            text: response.content,
+          });
         }
 
         // No tool calls → AI is done
@@ -196,6 +204,15 @@ export class SkillRunner {
           let result: string;
           let success: boolean;
 
+          bus.publish(executionId, {
+            type: 'step',
+            executionId,
+            timestamp: new Date().toISOString(),
+            tool: toolCall.name,
+            input: toolCall.input,
+            phase: 'start',
+          });
+
           try {
             const executed = await this.executeTool(
               toolCall, skillId, serverId, userId, executionId,
@@ -217,6 +234,17 @@ export class SkillRunner {
             result,
             success,
             duration: callDuration,
+          });
+
+          bus.publish(executionId, {
+            type: 'step',
+            executionId,
+            timestamp: new Date().toISOString(),
+            tool: toolCall.name,
+            result,
+            success,
+            duration: callDuration,
+            phase: 'complete',
           });
 
           if (!success) {
@@ -248,6 +276,15 @@ export class SkillRunner {
     const duration = Date.now() - startTime;
 
     if (timedOut) {
+      bus.publish(executionId, {
+        type: 'completed',
+        executionId,
+        timestamp: new Date().toISOString(),
+        status: 'timeout',
+        stepsExecuted,
+        duration,
+        output: output || 'Execution timed out',
+      });
       return {
         success: false,
         status: 'timeout',
@@ -260,9 +297,19 @@ export class SkillRunner {
     }
 
     const hasErrors = errors.length > 0;
+    const finalStatus = hasErrors ? 'failed' : 'success';
+    bus.publish(executionId, {
+      type: 'completed',
+      executionId,
+      timestamp: new Date().toISOString(),
+      status: finalStatus,
+      stepsExecuted,
+      duration,
+      output,
+    });
     return {
       success: !hasErrors,
-      status: hasErrors ? 'failed' : 'success',
+      status: finalStatus,
       stepsExecuted,
       duration,
       output,
