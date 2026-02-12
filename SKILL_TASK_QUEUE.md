@@ -3,19 +3,206 @@
 > 此队列专注于 Skill 插件系统的设计与实现
 > AI 自动扫描 → 发现缺失 → 设计实现 → 验证
 
-**最后更新**: 2026-02-13 04:38:30
+**最后更新**: 2026-02-13 04:50:45
 
 ## 📊 统计
 
-- **总任务数**: 28
-- **待完成** (pending): 0
-- **进行中** (in_progress): 0
+- **总任务数**: 36
+- **待完成** (pending): 7
+- **进行中** (in_progress): 1
 - **已完成** (completed): 28
 - **失败** (failed): 0
 
 ## 📋 任务列表
 
 ### [completed] DB Schema + Migration + SkillRepository 数据层 ✅
+### [in_progress] Webhook 事件集成 — skill.completed/skill.failed 分发到 WebhookDispatcher
+
+**ID**: skill-060
+**优先级**: P0
+**模块路径**: packages/server/src/core/skill/engine.ts, packages/server/src/db/schema.ts
+**当前状态**: 功能缺失 — SkillEngine 执行完成后仅通过 `emitTriggerEvent()` 通知 TriggerManager 做链式触发，未调用 `getWebhookDispatcher().dispatch()` 分发到外部 Webhook 订阅者。同时 `WebhookEventType` 联合类型不包含 `skill.completed` 和 `skill.failed`。
+**实现方案**: 
+1. 在 `packages/server/src/db/schema.ts` 的 `WebhookEventType` 联合类型中添加 `'skill.completed' | 'skill.failed'`
+2. 在 `engine.ts` 的 `execute()` 方法中，成功/失败后调用 `getWebhookDispatcher().dispatch({ type, userId, data })` — 放在 `emitTriggerEvent()` 之后
+3. 在 `executeConfirmed()` 方法中同样添加 webhook 分发
+4. 对应更新 `engine.test.ts` — mock `getWebhookDispatcher()` 并验证 dispatch 被调用
+5. 更新 `skills.test.ts` 路由测试中的 webhook 相关断言
+**验收标准**: 
+- Skill 执行成功时发出 `skill.completed` webhook 事件
+- Skill 执行失败时发出 `skill.failed` webhook 事件  
+- 用户可以在 Webhook 配置页面订阅这两个事件类型
+- `engine.test.ts` 中有至少 2 个测试验证 webhook dispatch
+**影响范围**: packages/server/src/db/schema.ts, packages/server/src/core/skill/engine.ts, packages/server/src/core/skill/engine.test.ts
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] engine.ts 文件拆分 — 提取 Confirmation Flow 到独立模块
+
+**ID**: skill-061
+**优先级**: P0
+**模块路径**: packages/server/src/core/skill/
+**当前状态**: `engine.ts` 793 行，逼近 800 行硬限制。Confirmation Flow（createPendingConfirmation, confirmExecution, rejectExecution, listPendingConfirmations, expirePendingConfirmations, executeConfirmed）占约 100 行，可独立为模块。
+**实现方案**: 
+1. 创建 `packages/server/src/core/skill/engine-confirmation.ts`（约 120 行）
+2. 将 `createPendingConfirmation`, `confirmExecution`, `rejectExecution`, `listPendingConfirmations`, `expirePendingConfirmations`, `executeConfirmed` 方法提取为独立类 `SkillConfirmationManager`
+3. `SkillConfirmationManager` 接收 `SkillRepository` 和 `execute` 回调作为依赖注入
+4. `engine.ts` 中组合 `SkillConfirmationManager` 实例，委托调用
+5. 对应测试拆分到 `engine-confirmation.test.ts`
+6. 目标：`engine.ts` 降至 650 行以下
+**验收标准**: 
+- `engine.ts` ≤ 650 行
+- `engine-confirmation.ts` ≤ 200 行
+- 所有现有 engine 测试通过不变
+- Confirmation 相关测试迁移到独立测试文件
+**影响范围**: packages/server/src/core/skill/engine.ts, packages/server/src/core/skill/engine-confirmation.ts (新), packages/server/src/core/skill/engine-confirmation.test.ts (新)
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] Pending Confirmation 过期自动清理定时器
+
+**ID**: skill-062
+**优先级**: P1
+**模块路径**: packages/server/src/core/skill/engine.ts, packages/server/src/index.ts
+**当前状态**: `expirePendingConfirmations()` 方法已实现但从未被定时调用。Pending confirmation 会无限积累，不会自动过期清理。
+**实现方案**: 
+1. 在 `SkillEngine.start()` 方法中添加 `setInterval` 定时器，每 10 分钟调用 `this.expirePendingConfirmations()`
+2. 定时器句柄保存为 `private confirmationCleanupTimer: NodeJS.Timeout | null`
+3. `stop()` 方法中 `clearInterval(this.confirmationCleanupTimer)`
+4. 定时器使用 `.unref()` 避免阻止进程退出
+5. 添加日志记录过期清理的数量
+6. 添加对应测试 — 验证定时器启停和清理调用
+**验收标准**: 
+- `start()` 启动后自动每 10 分钟清理过期 pending confirmations
+- `stop()` 正确清除定时器
+- 清理结果有日志输出
+- 至少 2 个测试验证定时器行为
+**影响范围**: packages/server/src/core/skill/engine.ts, packages/server/src/core/skill/engine.test.ts
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] server_scope: 'tagged' 优雅降级替代硬错误
+
+**ID**: skill-063
+**优先级**: P1
+**模块路径**: packages/server/src/core/skill/batch-executor.ts
+**当前状态**: `batch-executor.ts` 第 59-62 行 `server_scope: 'tagged'` 时直接 `throw new Error()`，导致整个 Skill 执行失败。应改为优雅降级到单服务器模式。
+**实现方案**: 
+1. 将 `throw new Error(...)` 替换为 `logger.warn(...)` 日志警告
+2. 当 scope 为 `tagged` 时，回退到 `params.serverId` 单服务器执行
+3. 在返回的 `BatchExecutionResult` 中添加 `warnings?: string[]` 字段，记录降级信息
+4. 更新 `types.ts` 中 `BatchExecutionResult` 类型定义
+5. 创建 `batch-executor.test.ts` 测试文件，覆盖 scope='all'、scope='tagged' 降级、空服务器列表、部分失败等场景
+**验收标准**: 
+- `server_scope: 'tagged'` 不再抛出异常
+- 降级时产生 warning 日志 + 返回 warnings 数组
+- 回退到 `params.serverId` 单服务器执行并成功完成
+- `batch-executor.test.ts` 至少 8 个测试用例
+**影响范围**: packages/server/src/core/skill/batch-executor.ts, packages/server/src/core/skill/types.ts, packages/server/src/core/skill/batch-executor.test.ts (新)
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] RBAC 权限修正 — skill:execute 应包含 member 角色
+
+**ID**: skill-064
+**优先级**: P1
+**模块路径**: packages/shared/src/rbac.ts
+**当前状态**: 开发规范定义 `skill:execute` 应授予 member+admin+owner，但实际代码中 `skill:execute` 仅在 `ADMIN_PERMISSIONS` 数组中（第 150 行），member 角色只有 `skill:view`。这意味着普通成员无法手动执行 Skill。
+**实现方案**: 
+1. 在 `packages/shared/src/rbac.ts` 的 `MEMBER_PERMISSIONS` 数组中添加 `'skill:execute'`（在 `'skill:view'` 之后）
+2. 从 `ADMIN_PERMISSIONS` 中移除 `'skill:execute'`（因为 admin 已继承 member 权限）
+3. 更新 `packages/shared/src/rbac.test.ts` — 添加显式测试验证 member 拥有 skill:execute
+4. 重新构建 shared 包 (`pnpm --filter @aiinstaller/shared build`)
+5. 验证 routes 测试中 member 用户可以执行 skill
+**验收标准**: 
+- member 角色拥有 `skill:view` + `skill:execute` 权限
+- admin 角色拥有 `skill:view` + `skill:execute` + `skill:manage` 权限
+- owner 继承所有权限
+- rbac 测试验证三个角色的 skill 权限分配
+**影响范围**: packages/shared/src/rbac.ts, packages/shared/src/rbac.test.ts
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] Skills.tsx 页面组件拆分 — 降至 500 行以下
+
+**ID**: skill-065
+**优先级**: P1
+**模块路径**: packages/dashboard/src/pages/Skills.tsx, packages/dashboard/src/components/skill/
+**当前状态**: `Skills.tsx` 693 行，超过 500 行软限制。页面内嵌了 `ExecuteDialog`、`ConfirmationBanner`、`AvailableSkillCard` 等内联组件定义，应提取到独立文件。
+**实现方案**: 
+1. 提取 `ExecuteDialog` 组件到 `components/skill/ExecuteDialog.tsx`（约 80 行）
+2. 提取 `ConfirmationBanner` 组件到 `components/skill/ConfirmationBanner.tsx`（约 50 行）
+3. 提取 `AvailableSkillCard` 组件到 `components/skill/AvailableSkillCard.tsx`（约 60 行）
+4. `Skills.tsx` 仅保留页面级布局和 tab 切换逻辑
+5. 目标：`Skills.tsx` ≤ 450 行
+**验收标准**: 
+- `Skills.tsx` ≤ 450 行
+- 各提取组件 ≤ 150 行
+- `Skills.test.tsx` 所有现有测试通过
+- 无视觉回归（组件行为不变）
+**影响范围**: packages/dashboard/src/pages/Skills.tsx, packages/dashboard/src/components/skill/ (3 个新文件)
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] Dashboard Skill 组件测试补全 — SkillCard / SkillConfigModal / ExecutionHistory / ExecutionStream
+
+**ID**: skill-066
+**优先级**: P2
+**模块路径**: packages/dashboard/src/components/skill/
+**当前状态**: 6 个 Skill 组件中仅 `ExecutionDetail` 有测试文件。`SkillCard`（129 行）、`SkillConfigModal`（228 行）、`ExecutionHistory`（146 行）、`ExecutionStream`（166 行）均无测试。Dashboard 组件测试覆盖率低于 70% 标准。
+**实现方案**: 
+1. 创建 `SkillCard.test.tsx` — 测试状态 toggle、配置按钮、执行按钮、卸载确认（约 8 个用例）
+2. 创建 `SkillConfigModal.test.tsx` — 测试各输入类型渲染（string/number/boolean/enum/string[]）、表单提交、校验（约 10 个用例）
+3. 创建 `ExecutionHistory.test.tsx` — 测试列表渲染、状态 badge、时间格式、空状态（约 6 个用例）
+4. 创建 `ExecutionStream.test.tsx` — 测试 SSE 连接、事件渲染、完成/错误状态（约 6 个用例）
+**验收标准**: 
+- 4 个新测试文件共约 30 个测试用例
+- 所有组件的核心交互和渲染路径被覆盖
+- 使用 @testing-library/react 标准模式
+- UI 测试覆盖率达到 70%+
+**影响范围**: packages/dashboard/src/components/skill/ (4 个新测试文件)
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] batch-executor.ts 单元测试
+
+**ID**: skill-067
+**优先级**: P2
+**模块路径**: packages/server/src/core/skill/batch-executor.test.ts (新)
+**当前状态**: `batch-executor.ts`（144 行）是唯一没有对应测试文件的核心 Skill 模块。`skill-integration.test.ts` 可能有部分覆盖，但无独立的单元测试。
+**实现方案**: 
+1. 创建 `batch-executor.test.ts`
+2. mock `getServerRepository()` 返回不同数量的服务器
+3. 测试用例：
+   - scope='all' 正常执行 3 台服务器
+   - scope='all' 空服务器列表返回空结果
+   - 部分服务器失败不影响其余服务器
+   - 单台服务器异常被正确 catch 并记录
+   - successCount/failureCount 计数正确
+   - batchId 唯一性
+4. 使用 vi.fn() mock `executeSingleFn` 回调
+**验收标准**: 
+- 至少 8 个测试用例
+- 覆盖成功、失败、部分失败、空列表所有路径
+- mock 模式与 skill-integration.test.ts 一致
+**影响范围**: packages/server/src/core/skill/batch-executor.test.ts (新)
+**创建时间**: (自动填充)
+**完成时间**: -
+
 ### [completed] runner-tools.test.ts — 工具定义构建 & 安全工具函数单元测试 ✅
 
 **ID**: skill-023

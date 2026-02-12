@@ -11,6 +11,16 @@ import { generateInstallPlan, generateFallbackPlan, loadKnowledgeBase, getKnowle
 import type { EnvironmentInfo, InstallPlan } from '@aiinstaller/shared';
 import type { InstallAIAgent } from './agent.js';
 import { KnowledgeBase } from '../knowledge/loader.js';
+import { logger } from '../utils/logger.js';
+
+vi.mock('../utils/logger.js', () => ({
+  logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  },
+}));
 
 // ============================================================================
 // Mock Data
@@ -138,6 +148,10 @@ describe('generateInstallPlan', () => {
     const result = await generateInstallPlan(mockAgent, mockEnvironment, 'openclaw');
 
     expect(result.plan).toBeNull();
+    expect(logger.error).toHaveBeenCalledWith(
+      { operation: 'generate_plan', software: 'openclaw', error: 'AI service unavailable' },
+      'Failed to generate install plan',
+    );
   });
 
   it('should support optional version parameter', async () => {
@@ -177,6 +191,10 @@ describe('generateInstallPlan', () => {
     const result = await generateInstallPlan(mockAgent, mockEnvironment, 'openclaw');
 
     expect(result.plan).toBeNull();
+    expect(logger.error).toHaveBeenCalledWith(
+      { operation: 'generate_plan', software: 'openclaw', error: 'Network error' },
+      'Error in generateInstallPlan',
+    );
   });
 });
 
@@ -440,6 +458,10 @@ describe('loadKnowledgeBase', () => {
     const kb = await loadKnowledgeBase('nonexistent-software');
 
     expect(kb).toBeNull();
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ operation: 'load_knowledge_base', software: 'nonexistent-software' }),
+      expect.stringContaining('Failed to load knowledge base for "nonexistent-software"'),
+    );
   });
 
   it('should load knowledge base for openclaw if it exists', async () => {
@@ -449,6 +471,10 @@ describe('loadKnowledgeBase', () => {
     if (kb) {
       expect(kb.isLoaded()).toBe(true);
       expect(kb.getDocumentCount()).toBeGreaterThan(0);
+      expect(logger.info).toHaveBeenCalledWith(
+        expect.objectContaining({ operation: 'load_knowledge_base', software: 'openclaw', documentCount: expect.any(Number) }),
+        expect.stringContaining('Loaded'),
+      );
     }
   });
 
@@ -456,5 +482,9 @@ describe('loadKnowledgeBase', () => {
     const kb = await loadKnowledgeBase('invalid/path/with/slashes');
 
     expect(kb).toBeNull();
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ operation: 'load_knowledge_base', software: 'invalid/path/with/slashes' }),
+      expect.stringContaining('Failed to load knowledge base for "invalid/path/with/slashes"'),
+    );
   });
 });

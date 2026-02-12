@@ -756,7 +756,9 @@ export type WebhookEventType =
   | 'alert.triggered'
   | 'server.offline'
   | 'operation.failed'
-  | 'agent.disconnected';
+  | 'agent.disconnected'
+  | 'skill.completed'
+  | 'skill.failed';
 
 export const webhooks = sqliteTable(
   'webhooks',

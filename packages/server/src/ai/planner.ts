@@ -12,6 +12,7 @@
 import type { EnvironmentInfo, InstallPlan } from '@aiinstaller/shared';
 import type { InstallAIAgent, TokenUsage, StreamCallbacks } from './agent.js';
 import { KnowledgeBase } from '../knowledge/loader.js';
+import { logger } from '../utils/logger.js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -66,13 +67,13 @@ export async function generateInstallPlan(
     );
 
     if (!result.success || !result.data) {
-      console.error(`Failed to generate install plan: ${result.error}`);
+      logger.error({ operation: 'generate_plan', software, error: result.error }, 'Failed to generate install plan');
       return { plan: null, usage: result.usage };
     }
 
     return { plan: result.data, usage: result.usage };
   } catch (error) {
-    console.error('Error in generateInstallPlan:', error);
+    logger.error({ operation: 'generate_plan', software, error: error instanceof Error ? error.message : String(error) }, 'Error in generateInstallPlan');
     return { plan: null };
   }
 }
@@ -92,11 +93,11 @@ export async function loadKnowledgeBase(software: string): Promise<KnowledgeBase
     const kb = new KnowledgeBase({ baseDir: softwareKbDir });
 
     const count = kb.loadDocuments();
-    console.log(`Loaded ${count} knowledge base documents for "${software}"`);
+    logger.info({ operation: 'load_knowledge_base', software, documentCount: count }, `Loaded ${count} knowledge base documents for "${software}"`);
 
     return kb;
   } catch (error) {
-    console.warn(`Failed to load knowledge base for "${software}":`, error instanceof Error ? error.message : String(error));
+    logger.warn({ operation: 'load_knowledge_base', software, error: error instanceof Error ? error.message : String(error) }, `Failed to load knowledge base for "${software}"`);
     return null;
   }
 }

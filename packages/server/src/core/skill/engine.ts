@@ -33,6 +33,7 @@ import {
   getServerRepository,
 } from '../../db/repositories/server-repository.js';
 import { getSkillEventBus } from './skill-event-bus.js';
+import { getWebhookDispatcher } from '../webhook/dispatcher.js';
 import type { SkillManifest, SkillInput } from '@aiinstaller/shared';
 import type { SkillStatus } from '../../db/schema.js';
 import type {
@@ -412,6 +413,12 @@ export class SkillEngine {
         { serverId, skillId, skillName: skill.name, executionId: execution.id, chainContext: nextChain },
       );
 
+      this.dispatchWebhookEvent(
+        status === 'success' ? 'skill.completed' : 'skill.failed',
+        userId,
+        { serverId, skillId, skillName: skill.name, executionId: execution.id, status, duration },
+      );
+
       return execResult;
     } catch (err) {
       const duration = Date.now() - startTime;
@@ -422,6 +429,11 @@ export class SkillEngine {
 
       this.emitTriggerEvent('skill.failed', {
         serverId, skillId, skillName: skill.name, executionId: execution.id, chainContext: nextChain,
+      });
+
+      this.dispatchWebhookEvent('skill.failed', userId, {
+        serverId, skillId, skillName: skill.name, executionId: execution.id,
+        status: 'failed', duration, error: errorMessage,
       });
 
       return {
@@ -437,6 +449,22 @@ export class SkillEngine {
     this.triggerManager.handleEvent(eventType, data).catch((err) => {
       logger.error({ eventType, error: (err as Error).message }, 'Failed to emit trigger event');
     });
+  }
+
+  /** Fire-and-forget webhook dispatch for external subscribers. */
+  private dispatchWebhookEvent(
+    type: 'skill.completed' | 'skill.failed',
+    userId: string,
+    data: Record<string, unknown>,
+  ): void {
+    try {
+      const dispatcher = getWebhookDispatcher();
+      dispatcher.dispatch({ type, userId, data }).catch((err) => {
+        logger.error({ type, error: (err as Error).message }, 'Failed to dispatch webhook event');
+      });
+    } catch {
+      // Dispatcher not initialized — skip silently (e.g. in tests)
+    }
   }
 
   // --------------------------------------------------------------------------
@@ -579,6 +607,12 @@ export class SkillEngine {
 
       await this.repo.completeExecution(execution.id, status, result, runResult.stepsExecuted, duration);
 
+      this.dispatchWebhookEvent(
+        status === 'success' ? 'skill.completed' : 'skill.failed',
+        userId,
+        { serverId, skillId, skillName: skill.name, executionId: execution.id, status, duration },
+      );
+
       return {
         executionId: execution.id, status, stepsExecuted: runResult.stepsExecuted,
         duration, result, errors: runResult.errors,
@@ -587,6 +621,11 @@ export class SkillEngine {
       const duration = Date.now() - startTime;
       const errorMessage = (err as Error).message;
       await this.repo.completeExecution(execution.id, 'failed', { error: errorMessage }, 0, duration);
+
+      this.dispatchWebhookEvent('skill.failed', userId, {
+        serverId, skillId, skillName: skill.name, executionId: execution.id,
+        status: 'failed', duration, error: errorMessage,
+      });
 
       return {
         executionId: execution.id, status: 'failed', stepsExecuted: 0,

@@ -6,7 +6,9 @@ export type WebhookEventType =
   | 'alert.triggered'
   | 'server.offline'
   | 'operation.failed'
-  | 'agent.disconnected';
+  | 'agent.disconnected'
+  | 'skill.completed'
+  | 'skill.failed';
 
 export const WEBHOOK_EVENT_TYPES: WebhookEventType[] = [
   'task.completed',
@@ -14,6 +16,8 @@ export const WEBHOOK_EVENT_TYPES: WebhookEventType[] = [
   'server.offline',
   'operation.failed',
   'agent.disconnected',
+  'skill.completed',
+  'skill.failed',
 ];
 
 export const EVENT_LABELS: Record<WebhookEventType, string> = {
@@ -22,6 +26,8 @@ export const EVENT_LABELS: Record<WebhookEventType, string> = {
   'server.offline': 'Server Offline',
   'operation.failed': 'Operation Failed',
   'agent.disconnected': 'Agent Disconnected',
+  'skill.completed': 'Skill Completed',
+  'skill.failed': 'Skill Failed',
 };
 
 export interface Webhook {

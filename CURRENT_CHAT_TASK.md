@@ -1,12 +1,12 @@
-### [pending] waitForStepDecision 超时无 SSE 反馈 — 用户等 5 分钟后无任何提示
+### [pending] planner.ts 使用 console.* 而非 pino logger — 生产环境日志不可见
 
-**ID**: chat-039
-**优先级**: P1
-**模块路径**: packages/server/src/api/routes/chat-execution.ts
-**发现的问题**: `waitForStepDecision()`（第 121-133 行）创建 Promise，5 分钟后 `setTimeout` 自动 resolve('reject')。但超时发生时：1) 没有 SSE 事件通知前端 2) 前端仍显示 step confirm UI，用户以为还在等待 3) `pendingDecisions.delete(key)` 后，如果用户此时点击 approve，`resolveStepDecision()` 返回 false（未找到），前端收到 404 但不知道原因。
-**改进方案**: 1) 超时时发送 SSE 事件 `step_decision_timeout`（含 stepId 和原因） 2) 前端收到此事件后自动关闭 confirm UI 并显示 "Step confirmation timed out" 提示 3) 前端 step confirm UI 显示倒计时。
-**验收标准**: 1) 超时发送 SSE 事件 2) 前端自动关闭过期的 confirm UI 3) 新增 2+ 测试覆盖超时场景 4) 用户体验无"静默失败"
-**影响范围**: `packages/server/src/api/routes/chat-execution.ts`, `packages/dashboard/src/stores/chat-execution.ts`
+**ID**: chat-040
+**优先级**: P2
+**模块路径**: packages/server/src/ai/planner.ts
+**发现的问题**: 第 69 行 `console.error(...)`, 第 75 行 `console.error(...)`, 第 95 行 `console.log(...)`, 第 99 行 `console.warn(...)` — 项目全局使用 pino 结构化日志，但 `planner.ts` 仍使用 `console.*`。这导致：1) 生产环境 JSON 日志流中出现非结构化文本 2) 日志级别不受 pino 配置控制 3) 无法通过日志聚合工具（ELK/Loki）过滤这些日志。
+**改进方案**: 导入项目 pino logger，将所有 `console.*` 替换为对应的 `logger.error/warn/info`，附带结构化上下文 `{ operation: 'generate_plan', software, error }`。
+**验收标准**: 1) planner.ts 零 `console.*` 调用 2) 所有日志使用 pino logger 3) 日志包含结构化上下文字段
+**影响范围**: `packages/server/src/ai/planner.ts`
 **创建时间**: (自动填充)
 **完成时间**: -
 
