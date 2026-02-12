@@ -12,13 +12,14 @@
 
 import { randomUUID } from 'node:crypto';
 import type { SSEStreamingApi } from 'hono/streaming';
-import type { RiskLevel } from '@aiinstaller/shared';
+import type { RiskLevel, InstallStep, InstallPlan } from '@aiinstaller/shared';
 import type { FullServerProfile } from '../../core/profile/manager.js';
 import type { ServerProfile } from '../../db/repositories/server-repository.js';
 import type { ValidationAction } from '../../core/security/command-validator.js';
 import { getSessionManager } from '../../core/session/manager.js';
 import { getTaskExecutor } from '../../core/task/executor.js';
-import { validateCommand } from '../../core/security/command-validator.js';
+import { validateCommand, validatePlan } from '../../core/security/command-validator.js';
+import type { PlanValidationResult } from '../../core/security/command-validator.js';
 import { getAuditLogger } from '../../core/security/audit-logger.js';
 import { autoDiagnoseStepFailure } from '../../ai/error-diagnosis-service.js';
 import { getChatAIAgent } from './chat-ai.js';
@@ -169,6 +170,63 @@ export function getActiveExecution(planId: string): string | undefined {
 /** Remove an active execution and return whether it existed. */
 export function removeActiveExecution(planId: string): boolean {
   return activePlanExecutions.delete(planId);
+}
+
+// ============================================================================
+// Plan Building
+// ============================================================================
+
+/** Result of building a stored plan from AI-generated install steps. */
+export interface BuildPlanResult {
+  storedPlan: StoredPlan;
+  validation: PlanValidationResult;
+}
+
+/**
+ * Build a StoredPlan from AI-generated InstallStep array.
+ *
+ * Validates each step through the security engine, classifies risk levels,
+ * and produces a plan structure ready for storage and execution.
+ */
+export function buildStoredPlan(
+  planId: string,
+  steps: InstallStep[],
+  description: string,
+  estimatedTime?: number,
+): BuildPlanResult {
+  const planSteps = steps.map((step, i) => ({
+    id: step.id ?? `step-${i + 1}`,
+    description: step.description,
+    command: step.command,
+    timeout: step.timeout ?? 30000,
+    canRollback: step.canRollback ?? false,
+  }));
+
+  const planValidation = validatePlan(planSteps);
+
+  const storedPlan: StoredPlan = {
+    planId,
+    description,
+    steps: planValidation.steps.map((sv) => ({
+      id: sv.stepId, description: sv.description, command: sv.command,
+      riskLevel: sv.validation.classification.riskLevel,
+      rollbackCommand: undefined,
+      timeout: planSteps.find((s) => s.id === sv.stepId)?.timeout ?? 30000,
+      canRollback: planSteps.find((s) => s.id === sv.stepId)?.canRollback ?? false,
+      validationAction: sv.validation.action,
+      validationReasons: sv.validation.reasons,
+    })),
+    totalRisk: planValidation.maxRiskLevel,
+    requiresConfirmation: planValidation.action !== 'allowed',
+    blocked: planValidation.action === 'blocked',
+    blockedSteps: planValidation.blockedSteps.map((s) => ({
+      stepId: s.stepId, command: s.command,
+      reason: s.validation.classification.reason,
+    })),
+    estimatedTime,
+  };
+
+  return { storedPlan, validation: planValidation };
 }
 
 // ============================================================================

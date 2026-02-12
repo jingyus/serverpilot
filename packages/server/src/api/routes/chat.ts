@@ -1,18 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
 /**
- * AI chat routes with SSE streaming.
- *
- * Handles conversational AI interactions: message → plan generation (SSE),
- * plan execution (SSE), and session CRUD.
- *
- * Execution modes:
- * - GREEN plans: auto-execute immediately (read-only commands)
- * - YELLOW/RED/CRITICAL plans: step-by-step confirmation (allow / allow_all / reject)
- * - FORBIDDEN commands: blocked, never executed
- *
- * Plan execution logic is in chat-execution.ts.
- *
+ * AI chat routes — message handling, session CRUD, plan execution triggers.
+ * Execution engine logic lives in chat-execution.ts.
  * @module api/routes/chat
  */
 
@@ -39,24 +29,19 @@ import type { ChatRetryEvent } from './chat-ai.js';
 import { getRagPipeline } from '../../knowledge/rag-pipeline.js';
 import { logger } from '../../utils/logger.js';
 import { findConnectedAgent } from '../../core/agent/agent-connector.js';
-import { validatePlan } from '../../core/security/command-validator.js';
 import { getAgenticEngine } from '../../ai/agentic-chat.js';
 import {
   executePlanSteps,
+  buildStoredPlan,
   resolveStepDecision,
   rejectAllPendingDecisions,
   getActiveExecution,
   removeActiveExecution,
 } from './chat-execution.js';
 import type { StoredPlan } from './chat-execution.js';
-import type { InstallStep } from '@aiinstaller/shared';
 import type { ChatMessageBody, ExecutePlanBody, CancelExecutionBody, StepDecisionBody, ConfirmBody } from './schemas.js';
 import type { ApiEnv } from './types.js';
 import { getTaskExecutor } from '../../core/task/executor.js';
-
-// ============================================================================
-// Agentic confirmation infrastructure
-// ============================================================================
 
 /**
  * Tracks pending agentic confirmations: `confirmId → resolve callback`.
@@ -70,19 +55,12 @@ const pendingConfirmations = new Map<string, {
 /** Confirmation timeout for agentic mode (5 minutes). */
 const CONFIRM_TIMEOUT_MS = 5 * 60 * 1000;
 
-// ============================================================================
-// Routes
-// ============================================================================
-
 const chat = new Hono<ApiEnv>();
 
 // All chat routes require authentication
 chat.use('*', requireAuth, resolveRole);
 
-// ============================================================================
 // POST /chat/:serverId — Send message, AI generates plan (SSE)
-// ============================================================================
-
 chat.post('/:serverId', requirePermission('chat:use'), validateBody(ChatMessageBodySchema), async (c) => {
   const { serverId } = c.req.param();
   const userId = c.get('userId');
@@ -97,8 +75,7 @@ chat.post('/:serverId', requirePermission('chat:use'), validateBody(ChatMessageB
 
   const sessionMgr = getSessionManager();
 
-  // Handle SSE reconnection: client lost connection and is reconnecting.
-  // Do NOT re-process the user message — just resume the session stream.
+  // SSE reconnection: resume session without re-processing the user message
   if (body.reconnect) {
     if (!body.sessionId) {
       throw ApiError.badRequest('sessionId is required for reconnect');
@@ -127,15 +104,9 @@ chat.post('/:serverId', requirePermission('chat:use'), validateBody(ChatMessageB
 
   const session = await sessionMgr.getOrCreate(serverId, userId, body.sessionId);
 
-  // Store user message (body.message is guaranteed non-empty for non-reconnect)
   await sessionMgr.addMessage(session.id, userId, 'user', body.message!);
+  logger.info({ operation: 'chat_message', serverId, sessionId: session.id, userId }, `Chat message received for server ${server.name}`);
 
-  logger.info(
-    { operation: 'chat_message', serverId, sessionId: session.id, userId },
-    `Chat message received for server ${server.name}`,
-  );
-
-  // Get full server profile via ProfileManager for rich AI context
   const profileMgr = getProfileManager();
   const fullProfile = await profileMgr.getProfile(serverId, userId);
 
@@ -284,36 +255,12 @@ chat.post('/:serverId', requirePermission('chat:use'), validateBody(ChatMessageB
       let autoExecuted = false;
       if (result.plan) {
         const planId = randomUUID();
-        const planSteps = result.plan.steps.map((step: InstallStep, i: number) => ({
-          id: step.id ?? `step-${i + 1}`,
-          description: step.description,
-          command: step.command,
-          timeout: step.timeout ?? 30000,
-          canRollback: step.canRollback ?? false,
-        }));
-
-        const planValidation = validatePlan(planSteps);
-        const storedPlan: StoredPlan = {
+        const { storedPlan, validation: planValidation } = buildStoredPlan(
           planId,
-          description: result.plan.description ?? 'Execution plan',
-          steps: planValidation.steps.map((sv) => ({
-            id: sv.stepId, description: sv.description, command: sv.command,
-            riskLevel: sv.validation.classification.riskLevel,
-            rollbackCommand: undefined,
-            timeout: planSteps.find((s: { id: string }) => s.id === sv.stepId)?.timeout ?? 30000,
-            canRollback: planSteps.find((s: { id: string }) => s.id === sv.stepId)?.canRollback ?? false,
-            validationAction: sv.validation.action,
-            validationReasons: sv.validation.reasons,
-          })),
-          totalRisk: planValidation.maxRiskLevel,
-          requiresConfirmation: planValidation.action !== 'allowed',
-          blocked: planValidation.action === 'blocked',
-          blockedSteps: planValidation.blockedSteps.map((s) => ({
-            stepId: s.stepId, command: s.command,
-            reason: s.validation.classification.reason,
-          })),
-          estimatedTime: result.plan.estimatedTime,
-        };
+          result.plan.steps,
+          result.plan.description ?? 'Execution plan',
+          result.plan.estimatedTime,
+        );
         sessionMgr.storePlan(session.id, storedPlan);
 
         const clientId = findConnectedAgent(serverId);
@@ -364,10 +311,7 @@ chat.post('/:serverId', requirePermission('chat:use'), validateBody(ChatMessageB
   });
 });
 
-// ============================================================================
 // POST /chat/:serverId/step-decision — User decision on a step
-// ============================================================================
-
 chat.post('/:serverId/step-decision', requirePermission('chat:use'), validateBody(StepDecisionBodySchema), async (c) => {
   const body = c.get('validatedBody') as StepDecisionBody;
 
@@ -384,10 +328,7 @@ chat.post('/:serverId/step-decision', requirePermission('chat:use'), validateBod
   return c.json({ success: true });
 });
 
-// ============================================================================
 // POST /chat/:serverId/confirm — User confirms/rejects a risky command (agentic)
-// ============================================================================
-
 chat.post('/:serverId/confirm', requirePermission('chat:use'), validateBody(ConfirmBodySchema), async (c) => {
   const body = c.get('validatedBody') as ConfirmBody;
 
@@ -408,10 +349,7 @@ chat.post('/:serverId/confirm', requirePermission('chat:use'), validateBody(Conf
   return c.json({ success: true });
 });
 
-// ============================================================================
 // POST /chat/:serverId/execute — Execute confirmed plan (SSE) [legacy]
-// ============================================================================
-
 chat.post('/:serverId/execute', requirePermission('chat:use'), validateBody(ExecutePlanBodySchema), async (c) => {
   const { serverId } = c.req.param();
   const userId = c.get('userId');
@@ -459,10 +397,7 @@ chat.post('/:serverId/execute', requirePermission('chat:use'), validateBody(Exec
   });
 });
 
-// ============================================================================
 // POST /chat/:serverId/execute/cancel — Emergency stop running execution
-// ============================================================================
-
 chat.post('/:serverId/execute/cancel', requirePermission('chat:use'), validateBody(CancelExecutionBodySchema), async (c) => {
   const { serverId } = c.req.param();
   const userId = c.get('userId');
@@ -497,10 +432,7 @@ chat.post('/:serverId/execute/cancel', requirePermission('chat:use'), validateBo
   return c.json({ success: cancelled });
 });
 
-// ============================================================================
 // GET /chat/:serverId/sessions — List chat sessions
-// ============================================================================
-
 chat.get('/:serverId/sessions', requirePermission('chat:use'), async (c) => {
   const { serverId } = c.req.param();
   const userId = c.get('userId');
@@ -515,10 +447,7 @@ chat.get('/:serverId/sessions', requirePermission('chat:use'), async (c) => {
   return c.json({ sessions });
 });
 
-// ============================================================================
 // GET /chat/:serverId/sessions/:sessionId — Get session details
-// ============================================================================
-
 chat.get('/:serverId/sessions/:sessionId', requirePermission('chat:use'), async (c) => {
   const { serverId, sessionId } = c.req.param();
   const userId = c.get('userId');
@@ -544,10 +473,7 @@ chat.get('/:serverId/sessions/:sessionId', requirePermission('chat:use'), async 
   });
 });
 
-// ============================================================================
 // DELETE /chat/:serverId/sessions/:sessionId — Delete session
-// ============================================================================
-
 chat.delete('/:serverId/sessions/:sessionId', requirePermission('chat:use'), async (c) => {
   const { serverId, sessionId } = c.req.param();
   const userId = c.get('userId');
