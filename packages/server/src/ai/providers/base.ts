@@ -11,6 +11,10 @@
  */
 
 import { z } from 'zod';
+import type { TokenUsage } from '../token-tracker.js';
+
+// Re-export TokenUsage for backward compatibility
+export type { TokenUsage } from '../token-tracker.js';
 
 // ============================================================================
 // Types
@@ -55,12 +59,6 @@ export interface ChatOptions {
   timeoutMs?: number;
   /** Tool definitions for function calling (tool_use) */
   tools?: ToolDefinition[];
-}
-
-/** Token usage from a response */
-export interface TokenUsage {
-  inputTokens: number;
-  outputTokens: number;
 }
 
 /** Result of a chat request */

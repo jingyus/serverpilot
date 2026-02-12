@@ -319,6 +319,8 @@ export async function diagnoseError(
       totalUsage = {
         inputTokens: totalUsage.inputTokens + fixResult.usage.inputTokens,
         outputTokens: totalUsage.outputTokens + fixResult.usage.outputTokens,
+        cacheCreationInputTokens: (totalUsage.cacheCreationInputTokens ?? 0) + (fixResult.usage.cacheCreationInputTokens ?? 0),
+        cacheReadInputTokens: (totalUsage.cacheReadInputTokens ?? 0) + (fixResult.usage.cacheReadInputTokens ?? 0),
       };
     } else if (fixResult.usage) {
       totalUsage = fixResult.usage;

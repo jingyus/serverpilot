@@ -3,14 +3,14 @@
 > 此队列专注于 Skill 插件系统的设计与实现
 > AI 自动扫描 → 发现缺失 → 设计实现 → 验证
 
-**最后更新**: 2026-02-13 06:07:48
+**最后更新**: 2026-02-13 06:16:28
 
 ## 📊 统计
 
 - **总任务数**: 47
-- **待完成** (pending): 9
+- **待完成** (pending): 8
 - **进行中** (in_progress): 0
-- **已完成** (completed): 38
+- **已完成** (completed): 39
 - **失败** (failed): 0
 
 ## 📋 任务列表
@@ -60,7 +60,7 @@
 
 ---
 
-### [pending] trigger-manager.test.ts 拆分 — 1175 行超出 800 行硬限制
+### [completed] trigger-manager.test.ts 拆分 — 1175 行超出 800 行硬限制 ✅
 
 **ID**: skill-070
 **优先级**: P0
@@ -76,7 +76,7 @@
 - `pnpm vitest run packages/server/src/core/skill/trigger-manager` 全部绿色
 **影响范围**: packages/server/src/core/skill/trigger-manager.test.ts, packages/server/src/core/skill/trigger-manager-triggers.test.ts (新), packages/server/src/core/skill/trigger-manager-advanced.test.ts (新)
 **创建时间**: (自动填充)
-**完成时间**: -
+**完成时间**: 2026-02-13 06:16:28
 
 ---
 

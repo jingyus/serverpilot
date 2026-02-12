@@ -9,7 +9,7 @@
  * @module ai/token-counting
  */
 
-import type { TokenUsage } from './agent.js';
+import type { TokenUsage } from './token-tracker.js';
 
 // ============================================================================
 // Types
@@ -84,10 +84,14 @@ export function extractClaudeTokens(response: unknown): TokenUsage | null {
   const u = usage as Record<string, unknown>;
   const inputTokens = typeof u.input_tokens === 'number' ? u.input_tokens : 0;
   const outputTokens = typeof u.output_tokens === 'number' ? u.output_tokens : 0;
+  const cacheCreationInputTokens = typeof u.cache_creation_input_tokens === 'number' ? u.cache_creation_input_tokens : 0;
+  const cacheReadInputTokens = typeof u.cache_read_input_tokens === 'number' ? u.cache_read_input_tokens : 0;
 
   return {
     inputTokens,
     outputTokens,
+    cacheCreationInputTokens,
+    cacheReadInputTokens,
   };
 }
 
@@ -127,6 +131,8 @@ export function extractOpenAITokens(response: unknown): TokenUsage | null {
   return {
     inputTokens,
     outputTokens,
+    cacheCreationInputTokens: 0,
+    cacheReadInputTokens: 0,
   };
 }
 
@@ -174,6 +180,8 @@ export function extractOllamaTokens(response: unknown): TokenUsage | null {
   return {
     inputTokens,
     outputTokens,
+    cacheCreationInputTokens: 0,
+    cacheReadInputTokens: 0,
   };
 }
 
@@ -263,17 +271,21 @@ export function addTokenUsage(
 
   // Update operation breakdown
   if (!aggregation.byOperation[operation]) {
-    aggregation.byOperation[operation] = { inputTokens: 0, outputTokens: 0 };
+    aggregation.byOperation[operation] = { inputTokens: 0, outputTokens: 0, cacheCreationInputTokens: 0, cacheReadInputTokens: 0 };
   }
   aggregation.byOperation[operation].inputTokens += usage.inputTokens;
   aggregation.byOperation[operation].outputTokens += usage.outputTokens;
+  aggregation.byOperation[operation].cacheCreationInputTokens = (aggregation.byOperation[operation].cacheCreationInputTokens ?? 0) + (usage.cacheCreationInputTokens ?? 0);
+  aggregation.byOperation[operation].cacheReadInputTokens = (aggregation.byOperation[operation].cacheReadInputTokens ?? 0) + (usage.cacheReadInputTokens ?? 0);
 
   // Update provider breakdown
   if (!aggregation.byProvider[provider]) {
-    aggregation.byProvider[provider] = { inputTokens: 0, outputTokens: 0 };
+    aggregation.byProvider[provider] = { inputTokens: 0, outputTokens: 0, cacheCreationInputTokens: 0, cacheReadInputTokens: 0 };
   }
   aggregation.byProvider[provider].inputTokens += usage.inputTokens;
   aggregation.byProvider[provider].outputTokens += usage.outputTokens;
+  aggregation.byProvider[provider].cacheCreationInputTokens = (aggregation.byProvider[provider].cacheCreationInputTokens ?? 0) + (usage.cacheCreationInputTokens ?? 0);
+  aggregation.byProvider[provider].cacheReadInputTokens = (aggregation.byProvider[provider].cacheReadInputTokens ?? 0) + (usage.cacheReadInputTokens ?? 0);
 
   return aggregation;
 }
@@ -298,8 +310,10 @@ export function mergeTokenUsage(usages: TokenUsage[]): TokenUsage {
     (acc, usage) => ({
       inputTokens: acc.inputTokens + usage.inputTokens,
       outputTokens: acc.outputTokens + usage.outputTokens,
+      cacheCreationInputTokens: acc.cacheCreationInputTokens + usage.cacheCreationInputTokens,
+      cacheReadInputTokens: acc.cacheReadInputTokens + usage.cacheReadInputTokens,
     }),
-    { inputTokens: 0, outputTokens: 0 }
+    { inputTokens: 0, outputTokens: 0, cacheCreationInputTokens: 0, cacheReadInputTokens: 0 }
   );
 }
 
@@ -343,6 +357,8 @@ export function estimateTokenUsage(prompt: string, response: string): TokenUsage
   return {
     inputTokens: estimateTokenCount(prompt),
     outputTokens: estimateTokenCount(response),
+    cacheCreationInputTokens: 0,
+    cacheReadInputTokens: 0,
   };
 }
 
@@ -384,5 +400,7 @@ export function safeTokenUsage(usage: unknown): TokenUsage {
   return {
     inputTokens: 0,
     outputTokens: 0,
+    cacheCreationInputTokens: 0,
+    cacheReadInputTokens: 0,
   };
 }

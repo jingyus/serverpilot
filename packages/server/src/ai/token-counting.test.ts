@@ -27,6 +27,8 @@ describe('extractClaudeTokens', () => {
     expect(result).toEqual({
       inputTokens: 100,
       outputTokens: 50,
+      cacheCreationInputTokens: 0,
+      cacheReadInputTokens: 0,
     });
   });
 
@@ -49,6 +51,8 @@ describe('extractOpenAITokens', () => {
     expect(result).toEqual({
       inputTokens: 150,
       outputTokens: 75,
+      cacheCreationInputTokens: 0,
+      cacheReadInputTokens: 0,
     });
   });
 });
@@ -61,6 +65,8 @@ describe('extractTokenUsage', () => {
     expect(extractTokenUsage(claudeResponse, 'claude')).toEqual({
       inputTokens: 100,
       outputTokens: 50,
+      cacheCreationInputTokens: 0,
+      cacheReadInputTokens: 0,
     });
   });
 });
@@ -68,14 +74,16 @@ describe('extractTokenUsage', () => {
 describe('mergeTokenUsage', () => {
   it('should merge multiple token usage objects', () => {
     const usages = [
-      { inputTokens: 100, outputTokens: 50 },
-      { inputTokens: 80, outputTokens: 40 },
+      { inputTokens: 100, outputTokens: 50, cacheCreationInputTokens: 0, cacheReadInputTokens: 0 },
+      { inputTokens: 80, outputTokens: 40, cacheCreationInputTokens: 0, cacheReadInputTokens: 0 },
     ];
 
     const result = mergeTokenUsage(usages);
     expect(result).toEqual({
       inputTokens: 180,
       outputTokens: 90,
+      cacheCreationInputTokens: 0,
+      cacheReadInputTokens: 0,
     });
   });
 });
@@ -98,6 +106,6 @@ describe('safeTokenUsage', () => {
   });
 
   it('should return zero for invalid input', () => {
-    expect(safeTokenUsage(null)).toEqual({ inputTokens: 0, outputTokens: 0 });
+    expect(safeTokenUsage(null)).toEqual({ inputTokens: 0, outputTokens: 0, cacheCreationInputTokens: 0, cacheReadInputTokens: 0 });
   });
 });

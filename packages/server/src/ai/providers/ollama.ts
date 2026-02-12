@@ -221,7 +221,7 @@ export class OllamaProvider implements AIProviderInterface {
     };
 
     let accumulated = '';
-    let usage: TokenUsage = { inputTokens: 0, outputTokens: 0 };
+    let usage: TokenUsage = { inputTokens: 0, outputTokens: 0, cacheCreationInputTokens: 0, cacheReadInputTokens: 0 };
 
     try {
       const response = await this.fetchWithTimeout(
@@ -370,6 +370,8 @@ export class OllamaProvider implements AIProviderInterface {
     return {
       inputTokens: data.prompt_eval_count ?? 0,
       outputTokens: data.eval_count ?? 0,
+      cacheCreationInputTokens: 0,
+      cacheReadInputTokens: 0,
     };
   }
 

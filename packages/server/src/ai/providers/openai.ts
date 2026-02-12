@@ -311,6 +311,8 @@ export class OpenAIProvider implements AIProviderInterface {
       usage: {
         inputTokens: data.usage.prompt_tokens,
         outputTokens: data.usage.completion_tokens,
+        cacheCreationInputTokens: 0,
+        cacheReadInputTokens: 0,
       },
     };
   }
@@ -340,7 +342,7 @@ export class OpenAIProvider implements AIProviderInterface {
     };
 
     let accumulated = '';
-    let usage: TokenUsage = { inputTokens: 0, outputTokens: 0 };
+    let usage: TokenUsage = { inputTokens: 0, outputTokens: 0, cacheCreationInputTokens: 0, cacheReadInputTokens: 0 };
 
     try {
       const response = await this.fetchWithTimeout(
@@ -401,6 +403,8 @@ export class OpenAIProvider implements AIProviderInterface {
             usage = {
               inputTokens: chunk.usage.prompt_tokens,
               outputTokens: chunk.usage.completion_tokens,
+              cacheCreationInputTokens: 0,
+              cacheReadInputTokens: 0,
             };
           }
         }

@@ -20,10 +20,10 @@ export interface TokenUsage {
   inputTokens: number;
   /** Number of output tokens (completion) */
   outputTokens: number;
-  /** Number of tokens used for cache creation (if applicable) */
-  cacheCreationInputTokens: number;
-  /** Number of tokens read from cache (if applicable) */
-  cacheReadInputTokens: number;
+  /** Number of tokens used for cache creation (if applicable, defaults to 0) */
+  cacheCreationInputTokens?: number;
+  /** Number of tokens read from cache (if applicable, defaults to 0) */
+  cacheReadInputTokens?: number;
 }
 
 /** A recorded token usage entry with metadata */
@@ -291,9 +291,9 @@ export function estimateCost(model: string, usage: TokenUsage): number {
   const inputCost = (usage.inputTokens / 1_000_000) * pricing.inputPerMillion;
   const outputCost = (usage.outputTokens / 1_000_000) * pricing.outputPerMillion;
   const cacheCreationCost =
-    (usage.cacheCreationInputTokens / 1_000_000) * pricing.cacheCreationPerMillion;
+    ((usage.cacheCreationInputTokens ?? 0) / 1_000_000) * pricing.cacheCreationPerMillion;
   const cacheReadCost =
-    (usage.cacheReadInputTokens / 1_000_000) * pricing.cacheReadPerMillion;
+    ((usage.cacheReadInputTokens ?? 0) / 1_000_000) * pricing.cacheReadPerMillion;
 
   return inputCost + outputCost + cacheCreationCost + cacheReadCost;
 }
@@ -360,8 +360,8 @@ export function aggregateStats(entries: readonly TokenUsageEntry[]): TokenUsageS
   for (const entry of entries) {
     totalInputTokens += entry.usage.inputTokens;
     totalOutputTokens += entry.usage.outputTokens;
-    totalCacheCreationTokens += entry.usage.cacheCreationInputTokens;
-    totalCacheReadTokens += entry.usage.cacheReadInputTokens;
+    totalCacheCreationTokens += entry.usage.cacheCreationInputTokens ?? 0;
+    totalCacheReadTokens += entry.usage.cacheReadInputTokens ?? 0;
     totalCostUsd += entry.estimatedCostUsd;
   }
 

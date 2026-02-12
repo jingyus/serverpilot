@@ -12,6 +12,10 @@
 
 import { z } from 'zod';
 import type { ProviderStreamCallbacks } from './providers/base.js';
+import type { TokenUsage } from './token-tracker.js';
+
+// Re-export TokenUsage for backward compatibility
+export type { TokenUsage } from './token-tracker.js';
 
 // ============================================================================
 // Types
@@ -32,12 +36,6 @@ export interface AIAgentOptions {
   enablePresetFallback?: boolean;
   /** Custom retry configuration */
   retryConfig?: import('./fault-tolerance.js').RetryConfig;
-}
-
-/** Token usage from AI API response */
-export interface TokenUsage {
-  inputTokens: number;
-  outputTokens: number;
 }
 
 /** Result of an AI analysis operation */

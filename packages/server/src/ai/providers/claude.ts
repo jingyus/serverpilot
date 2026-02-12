@@ -105,6 +105,8 @@ export class ClaudeProvider implements AIProviderInterface {
       usage: {
         inputTokens: response.usage?.input_tokens ?? 0,
         outputTokens: response.usage?.output_tokens ?? 0,
+        cacheCreationInputTokens: response.usage?.cache_creation_input_tokens ?? 0,
+        cacheReadInputTokens: response.usage?.cache_read_input_tokens ?? 0,
       },
       toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
       stopReason: response.stop_reason ?? undefined,
@@ -116,7 +118,7 @@ export class ClaudeProvider implements AIProviderInterface {
     callbacks?: ProviderStreamCallbacks,
   ): Promise<StreamResponse> {
     let accumulated = '';
-    let usage: TokenUsage = { inputTokens: 0, outputTokens: 0 };
+    let usage: TokenUsage = { inputTokens: 0, outputTokens: 0, cacheCreationInputTokens: 0, cacheReadInputTokens: 0 };
 
     try {
       const streamParams: Anthropic.MessageCreateParams = {
@@ -153,6 +155,8 @@ export class ClaudeProvider implements AIProviderInterface {
       usage = {
         inputTokens: finalMessage.usage?.input_tokens ?? 0,
         outputTokens: finalMessage.usage?.output_tokens ?? 0,
+        cacheCreationInputTokens: finalMessage.usage?.cache_creation_input_tokens ?? 0,
+        cacheReadInputTokens: finalMessage.usage?.cache_read_input_tokens ?? 0,
       };
 
       const toolCalls = this.extractToolCalls(finalMessage);

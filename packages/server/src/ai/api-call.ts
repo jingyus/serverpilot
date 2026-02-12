@@ -72,6 +72,8 @@ export async function callAI<T>(
       usage = {
         inputTokens: response.usage.inputTokens,
         outputTokens: response.usage.outputTokens,
+        cacheCreationInputTokens: response.usage.cacheCreationInputTokens,
+        cacheReadInputTokens: response.usage.cacheReadInputTokens,
       };
 
       const parsed = parseJSON(response.content);
@@ -152,6 +154,8 @@ export async function callAIStreaming<T>(
       usage = {
         inputTokens: streamResult.usage.inputTokens,
         outputTokens: streamResult.usage.outputTokens,
+        cacheCreationInputTokens: streamResult.usage.cacheCreationInputTokens,
+        cacheReadInputTokens: streamResult.usage.cacheReadInputTokens,
       };
 
       if (!streamResult.success) {
