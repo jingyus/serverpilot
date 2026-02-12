@@ -10,7 +10,7 @@
  * @module core/skill/types
  */
 
-import type { SkillManifest } from '@aiinstaller/shared';
+import type { SkillManifest, SkillInput } from '@aiinstaller/shared';
 import type {
   SkillSource,
   SkillStatus,
@@ -36,6 +36,14 @@ export interface InstalledSkill {
   config: Record<string, unknown> | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * InstalledSkill enriched with manifest input definitions.
+ * Used by the API layer to provide input metadata to the dashboard.
+ */
+export interface InstalledSkillWithInputs extends InstalledSkill {
+  inputs: SkillInput[];
 }
 
 // ============================================================================

@@ -33,6 +33,7 @@ import type { SkillManifest } from '@aiinstaller/shared';
 import type { SkillStatus } from '../../db/schema.js';
 import type {
   InstalledSkill,
+  InstalledSkillWithInputs,
   SkillExecution,
   SkillExecutionResult,
   AvailableSkill,
@@ -430,9 +431,46 @@ export class SkillEngine {
     return this.repo.findAll(userId);
   }
 
+  /**
+   * List installed skills enriched with manifest input definitions.
+   *
+   * For each skill, loads the skill.yaml from disk and extracts `inputs[]`.
+   * If a manifest cannot be loaded (e.g. skill directory was moved), the
+   * skill is still returned with an empty inputs array.
+   */
+  async listInstalledWithInputs(userId: string): Promise<InstalledSkillWithInputs[]> {
+    const skills = await this.repo.findAll(userId);
+    return Promise.all(
+      skills.map(async (skill): Promise<InstalledSkillWithInputs> => {
+        try {
+          const manifest = await loadSkillFromDir(skill.skillPath);
+          return { ...skill, inputs: manifest.inputs ?? [] };
+        } catch {
+          logger.warn({ skillId: skill.id, path: skill.skillPath }, 'Failed to load manifest for inputs');
+          return { ...skill, inputs: [] };
+        }
+      }),
+    );
+  }
+
   /** Get a single installed skill by ID. */
   async getInstalled(skillId: string): Promise<InstalledSkill | null> {
     return this.repo.findById(skillId);
+  }
+
+  /**
+   * Get a single installed skill enriched with manifest input definitions.
+   */
+  async getInstalledWithInputs(skillId: string): Promise<InstalledSkillWithInputs | null> {
+    const skill = await this.repo.findById(skillId);
+    if (!skill) return null;
+    try {
+      const manifest = await loadSkillFromDir(skill.skillPath);
+      return { ...skill, inputs: manifest.inputs ?? [] };
+    } catch {
+      logger.warn({ skillId: skill.id, path: skill.skillPath }, 'Failed to load manifest for inputs');
+      return { ...skill, inputs: [] };
+    }
   }
 
   /**

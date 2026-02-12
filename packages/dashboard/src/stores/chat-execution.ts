@@ -163,7 +163,8 @@ export function createRespondToStep(set: SetFn, get: GetFn) {
         }),
       });
     } catch {
-      // If the decision API fails, the server timeout will auto-reject
+      set({ pendingConfirm, error: 'Failed to send step decision. Please try again.' });
+      return;
     }
 
     if (decision === 'reject') {
@@ -196,7 +197,7 @@ export function createRespondToAgenticConfirm(set: SetFn, get: GetFn) {
         }),
       });
     } catch {
-      // If confirm API fails, server timeout will auto-reject
+      set({ agenticConfirm, error: 'Failed to send confirmation. Please try again.' });
     }
   };
 }

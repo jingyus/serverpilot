@@ -1,19 +1,19 @@
-### [pending] Plan 完成后未从 Session.plans Map 中清除 — 阻止缓存驱逐
+### [pending] respondToStep/respondToAgenticConfirm 失败时无用户反馈 — 用户操作被静默吞没
 
-**ID**: chat-025
+**ID**: chat-026
 **优先级**: P1
-**模块路径**: packages/server/src/core/session/manager.ts, packages/server/src/api/routes/chat-execution.ts
-**发现的问题**: `manager.ts:174-176` 的 `isActive()` 判断 `session.plans.size > 0` 来保护活跃会话不被驱逐。但 plan 执行完成后，`chat-execution.ts:424` 只从 `activePlanExecutions` Map 中删除了 planId，**从未**调用 `sessionMgr.removePlan(sessionId, planId)` 或类似方法清除 `session.plans` Map 中的条目。这意味着任何执行过至少一个 plan 的会话的 `plans.size` 永远 > 0，`isActive()` 永远返回 true，该会话**永远不会被 LRU 驱逐或 TTL 过期**。长期运行的服务器会因此累积所有曾执行过 plan 的会话，内存持续增长。
+**模块路径**: packages/dashboard/src/stores/chat-execution.ts
+**发现的问题**: `chat-execution.ts:153-167` 的 `createRespondToStep` 在 `set({ pendingConfirm: null })` 之后才发送 API 请求。如果 API 调用失败（网络断开、500 错误），catch 块（165-167）空且注释"let server timeout auto-reject"。用户点击 Allow 后确认栏消失（看起来操作成功），但实际决策未到达服务端，5 分钟后服务端超时自动 reject。`createRespondToAgenticConfirm`（188-201）有完全相同的问题。对比 `emergencyStop`（204-236）虽然也吞没错误，但至少立即更新状态为 cancelled。
 **改进方案**: 
-1. 在 `SessionManager` 中添加 `removePlan(sessionId: string, planId: string)` 方法
-2. 在 `executePlanSteps` 完成后（`chat-execution.ts:424` 附近）调用 `sessionMgr.removePlan(sessionId, planId)` 
-3. 在 `rejectAllPendingDecisions` 和取消流程中也清理对应 plan
-4. 或改进 `isActive()` 逻辑，让它区分"有活跃执行的 plan"和"已完成的 plan"
+1. 在 catch 块中恢复 `pendingConfirm`/`agenticConfirm` 状态（让用户可以重试）
+2. 或在 catch 块中 `set({ error: 'Failed to send decision. Please try again.' })`
+3. 显示短暂的 toast 通知"决策发送失败"
+4. 将 `set({ pendingConfirm: null })` 移到 API 成功之后（乐观更新 → 悲观更新）
 **验收标准**: 
-- Plan 执行完成后 `session.plans.size` 回到 0
-- 执行完 plan 的不活跃会话可以被 LRU 驱逐和 TTL 过期
-- 新增测试：plan 执行后验证 plans Map 被清理
-**影响范围**: packages/server/src/core/session/manager.ts, packages/server/src/api/routes/chat-execution.ts
+- API 失败时 pendingConfirm/agenticConfirm 恢复，用户可以重试
+- 或有明确的错误提示告知用户操作失败
+- 新增测试：模拟 API 失败，验证状态恢复或错误提示
+**影响范围**: packages/dashboard/src/stores/chat-execution.ts
 **创建时间**: (自动填充)
 **完成时间**: -
 

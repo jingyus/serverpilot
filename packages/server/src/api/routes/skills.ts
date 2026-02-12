@@ -51,7 +51,7 @@ skillsRoute.use('*', requireAuth, resolveRole);
 skillsRoute.get('/', requirePermission('skill:view'), async (c) => {
   const userId = c.get('userId');
   const engine = getSkillEngine();
-  const skills = await engine.listInstalled(userId);
+  const skills = await engine.listInstalledWithInputs(userId);
   return c.json({ skills });
 });
 

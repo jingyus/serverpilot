@@ -3,14 +3,14 @@
 > 此队列专注于 Chat 和 AI 对话系统的质量改进
 > AI 自动发现问题 → 生成任务 → 实现 → 验证
 
-**最后更新**: 2026-02-13 02:28:42
+**最后更新**: 2026-02-13 02:32:10
 
 ## 📊 统计
 
 - **总任务数**: 32
-- **待完成** (pending): 7
+- **待完成** (pending): 6
 - **进行中** (in_progress): 0
-- **已完成** (completed): 25
+- **已完成** (completed): 26
 - **失败** (failed): 0
 
 ## 📋 任务列表
@@ -124,7 +124,7 @@
 
 ---
 
-### [pending] respondToStep/respondToAgenticConfirm 失败时无用户反馈 — 用户操作被静默吞没
+### [completed] respondToStep/respondToAgenticConfirm 失败时无用户反馈 — 用户操作被静默吞没 ✅
 
 **ID**: chat-026
 **优先级**: P1
@@ -141,7 +141,7 @@
 - 新增测试：模拟 API 失败，验证状态恢复或错误提示
 **影响范围**: packages/dashboard/src/stores/chat-execution.ts
 **创建时间**: (自动填充)
-**完成时间**: -
+**完成时间**: 2026-02-13 02:32:10
 
 ---
 

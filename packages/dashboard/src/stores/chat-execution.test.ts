@@ -316,6 +316,119 @@ describe('chat-execution (via useChatStore)', () => {
       await useChatStore.getState().respondToStep('allow');
       expect(apiRequest).not.toHaveBeenCalled();
     });
+
+    it('restores pendingConfirm and sets error on API failure', async () => {
+      (apiRequest as Mock).mockRejectedValueOnce(new Error('Network error'));
+
+      const confirm = {
+        stepId: 'step-1',
+        command: 'rm -rf /tmp',
+        description: 'Remove temp',
+        riskLevel: 'red',
+      };
+
+      useChatStore.setState({
+        serverId: 'srv-1',
+        sessionId: 'sess-1',
+        currentPlan: {
+          planId: 'plan-1',
+          description: 'Test',
+          steps: [],
+          totalRisk: 'yellow',
+          requiresConfirmation: true,
+        },
+        pendingConfirm: confirm,
+      });
+
+      await useChatStore.getState().respondToStep('allow');
+
+      const state = useChatStore.getState();
+      expect(state.pendingConfirm).toEqual(confirm);
+      expect(state.error).toBe('Failed to send step decision. Please try again.');
+    });
+
+    it('does not set cancelled state on reject when API fails', async () => {
+      (apiRequest as Mock).mockRejectedValueOnce(new Error('Server error'));
+
+      useChatStore.setState({
+        serverId: 'srv-1',
+        sessionId: 'sess-1',
+        currentPlan: {
+          planId: 'plan-1',
+          description: 'Test',
+          steps: [],
+          totalRisk: 'yellow',
+          requiresConfirmation: true,
+        },
+        pendingConfirm: {
+          stepId: 'step-1',
+          command: 'cmd',
+          description: 'desc',
+          riskLevel: 'yellow',
+        },
+        planStatus: 'executing',
+      });
+
+      await useChatStore.getState().respondToStep('reject');
+
+      const state = useChatStore.getState();
+      // Should NOT have set cancelled — the rejection didn't reach the server
+      expect(state.planStatus).toBe('executing');
+      expect(state.execution.cancelled).toBe(false);
+      expect(state.pendingConfirm).not.toBeNull();
+      expect(state.error).toBe('Failed to send step decision. Please try again.');
+    });
+  });
+
+  describe('respondToAgenticConfirm', () => {
+    it('sends confirm API and clears agenticConfirm on success', async () => {
+      (apiRequest as Mock).mockResolvedValueOnce({});
+
+      useChatStore.setState({
+        serverId: 'srv-1',
+        agenticConfirm: {
+          confirmId: 'conf-1',
+          command: 'apt install nginx',
+          description: 'Install nginx',
+          riskLevel: 'yellow',
+        },
+      });
+
+      await useChatStore.getState().respondToAgenticConfirm(true);
+
+      expect(apiRequest).toHaveBeenCalledWith('/chat/srv-1/confirm', expect.objectContaining({
+        method: 'POST',
+      }));
+      expect(useChatStore.getState().agenticConfirm).toBeNull();
+      expect(useChatStore.getState().error).toBeNull();
+    });
+
+    it('restores agenticConfirm and sets error on API failure', async () => {
+      (apiRequest as Mock).mockRejectedValueOnce(new Error('Network error'));
+
+      const confirm = {
+        confirmId: 'conf-1',
+        command: 'apt install nginx',
+        description: 'Install nginx',
+        riskLevel: 'yellow',
+      };
+
+      useChatStore.setState({
+        serverId: 'srv-1',
+        agenticConfirm: confirm,
+      });
+
+      await useChatStore.getState().respondToAgenticConfirm(true);
+
+      const state = useChatStore.getState();
+      expect(state.agenticConfirm).toEqual(confirm);
+      expect(state.error).toBe('Failed to send confirmation. Please try again.');
+    });
+
+    it('does nothing without required state', async () => {
+      await useChatStore.getState().respondToAgenticConfirm(true);
+      expect(apiRequest).not.toHaveBeenCalled();
+    });
   });
 
   describe('SSE parse error logging (chat-011)', () => {
