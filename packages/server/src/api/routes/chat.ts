@@ -8,6 +8,7 @@
 
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
+import type { SSEStreamingApi } from 'hono/streaming';
 import { randomUUID } from 'node:crypto';
 import {
   ChatMessageBodySchema,
@@ -78,6 +79,28 @@ function cleanupSessionConfirmations(sessionId: string): number {
     );
   }
   return cleaned;
+}
+
+/**
+ * Write an SSE event, swallowing errors if the stream is already closed
+ * (e.g. client disconnected). Failures are logged but never re-thrown,
+ * preventing exceptions from escaping catch blocks.
+ */
+async function safeWriteSSE(
+  stream: SSEStreamingApi,
+  event: string,
+  data: string,
+): Promise<boolean> {
+  try {
+    await stream.writeSSE({ event, data });
+    return true;
+  } catch (writeErr) {
+    logger.warn(
+      { operation: 'safe_write_sse', event, error: writeErr instanceof Error ? writeErr.message : String(writeErr) },
+      `Failed to write SSE event "${event}" — stream likely closed`,
+    );
+    return false;
+  }
 }
 
 const chat = new Hono<ApiEnv>();
@@ -195,14 +218,8 @@ chat.post('/:serverId', requirePermission('chat:use'), validateBody(ChatMessageB
           { operation: 'agentic_chat_error', serverId, sessionId: session.id, error: message },
           'Agentic chat error',
         );
-        await stream.writeSSE({
-          event: 'message',
-          data: JSON.stringify({ content: `\n错误: ${message}` }),
-        });
-        await stream.writeSSE({
-          event: 'complete',
-          data: JSON.stringify({ success: false }),
-        });
+        await safeWriteSSE(stream, 'message', JSON.stringify({ content: `\n错误: ${message}` }));
+        await safeWriteSSE(stream, 'complete', JSON.stringify({ success: false }));
       } finally {
         // Clean up any pending confirmations for this session.
         // Handles: (1) client disconnect while confirmation is pending,
@@ -333,14 +350,8 @@ chat.post('/:serverId', requirePermission('chat:use'), validateBody(ChatMessageB
         { operation: 'chat_ai_error', serverId, sessionId: session.id, error: message },
         'AI chat error',
       );
-      await stream.writeSSE({
-        event: 'message',
-        data: JSON.stringify({ content: `Error: ${message}` }),
-      });
-      await stream.writeSSE({
-        event: 'complete',
-        data: JSON.stringify({ success: false }),
-      });
+      await safeWriteSSE(stream, 'message', JSON.stringify({ content: `Error: ${message}` }));
+      await safeWriteSSE(stream, 'complete', JSON.stringify({ success: false }));
     }
   });
 });
@@ -567,4 +578,4 @@ export function _hasPendingConfirmation(confirmId: string): boolean {
 }
 
 /** @internal Exported for testing. */
-export { CONFIRM_TIMEOUT_MS, cleanupSessionConfirmations };
+export { CONFIRM_TIMEOUT_MS, cleanupSessionConfirmations, safeWriteSSE };

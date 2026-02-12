@@ -67,6 +67,29 @@ export function exceedsRiskLimit(commandRisk: string, maxAllowed: string): boole
   return cmdOrder > maxOrder;
 }
 
+/** Reverse map: numeric order → risk level name. */
+const ORDER_TO_RISK: Record<number, string> = {
+  0: 'green',
+  1: 'yellow',
+  2: 'red',
+  3: 'critical',
+  4: 'forbidden',
+};
+
+/**
+ * Escalate a risk level by one step (e.g. green → yellow, yellow → red).
+ *
+ * Used when `run_as: root` is specified — commands run as root are inherently
+ * more dangerous, so the risk is bumped up one level.
+ *
+ * @returns Escalated risk level string, capped at "critical"
+ */
+export function escalateRiskLevel(riskLevel: string): string {
+  const current = RISK_ORDER[riskLevel] ?? 1;
+  const escalated = Math.min(current + 1, 3); // cap at critical (3)
+  return ORDER_TO_RISK[escalated] ?? 'yellow';
+}
+
 // ============================================================================
 // Tool Definitions
 // ============================================================================

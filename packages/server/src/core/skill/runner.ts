@@ -122,6 +122,7 @@ export class SkillRunner {
     const timeoutMs = parseTimeout(constraints.timeout);
     const maxSteps = constraints.max_steps;
     const riskLevelMax = constraints.risk_level_max;
+    const runAs = constraints.run_as;
     const tools = buildToolDefinitions(manifest.tools);
 
     const bus = getSkillEventBus();
@@ -214,7 +215,7 @@ export class SkillRunner {
           try {
             const executed = await this.toolExecutor.executeTool(
               toolCall, skillId, serverId, userId, executionId,
-              riskLevelMax, manifest.metadata.name,
+              riskLevelMax, manifest.metadata.name, runAs,
             );
             result = executed.result;
             success = executed.success;

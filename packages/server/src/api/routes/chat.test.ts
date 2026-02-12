@@ -58,8 +58,10 @@ import {
   _hasPendingConfirmation,
   CONFIRM_TIMEOUT_MS,
   cleanupSessionConfirmations,
+  safeWriteSSE,
 } from './chat.js';
 import type { ApiEnv } from './types.js';
+import { logger } from '../../utils/logger.js';
 
 // ============================================================================
 // Mock the AI module
@@ -1339,5 +1341,136 @@ describe('cleanupSessionConfirmations', () => {
 
     resolveValue = await approved;
     expect(resolveValue).toBe(false);
+  });
+});
+
+// ============================================================================
+// safeWriteSSE — catch-block SSE write protection (chat-051)
+// ============================================================================
+
+describe('safeWriteSSE', () => {
+  it('should return true when writeSSE succeeds', async () => {
+    const mockStream = { writeSSE: vi.fn().mockResolvedValue(undefined) };
+
+    const result = await safeWriteSSE(
+      mockStream as never,
+      'message',
+      JSON.stringify({ content: 'hello' }),
+    );
+
+    expect(result).toBe(true);
+    expect(mockStream.writeSSE).toHaveBeenCalledWith({
+      event: 'message',
+      data: JSON.stringify({ content: 'hello' }),
+    });
+  });
+
+  it('should return false and not throw when writeSSE fails', async () => {
+    const mockStream = {
+      writeSSE: vi.fn().mockRejectedValue(new Error('stream closed')),
+    };
+
+    const result = await safeWriteSSE(
+      mockStream as never,
+      'complete',
+      JSON.stringify({ success: false }),
+    );
+
+    expect(result).toBe(false);
+    expect(mockStream.writeSSE).toHaveBeenCalledOnce();
+  });
+
+  it('should log a warning when writeSSE fails', async () => {
+    const mockStream = {
+      writeSSE: vi.fn().mockRejectedValue(new Error('write after end')),
+    };
+    const warnSpy = vi.spyOn(logger, 'warn');
+
+    await safeWriteSSE(
+      mockStream as never,
+      'message',
+      JSON.stringify({ content: 'test' }),
+    );
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operation: 'safe_write_sse',
+        event: 'message',
+        error: 'write after end',
+      }),
+      expect.stringContaining('Failed to write SSE event "message"'),
+    );
+    warnSpy.mockRestore();
+  });
+
+  it('should handle non-Error throw values', async () => {
+    const mockStream = {
+      writeSSE: vi.fn().mockRejectedValue('string error'),
+    };
+    const warnSpy = vi.spyOn(logger, 'warn');
+
+    const result = await safeWriteSSE(
+      mockStream as never,
+      'complete',
+      '{}',
+    );
+
+    expect(result).toBe(false);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        error: 'string error',
+      }),
+      expect.any(String),
+    );
+    warnSpy.mockRestore();
+  });
+
+  it('should pass event and data correctly to writeSSE', async () => {
+    const mockStream = { writeSSE: vi.fn().mockResolvedValue(undefined) };
+
+    await safeWriteSSE(
+      mockStream as never,
+      'custom_event',
+      '{"key":"value"}',
+    );
+
+    expect(mockStream.writeSSE).toHaveBeenCalledWith({
+      event: 'custom_event',
+      data: '{"key":"value"}',
+    });
+  });
+});
+
+// ============================================================================
+// Catch-block SSE error resilience integration (chat-051)
+// ============================================================================
+
+describe('Legacy mode catch block with closed stream', () => {
+  it('should not throw when SSE writes fail in catch block', async () => {
+    const server = await createServer('web-01', tokenA);
+    _setMockAgent({
+      chat: vi.fn().mockRejectedValue(new Error('Provider unavailable')),
+    });
+
+    // The test verifies that even if the underlying stream has issues,
+    // the response completes without throwing (status 200 with SSE).
+    const res = await jsonPost(
+      `/api/v1/chat/${server.id}`,
+      { message: 'hello' },
+      tokenA,
+    );
+
+    expect(res.status).toBe(200);
+    const events = await parseSSEEvents(res);
+
+    // Should still have error message and complete event via safeWriteSSE
+    const errorEvent = events.find(e =>
+      e.event === 'message' && e.data.includes('Provider unavailable'),
+    );
+    expect(errorEvent).toBeDefined();
+
+    const completeEvent = events.find(e => e.event === 'complete');
+    expect(completeEvent).toBeDefined();
+    expect(JSON.parse(completeEvent!.data).success).toBe(false);
   });
 });

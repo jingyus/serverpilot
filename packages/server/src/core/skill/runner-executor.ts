@@ -22,7 +22,7 @@ import { getTaskExecutor } from '../task/executor.js';
 import { findConnectedAgent } from '../agent/agent-connector.js';
 import { getAuditLogger } from '../security/audit-logger.js';
 import { getWebhookDispatcher } from '../webhook/dispatcher.js';
-import { exceedsRiskLimit } from './runner-tools.js';
+import { exceedsRiskLimit, escalateRiskLevel } from './runner-tools.js';
 import { getSkillKVStore } from './store.js';
 
 const logger = createContextLogger({ module: 'skill-runner' });
@@ -41,6 +41,7 @@ export class SkillToolExecutor {
   /**
    * Dispatch a tool call to the appropriate executor method.
    *
+   * @param runAs - Optional execution identity from manifest constraints (e.g. "root", "deploy")
    * @returns result string and success flag
    */
   async executeTool(
@@ -51,6 +52,7 @@ export class SkillToolExecutor {
     executionId: string,
     riskLevelMax: string,
     skillName: string,
+    runAs?: string,
   ): Promise<{ result: string; success: boolean }> {
     const input = toolCall.input;
 
@@ -58,7 +60,7 @@ export class SkillToolExecutor {
       case 'shell':
         return this.executeShell(
           input as { command: string; description?: string },
-          serverId, userId, executionId, riskLevelMax, skillName,
+          serverId, userId, executionId, riskLevelMax, skillName, runAs,
         );
 
       case 'read_file':
@@ -107,31 +109,55 @@ export class SkillToolExecutor {
     executionId: string,
     riskLevelMax: string,
     skillName: string,
+    runAs?: string,
   ): Promise<{ result: string; success: boolean }> {
     const { command, description } = input;
 
     // Security classification
     const classification = classifyCommand(command);
 
+    // Escalate risk level when run_as is "root" (yellow → red, green → yellow)
+    let effectiveRiskLevel = classification.riskLevel;
+    if (runAs === 'root' && !isForbidden(effectiveRiskLevel)) {
+      effectiveRiskLevel = escalateRiskLevel(effectiveRiskLevel);
+      if (effectiveRiskLevel !== classification.riskLevel) {
+        logger.info(
+          { command, runAs, original: classification.riskLevel, escalated: effectiveRiskLevel },
+          `Risk level escalated from ${classification.riskLevel} to ${effectiveRiskLevel} due to run_as=root`,
+        );
+      }
+    }
+
+    const effectiveClassification = {
+      ...classification,
+      riskLevel: effectiveRiskLevel,
+      reason: runAs === 'root' && effectiveRiskLevel !== classification.riskLevel
+        ? `${classification.reason} [escalated: run_as=root]`
+        : classification.reason,
+    };
+
     // Forbidden commands are always rejected
-    if (isForbidden(classification.riskLevel)) {
-      const msg = `BLOCKED: Command "${command}" is forbidden — ${classification.reason}`;
-      logger.warn({ command, reason: classification.reason, executionId }, msg);
-      await this.auditShell(serverId, userId, executionId, command, classification, 'blocked');
+    if (isForbidden(effectiveClassification.riskLevel)) {
+      const msg = `BLOCKED: Command "${command}" is forbidden — ${effectiveClassification.reason}`;
+      logger.warn({ command, reason: effectiveClassification.reason, executionId, runAs }, msg);
+      await this.auditShell(serverId, userId, executionId, command, effectiveClassification, 'blocked', runAs);
       return { result: msg, success: false };
     }
 
     // Check risk level against constraint
-    if (exceedsRiskLimit(classification.riskLevel, riskLevelMax)) {
-      const msg = `REJECTED: Command "${command}" has risk level ${classification.riskLevel} which exceeds the skill's max allowed level ${riskLevelMax}`;
-      logger.warn({ command, risk: classification.riskLevel, max: riskLevelMax, executionId }, msg);
-      await this.auditShell(serverId, userId, executionId, command, classification, 'rejected');
+    if (exceedsRiskLimit(effectiveClassification.riskLevel, riskLevelMax)) {
+      const msg = `REJECTED: Command "${command}" has risk level ${effectiveClassification.riskLevel} which exceeds the skill's max allowed level ${riskLevelMax}`;
+      logger.warn({ command, risk: effectiveClassification.riskLevel, max: riskLevelMax, executionId, runAs }, msg);
+      await this.auditShell(serverId, userId, executionId, command, effectiveClassification, 'rejected', runAs);
       return { result: msg, success: false };
     }
 
+    // Wrap command with identity switch when run_as is specified
+    const finalCommand = runAs ? wrapWithRunAs(command, runAs) : command;
+
     // Audit log
     const auditEntry = await this.auditShell(
-      serverId, userId, executionId, command, classification, 'allowed',
+      serverId, userId, executionId, finalCommand, effectiveClassification, 'allowed', runAs,
     );
 
     // Find connected agent
@@ -150,9 +176,9 @@ export class SkillToolExecutor {
         serverId,
         userId,
         clientId,
-        command,
+        command: finalCommand,
         description: description ?? `Skill: ${skillName}`,
-        riskLevel: classification.riskLevel as 'green' | 'yellow' | 'red' | 'critical',
+        riskLevel: effectiveClassification.riskLevel as 'green' | 'yellow' | 'red' | 'critical',
         type: 'execute',
         sessionId: executionId,
         timeoutMs: 30_000,
@@ -193,9 +219,14 @@ export class SkillToolExecutor {
     command: string,
     classification: { riskLevel: string; reason: string; matchedPattern?: string },
     action: string,
+    runAs?: string,
   ): Promise<{ id: string } | null> {
     try {
       const auditLogger = getAuditLogger();
+      const reasons = [classification.reason];
+      if (runAs) {
+        reasons.push(`run_as=${runAs}`);
+      }
       return await auditLogger.log({
         serverId,
         userId,
@@ -210,8 +241,8 @@ export class SkillToolExecutor {
             matchedPattern: classification.matchedPattern,
           },
           audit: { safe: action !== 'blocked', warnings: [], blockers: [] },
-          policy: `skill-runner:${action}`,
-          reasons: [classification.reason],
+          policy: runAs ? `skill-runner:${action}:run_as=${runAs}` : `skill-runner:${action}`,
+          reasons,
         },
       });
     } catch (err) {
@@ -410,4 +441,26 @@ export class SkillToolExecutor {
       return { result: `Store error: ${(err as Error).message}`, success: false };
     }
   }
+}
+
+// ============================================================================
+// run_as Helpers
+// ============================================================================
+
+/** Valid pattern for run_as usernames — prevents command injection. */
+const VALID_USER_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_-]{0,49}$/;
+
+/**
+ * Wrap a shell command with `sudo -u <user> --` for identity switching.
+ *
+ * @param command - The original command
+ * @param runAs - Target execution user (e.g. "root", "deploy")
+ * @returns Wrapped command string
+ * @throws Error if runAs contains invalid characters
+ */
+export function wrapWithRunAs(command: string, runAs: string): string {
+  if (!VALID_USER_PATTERN.test(runAs)) {
+    throw new Error(`Invalid run_as user: "${runAs}" — must match pattern ${VALID_USER_PATTERN.source}`);
+  }
+  return `sudo -n -u ${runAs} -- sh -c ${JSON.stringify(command)}`;
 }

@@ -1,11 +1,11 @@
-### [pending] pendingConfirmations 在 SSE 断连时未清理 — 定时器和 Promise 泄漏
+### [pending] Legacy 模式 SSE 错误处理器中 writeSSE 可能二次抛出 — 流已关闭时写入无 try/catch
 
-**ID**: chat-050
+**ID**: chat-051
 **优先级**: P0
 **模块路径**: packages/server/src/api/routes/chat.ts
-**发现的问题**: chat.ts 第 51-54 行声明的 `pendingConfirmations` Map，在第 142-152 行创建 confirmation 时设置了 5 分钟超时定时器，但当 SSE 流断连（客户端关闭页面）时，没有任何清理机制。定时器继续运行直到 5 分钟后才自然过期。同时 agentic-chat.ts 第 502 行 `await confirmation.approved` 会无限挂起，直到超时 resolve(false)。问题链路：(1) 用户关闭页面 → (2) stream.onAbort 在 agentic-chat.ts:196 设置 abort.aborted=true → (3) 但 chat.ts 中的 pendingConfirmations 定时器仍在运行 → (4) Promise 挂起最多 5 分钟 → (5) 内存泄漏。
-**改进方案**: 在 chat.ts 的 agentic 模式 SSE handler 中注册 `stream.onAbort()` 回调，遍历当前 session 关联的 pendingConfirmations，调用 `clearTimeout(timer)` 并 `resolve(false)`，然后从 Map 中删除。可以通过 confirmId 的前缀 `${session.id}:` 来过滤当前 session 的 confirmations。
-**验收标准**: (1) SSE 断连后 5 秒内相关 pendingConfirmations 条目被清除; (2) 无 5 分钟定时器残留; (3) agentic 循环不再挂起等待已断连客户端的确认; (4) 测试覆盖断连清理场景
+**发现的问题**: chat.ts 第 301-314 行的 legacy 模式 catch 块中，`await stream.writeSSE({ event: 'message', ... })` 和 `await stream.writeSSE({ event: 'complete', ... })` 没有 try/catch 保护。如果客户端已断连（流已关闭），这两个 await 会抛出异常，导致错误从 catch 块逃逸到全局错误处理器，SSE 流非正常关闭。同样的问题也存在于 agentic 模式的 catch 块（第 174-181 行）。对比 agentic-chat.ts 内部的 `writeSSE` 方法（第 684-696 行）有 try/catch 保护，但 chat.ts 路由层没有使用该封装。
+**改进方案**: 将 catch 块中的 SSE 写入包裹在 try/catch 中，或提取为 `safeWriteSSE()` 辅助函数。失败时仅记录日志，不再重新抛出。同时为 agentic 模式的 catch 块（第 174-181 行）应用相同修复。
+**验收标准**: (1) 客户端断连后 catch 块中的 SSE 写入不会抛出未捕获异常; (2) 错误日志正确记录; (3) 两个模式（agentic/legacy）的 catch 块都有保护
 **影响范围**: packages/server/src/api/routes/chat.ts
 **创建时间**: (自动填充)
 **完成时间**: -
