@@ -226,7 +226,7 @@ export function Chat() {
             data-testid="message-list"
           >
             {messages.length === 0 && !isStreaming ? (
-              <EmptyState serverName={serverName} onSuggestionClick={handleSend} />
+              <EmptyState serverName={serverName} onSuggestionClick={handleSend} disabled={isStreaming} />
             ) : (
               <div className="space-y-1 py-4">
                 {messages.map((msg) => (
@@ -403,9 +403,11 @@ function ChatHeader({
 function EmptyState({
   serverName,
   onSuggestionClick,
+  disabled,
 }: {
   serverName: string;
   onSuggestionClick: (text: string) => void;
+  disabled: boolean;
 }) {
   const { t } = useTranslation();
 
@@ -434,7 +436,12 @@ function EmptyState({
         {suggestions.map((suggestion, index) => (
           <Card
             key={suggestion}
-            className="cursor-pointer transition-colors hover:bg-muted/50"
+            className={cn(
+              'transition-colors',
+              disabled
+                ? 'pointer-events-none opacity-50'
+                : 'cursor-pointer hover:bg-muted/50'
+            )}
             onClick={() => onSuggestionClick(suggestion)}
             data-testid={`suggestion-card-${index}`}
           >

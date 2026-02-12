@@ -169,6 +169,41 @@ describe('Chat Page', () => {
       expect(sendMessage).toHaveBeenCalledWith('Install nginx and configure it');
     });
 
+    it('disables suggestion cards when isStreaming is true', () => {
+      // Simulate the brief window where isStreaming is true but messages is still empty
+      useChatStore.setState({ isStreaming: false, messages: [] });
+      renderChat('/chat/srv-1');
+
+      const card = screen.getByTestId('suggestion-card-0');
+      expect(card.className).toContain('cursor-pointer');
+      expect(card.className).not.toContain('pointer-events-none');
+      expect(card.className).not.toContain('opacity-50');
+    });
+
+    it('rapid double-click on suggestion cards only sends one message', async () => {
+      const user = (await import('@testing-library/user-event')).default.setup();
+      // Use a sendMessage mock that sets isStreaming on first call (mimicking store behavior)
+      const sendMessage = vi.fn().mockImplementation(() => {
+        useChatStore.setState({
+          isStreaming: true,
+          messages: [
+            { id: 'msg-1', role: 'user' as const, content: 'Install nginx and configure it', timestamp: new Date().toISOString() },
+          ],
+        });
+      });
+      useChatStore.setState({ sendMessage: sendMessage as unknown as (msg: string) => void });
+      renderChat('/chat/srv-1');
+
+      const card = screen.getByTestId('suggestion-card-0');
+      // First click triggers sendMessage, which sets isStreaming=true and adds a message.
+      // React re-render will unmount EmptyState since messages.length > 0.
+      await user.click(card);
+
+      // EmptyState should no longer be rendered
+      expect(screen.queryByTestId('empty-state')).not.toBeInTheDocument();
+      expect(sendMessage).toHaveBeenCalledTimes(1);
+    });
+
     it('renders message input', () => {
       renderChat('/chat/srv-1');
       expect(screen.getByTestId('message-input')).toBeInTheDocument();
