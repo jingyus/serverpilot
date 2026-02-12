@@ -33,9 +33,6 @@ const MAX_TURNS = 25;
 /** Maximum estimated tokens for the messages array before trimming */
 const MAX_MESSAGES_TOKENS = 150_000;
 
-/** Timeout for waiting on user confirmation (5 minutes) */
-const CONFIRM_TIMEOUT_MS = 5 * 60 * 1000;
-
 /** Default model */
 const DEFAULT_MODEL = 'claude-sonnet-4-20250514';
 
@@ -153,27 +150,6 @@ export interface AgenticRunResult {
   toolCallCount: number;
   /** Final text output from the AI */
   finalText: string;
-}
-
-// ============================================================================
-// Pending confirmations store
-// ============================================================================
-
-const pendingConfirmations = new Map<string, {
-  resolve: (approved: boolean) => void;
-  timer: ReturnType<typeof setTimeout>;
-}>();
-
-/**
- * Resolve a pending confirmation from the step-decision API.
- */
-export function resolveConfirmation(confirmId: string, approved: boolean): boolean {
-  const pending = pendingConfirmations.get(confirmId);
-  if (!pending) return false;
-  clearTimeout(pending.timer);
-  pending.resolve(approved);
-  pendingConfirmations.delete(confirmId);
-  return true;
 }
 
 // ============================================================================

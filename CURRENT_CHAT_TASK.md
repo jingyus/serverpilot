@@ -1,20 +1,20 @@
-### [pending] agentic-chat.ts 的 trimMessagesIfNeeded 算法有 token 估算累减偏差
+### [pending] 双 pendingConfirmations Map 导致 agentic 确认可能路由到错误系统
 
-**ID**: chat-022
+**ID**: chat-023
 **优先级**: P0
-**模块路径**: packages/server/src/ai/agentic-chat.ts
-**发现的问题**: `agentic-chat.ts:748-765` 的 `trimMessagesIfNeeded()` 使用 `currentTokens -= removedTokens` 累减方式计算剩余 token 数。但 `estimateMessagesTokens()` 对不同消息类型（string content vs structured tool_use/tool_result blocks）的估算精度不同，累减多次后误差会放大。更关键的是：`agentic-chat.ts:37` 使用 `CHARS_PER_TOKEN = 4` 常量做 ASCII 估算，而项目已在 task-012 中修复了 `profile-context.ts:estimateTokens()` 支持 CJK 混合文本。此处是独立的实现，未复用已修复的 `estimateTokens`。当中文对话达到 20+ turns 时，150K token 预算（`agentic-chat.ts:34`）实际可能允许 600K+ 真实 token 进入 API，触发 Anthropic 的 `context_length_exceeded` 错误。
+**模块路径**: packages/server/src/api/routes/chat.ts, packages/server/src/ai/agentic-chat.ts
+**发现的问题**: 存在两个独立的 `pendingConfirmations` Map：`chat.ts:50-53` 和 `agentic-chat.ts:165-168`。`chat.ts` 中的 Map 由 `chat.ts:137-147` 的 `onConfirmRequired` 回调写入，由 `chat.ts:332-350` 的 `/confirm` 端点消费。而 `agentic-chat.ts:165-168` 的 Map 通过 `resolveConfirmation()` 导出但仅在测试中使用。前端统一调用 `/confirm` 端点（`chat-execution.ts:190-197`），该端点只查 `chat.ts` 的 Map。如果有代码直接调用 `agentic-chat.ts` 的 `resolveConfirmation()`，会因 confirmId 不在该 Map 中而返回 false。两套系统增加维护负担和 bug 风险。
 **改进方案**: 
-1. 将 `estimateMessagesTokens()` 改为使用 `estimateTokens()` from `profile-context.ts`（已支持 CJK）
-2. 对 structured content blocks（tool_use、tool_result），提取文本部分再调用 `estimateTokens()` 而非用 `JSON.stringify().length / 4`
-3. 每次 `splice` 后使用 `estimateMessagesTokens(messages)` 重新计算（而非累减），避免误差放大
-4. 添加中文对话场景的单元测试
+1. 删除 `agentic-chat.ts:165-168` 中的 `pendingConfirmations` Map 和 `resolveConfirmation()` 函数
+2. Agentic engine 的确认完全通过 `opts.onConfirmRequired` 回调（定义在 `chat.ts:137-147`）与 `chat.ts` 的 Map 交互
+3. 确保只有一个 `pendingConfirmations` 管理点（`chat.ts`），避免状态分裂
+4. 更新相关测试，移除对 `resolveConfirmation` 的直接调用
 **验收标准**: 
-- 中文 20 轮 agentic 对话后不会触发 context_length_exceeded 错误
-- `estimateMessagesTokens()` 对中文消息估算误差在 2x 以内
-- 累减 vs 重算的差异 < 10%
-- 测试覆盖：中文、英文、混合、structured content blocks
-**影响范围**: packages/server/src/ai/agentic-chat.ts
+- 项目中只有一个 `pendingConfirmations` Map（在 chat.ts 中）
+- 所有确认流程通过 `/confirm` 端点正确路由
+- agentic-chat.ts 不再导出 `resolveConfirmation`
+- 现有确认流程测试通过
+**影响范围**: packages/server/src/ai/agentic-chat.ts, packages/server/src/api/routes/chat.ts
 **创建时间**: (自动填充)
 **完成时间**: -
 
