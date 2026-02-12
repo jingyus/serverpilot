@@ -17,7 +17,10 @@ vi.mock('@/api/client', () => ({
 }));
 
 vi.mock('@/api/sse', () => ({
-  createSSEConnection: vi.fn(() => ({ abort: vi.fn() })),
+  createSSEConnection: vi.fn(() => ({
+    abort: vi.fn(),
+    controller: new AbortController(),
+  })),
 }));
 
 import { apiRequest } from '@/api/client';
@@ -32,6 +35,7 @@ describe('useChatStore', () => {
       sessions: [],
       isLoading: false,
       isStreaming: false,
+      isReconnecting: false,
       streamingContent: '',
       error: null,
       currentPlan: null,
@@ -369,6 +373,88 @@ describe('useChatStore', () => {
       expect(exec.operationId).toBeNull();
       expect(exec.startTime).toBeTypeOf('number');
       expect(exec.cancelled).toBe(false);
+    });
+  });
+
+  describe('SSE reconnection callbacks', () => {
+    function getSSECallbacks(): Record<string, (...args: unknown[]) => void> {
+      const mockFn = createSSEConnection as Mock;
+      const lastCall = mockFn.mock.calls[mockFn.mock.calls.length - 1];
+      return lastCall[2] as Record<string, (...args: unknown[]) => void>;
+    }
+
+    it('sets isReconnecting on onReconnecting callback', () => {
+      useChatStore.setState({ serverId: 'srv-1' });
+      useChatStore.getState().sendMessage('hello');
+
+      const callbacks = getSSECallbacks();
+      callbacks.onReconnecting(1);
+
+      const state = useChatStore.getState();
+      expect(state.isReconnecting).toBe(true);
+      expect(state.error).toBeNull();
+    });
+
+    it('clears isReconnecting on onReconnected callback', () => {
+      useChatStore.setState({ serverId: 'srv-1' });
+      useChatStore.getState().sendMessage('hello');
+
+      const callbacks = getSSECallbacks();
+      callbacks.onReconnecting(1);
+      callbacks.onReconnected();
+
+      expect(useChatStore.getState().isReconnecting).toBe(false);
+    });
+
+    it('preserves streamingContent as partial message on error', () => {
+      useChatStore.setState({ serverId: 'srv-1' });
+      useChatStore.getState().sendMessage('hello');
+
+      // Simulate some streaming content received before error
+      useChatStore.setState({ streamingContent: 'partial AI response' });
+
+      const callbacks = getSSECallbacks();
+      callbacks.onError(new Error('Connection lost'));
+
+      const state = useChatStore.getState();
+      expect(state.isStreaming).toBe(false);
+      expect(state.isReconnecting).toBe(false);
+      expect(state.streamingContent).toBe('');
+      expect(state.error).toBe('Connection lost');
+      // Partial content saved as a message (1 user + 1 partial assistant)
+      expect(state.messages).toHaveLength(2);
+      expect(state.messages[1].role).toBe('assistant');
+      expect(state.messages[1].content).toContain('partial AI response');
+      expect(state.messages[1].content).toContain('[Connection lost]');
+    });
+
+    it('does not add partial message on error if no streaming content', () => {
+      useChatStore.setState({ serverId: 'srv-1' });
+      useChatStore.getState().sendMessage('hello');
+
+      const callbacks = getSSECallbacks();
+      callbacks.onError(new Error('Connection failed'));
+
+      const state = useChatStore.getState();
+      expect(state.isStreaming).toBe(false);
+      expect(state.error).toBe('Connection failed');
+      // Only the user message
+      expect(state.messages).toHaveLength(1);
+      expect(state.messages[0].role).toBe('user');
+    });
+
+    it('resets isReconnecting on new message send', () => {
+      useChatStore.setState({ serverId: 'srv-1', isReconnecting: true });
+      useChatStore.getState().sendMessage('retry');
+
+      expect(useChatStore.getState().isReconnecting).toBe(false);
+    });
+
+    it('resets isReconnecting on newSession', () => {
+      useChatStore.setState({ isReconnecting: true });
+      useChatStore.getState().newSession();
+
+      expect(useChatStore.getState().isReconnecting).toBe(false);
     });
   });
 

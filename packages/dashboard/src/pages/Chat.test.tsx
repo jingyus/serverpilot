@@ -21,7 +21,10 @@ vi.mock('@/api/client', () => ({
 }));
 
 vi.mock('@/api/sse', () => ({
-  createSSEConnection: vi.fn(() => ({ abort: vi.fn() })),
+  createSSEConnection: vi.fn(() => ({
+    abort: vi.fn(),
+    controller: new AbortController(),
+  })),
 }));
 
 function renderChat(path = '/chat') {
@@ -44,6 +47,7 @@ describe('Chat Page', () => {
       sessions: [],
       isLoading: false,
       isStreaming: false,
+      isReconnecting: false,
       streamingContent: '',
       error: null,
       currentPlan: null,
@@ -394,6 +398,30 @@ describe('Chat Page', () => {
       renderChat('/chat/srv-1');
       expect(screen.getByTestId('step-progress-s1')).toHaveTextContent('[1/2]');
       expect(screen.getByTestId('step-progress-s2')).toHaveTextContent('[2/2]');
+    });
+
+    it('shows reconnecting banner when isReconnecting is true', () => {
+      useChatStore.setState({
+        isReconnecting: true,
+        isStreaming: true,
+        messages: [
+          {
+            id: 'msg-1',
+            role: 'user',
+            content: 'Hello',
+            timestamp: '2025-01-01T00:00:00Z',
+          },
+        ],
+      });
+      renderChat('/chat/srv-1');
+      expect(screen.getByTestId('reconnecting-banner')).toBeInTheDocument();
+      expect(screen.getByText('Connection lost. Reconnecting...')).toBeInTheDocument();
+    });
+
+    it('does not show reconnecting banner when isReconnecting is false', () => {
+      useChatStore.setState({ isReconnecting: false });
+      renderChat('/chat/srv-1');
+      expect(screen.queryByTestId('reconnecting-banner')).not.toBeInTheDocument();
     });
 
     it('uses server ID as fallback name', () => {

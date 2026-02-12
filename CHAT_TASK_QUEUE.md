@@ -3,14 +3,14 @@
 > 此队列专注于 Chat 和 AI 对话系统的质量改进
 > AI 自动发现问题 → 生成任务 → 实现 → 验证
 
-**最后更新**: 2026-02-12 22:21:11
+**最后更新**: 2026-02-12 22:32:08
 
 ## 📊 统计
 
 - **总任务数**: 5
 - **待完成** (pending): 1
-- **进行中** (in_progress): 2
-- **已完成** (completed): 2
+- **进行中** (in_progress): 1
+- **已完成** (completed): 3
 - **失败** (failed): 0
 
 ## 📋 任务列表
@@ -97,7 +97,7 @@
 
 ---
 
-### [in_progress] ChatMessage 组件缺少 Markdown 渲染 — AI 回复丢失格式和代码高亮
+### [completed] ChatMessage 组件缺少 Markdown 渲染 — AI 回复丢失格式和代码高亮 ✅
 
 **ID**: chat-003
 **优先级**: P1
@@ -133,7 +133,7 @@
 - `packages/dashboard/src/components/chat/ChatMessage.test.tsx` — 更新测试
 
 **创建时间**: 2026-02-12
-**完成时间**: -
+**完成时间**: 2026-02-12 22:32:08
 
 ---
 

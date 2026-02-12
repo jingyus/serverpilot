@@ -234,13 +234,13 @@ export function createSSEConnection(
       const error =
         err instanceof Error ? err : new Error('SSE connection failed');
 
-      // If it's a retriable error and we haven't exceeded attempts, reconnect
-      if (isRetriableError(err) && reconnectAttempt < MAX_RECONNECT_ATTEMPTS) {
+      // If it's a retriable error, attempt reconnect (scheduleReconnect checks max)
+      if (isRetriableError(err)) {
         scheduleReconnect();
         return;
       }
 
-      // Non-retriable or max attempts exceeded
+      // Non-retriable error (auth, not found, etc.)
       callbacks.onError?.(error);
     }
   }
