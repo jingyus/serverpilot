@@ -3,14 +3,14 @@
 > 此队列专注于 Skill 插件系统的设计与实现
 > AI 自动扫描 → 发现缺失 → 设计实现 → 验证
 
-**最后更新**: 2026-02-13 04:17:07
+**最后更新**: 2026-02-13 04:32:08
 
 ## 📊 统计
 
 - **总任务数**: 28
 - **待完成** (pending): 1
-- **进行中** (in_progress): 1
-- **已完成** (completed): 26
+- **进行中** (in_progress): 0
+- **已完成** (completed): 27
 - **失败** (failed): 0
 
 ## 📋 任务列表
@@ -139,7 +139,7 @@
 
 ---
 
-### [in_progress] server_scope: 'all' / 'tagged' — 多服务器批量执行
+### [completed] server_scope: 'all' / 'tagged' — 多服务器批量执行 ✅
 
 **ID**: skill-027
 **优先级**: P1
@@ -168,7 +168,7 @@
 - `packages/server/src/core/skill/engine.test.ts` (修改 — 多服务器测试)
 - `packages/server/src/db/repositories/skill-repository.ts` (可能修改 — batchId 字段)
 **创建时间**: (自动填充)
-**完成时间**: -
+**完成时间**: 2026-02-13 04:32:08
 
 ---
 

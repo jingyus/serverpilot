@@ -1,12 +1,12 @@
-### [pending] trimMessagesIfNeeded 静默丢弃上下文 — AI 无感知导致幻觉
+### [pending] listSessions 加载全部消息仅取 lastMessage — N+1 查询性能问题
 
-**ID**: chat-036
+**ID**: chat-037
 **优先级**: P1
-**模块路径**: packages/server/src/ai/agentic-chat.ts
-**发现的问题**: `trimMessagesIfNeeded()`（第 764-779 行）当消息 token 超过 `MAX_MESSAGES_TOKENS`(150K) 时，从 index 1 开始 splice 删除 assistant/user 消息对。问题：1) 被删除的可能包含关键文件内容（tool_result）或重要执行上下文 2) AI 模型完全不知道部分上下文已丢失，可能基于不完整信息做出错误决策 3) 没有日志记录删除了多少消息/token。
-**改进方案**: 1) 在 trim 后注入一条 system message 说明 "Earlier tool results and conversation turns were trimmed to fit context window. {N} messages ({M}K tokens) removed." 2) 添加 debug 级别日志记录 trim 事件 3) 优先保留最近的 tool_result（包含文件内容）而非简单按位置删除。
-**验收标准**: 1) trim 后 messages 数组包含一条上下文丢失提示 2) AI 能在后续回复中意识到可能缺失上下文 3) 日志记录 trim 的消息数和 token 数 4) 新增 2+ 测试验证提示注入
-**影响范围**: `packages/server/src/ai/agentic-chat.ts`
+**模块路径**: packages/server/src/core/session/manager.ts
+**发现的问题**: `listSessions()`（第 340-358 行）调用 `this.repo.listByServer()` 获取所有 session，然后对每个 session 的 `messages` 做 `map(toChatMessage)` 转换全部消息，仅为了取 `messages[messages.length - 1]?.content.slice(0, 100)` 作为 `lastMessage`。对于有 100 个 session、每个 session 平均 50 条消息的服务器，这意味着加载和转换 5000 条消息对象，仅使用其中 100 条的前 100 字符。
+**改进方案**: 1) 在 `SessionRepository` 接口添加 `listSummaries()` 方法，在 SQL 层只查询 session 元数据 + 最后一条消息 2) 使用子查询或 window function 获取 lastMessage 3) DrizzleSessionRepository 实现中用 `SELECT ... (SELECT content FROM messages WHERE session_id = s.id ORDER BY created_at DESC LIMIT 1) as last_message`。
+**验收标准**: 1) listSessions 不再加载全部消息 2) SQL 查询数量从 N+1 降为 1 3) 返回结果格式不变 4) 新增性能测试验证改进
+**影响范围**: `packages/server/src/core/session/manager.ts`, `packages/server/src/core/session/repository.ts`
 **创建时间**: (自动填充)
 **完成时间**: -
 

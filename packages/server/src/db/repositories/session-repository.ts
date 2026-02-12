@@ -10,7 +10,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { eq, and, desc, count } from 'drizzle-orm';
+import { eq, and, desc, count, sql } from 'drizzle-orm';
 
 import { getDatabase } from '../connection.js';
 import { sessions, servers } from '../schema.js';
@@ -43,6 +43,16 @@ export interface PaginationOptions {
   offset: number;
 }
 
+/** Lightweight session summary — avoids loading all messages. */
+export interface SessionSummaryRow {
+  id: string;
+  serverId: string;
+  messageCount: number;
+  lastMessageContent: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ============================================================================
 // Repository Interface
 // ============================================================================
@@ -60,6 +70,13 @@ export interface SessionRepository {
     userId: string,
     pagination: PaginationOptions,
   ): Promise<{ sessions: Session[]; total: number }>;
+
+  /** List session summaries without loading all messages (O(1) query). */
+  listSummaries(
+    serverId: string,
+    userId: string,
+    pagination: PaginationOptions,
+  ): Promise<{ summaries: SessionSummaryRow[]; total: number }>;
 
   /** Add a message to a session. */
   addMessage(
@@ -157,6 +174,55 @@ export class DrizzleSessionRepository implements SessionRepository {
 
     return {
       sessions: rows.map((row) => this.toSession(row)),
+      total,
+    };
+  }
+
+  async listSummaries(
+    serverId: string,
+    userId: string,
+    pagination: PaginationOptions,
+  ): Promise<{ summaries: SessionSummaryRow[]; total: number }> {
+    if (!(await this.verifyServerOwnership(serverId, userId))) {
+      return { summaries: [], total: 0 };
+    }
+
+    const totalResult = this.db
+      .select({ count: count() })
+      .from(sessions)
+      .where(
+        and(eq(sessions.serverId, serverId), eq(sessions.userId, userId)),
+      )
+      .all();
+    const total = totalResult[0]?.count ?? 0;
+
+    const rows = this.db
+      .select({
+        id: sessions.id,
+        serverId: sessions.serverId,
+        createdAt: sessions.createdAt,
+        updatedAt: sessions.updatedAt,
+        messageCount: sql<number>`json_array_length(${sessions.messages})`.as('message_count'),
+        lastMessageContent: sql<string | null>`CASE WHEN json_array_length(${sessions.messages}) > 0 THEN json_extract(${sessions.messages}, '$[' || (json_array_length(${sessions.messages}) - 1) || '].content') ELSE NULL END`.as('last_message_content'),
+      })
+      .from(sessions)
+      .where(
+        and(eq(sessions.serverId, serverId), eq(sessions.userId, userId)),
+      )
+      .orderBy(desc(sessions.updatedAt))
+      .limit(pagination.limit)
+      .offset(pagination.offset)
+      .all();
+
+    return {
+      summaries: rows.map((row) => ({
+        id: row.id,
+        serverId: row.serverId,
+        messageCount: row.messageCount ?? 0,
+        lastMessageContent: row.lastMessageContent ?? null,
+        createdAt: row.createdAt.toISOString(),
+        updatedAt: row.updatedAt.toISOString(),
+      })),
       total,
     };
   }
@@ -278,6 +344,33 @@ export class InMemorySessionRepository implements SessionRepository {
 
     return {
       sessions: all.slice(pagination.offset, pagination.offset + pagination.limit),
+      total: all.length,
+    };
+  }
+
+  async listSummaries(
+    serverId: string,
+    userId: string,
+    pagination: PaginationOptions,
+  ): Promise<{ summaries: SessionSummaryRow[]; total: number }> {
+    const all = [...this.sessions.values()]
+      .filter((s) => s.serverId === serverId && s.userId === userId)
+      .sort((a, b) =>
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      );
+
+    const page = all.slice(pagination.offset, pagination.offset + pagination.limit);
+    return {
+      summaries: page.map((s) => ({
+        id: s.id,
+        serverId: s.serverId,
+        messageCount: s.messages.length,
+        lastMessageContent: s.messages.length > 0
+          ? s.messages[s.messages.length - 1].content
+          : null,
+        createdAt: s.createdAt,
+        updatedAt: s.updatedAt,
+      })),
       total: all.length,
     };
   }

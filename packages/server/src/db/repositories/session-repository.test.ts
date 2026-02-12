@@ -235,4 +235,71 @@ describe('DrizzleSessionRepository', () => {
     const deleted = await repo.delete(session.id, 'user-2');
     expect(deleted).toBe(false);
   });
+
+  // ==========================================================================
+  // listSummaries
+  // ==========================================================================
+
+  it('should list summaries with messageCount and lastMessageContent', async () => {
+    const session = await repo.create({ userId: 'user-1', serverId: 'srv-1' });
+
+    await repo.addMessage(session.id, 'user-1', {
+      id: 'msg-1', role: 'user', content: 'Hello', timestamp: Date.now(),
+    });
+    await repo.addMessage(session.id, 'user-1', {
+      id: 'msg-2', role: 'assistant', content: 'Hi there!', timestamp: Date.now(),
+    });
+
+    const result = await repo.listSummaries('srv-1', 'user-1', { limit: 10, offset: 0 });
+    expect(result.total).toBe(1);
+    expect(result.summaries).toHaveLength(1);
+    expect(result.summaries[0].id).toBe(session.id);
+    expect(result.summaries[0].messageCount).toBe(2);
+    expect(result.summaries[0].lastMessageContent).toBe('Hi there!');
+  });
+
+  it('should return null lastMessageContent for empty sessions', async () => {
+    await repo.create({ userId: 'user-1', serverId: 'srv-1' });
+
+    const result = await repo.listSummaries('srv-1', 'user-1', { limit: 10, offset: 0 });
+    expect(result.summaries[0].messageCount).toBe(0);
+    expect(result.summaries[0].lastMessageContent).toBeNull();
+  });
+
+  it('should return empty summaries for non-owned server', async () => {
+    await repo.create({ userId: 'user-1', serverId: 'srv-1' });
+
+    const result = await repo.listSummaries('srv-1', 'user-2', { limit: 10, offset: 0 });
+    expect(result.summaries).toEqual([]);
+    expect(result.total).toBe(0);
+  });
+
+  it('should paginate summaries', async () => {
+    for (let i = 0; i < 5; i++) {
+      await repo.create({ userId: 'user-1', serverId: 'srv-1' });
+    }
+
+    const page = await repo.listSummaries('srv-1', 'user-1', { limit: 2, offset: 0 });
+    expect(page.total).toBe(5);
+    expect(page.summaries).toHaveLength(2);
+  });
+
+  it('should not load full message arrays in summaries', async () => {
+    const session = await repo.create({ userId: 'user-1', serverId: 'srv-1' });
+
+    for (let i = 0; i < 50; i++) {
+      await repo.addMessage(session.id, 'user-1', {
+        id: `msg-${i}`, role: 'user', content: `Message ${i}`, timestamp: Date.now(),
+      });
+    }
+
+    const result = await repo.listSummaries('srv-1', 'user-1', { limit: 10, offset: 0 });
+    const summary = result.summaries[0];
+
+    // Verify we get summary data, not the full message array
+    expect(summary.messageCount).toBe(50);
+    expect(summary.lastMessageContent).toBe('Message 49');
+    // The summary object should NOT have a 'messages' property
+    expect('messages' in summary).toBe(false);
+  });
 });

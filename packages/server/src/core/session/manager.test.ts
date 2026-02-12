@@ -181,6 +181,29 @@ describe('listSessions', () => {
     const list = await mgr.listSessions(SERVER_ID, USER_ID);
     expect(list[0].lastMessage!.length).toBe(100);
   });
+
+  it('should use listSummaries instead of listByServer', async () => {
+    const session = await mgr.getOrCreate(SERVER_ID, USER_ID);
+    await mgr.addMessage(session.id, USER_ID, 'user', 'Hello');
+
+    const summariesSpy = vi.spyOn(repo, 'listSummaries');
+    const listByServerSpy = vi.spyOn(repo, 'listByServer');
+
+    await mgr.listSessions(SERVER_ID, USER_ID);
+
+    expect(summariesSpy).toHaveBeenCalledOnce();
+    expect(listByServerSpy).not.toHaveBeenCalled();
+
+    summariesSpy.mockRestore();
+    listByServerSpy.mockRestore();
+  });
+
+  it('should return undefined lastMessage for session with no messages', async () => {
+    await mgr.getOrCreate(SERVER_ID, USER_ID);
+
+    const list = await mgr.listSessions(SERVER_ID, USER_ID);
+    expect(list[0].lastMessage).toBeUndefined();
+  });
 });
 
 // ============================================================================

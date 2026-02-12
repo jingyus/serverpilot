@@ -336,25 +336,21 @@ export class SessionManager {
     return entry.session.plans.delete(planId);
   }
 
-  /** List sessions for a server. Loads from DB for complete history. */
+  /** List sessions for a server. Uses lightweight summaries (no full message loading). */
   async listSessions(serverId: string, userId: string): Promise<SessionSummary[]> {
-    const result = await this.repo.listByServer(serverId, userId, {
+    const result = await this.repo.listSummaries(serverId, userId, {
       limit: 100,
       offset: 0,
     });
 
-    return result.sessions.map((s) => {
-      const messages = s.messages.map(toChatMessage);
-      const lastMsg = messages[messages.length - 1];
-      return {
-        id: s.id,
-        serverId: s.serverId,
-        messageCount: messages.length,
-        createdAt: s.createdAt,
-        updatedAt: s.updatedAt,
-        lastMessage: lastMsg?.content.slice(0, 100),
-      };
-    });
+    return result.summaries.map((s) => ({
+      id: s.id,
+      serverId: s.serverId,
+      messageCount: s.messageCount,
+      createdAt: s.createdAt,
+      updatedAt: s.updatedAt,
+      lastMessage: s.lastMessageContent?.slice(0, 100),
+    }));
   }
 
   /** Get a session by ID. Checks cache first, then DB. */
