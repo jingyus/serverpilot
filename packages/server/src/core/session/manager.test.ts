@@ -284,6 +284,85 @@ describe('storePlan / getPlan', () => {
   });
 });
 
+describe('removePlan', () => {
+  it('should remove a plan from a session', async () => {
+    const session = await mgr.getOrCreate(SERVER_ID, USER_ID);
+    mgr.storePlan(session.id, {
+      planId: 'plan-1', description: 'test', steps: [],
+      totalRisk: 'green', requiresConfirmation: false,
+    });
+    expect(session.plans.size).toBe(1);
+
+    const removed = mgr.removePlan(session.id, 'plan-1');
+    expect(removed).toBe(true);
+    expect(session.plans.size).toBe(0);
+    expect(mgr.getPlan(session.id, 'plan-1')).toBeUndefined();
+  });
+
+  it('should return false for non-existent plan', async () => {
+    const session = await mgr.getOrCreate(SERVER_ID, USER_ID);
+    expect(mgr.removePlan(session.id, 'nonexistent')).toBe(false);
+  });
+
+  it('should return false for non-existent session', () => {
+    expect(mgr.removePlan('nonexistent', 'plan-1')).toBe(false);
+  });
+
+  it('should allow eviction after plan removal', async () => {
+    const smallMgr = new SessionManager(repo, { maxSize: 2, sweepIntervalMs: 0 });
+
+    const s1 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
+    const s2 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
+
+    smallMgr.storePlan(s1.id, {
+      planId: 'p1', description: 'test', steps: [],
+      totalRisk: 'green', requiresConfirmation: false,
+    });
+
+    // s1 has a plan, so adding s3 should evict s2 (non-active)
+    const s3 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
+    expect(smallMgr.cacheSize).toBe(2);
+    expect(smallMgr.getPlan(s1.id, 'p1')).toBeDefined();
+
+    // Remove plan from s1 — now it's evictable
+    smallMgr.removePlan(s1.id, 'p1');
+
+    // Adding s4 should now be able to evict s1 (no longer active)
+    const s4 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
+    expect(smallMgr.cacheSize).toBe(2);
+    // s1 should have been evicted
+    expect(smallMgr.getPlan(s1.id, 'p1')).toBeUndefined();
+
+    smallMgr.stopSweep();
+  });
+
+  it('should allow TTL sweep after plan removal', async () => {
+    const ttlMgr = new SessionManager(repo, { ttlMs: 50, sweepIntervalMs: 0 });
+
+    const s1 = await ttlMgr.getOrCreate(SERVER_ID, USER_ID);
+    ttlMgr.storePlan(s1.id, {
+      planId: 'p1', description: 'test', steps: [],
+      totalRisk: 'green', requiresConfirmation: false,
+    });
+
+    // Wait for TTL to expire
+    await new Promise((r) => setTimeout(r, 60));
+
+    // Sweep should NOT remove s1 because it has an active plan
+    (ttlMgr as unknown as { sweepExpired: () => void }).sweepExpired();
+    expect(ttlMgr.cacheSize).toBe(1);
+
+    // Remove the plan
+    ttlMgr.removePlan(s1.id, 'p1');
+
+    // Now sweep should remove s1
+    (ttlMgr as unknown as { sweepExpired: () => void }).sweepExpired();
+    expect(ttlMgr.cacheSize).toBe(0);
+
+    ttlMgr.stopSweep();
+  });
+});
+
 // ============================================================================
 // Context Building
 // ============================================================================

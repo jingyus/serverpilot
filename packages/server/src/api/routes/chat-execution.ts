@@ -440,6 +440,7 @@ export async function executePlanSteps(opts: ExecutePlanStepsOptions): Promise<E
   // Clean up
   activePlanExecutions.delete(planId);
   executor.removeProgressListener(planId);
+  sessionMgr.removePlan(sessionId, planId);
 
   // Post-execution AI summary
   if (completedSteps.length > 0 && !cancelled) {

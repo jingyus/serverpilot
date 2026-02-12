@@ -329,6 +329,13 @@ export class SessionManager {
     return entry.session.plans.get(planId);
   }
 
+  /** Remove a completed plan from a session, allowing cache eviction. */
+  removePlan(sessionId: string, planId: string): boolean {
+    const entry = this.cache.get(sessionId);
+    if (!entry) return false;
+    return entry.session.plans.delete(planId);
+  }
+
   /** List sessions for a server. Loads from DB for complete history. */
   async listSessions(serverId: string, userId: string): Promise<SessionSummary[]> {
     const result = await this.repo.listByServer(serverId, userId, {
