@@ -11,12 +11,13 @@
  * - YELLOW/RED/CRITICAL plans: step-by-step confirmation (allow / allow_all / reject)
  * - FORBIDDEN commands: blocked, never executed
  *
+ * Plan execution logic is in chat-execution.ts.
+ *
  * @module api/routes/chat
  */
 
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
-import type { SSEStreamingApi } from 'hono/streaming';
 import { randomUUID } from 'node:crypto';
 import {
   ChatMessageBodySchema,
@@ -37,37 +38,25 @@ import { getChatAIAgent, ChatRetryExhaustedError } from './chat-ai.js';
 import type { ChatRetryEvent } from './chat-ai.js';
 import { getRagPipeline } from '../../knowledge/rag-pipeline.js';
 import { logger } from '../../utils/logger.js';
-import { findConnectedAgent, isAgentConnected } from '../../core/agent/agent-connector.js';
-import { getTaskExecutor } from '../../core/task/executor.js';
-import { validateCommand, validatePlan } from '../../core/security/command-validator.js';
-import { getAuditLogger } from '../../core/security/audit-logger.js';
-import { autoDiagnoseStepFailure } from '../../ai/error-diagnosis-service.js';
+import { findConnectedAgent } from '../../core/agent/agent-connector.js';
+import { validatePlan } from '../../core/security/command-validator.js';
 import { getAgenticEngine } from '../../ai/agentic-chat.js';
+import {
+  executePlanSteps,
+  resolveStepDecision,
+  rejectAllPendingDecisions,
+  getActiveExecution,
+  removeActiveExecution,
+} from './chat-execution.js';
+import type { StoredPlan } from './chat-execution.js';
 import type { InstallStep } from '@aiinstaller/shared';
 import type { ChatMessageBody, ExecutePlanBody, CancelExecutionBody, StepDecisionBody, ConfirmBody } from './schemas.js';
 import type { ApiEnv } from './types.js';
+import { getTaskExecutor } from '../../core/task/executor.js';
 
 // ============================================================================
-// Shared execution infrastructure
+// Agentic confirmation infrastructure
 // ============================================================================
-
-/**
- * Tracks active plan executions: `planId → executionId`.
- * Used by the cancel endpoint to find and stop running executions.
- */
-const activePlanExecutions = new Map<string, string>();
-
-/**
- * Tracks pending step decisions for the step-confirm flow.
- * Key: `planId:stepId` → resolve callback for the awaiting Promise.
- */
-const pendingDecisions = new Map<string, {
-  resolve: (decision: 'allow' | 'allow_all' | 'reject') => void;
-  timer: ReturnType<typeof setTimeout>;
-}>();
-
-/** Decision timeout: 5 minutes of inactivity auto-rejects. */
-const STEP_DECISION_TIMEOUT_MS = 5 * 60 * 1000;
 
 /**
  * Tracks pending agentic confirmations: `confirmId → resolve callback`.
@@ -80,297 +69,6 @@ const pendingConfirmations = new Map<string, {
 
 /** Confirmation timeout for agentic mode (5 minutes). */
 const CONFIRM_TIMEOUT_MS = 5 * 60 * 1000;
-
-/**
- * Wait for a user decision on a specific step.
- * Returns a promise that resolves when the user calls the step-decision API.
- */
-function waitForStepDecision(
-  planId: string,
-  stepId: string,
-): Promise<'allow' | 'allow_all' | 'reject'> {
-  return new Promise((resolve) => {
-    const key = `${planId}:${stepId}`;
-    const timer = setTimeout(() => {
-      pendingDecisions.delete(key);
-      resolve('reject');
-    }, STEP_DECISION_TIMEOUT_MS);
-    pendingDecisions.set(key, { resolve, timer });
-  });
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type StoredPlan = any;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type ServerProfile = any;
-
-/**
- * Execute plan steps with streaming output via SSE.
- *
- * Shared by both auto-execute (all-GREEN) and manual-execute flows.
- *
- * @param mode - 'auto': run all steps without confirmation.
- *               'step_confirm': pause before each non-GREEN step and wait for user decision.
- */
-async function executePlanSteps(opts: {
-  plan: StoredPlan;
-  serverId: string;
-  userId: string;
-  sessionId: string;
-  clientId: string;
-  stream: SSEStreamingApi;
-  serverProfile: ServerProfile;
-  planId: string;
-  mode: 'auto' | 'step_confirm';
-}): Promise<{ success: boolean; operationId: string; failedAtStep: string | null; cancelled: boolean }> {
-  const { plan, serverId, userId, sessionId, clientId, stream, serverProfile, planId, mode } = opts;
-  const operationId = randomUUID();
-  const executor = getTaskExecutor();
-  const sessionMgr = getSessionManager();
-  const auditLogger = getAuditLogger();
-
-  let allSucceeded = true;
-  let firstFailedStep: string | null = null;
-  let cancelled = false;
-  let allowAll = mode === 'auto'; // In auto mode, skip all confirmations
-
-  const completedSteps: Array<{
-    stepId: string; success: boolean; exitCode: number;
-    stdout: string; stderr: string; duration: number;
-  }> = [];
-
-  // Track this plan execution for the cancel endpoint
-  activePlanExecutions.set(planId, '');
-
-  // Track current step for real-time output routing
-  let currentStepId: string | null = null;
-  // Track whether real-time output was streamed (to avoid duplicate output on completion)
-  let hasStreamedOutput = false;
-
-  // Register a progress listener scoped to this plan execution.
-  // Using planId as the listener ID ensures concurrent plan executions
-  // from different users each receive only their own output.
-  executor.addProgressListener(planId, (executionId, _status, output) => {
-    activePlanExecutions.set(planId, executionId);
-    // Stream real-time output from agent directly to SSE (SSH-like experience)
-    if (output && currentStepId) {
-      hasStreamedOutput = true;
-      stream.writeSSE({ event: 'output', data: JSON.stringify({ stepId: currentStepId, content: output }) })
-        .catch(() => { /* SSE write failed, stream likely closed */ });
-    }
-  });
-
-  for (const step of plan.steps) {
-    // Check if execution was cancelled between steps
-    if (!activePlanExecutions.has(planId)) {
-      cancelled = true;
-      allSucceeded = false;
-      firstFailedStep = step.id;
-      break;
-    }
-
-    const startTime = Date.now();
-    const validation = validateCommand(step.command);
-
-    // Log to audit trail
-    const auditEntry = await auditLogger.log({
-      serverId, userId, sessionId,
-      command: step.command,
-      validation,
-    });
-
-    // Block FORBIDDEN commands
-    if (validation.action === 'blocked') {
-      logger.warn(
-        { operation: 'plan_execute', serverId, stepId: step.id, reason: validation.classification.reason },
-        `Step blocked: ${step.command}`,
-      );
-      await stream.writeSSE({ event: 'step_start', data: JSON.stringify({ stepId: step.id, command: step.command, description: step.description }) });
-      await stream.writeSSE({ event: 'output', data: JSON.stringify({ stepId: step.id, content: `[BLOCKED] ${validation.classification.reason}\n` }) });
-      await stream.writeSSE({ event: 'step_complete', data: JSON.stringify({ stepId: step.id, exitCode: -1, duration: Date.now() - startTime, success: false, blocked: true }) });
-      allSucceeded = false;
-      firstFailedStep = step.id;
-      break;
-    }
-
-    // Step-confirm mode: pause for user decision on non-GREEN steps
-    if (!allowAll && mode === 'step_confirm' && validation.action !== 'allowed') {
-      await stream.writeSSE({
-        event: 'step_confirm',
-        data: JSON.stringify({
-          stepId: step.id,
-          command: step.command,
-          description: step.description,
-          riskLevel: validation.classification.riskLevel,
-        }),
-      });
-
-      const decision = await waitForStepDecision(planId, step.id);
-
-      if (decision === 'reject') {
-        cancelled = true;
-        allSucceeded = false;
-        firstFailedStep = step.id;
-        break;
-      }
-      if (decision === 'allow_all') {
-        allowAll = true;
-      }
-      // 'allow' or 'allow_all': proceed to execute this step
-    }
-
-    // Notify step start
-    currentStepId = step.id;
-    hasStreamedOutput = false;
-    await stream.writeSSE({ event: 'step_start', data: JSON.stringify({ stepId: step.id, command: step.command, description: step.description }) });
-    await stream.writeSSE({ event: 'output', data: JSON.stringify({ stepId: step.id, content: `$ ${step.command}\n` }) });
-
-    try {
-      const validatedRiskLevel = validation.classification.riskLevel as 'green' | 'yellow' | 'red' | 'critical';
-
-      const result = await executor.executeCommand({
-        serverId, userId, clientId,
-        command: step.command,
-        description: step.description,
-        riskLevel: validatedRiskLevel,
-        type: 'execute',
-        // sessionId omitted from operation — operations FK to sessions table
-        // is optional and not required for chat-initiated commands.
-        timeoutMs: step.timeout || 300000,
-      });
-
-      currentStepId = null;
-
-      // Only send post-completion output if no real-time streaming occurred.
-      // When the agent streams step.output messages, the progress callback already
-      // forwarded them to SSE. Sending result.stdout again would duplicate output.
-      if (!hasStreamedOutput) {
-        if (result.stdout) {
-          await stream.writeSSE({ event: 'output', data: JSON.stringify({ stepId: step.id, content: result.stdout }) });
-        }
-        if (result.stderr) {
-          await stream.writeSSE({ event: 'output', data: JSON.stringify({ stepId: step.id, content: result.stderr }) });
-        }
-      }
-
-      const duration = Date.now() - startTime;
-      await stream.writeSSE({ event: 'step_complete', data: JSON.stringify({ stepId: step.id, exitCode: result.exitCode, duration, success: result.success }) });
-
-      await auditLogger.updateExecutionResult(auditEntry.id, result.success ? 'success' : 'failed', result.operationId);
-
-      completedSteps.push({
-        stepId: step.id, success: result.success, exitCode: result.exitCode,
-        stdout: result.stdout, stderr: result.stderr, duration,
-      });
-
-      if (result.error === 'Cancelled') {
-        cancelled = true;
-        allSucceeded = false;
-        firstFailedStep = step.id;
-        break;
-      }
-
-      if (!result.success) {
-        allSucceeded = false;
-        firstFailedStep = step.id;
-        logger.warn({ operation: 'plan_execute', serverId, planId, stepId: step.id, exitCode: result.exitCode }, `Step failed: ${step.description}`);
-
-        try {
-          const diagnosis = await autoDiagnoseStepFailure({
-            stepId: step.id, command: step.command, exitCode: result.exitCode,
-            stdout: result.stdout, stderr: result.stderr,
-            serverId, serverProfile, previousSteps: completedSteps.slice(0, -1),
-          });
-          await stream.writeSSE({ event: 'diagnosis', data: JSON.stringify(diagnosis) });
-          if (diagnosis.success) {
-            await sessionMgr.addMessage(sessionId, userId, 'system',
-              `Error diagnosis for "${step.command}": ${diagnosis.rootCause}` +
-              (diagnosis.fixSuggestions.length > 0 ? `. Suggested fix: ${diagnosis.fixSuggestions[0].description}` : ''));
-          }
-        } catch (diagErr) {
-          logger.error({ operation: 'auto_diagnosis', serverId, stepId: step.id, error: String(diagErr) }, 'Auto-diagnosis failed');
-        }
-        break;
-      }
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Unknown error';
-      logger.error({ operation: 'plan_execute', serverId, planId, stepId: step.id, error: errorMsg }, `Step execution error: ${step.description}`);
-
-      await stream.writeSSE({ event: 'output', data: JSON.stringify({ stepId: step.id, content: `[ERROR] ${errorMsg}\n` }) });
-      await stream.writeSSE({ event: 'step_complete', data: JSON.stringify({ stepId: step.id, exitCode: -1, duration: Date.now() - startTime, success: false }) });
-      await auditLogger.updateExecutionResult(auditEntry.id, 'failed');
-
-      try {
-        const diagnosis = await autoDiagnoseStepFailure({
-          stepId: step.id, command: step.command, exitCode: -1, stdout: '', stderr: errorMsg,
-          serverId, serverProfile, previousSteps: completedSteps,
-        });
-        await stream.writeSSE({ event: 'diagnosis', data: JSON.stringify(diagnosis) });
-      } catch (diagErr) {
-        logger.error({ operation: 'auto_diagnosis', serverId, stepId: step.id, error: String(diagErr) }, 'Auto-diagnosis failed');
-      }
-
-      allSucceeded = false;
-      firstFailedStep = step.id;
-      break;
-    }
-  }
-
-  // Clean up
-  activePlanExecutions.delete(planId);
-  executor.removeProgressListener(planId);
-
-  // Post-execution AI summary: analyze results and provide natural language summary
-  // This is what makes it feel like Claude Code — not just raw output, but intelligent analysis
-  if (completedSteps.length > 0 && !cancelled) {
-    try {
-      const agent = getChatAIAgent();
-      if (agent) {
-        // Build execution context for AI analysis
-        const stepSummaries = completedSteps.map((s) => {
-          const stepInfo = plan.steps.find((ps: { id: string }) => ps.id === s.stepId);
-          const outputSnippet = (s.stdout || s.stderr || '').slice(0, 2000);
-          return `Command: ${stepInfo?.command ?? s.stepId}\nExit code: ${s.exitCode}\nOutput:\n${outputSnippet}`;
-        }).join('\n---\n');
-
-        const summaryPrompt = allSucceeded
-          ? `The following commands were executed successfully. Provide a brief, helpful summary of the results in Chinese. Focus on key findings. Do NOT repeat the raw output — just summarize what the user needs to know.\n\nCRITICAL: Do NOT generate any json-plan blocks. Do NOT suggest follow-up commands in code blocks. Just give a plain text summary.\n\n${stepSummaries}`
-          : `The following commands were executed but some failed. Analyze what went wrong, explain the root cause in Chinese, and suggest what the user should do next.\n\nCRITICAL: Do NOT generate any json-plan blocks. Do NOT output code blocks with commands. Just explain in plain text what went wrong and what to do.\n\n${stepSummaries}`;
-
-        await agent.chat(
-          summaryPrompt,
-          `Server: execution-summary`,
-          '',
-          {
-            onToken: async (token: string) => {
-              await stream.writeSSE({
-                event: 'message',
-                data: JSON.stringify({ content: token }),
-              });
-            },
-            onRetry: async () => { /* ignore retries for summary */ },
-          },
-        );
-      }
-    } catch (summaryErr) {
-      logger.debug({ operation: 'execution_summary', error: String(summaryErr) }, 'Post-execution summary failed (non-critical)');
-    }
-  }
-
-  const resultMessage = cancelled
-    ? `Plan execution cancelled at step ${firstFailedStep}: ${plan.description}`
-    : allSucceeded
-      ? `Plan executed successfully: ${plan.description}`
-      : `Plan execution failed at step ${firstFailedStep}: ${plan.description}`;
-  await sessionMgr.addMessage(sessionId, userId, 'system', resultMessage);
-
-  await stream.writeSSE({
-    event: 'complete',
-    data: JSON.stringify({ success: allSucceeded, operationId, failedAtStep: firstFailedStep, cancelled }),
-  });
-
-  return { success: allSucceeded, operationId, failedAtStep: firstFailedStep, cancelled };
-}
 
 // ============================================================================
 // Routes
@@ -453,9 +151,7 @@ chat.post('/:serverId', requirePermission('chat:use'), validateBody(ChatMessageB
 
     if (agenticEngine) {
       // ====== AGENTIC MODE ======
-      // AI autonomously calls tools, observes results, and adapts
       try {
-        // Build conversation history with token limit to prevent context overflow
         const history = sessionMgr.buildHistoryWithLimit(session.id, 40000);
 
         const result = await agenticEngine.run({
@@ -468,9 +164,6 @@ chat.post('/:serverId', requirePermission('chat:use'), validateBody(ChatMessageB
           serverProfile: fullProfile,
           serverName: server.name,
           onConfirmRequired: (command, riskLevel, description) => {
-            // Generate confirmId synchronously so agentic engine can include
-            // it in the confirm_required SSE event — eliminates the race
-            // condition of a separate confirm_id event arriving late.
             const confirmId = `${session.id}:${randomUUID()}`;
             const approved = new Promise<boolean>((resolve) => {
               const timer = setTimeout(() => {
@@ -483,7 +176,6 @@ chat.post('/:serverId', requirePermission('chat:use'), validateBody(ChatMessageB
           },
         });
 
-        // Store the AI's final text as assistant message
         if (result.finalText) {
           await sessionMgr.addMessage(session.id, userId, 'assistant', result.finalText);
         }
@@ -516,7 +208,6 @@ chat.post('/:serverId', requirePermission('chat:use'), validateBody(ChatMessageB
     }
 
     // ====== LEGACY MODE (non-Claude providers) ======
-    // Falls back to json-plan generation + execution
     const agent = getChatAIAgent();
     if (!agent) {
       await stream.writeSSE({
@@ -602,7 +293,7 @@ chat.post('/:serverId', requirePermission('chat:use'), validateBody(ChatMessageB
         }));
 
         const planValidation = validatePlan(planSteps);
-        const storedPlan = {
+        const storedPlan: StoredPlan = {
           planId,
           description: result.plan.description ?? 'Execution plan',
           steps: planValidation.steps.map((sv) => ({
@@ -674,22 +365,16 @@ chat.post('/:serverId', requirePermission('chat:use'), validateBody(ChatMessageB
 });
 
 // ============================================================================
-// POST /chat/:serverId/step-decision — User decision on a step (allow/allow_all/reject)
+// POST /chat/:serverId/step-decision — User decision on a step
 // ============================================================================
 
 chat.post('/:serverId/step-decision', requirePermission('chat:use'), validateBody(StepDecisionBodySchema), async (c) => {
   const body = c.get('validatedBody') as StepDecisionBody;
 
-  const key = `${body.planId}:${body.stepId}`;
-  const pending = pendingDecisions.get(key);
-
-  if (!pending) {
+  const found = resolveStepDecision(body.planId, body.stepId, body.decision);
+  if (!found) {
     return c.json({ success: false, message: 'No pending decision for this step' }, 404);
   }
-
-  clearTimeout(pending.timer);
-  pending.resolve(body.decision);
-  pendingDecisions.delete(key);
 
   logger.info(
     { operation: 'step_decision', planId: body.planId, stepId: body.stepId, decision: body.decision },
@@ -700,7 +385,7 @@ chat.post('/:serverId/step-decision', requirePermission('chat:use'), validateBod
 });
 
 // ============================================================================
-// POST /chat/:serverId/confirm — User confirms/rejects a risky command (agentic mode)
+// POST /chat/:serverId/confirm — User confirms/rejects a risky command (agentic)
 // ============================================================================
 
 chat.post('/:serverId/confirm', requirePermission('chat:use'), validateBody(ConfirmBodySchema), async (c) => {
@@ -732,16 +417,14 @@ chat.post('/:serverId/execute', requirePermission('chat:use'), validateBody(Exec
   const userId = c.get('userId');
   const body = c.get('validatedBody') as ExecutePlanBody;
 
-  // Verify server exists
   const repo = getServerRepository();
   const server = await repo.findById(serverId, userId);
   if (!server) {
     throw ApiError.notFound('Server');
   }
 
-  // Retrieve the plan from session
   const sessionMgr = getSessionManager();
-  const plan = sessionMgr.getPlan(body.sessionId, body.planId);
+  const plan = sessionMgr.getPlan(body.sessionId, body.planId) as StoredPlan | undefined;
   if (!plan) {
     throw ApiError.notFound('Plan');
   }
@@ -785,23 +468,16 @@ chat.post('/:serverId/execute/cancel', requirePermission('chat:use'), validateBo
   const userId = c.get('userId');
   const body = c.get('validatedBody') as CancelExecutionBody;
 
-  // Verify server exists
   const repo = getServerRepository();
   const server = await repo.findById(serverId, userId);
   if (!server) {
     throw ApiError.notFound('Server');
   }
 
-  const executionId = activePlanExecutions.get(body.planId);
+  const executionId = getActiveExecution(body.planId);
 
-  // Also resolve any pending step decisions
-  for (const [key, pending] of pendingDecisions.entries()) {
-    if (key.startsWith(`${body.planId}:`)) {
-      clearTimeout(pending.timer);
-      pending.resolve('reject');
-      pendingDecisions.delete(key);
-    }
-  }
+  // Resolve any pending step decisions as 'reject'
+  rejectAllPendingDecisions(body.planId);
 
   if (!executionId) {
     return c.json({ success: false, message: 'No active execution found for this plan' }, 404);
@@ -811,7 +487,7 @@ chat.post('/:serverId/execute/cancel', requirePermission('chat:use'), validateBo
   const cancelled = executor.cancelExecution(executionId);
 
   // Remove from tracking map so the step loop breaks
-  activePlanExecutions.delete(body.planId);
+  removeActiveExecution(body.planId);
 
   logger.info(
     { operation: 'plan_cancel', serverId, planId: body.planId, executionId, userId, cancelled },
@@ -829,7 +505,6 @@ chat.get('/:serverId/sessions', requirePermission('chat:use'), async (c) => {
   const { serverId } = c.req.param();
   const userId = c.get('userId');
 
-  // Verify server access
   const repo = getServerRepository();
   const server = await repo.findById(serverId, userId);
   if (!server) {
