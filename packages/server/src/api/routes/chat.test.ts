@@ -1490,6 +1490,7 @@ describe('Legacy mode catch block with closed stream', () => {
 describe('Legacy mode RAG search graceful degradation', () => {
   it('should continue chat when RAG search throws an error', async () => {
     const server = await createServer('web-01', tokenA);
+    const warnSpy = vi.spyOn(logger, 'warn');
 
     // Set up a RAG pipeline that throws
     _mockRagPipeline = {
@@ -1531,10 +1532,14 @@ describe('Legacy mode RAG search graceful degradation', () => {
     // 7th argument is knowledgeContext — should be undefined
     expect(callArgs[6]).toBeUndefined();
 
-    // Verify warn log was emitted
-    const warnSpy = vi.spyOn(logger, 'warn');
-    // Re-trigger to capture log (the initial call already happened)
-    // Instead, check the agent was called without knowledge context
+    // Verify warn log was emitted with correct operation tag
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operation: 'rag_search',
+        error: 'Vector store corrupted',
+      }),
+      'RAG search failed, continuing without knowledge context',
+    );
     warnSpy.mockRestore();
   });
 

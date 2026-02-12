@@ -12,6 +12,7 @@ import {
   loadSkillFromDir,
   scanSkillDirectories,
   resolvePromptTemplate,
+  checkRequirements,
   type ScannedSkill,
   type TemplateVars,
 } from './loader.js';
@@ -293,6 +294,20 @@ export class SkillEngine {
   ): Promise<SkillExecutionResult> {
     const { skillId, serverId, userId, triggerType, chainContext } = params;
     const startTime = Date.now();
+
+    // Check skill requirements against server profile
+    const reqCheck = await this.checkSkillRequirements(manifest, serverId, userId);
+    if (!reqCheck.satisfied) {
+      throw new Error(
+        `Skill requirements not met: ${reqCheck.missing.join('; ')}`,
+      );
+    }
+    if (reqCheck.warnings.length > 0) {
+      logger.warn(
+        { skillId, warnings: reqCheck.warnings },
+        'Skill requirements check has warnings',
+      );
+    }
 
     // Check if confirmation is required for auto-triggered skills
     const needsConfirmation =
