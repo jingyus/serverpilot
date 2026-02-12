@@ -3,14 +3,14 @@
 > 此队列专注于 Skill 插件系统的设计与实现
 > AI 自动扫描 → 发现缺失 → 设计实现 → 验证
 
-**最后更新**: 2026-02-13 05:37:09
+**最后更新**: 2026-02-13 05:39:01
 
 ## 📊 统计
 
 - **总任务数**: 36
-- **待完成** (pending): 1
+- **待完成** (pending): 0
 - **进行中** (in_progress): 0
-- **已完成** (completed): 35
+- **已完成** (completed): 36
 - **失败** (failed): 0
 
 ## 📋 任务列表
@@ -178,7 +178,7 @@
 
 ---
 
-### [pending] batch-executor.ts 单元测试
+### [completed] batch-executor.ts 单元测试 ✅
 
 **ID**: skill-067
 **优先级**: P2
@@ -201,7 +201,7 @@
 - mock 模式与 skill-integration.test.ts 一致
 **影响范围**: packages/server/src/core/skill/batch-executor.test.ts (新)
 **创建时间**: (自动填充)
-**完成时间**: -
+**完成时间**: 2026-02-13 05:39:01
 
 ### [completed] runner-tools.test.ts — 工具定义构建 & 安全工具函数单元测试 ✅
 
