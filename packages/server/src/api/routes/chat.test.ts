@@ -703,6 +703,94 @@ describe('GET /api/v1/chat/:serverId/sessions/:sessionId', () => {
 });
 
 // ============================================================================
+// POST /chat/:serverId/confirm — Confirm/Reject risky command (agentic mode)
+// ============================================================================
+
+describe('POST /api/v1/chat/:serverId/confirm', () => {
+  it('should return 400 for non-JSON body', async () => {
+    const server = await createServer('web-01', tokenA);
+    const res = await req(`/api/v1/chat/${server.id}/confirm`, tokenA, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: 'not json',
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('should return 400 when confirmId is missing', async () => {
+    const server = await createServer('web-01', tokenA);
+    const res = await jsonPost(
+      `/api/v1/chat/${server.id}/confirm`,
+      { approved: true },
+      tokenA,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('should return 400 when approved is missing', async () => {
+    const server = await createServer('web-01', tokenA);
+    const res = await jsonPost(
+      `/api/v1/chat/${server.id}/confirm`,
+      { confirmId: 'some-id' },
+      tokenA,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('should return 400 when confirmId is not a string', async () => {
+    const server = await createServer('web-01', tokenA);
+    const res = await jsonPost(
+      `/api/v1/chat/${server.id}/confirm`,
+      { confirmId: 123, approved: true },
+      tokenA,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('should return 400 when approved is not a boolean', async () => {
+    const server = await createServer('web-01', tokenA);
+    const res = await jsonPost(
+      `/api/v1/chat/${server.id}/confirm`,
+      { confirmId: 'some-id', approved: 'yes' },
+      tokenA,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('should return 400 when confirmId is empty string', async () => {
+    const server = await createServer('web-01', tokenA);
+    const res = await jsonPost(
+      `/api/v1/chat/${server.id}/confirm`,
+      { confirmId: '', approved: true },
+      tokenA,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('should return 404 when no pending confirmation exists', async () => {
+    const server = await createServer('web-01', tokenA);
+    const res = await jsonPost(
+      `/api/v1/chat/${server.id}/confirm`,
+      { confirmId: 'nonexistent-id', approved: true },
+      tokenA,
+    );
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.message).toBe('No pending confirmation found');
+  });
+
+  it('should return 400 for empty body', async () => {
+    const server = await createServer('web-01', tokenA);
+    const res = await jsonPost(
+      `/api/v1/chat/${server.id}/confirm`,
+      {},
+      tokenA,
+    );
+    expect(res.status).toBe(400);
+  });
+});
+
+// ============================================================================
 // DELETE /chat/:serverId/sessions/:sessionId — Delete Session
 // ============================================================================
 

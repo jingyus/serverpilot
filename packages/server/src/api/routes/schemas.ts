@@ -190,6 +190,12 @@ export const StepDecisionBodySchema = z.object({
 });
 export type StepDecisionBody = z.infer<typeof StepDecisionBodySchema>;
 
+export const ConfirmBodySchema = z.object({
+  confirmId: z.string().min(1, 'Confirm ID is required'),
+  approved: z.boolean({ required_error: 'Approved field is required' }),
+});
+export type ConfirmBody = z.infer<typeof ConfirmBodySchema>;
+
 export const ChatServerIdParamSchema = z.object({
   serverId: uuid,
 });
@@ -442,11 +448,18 @@ export type AcceptInvitationBody = z.infer<typeof AcceptInvitationBodySchema>;
 // Skill Schemas
 // ============================================================================
 
-/** Install a skill from a specific source directory */
+/** Install a skill from a local directory or a Git HTTPS URL */
 export const InstallSkillBodySchema = z.object({
-  skillDir: z.string().min(1, 'Skill directory is required').max(1000),
+  skillDir: z.string().min(1).max(1000).optional(),
   source: z.enum(['official', 'community', 'local']),
-});
+  gitUrl: z.string().url().max(2000).optional(),
+}).refine(
+  (data) => data.skillDir || data.gitUrl,
+  { message: 'Either skillDir or gitUrl is required' },
+).refine(
+  (data) => !(data.skillDir && data.gitUrl),
+  { message: 'Cannot specify both skillDir and gitUrl' },
+);
 export type InstallSkillBody = z.infer<typeof InstallSkillBodySchema>;
 
 /** Configure a skill's user-facing inputs */

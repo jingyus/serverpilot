@@ -23,6 +23,7 @@ import {
   ExecutePlanBodySchema,
   CancelExecutionBodySchema,
   StepDecisionBodySchema,
+  ConfirmBodySchema,
 } from './schemas.js';
 import { validateBody } from '../middleware/validate.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -43,7 +44,7 @@ import { getAuditLogger } from '../../core/security/audit-logger.js';
 import { autoDiagnoseStepFailure } from '../../ai/error-diagnosis-service.js';
 import { getAgenticEngine } from '../../ai/agentic-chat.js';
 import type { InstallStep } from '@aiinstaller/shared';
-import type { ChatMessageBody, ExecutePlanBody, CancelExecutionBody, StepDecisionBody } from './schemas.js';
+import type { ChatMessageBody, ExecutePlanBody, CancelExecutionBody, StepDecisionBody, ConfirmBody } from './schemas.js';
 import type { ApiEnv } from './types.js';
 
 // ============================================================================
@@ -673,12 +674,8 @@ chat.post('/:serverId/step-decision', requirePermission('chat:use'), validateBod
 // POST /chat/:serverId/confirm — User confirms/rejects a risky command (agentic mode)
 // ============================================================================
 
-chat.post('/:serverId/confirm', requirePermission('chat:use'), async (c) => {
-  const body = await c.req.json<{ confirmId: string; approved: boolean }>();
-
-  if (!body.confirmId) {
-    return c.json({ success: false, message: 'Missing confirmId' }, 400);
-  }
+chat.post('/:serverId/confirm', requirePermission('chat:use'), validateBody(ConfirmBodySchema), async (c) => {
+  const body = c.get('validatedBody') as ConfirmBody;
 
   const pending = pendingConfirmations.get(body.confirmId);
   if (!pending) {
@@ -686,7 +683,7 @@ chat.post('/:serverId/confirm', requirePermission('chat:use'), async (c) => {
   }
 
   clearTimeout(pending.timer);
-  pending.resolve(body.approved ?? false);
+  pending.resolve(body.approved);
   pendingConfirmations.delete(body.confirmId);
 
   logger.info(

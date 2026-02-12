@@ -9,6 +9,8 @@
  * @module api/routes/skills
  */
 
+import { join } from 'node:path';
+
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import {
@@ -24,6 +26,7 @@ import { resolveRole, requirePermission } from '../middleware/rbac.js';
 import { ApiError } from '../middleware/error-handler.js';
 import { getSkillEngine } from '../../core/skill/engine.js';
 import { getSkillEventBus } from '../../core/skill/skill-event-bus.js';
+import { installFromGitUrl } from '../../core/skill/git-installer.js';
 import type {
   InstallSkillBody,
   ConfigureSkillBody,
@@ -32,6 +35,9 @@ import type {
   SkillExecutionQuery,
 } from './schemas.js';
 import type { ApiEnv } from './types.js';
+
+/** Default community skill directory (relative to process.cwd()). */
+const COMMUNITY_SKILL_DIR = join(process.cwd(), 'skills', 'community');
 
 const skillsRoute = new Hono<ApiEnv>();
 
@@ -70,11 +76,28 @@ skillsRoute.post('/install', requirePermission('skill:manage'), validateBody(Ins
   const engine = getSkillEngine();
 
   try {
-    const skill = await engine.install(userId, body.skillDir, body.source);
-    return c.json({ skill }, 201);
+    let skillDir: string;
+    let source = body.source;
+    let warnings: string[] = [];
+
+    if (body.gitUrl) {
+      // Clone from Git URL → install as community skill
+      const gitResult = await installFromGitUrl(body.gitUrl, COMMUNITY_SKILL_DIR);
+      skillDir = gitResult.skillDir;
+      source = 'community';
+      warnings = gitResult.warnings;
+    } else {
+      skillDir = body.skillDir!;
+    }
+
+    const skill = await engine.install(userId, skillDir, source);
+    return c.json({ skill, warnings }, 201);
   } catch (err) {
     const msg = (err as Error).message;
     if (msg.includes('already installed')) {
+      throw ApiError.badRequest(msg);
+    }
+    if (msg.includes('Only HTTPS') || msg.includes('Invalid URL') || msg.includes('Git clone failed')) {
       throw ApiError.badRequest(msg);
     }
     throw err;
