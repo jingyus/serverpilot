@@ -3,19 +3,241 @@
 > 此队列专注于 Chat 和 AI 对话系统的质量改进
 > AI 自动发现问题 → 生成任务 → 实现 → 验证
 
-**最后更新**: 2026-02-13 06:20:38
+**最后更新**: 2026-02-13 06:26:27
 
 ## 📊 统计
 
-- **总任务数**: 49
-- **待完成** (pending): 0
-- **进行中** (in_progress): 0
+- **总任务数**: 65
+- **待完成** (pending): 15
+- **进行中** (in_progress): 1
 - **已完成** (completed): 49
 - **失败** (failed): 0
 
 ## 📋 任务列表
 
 ### [completed] 聊天会话持久化到 SQLite — 消除服务器重启丢失对话的致命问题 ✅
+### [in_progress] pendingConfirmations 在 SSE 断连时未清理 — 定时器和 Promise 泄漏
+
+**ID**: chat-050
+**优先级**: P0
+**模块路径**: packages/server/src/api/routes/chat.ts
+**发现的问题**: chat.ts 第 51-54 行声明的 `pendingConfirmations` Map，在第 142-152 行创建 confirmation 时设置了 5 分钟超时定时器，但当 SSE 流断连（客户端关闭页面）时，没有任何清理机制。定时器继续运行直到 5 分钟后才自然过期。同时 agentic-chat.ts 第 502 行 `await confirmation.approved` 会无限挂起，直到超时 resolve(false)。问题链路：(1) 用户关闭页面 → (2) stream.onAbort 在 agentic-chat.ts:196 设置 abort.aborted=true → (3) 但 chat.ts 中的 pendingConfirmations 定时器仍在运行 → (4) Promise 挂起最多 5 分钟 → (5) 内存泄漏。
+**改进方案**: 在 chat.ts 的 agentic 模式 SSE handler 中注册 `stream.onAbort()` 回调，遍历当前 session 关联的 pendingConfirmations，调用 `clearTimeout(timer)` 并 `resolve(false)`，然后从 Map 中删除。可以通过 confirmId 的前缀 `${session.id}:` 来过滤当前 session 的 confirmations。
+**验收标准**: (1) SSE 断连后 5 秒内相关 pendingConfirmations 条目被清除; (2) 无 5 分钟定时器残留; (3) agentic 循环不再挂起等待已断连客户端的确认; (4) 测试覆盖断连清理场景
+**影响范围**: packages/server/src/api/routes/chat.ts
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] Legacy 模式 SSE 错误处理器中 writeSSE 可能二次抛出 — 流已关闭时写入无 try/catch
+
+**ID**: chat-051
+**优先级**: P0
+**模块路径**: packages/server/src/api/routes/chat.ts
+**发现的问题**: chat.ts 第 301-314 行的 legacy 模式 catch 块中，`await stream.writeSSE({ event: 'message', ... })` 和 `await stream.writeSSE({ event: 'complete', ... })` 没有 try/catch 保护。如果客户端已断连（流已关闭），这两个 await 会抛出异常，导致错误从 catch 块逃逸到全局错误处理器，SSE 流非正常关闭。同样的问题也存在于 agentic 模式的 catch 块（第 174-181 行）。对比 agentic-chat.ts 内部的 `writeSSE` 方法（第 684-696 行）有 try/catch 保护，但 chat.ts 路由层没有使用该封装。
+**改进方案**: 将 catch 块中的 SSE 写入包裹在 try/catch 中，或提取为 `safeWriteSSE()` 辅助函数。失败时仅记录日志，不再重新抛出。同时为 agentic 模式的 catch 块（第 174-181 行）应用相同修复。
+**验收标准**: (1) 客户端断连后 catch 块中的 SSE 写入不会抛出未捕获异常; (2) 错误日志正确记录; (3) 两个模式（agentic/legacy）的 catch 块都有保护
+**影响范围**: packages/server/src/api/routes/chat.ts
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] Legacy 模式 RAG 搜索异常未捕获 — ragPipeline.search() 可能抛出未处理错误
+
+**ID**: chat-052
+**优先级**: P0
+**模块路径**: packages/server/src/api/routes/chat.ts
+**发现的问题**: chat.ts 第 208-216 行的 RAG 搜索逻辑没有 try/catch 包裹。`ragPipeline.search(body.message!)` 如果抛出异常（如向量存储损坏、内存不足），错误会直接传播到上层 try/catch（第 202-314 行），导致整个 AI 对话请求失败，用户看到通用错误消息而非优雅降级。对比 agentic-chat.ts 第 656-669 行有完整的 try/catch 包裹 RAG 搜索，这里是遗漏。
+**改进方案**: 为 RAG 搜索添加 try/catch，失败时记录 warn 日志并继续执行（knowledgeContext 保持 undefined），实现与 agentic 模式一致的优雅降级。
+**验收标准**: (1) RAG 搜索失败不阻断 AI 对话; (2) 失败时有 warn 级别日志; (3) 对话正常继续（无知识库上下文）; (4) 单元测试覆盖 RAG 异常场景
+**影响范围**: packages/server/src/api/routes/chat.ts
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] agentic-chat.ts 超出 800 行硬限制 — 844 行需要拆分
+
+**ID**: chat-053
+**优先级**: P0
+**模块路径**: packages/server/src/ai/agentic-chat.ts
+**发现的问题**: agentic-chat.ts 当前 844 行，超出 800 行硬限制 44 行。文件包含：(1) 工具定义和 Schema（第 30-119 行，约 90 行）; (2) AgenticChatEngine 类（第 163-702 行，约 540 行）; (3) buildAgenticSystemPrompt 函数（第 704-734 行，约 30 行）; (4) 消息裁剪工具函数（第 736-826 行，约 90 行）; (5) 单例管理（第 828-843 行）。
+**改进方案**: 将以下部分提取到独立文件：(1) `agentic-tools.ts` — 工具定义、输入 Schema（ExecuteCommandInputSchema 等）; (2) `agentic-prompts.ts` — buildAgenticSystemPrompt 函数; (3) `agentic-message-utils.ts` — extractBlockText、estimateMessageTokens、trimMessagesIfNeeded。主文件保留 AgenticChatEngine 类和单例管理，约 550 行。
+**验收标准**: (1) agentic-chat.ts 降至 600 行以内; (2) 拆分后的文件各不超过 200 行; (3) 所有现有测试通过; (4) 导入路径正确
+**影响范围**: packages/server/src/ai/agentic-chat.ts, 新文件 agentic-tools.ts, agentic-prompts.ts, agentic-message-utils.ts
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] common-errors.ts 超出 800 行硬限制 — 853 行需要拆分
+
+**ID**: chat-054
+**优先级**: P0
+**模块路径**: packages/server/src/ai/common-errors.ts
+**发现的问题**: common-errors.ts 当前 853 行，超出 800 行硬限制 53 行。文件主要由 ERROR_RULES 纯数据数组（约 600 行）和匹配函数（约 150 行）组成。虽然 MEMORY.md 提到"pure data, exceeds 500 soft limit but acceptable"，但现在已经超过 800 行硬限制，不再 acceptable。
+**改进方案**: 按错误类别拆分 ERROR_RULES 数据：(1) `error-rules-permission.ts` — 权限类规则; (2) `error-rules-network.ts` — 网络类规则; (3) `error-rules-dependency.ts` — 依赖和构建类规则; (4) `common-errors.ts` 保留类型定义、匹配函数、以及合并后的 ERROR_RULES 导出。或者更简洁地：将整个 ERROR_RULES 数组提取到 `error-rules-data.ts`，主文件只保留函数。
+**验收标准**: (1) common-errors.ts 降至 300 行以内; (2) 数据文件可超 500 行但不超 800 行; (3) `matchCommonErrors()`、`getBestMatch()` 等函数行为不变; (4) 所有测试通过
+**影响范围**: packages/server/src/ai/common-errors.ts, 新文件(s)
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] Agentic 流式 SSE 写入失败被静默吞没 — .catch(() => {}) 未设置 abort 状态
+
+**ID**: chat-055
+**优先级**: P1
+**模块路径**: packages/server/src/ai/agentic-chat.ts
+**发现的问题**: agentic-chat.ts 第 335 行 `this.writeSSE(...).catch(() => {})` 和第 346 行 `}, abort).catch(() => {})` 在 `response.on('text')` 和 `response.on('contentBlock')` 事件处理器中，SSE 写入失败被完全静默吞没。然而第 684-696 行的 `writeSSE()` 方法在内部 catch 中会设置 `abort.aborted = true`。这里的外层 `.catch(() => {})` 实际上永远不会触发（因为 writeSSE 内部已 catch），但如果 writeSSE 内部逻辑变更，外层 catch 会隐藏真正的错误。更重要的是，这种模式掩盖了意图 — 读者不清楚失败是否应该导致 abort。
+**改进方案**: 移除多余的 `.catch(() => {})` 包裹，因为 `writeSSE()` 内部已经 catch 并设置了 abort 状态。如果确实需要处理 writeSSE 本身的异常（比如 JSON.stringify 失败），添加明确的日志而非空 catch。
+**验收标准**: (1) 移除冗余的 `.catch(() => {})`; (2) SSE 写入失败时 abort 状态被正确设置（由 writeSSE 内部处理）; (3) 无静默错误吞没
+**影响范围**: packages/server/src/ai/agentic-chat.ts
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] Agentic 确认流在客户端断连后仍继续等待 — confirmation.approved 未与 abort 联动
+
+**ID**: chat-056
+**优先级**: P1
+**模块路径**: packages/server/src/ai/agentic-chat.ts
+**发现的问题**: agentic-chat.ts 第 491-514 行的确认流程中，第 502 行 `const approved = await confirmation.approved` 会无条件等待用户确认。如果客户端已断连（abort.aborted=true），这个 await 仍然会挂起最多 5 分钟（由 chat.ts 的 CONFIRM_TIMEOUT_MS 控制）。虽然第 517-520 行有 abort 检查，但只在确认 resolve 后才到达。这意味着一个已断连的客户端会让服务端的 agentic 循环挂起 5 分钟，占用内存和协程资源。
+**改进方案**: 使用 `Promise.race()` 将 `confirmation.approved` 与一个 abort 感知的 Promise 竞争。当 abort.aborted 为 true 时立即 resolve(false)。可以实现为：`const approved = await Promise.race([confirmation.approved, this.waitForAbort(abort)])` 其中 waitForAbort 定期检查 abort 状态或监听 abort 事件。
+**验收标准**: (1) 客户端断连后确认等待在 1 秒内结束; (2) 不再有 5 分钟挂起; (3) abort 后工具执行不会继续; (4) 测试覆盖断连+确认竞态场景
+**影响范围**: packages/server/src/ai/agentic-chat.ts, packages/server/src/api/routes/chat.ts
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] Agentic 初始消息数组未做 token 预检 — 超长历史可能导致首次 API 调用失败
+
+**ID**: chat-057
+**优先级**: P1
+**模块路径**: packages/server/src/ai/agentic-chat.ts
+**发现的问题**: agentic-chat.ts 第 205-216 行构建初始消息数组时，将完整的 conversationHistory 和当前 userMessage 追加到 messages 中，但没有在进入循环（第 222 行 `for (let turn = 0; turn < MAX_TURNS; turn++)`）之前调用 `trimMessagesIfNeeded()`。裁剪只在每轮结束后执行（第 280 行附近）。如果用户有很长的对话历史（数百条消息），初始消息可能就超过 MAX_MESSAGES_TOKENS（150K tokens），导致第一次 Anthropic API 调用因超出上下文窗口而失败。
+**改进方案**: 在进入循环前增加一次 `trimMessagesIfNeeded(messages)` 调用，确保初始消息数组在 token 预算内。
+**验收标准**: (1) 超长对话历史不会导致首次 API 调用失败; (2) 裁剪后保留最新消息和首条用户消息; (3) 测试覆盖超长历史场景
+**影响范围**: packages/server/src/ai/agentic-chat.ts
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] 前端 sendMessage 无重入保护 — 快速连续发送导致重复消息
+
+**ID**: chat-058
+**优先级**: P1
+**模块路径**: packages/dashboard/src/stores/chat.ts
+**发现的问题**: chat.ts（store）第 60-97 行的 `sendMessage()` 没有重入保护。虽然第 90 行会 `getActiveHandle()?.abort()` 中止前一个 SSE 连接，但第 74-88 行的 `set()` 调用会立即将新的 userMsg 追加到 messages 数组。如果用户快速点击两次发送（在 isStreaming 状态更新导致按钮禁用之前），两条用户消息都会被添加到 messages 中，并且第一个 SSE 连接被中止后，第二个连接的 onMessage 回调仍可能收到来自第一个请求的响应（因为服务端可能在 abort 信号到达前已开始流式输出）。
+**改进方案**: 在 `sendMessage` 开头检查 `if (get().isStreaming) return;` 防止重入。或者在 MessageInput 组件层面在 isStreaming 为 true 时禁用发送（Chat.tsx 第 434-445 行的 suggestion cards 也需要同样处理）。
+**验收标准**: (1) 快速连续点击不会发送重复消息; (2) isStreaming 期间发送操作被阻止; (3) suggestion cards 点击也受保护; (4) 测试覆盖快速连续发送场景
+**影响范围**: packages/dashboard/src/stores/chat.ts, packages/dashboard/src/pages/Chat.tsx
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] Chat.tsx EmptyState suggestion cards 无防重复点击 — 快速点击发送多条消息
+
+**ID**: chat-059
+**优先级**: P1
+**模块路径**: packages/dashboard/src/pages/Chat.tsx
+**发现的问题**: Chat.tsx 第 433-445 行的 EmptyState 组件中，suggestion cards 的 `onClick={() => onSuggestionClick(suggestion)}` 没有任何防抖或禁用逻辑。点击后 `onSuggestionClick` 调用 `sendMessage()`，但在 isStreaming 状态更新并触发重渲染之前（React 批量更新机制），用户可以再次点击另一个 card，导致发送第二条消息并立即 abort 第一个 SSE 连接。
+**改进方案**: (1) 在 EmptyState 组件中接收 `isStreaming` prop，当 `isStreaming` 为 true 时给 cards 添加 `pointer-events-none opacity-50` 样式; (2) 或在 sendMessage 中增加重入保护（与 chat-058 合并处理）。
+**验收标准**: (1) 点击 suggestion card 后其他 cards 立即变为不可点击状态; (2) 不会发送重复消息
+**影响范围**: packages/dashboard/src/pages/Chat.tsx
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] session/manager.ts 超过 500 行软限制 — 715 行可提取缓存和重试队列逻辑
+
+**ID**: chat-060
+**优先级**: P2
+**模块路径**: packages/server/src/core/session/manager.ts
+**发现的问题**: manager.ts 当前 715 行，超出 500 行软限制 215 行。文件包含：(1) 类型定义（第 30-80 行）; (2) 缓存配置和 CacheEntry（第 82-130 行）; (3) SessionManager 类（第 132-700 行，含 LRU 缓存管理、重试队列、上下文构建、持久化等多个职责）; (4) 单例管理（第 702-715 行）。SessionManager 类承担了过多职责，违反单一职责原则。
+**改进方案**: 提取以下独立模块：(1) `session-cache.ts` — LRU 缓存逻辑（get/set/evict/sweep/protect），约 150 行; (2) `session-retry-queue.ts` — 重试队列处理逻辑（processRetryQueue/markMessagePersisted），约 80 行。主文件保留 SessionManager 公共 API 和编排逻辑，约 480 行。
+**验收标准**: (1) manager.ts 降至 500 行以内; (2) 拆分后模块独立可测试; (3) 所有现有测试通过; (4) SessionManager 公共 API 不变
+**影响范围**: packages/server/src/core/session/manager.ts, 新文件 session-cache.ts, session-retry-queue.ts
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] Chat.tsx 超过 500 行软限制 — 631 行应提取子组件
+
+**ID**: chat-061
+**优先级**: P2
+**模块路径**: packages/dashboard/src/pages/Chat.tsx
+**发现的问题**: Chat.tsx 当前 631 行，超出 500 行软限制 131 行。文件在同一个文件中定义了 4 个组件：(1) ChatPage 主组件（第 1-356 行）; (2) ChatHeader（第 357-401 行，45 行）; (3) EmptyState（第 403-449 行，47 行）; (4) ServerSelector（第 451-499 行，49 行）; (5) SessionSidebar（第 516-631 行，115 行）。以及一个工具函数 getSessionDateGroup（第 501-514 行）。
+**改进方案**: 将以下组件提取到 `packages/dashboard/src/components/chat/` 目录：(1) `ChatHeader.tsx`; (2) `ChatEmptyState.tsx`; (3) `ServerSelector.tsx`; (4) `SessionSidebar.tsx`（含 getSessionDateGroup 工具函数）。主文件只保留 ChatPage 主组件和路由逻辑。
+**验收标准**: (1) Chat.tsx 降至 400 行以内; (2) 各子组件文件不超过 150 行; (3) 所有现有测试通过; (4) UI 行为和渲染不变
+**影响范围**: packages/dashboard/src/pages/Chat.tsx, 新文件 ChatHeader.tsx, ChatEmptyState.tsx, ServerSelector.tsx, SessionSidebar.tsx
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] SSE 连接无并发上限 — 快速切换服务器/会话可能耗尽浏览器连接数
+
+**ID**: chat-062
+**优先级**: P2
+**模块路径**: packages/dashboard/src/api/sse.ts
+**发现的问题**: sse.ts 第 102-220 行的 `createSSEConnection()` 每次调用创建新的 SSE 连接（AbortController + fetch），没有并发连接数限制。虽然 chat store 的 `sendMessage`（第 90 行）会在创建新连接前 abort 旧连接，但 abort 是异步的 — 旧连接可能尚未关闭时新连接已建立。加上 `createGetSSE`（第 244 行）用于 metrics/status 流，浏览器对同一域名的并发连接限制通常为 6 个（HTTP/1.1），可能被耗尽。
+**改进方案**: 在 sse.ts 模块级维护一个活跃连接 Set，`createSSEConnection` 创建前检查上限（如最大 3 个 POST SSE），超出时先同步关闭最旧的连接。或在 chat store 层面确保 abort 完成后才创建新连接。
+**验收标准**: (1) 任意时刻最多 N 个活跃 SSE 连接; (2) 旧连接在新连接创建前被完全关闭; (3) 不影响 metrics SSE 流; (4) 测试覆盖连接数限制场景
+**影响范围**: packages/dashboard/src/api/sse.ts, packages/dashboard/src/stores/chat.ts
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] chat store clearError 未重置 isReconnecting 标志 — 关闭错误后可能显示过时的重连状态
+
+**ID**: chat-063
+**优先级**: P2
+**模块路径**: packages/dashboard/src/stores/chat.ts
+**发现的问题**: chat.ts（store）第 180 行 `clearError: () => set({ error: null })` 只清除 error 状态，不重置 `isReconnecting`。如果 SSE 连接在重连过程中触发错误（如达到最大重连次数），UI 会同时显示错误提示和 "Reconnecting..." 状态栏。用户点击 dismiss 关闭错误提示后，isReconnecting 仍为 true，重连状态栏继续显示。
+**改进方案**: `clearError` 中同时重置 `isReconnecting: false`。
+**验收标准**: (1) 关闭错误提示后不再显示重连状态; (2) 测试验证 clearError 后 isReconnecting 为 false
+**影响范围**: packages/dashboard/src/stores/chat.ts
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] Agentic 工具输入验证失败时前端无感知 — 只返回错误给 AI 不发 SSE
+
+**ID**: chat-064
+**优先级**: P2
+**模块路径**: packages/server/src/ai/agentic-chat.ts
+**发现的问题**: agentic-chat.ts 第 398-430 行的 `executeToolCall()` 中，当 `ExecuteCommandInputSchema.safeParse(input)` 等 Zod 验证失败时，只返回错误字符串给 AI（如 `"Error: Invalid tool input for execute_command: ..."`），但不发送任何 SSE 事件通知前端。前端无法知道 AI 生成了无效的工具调用。这可能导致 AI 反复重试无效输入，用户只看到 AI 在"思考"但没有任何进展反馈。
+**改进方案**: 在验证失败时发送 `tool_result` SSE 事件（status: 'validation_error'），让前端展示具体的验证错误信息。同时记录 warn 日志帮助调试。
+**验收标准**: (1) 工具输入验证失败时前端收到 tool_result 事件; (2) 前端可展示验证错误信息; (3) 日志记录验证失败详情
+**影响范围**: packages/server/src/ai/agentic-chat.ts
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] Execute 路由 profileMgr.getProfile 异常未被 SSE 流捕获 — 抛出时流未初始化
+
+**ID**: chat-065
+**优先级**: P2
+**模块路径**: packages/server/src/api/routes/chat.ts
+**发现的问题**: chat.ts 第 394-395 行 `const serverProfile = await profileMgr.getProfile(serverId, userId)` 在 `streamSSE()` 回调内部但在 `executePlanSteps()` 之前调用。如果 profile 加载失败（如数据库连接断开），异常会从 streamSSE 回调中抛出，Hono 的 streamSSE 会将其作为 500 错误返回，但此时客户端可能已经建立了 SSE 连接并在等待事件。客户端会看到连接突然关闭而非收到明确的错误事件。
+**改进方案**: 将 profile 加载包裹在 try/catch 中，失败时通过 SSE 发送 complete 事件（success: false, error: 'profile load failed'），然后正常结束流。
+**验收标准**: (1) profile 加载失败时客户端收到明确的 SSE 错误事件; (2) 不再看到无提示的连接断开; (3) 测试覆盖 profile 加载失败场景
+**影响范围**: packages/server/src/api/routes/chat.ts
+**创建时间**: (自动填充)
+**完成时间**: -
+
 ### [completed] Agentic tool_use input 缺少运行时验证 — AI 返回畸形输入可导致命令注入 ✅
 
 **ID**: chat-033

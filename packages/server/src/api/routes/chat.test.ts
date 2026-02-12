@@ -57,6 +57,7 @@ import {
   _resetPendingConfirmations,
   _hasPendingConfirmation,
   CONFIRM_TIMEOUT_MS,
+  cleanupSessionConfirmations,
 } from './chat.js';
 import type { ApiEnv } from './types.js';
 

@@ -56,6 +56,30 @@ const pendingConfirmations = new Map<string, {
 /** Confirmation timeout for agentic mode (5 minutes). */
 const CONFIRM_TIMEOUT_MS = 5 * 60 * 1000;
 
+/**
+ * Clean up all pending confirmations for a given session.
+ * Clears timers and resolves promises with `false` so the agentic loop unblocks.
+ * Called when the SSE stream ends (normal completion or client disconnect).
+ */
+function cleanupSessionConfirmations(sessionId: string): number {
+  let cleaned = 0;
+  for (const [confirmId, pending] of pendingConfirmations) {
+    if (confirmId.startsWith(`${sessionId}:`)) {
+      clearTimeout(pending.timer);
+      pending.resolve(false);
+      pendingConfirmations.delete(confirmId);
+      cleaned++;
+    }
+  }
+  if (cleaned > 0) {
+    logger.info(
+      { operation: 'confirm_cleanup', sessionId, cleaned },
+      `Cleaned up ${cleaned} pending confirmation(s) for disconnected session`,
+    );
+  }
+  return cleaned;
+}
+
 const chat = new Hono<ApiEnv>();
 
 // All chat routes require authentication
@@ -179,6 +203,11 @@ chat.post('/:serverId', requirePermission('chat:use'), validateBody(ChatMessageB
           event: 'complete',
           data: JSON.stringify({ success: false }),
         });
+      } finally {
+        // Clean up any pending confirmations for this session.
+        // Handles: (1) client disconnect while confirmation is pending,
+        // (2) agentic loop ended with unresolved confirmations.
+        cleanupSessionConfirmations(session.id);
       }
       return;
     }
@@ -538,4 +567,4 @@ export function _hasPendingConfirmation(confirmId: string): boolean {
 }
 
 /** @internal Exported for testing. */
-export { CONFIRM_TIMEOUT_MS };
+export { CONFIRM_TIMEOUT_MS, cleanupSessionConfirmations };
