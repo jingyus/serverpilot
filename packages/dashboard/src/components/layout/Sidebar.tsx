@@ -17,6 +17,7 @@ import {
   X,
   BookOpen,
   Webhook,
+  Puzzle,
   Users,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -42,6 +43,7 @@ const navItems: NavItem[] = [
   { to: '/alerts', labelKey: 'nav.alerts', icon: Bell },
   { to: '/audit-log', labelKey: 'nav.auditLog', icon: Shield },
   { to: '/webhooks', labelKey: 'nav.webhooks', icon: Webhook },
+  { to: '/skills', labelKey: 'nav.skills', icon: Puzzle },
   { to: '/team', labelKey: 'nav.team', icon: Users },
   { to: '/settings', labelKey: 'nav.settings', icon: Settings },
 ];

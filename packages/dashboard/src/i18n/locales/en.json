@@ -28,6 +28,7 @@
     "alerts": "Alerts",
     "auditLog": "Audit Log",
     "webhooks": "Webhooks",
+    "skills": "Skills",
     "team": "Team",
     "settings": "Settings",
     "logout": "Logout"
@@ -471,6 +472,11 @@
     "invitationSent": "Invitation sent",
     "invitationCancelled": "Invitation cancelled",
     "cancelFailed": "Failed to cancel invitation"
+  },
+  "skills": {
+    "title": "Skills",
+    "description": "Manage automation skills and plugins.",
+    "noSkills": "No skills installed yet."
   },
   "theme": {
     "toggle": "Toggle theme",

@@ -60,6 +60,7 @@ describe('chat-execution (via useChatStore)', () => {
       toolCalls: [],
       agenticConfirm: null,
       isAgenticMode: false,
+      sseParseErrors: 0,
     });
     vi.clearAllMocks();
   });
@@ -314,6 +315,138 @@ describe('chat-execution (via useChatStore)', () => {
     it('does nothing without required state', async () => {
       await useChatStore.getState().respondToStep('allow');
       expect(apiRequest).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('SSE parse error logging (chat-011)', () => {
+    it('logs console.warn and increments sseParseErrors on malformed step_start', () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      useChatStore.setState({ serverId: 'srv-1' });
+      useChatStore.getState().sendMessage('test');
+
+      const callbacks = getSSECallbacks();
+      callbacks.onStepStart('not-valid-json{{{');
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[SSE] Failed to parse "step_start" event:'),
+        expect.any(SyntaxError),
+        '\nRaw data:',
+        'not-valid-json{{{',
+      );
+      expect(useChatStore.getState().sseParseErrors).toBe(1);
+      warnSpy.mockRestore();
+    });
+
+    it('logs console.warn and increments sseParseErrors on malformed tool_call', () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      useChatStore.setState({ serverId: 'srv-1' });
+      useChatStore.getState().sendMessage('test');
+
+      const callbacks = getSSECallbacks();
+      callbacks.onToolCall('}{bad');
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[SSE] Failed to parse "tool_call" event:'),
+        expect.any(SyntaxError),
+        '\nRaw data:',
+        '}{bad',
+      );
+      expect(useChatStore.getState().sseParseErrors).toBe(1);
+      warnSpy.mockRestore();
+    });
+
+    it('increments sseParseErrors cumulatively across multiple failures', () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      useChatStore.setState({ serverId: 'srv-1' });
+      useChatStore.getState().sendMessage('test');
+
+      const callbacks = getSSECallbacks();
+      callbacks.onStepStart('bad1');
+      callbacks.onOutput('bad2');
+      callbacks.onStepComplete('bad3');
+
+      expect(useChatStore.getState().sseParseErrors).toBe(3);
+      expect(warnSpy).toHaveBeenCalledTimes(3);
+      warnSpy.mockRestore();
+    });
+
+    it('does not increment sseParseErrors on valid JSON', () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      useChatStore.setState({ serverId: 'srv-1' });
+      useChatStore.getState().sendMessage('test');
+
+      const callbacks = getSSECallbacks();
+      callbacks.onStepStart(JSON.stringify({ stepId: 'step-1' }));
+
+      expect(useChatStore.getState().sseParseErrors).toBe(0);
+      expect(warnSpy).not.toHaveBeenCalled();
+      warnSpy.mockRestore();
+    });
+
+    it('SSE stream continues working after parse error (no throw)', () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      useChatStore.setState({ serverId: 'srv-1' });
+      useChatStore.getState().sendMessage('test');
+
+      const callbacks = getSSECallbacks();
+      // Bad data first
+      callbacks.onStepStart('corrupt');
+      // Then valid data — should still work
+      callbacks.onStepStart(JSON.stringify({ stepId: 'step-2' }));
+
+      expect(useChatStore.getState().execution.activeStepId).toBe('step-2');
+      expect(useChatStore.getState().sseParseErrors).toBe(1);
+      warnSpy.mockRestore();
+    });
+
+    it('resets sseParseErrors on new message', () => {
+      useChatStore.setState({ serverId: 'srv-1', sseParseErrors: 5 });
+      useChatStore.getState().sendMessage('new message');
+
+      expect(useChatStore.getState().sseParseErrors).toBe(0);
+    });
+
+    it('resets sseParseErrors on new session', () => {
+      useChatStore.setState({ sseParseErrors: 3 });
+      useChatStore.getState().newSession();
+
+      expect(useChatStore.getState().sseParseErrors).toBe(0);
+    });
+
+    it('logs for confirm_required on malformed data', () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      useChatStore.setState({ serverId: 'srv-1' });
+      useChatStore.getState().sendMessage('test');
+
+      const callbacks = getSSECallbacks();
+      callbacks.onConfirmRequired('<not json>');
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[SSE] Failed to parse "confirm_required" event:'),
+        expect.any(SyntaxError),
+        '\nRaw data:',
+        '<not json>',
+      );
+      expect(useChatStore.getState().sseParseErrors).toBe(1);
+      warnSpy.mockRestore();
+    });
+
+    it('logs for confirm_id on malformed data', () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      useChatStore.setState({ serverId: 'srv-1' });
+      useChatStore.getState().sendMessage('test');
+
+      const callbacks = getSSECallbacks();
+      callbacks.onConfirmId('broken');
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[SSE] Failed to parse "confirm_id" event:'),
+        expect.any(SyntaxError),
+        '\nRaw data:',
+        'broken',
+      );
+      expect(useChatStore.getState().sseParseErrors).toBe(1);
+      warnSpy.mockRestore();
     });
   });
 

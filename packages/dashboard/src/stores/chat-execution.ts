@@ -19,6 +19,12 @@ import {
 import type { PendingConfirm, ToolCallEntry, ExecutionMode, ChatState } from './chat-types.js';
 import { INITIAL_EXECUTION, generateId, stripJsonPlan } from './chat-types.js';
 
+/** Log SSE JSON parse failures to console.warn and bump counter. */
+function warnParseFail(set: SetFn, event: string, raw: string, err: unknown): void {
+  console.warn(`[SSE] Failed to parse "${event}" event:`, err, '\nRaw data:', raw);
+  set((s) => ({ sseParseErrors: s.sseParseErrors + 1 }));
+}
+
 /** Module-level SSE handle shared with chat.ts via getter/setter */
 let activeHandle: SSEConnectionHandle | null = null;
 
@@ -57,7 +63,7 @@ export function createConfirmPlan(set: SetFn, get: GetFn) {
             set((s) => ({
               execution: { ...s.execution, activeStepId: parsed.stepId },
             }));
-          } catch { /* ignore */ }
+          } catch (e) { warnParseFail(set, 'step_start', data, e); }
         },
 
         onOutput: (data) => {
@@ -72,7 +78,7 @@ export function createConfirmPlan(set: SetFn, get: GetFn) {
                 },
               },
             }));
-          } catch { /* ignore */ }
+          } catch (e) { warnParseFail(set, 'output', data, e); }
         },
 
         onStepComplete: (data) => {
@@ -87,14 +93,14 @@ export function createConfirmPlan(set: SetFn, get: GetFn) {
                 },
               },
             }));
-          } catch { /* ignore */ }
+          } catch (e) { warnParseFail(set, 'step_complete', data, e); }
         },
 
         onStepConfirm: (data) => {
           try {
             const parsed = JSON.parse(data) as PendingConfirm;
             set({ pendingConfirm: parsed });
-          } catch { /* ignore */ }
+          } catch (e) { warnParseFail(set, 'step_confirm', data, e); }
         },
 
         onComplete: (data) => {
@@ -112,7 +118,8 @@ export function createConfirmPlan(set: SetFn, get: GetFn) {
                 cancelled: parsed.cancelled ?? false,
               },
             }));
-          } catch {
+          } catch (e) {
+            warnParseFail(set, 'complete', data, e);
             set({ planStatus: 'completed', isStreaming: false, pendingConfirm: null });
           }
         },
@@ -266,7 +273,7 @@ export function buildStreamingCallbacks(set: SetFn, get: GetFn): SSECallbacks {
             ? state.streamingContent + `\n\n_${content}_\n\n`
             : `_${content}_\n\n`,
         }));
-      } catch { /* ignore */ }
+      } catch (e) { warnParseFail(set, 'retry', data, e); }
     },
 
     onPlan: (data) => {
@@ -288,7 +295,7 @@ export function buildStreamingCallbacks(set: SetFn, get: GetFn): SSECallbacks {
           plan = ExecutionPlanSchema.parse(parsed.plan);
           mode = 'inline';
         }
-      } catch { /* use existing currentPlan, log mode */ }
+      } catch (e) { warnParseFail(set, 'auto_execute', data, e); }
 
       const { streamingContent } = get();
       const cleanText = stripJsonPlan(streamingContent);
@@ -329,7 +336,7 @@ export function buildStreamingCallbacks(set: SetFn, get: GetFn): SSECallbacks {
         set((state) => ({
           execution: { ...state.execution, activeStepId: parsed.stepId },
         }));
-      } catch { /* ignore */ }
+      } catch (e) { warnParseFail(set, 'step_start', data, e); }
     },
 
     onOutput: (data) => {
@@ -352,7 +359,7 @@ export function buildStreamingCallbacks(set: SetFn, get: GetFn): SSECallbacks {
             },
           }));
         }
-      } catch { /* ignore */ }
+      } catch (e) { warnParseFail(set, 'output', data, e); }
     },
 
     onStepComplete: (data) => {
@@ -381,14 +388,14 @@ export function buildStreamingCallbacks(set: SetFn, get: GetFn): SSECallbacks {
             },
           }));
         }
-      } catch { /* ignore */ }
+      } catch (e) { warnParseFail(set, 'step_complete', data, e); }
     },
 
     onStepConfirm: (data) => {
       try {
         const parsed = JSON.parse(data) as PendingConfirm;
         set({ pendingConfirm: parsed });
-      } catch { /* ignore */ }
+      } catch (e) { warnParseFail(set, 'step_confirm', data, e); }
     },
 
     onDiagnosis: () => {
@@ -404,7 +411,7 @@ export function buildStreamingCallbacks(set: SetFn, get: GetFn): SSECallbacks {
           try {
             const parsed = ExecutionCompleteSchema.parse(JSON.parse(data));
             success = parsed.success;
-          } catch { /* ignore */ }
+          } catch (e) { warnParseFail(set, 'complete(inline)', data, e); }
 
           const content = stripJsonPlan(streamingContent).trim();
           if (content) {
@@ -447,7 +454,8 @@ export function buildStreamingCallbacks(set: SetFn, get: GetFn): SSECallbacks {
                 cancelled: parsed.cancelled ?? false,
               },
             }));
-          } catch {
+          } catch (e) {
+            warnParseFail(set, 'complete(log)', data, e);
             set({ planStatus: 'completed', isStreaming: false, pendingConfirm: null });
           }
         }
@@ -487,7 +495,7 @@ export function buildStreamingCallbacks(set: SetFn, get: GetFn): SSECallbacks {
             output: '',
           }],
         }));
-      } catch { /* ignore */ }
+      } catch (e) { warnParseFail(set, 'tool_call', data, e); }
     },
 
     onToolExecuting: (data) => {
@@ -499,7 +507,7 @@ export function buildStreamingCallbacks(set: SetFn, get: GetFn): SSECallbacks {
             tc.id === parsed.id ? { ...tc, command: parsed.command } : tc,
           ),
         }));
-      } catch { /* ignore */ }
+      } catch (e) { warnParseFail(set, 'tool_executing', data, e); }
     },
 
     onToolOutput: (data) => {
@@ -511,7 +519,7 @@ export function buildStreamingCallbacks(set: SetFn, get: GetFn): SSECallbacks {
             tc.id === parsed.id ? { ...tc, output: tc.output + parsed.content } : tc,
           ),
         }));
-      } catch { /* ignore */ }
+      } catch (e) { warnParseFail(set, 'tool_output', data, e); }
     },
 
     onToolResult: (data) => {
@@ -533,7 +541,7 @@ export function buildStreamingCallbacks(set: SetFn, get: GetFn): SSECallbacks {
             ),
           };
         });
-      } catch { /* ignore */ }
+      } catch (e) { warnParseFail(set, 'tool_result', data, e); }
     },
 
     onConfirmRequired: (data) => {
@@ -550,7 +558,7 @@ export function buildStreamingCallbacks(set: SetFn, get: GetFn): SSECallbacks {
             riskLevel: parsed.riskLevel,
           },
         });
-      } catch { /* ignore */ }
+      } catch (e) { warnParseFail(set, 'confirm_required', data, e); }
     },
 
     onConfirmId: (data) => {
@@ -561,7 +569,7 @@ export function buildStreamingCallbacks(set: SetFn, get: GetFn): SSECallbacks {
             ? { ...state.agenticConfirm, confirmId: parsed.confirmId }
             : null,
         }));
-      } catch { /* ignore */ }
+      } catch (e) { warnParseFail(set, 'confirm_id', data, e); }
     },
 
     onReconnecting: () => {

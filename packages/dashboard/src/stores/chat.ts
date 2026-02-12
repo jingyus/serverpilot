@@ -53,6 +53,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   toolCalls: [],
   agenticConfirm: null,
   isAgenticMode: false,
+  sseParseErrors: 0,
 
   setServerId: (id) => set({ serverId: id }),
 
@@ -83,6 +84,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       toolCalls: [],
       agenticConfirm: null,
       isAgenticMode: false,
+      sseParseErrors: 0,
     }));
 
     getActiveHandle()?.abort();
@@ -136,6 +138,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       toolCalls: [],
       agenticConfirm: null,
       isAgenticMode: false,
+      sseParseErrors: 0,
       execution: { ...INITIAL_EXECUTION },
     });
   },

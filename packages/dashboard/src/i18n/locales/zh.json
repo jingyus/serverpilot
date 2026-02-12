@@ -28,6 +28,7 @@
     "alerts": "告警",
     "auditLog": "审计日志",
     "webhooks": "Webhooks",
+    "skills": "技能",
     "team": "团队",
     "settings": "设置",
     "logout": "退出登录"
@@ -471,6 +472,11 @@
     "invitationSent": "邀请已发送",
     "invitationCancelled": "邀请已取消",
     "cancelFailed": "取消邀请失败"
+  },
+  "skills": {
+    "title": "技能",
+    "description": "管理自动化技能和插件。",
+    "noSkills": "尚未安装任何技能。"
   },
   "theme": {
     "toggle": "切换主题",

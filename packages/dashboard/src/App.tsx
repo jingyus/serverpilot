@@ -17,6 +17,7 @@ import { Alerts } from './pages/Alerts';
 import { AuditLog } from './pages/AuditLog';
 import { Webhooks } from './pages/Webhooks';
 import { Team } from './pages/Team';
+import { Skills } from './pages/Skills';
 
 export function App() {
   useThemeEffect();
@@ -39,6 +40,7 @@ export function App() {
         <Route path="alerts" element={<Alerts />} />
         <Route path="audit-log" element={<AuditLog />} />
         <Route path="webhooks" element={<Webhooks />} />
+        <Route path="skills" element={<Skills />} />
         <Route path="team" element={<Team />} />
         <Route path="settings" element={<Settings />} />
       </Route>

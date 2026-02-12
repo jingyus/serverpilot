@@ -68,6 +68,7 @@ export interface ChatState {
   toolCalls: ToolCallEntry[];
   agenticConfirm: AgenticConfirm | null;
   isAgenticMode: boolean;
+  sseParseErrors: number;
 
   setServerId: (id: string | null) => void;
   sendMessage: (message: string) => void;
