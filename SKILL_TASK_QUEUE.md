@@ -3,14 +3,14 @@
 > 此队列专注于 Skill 插件系统的设计与实现
 > AI 自动扫描 → 发现缺失 → 设计实现 → 验证
 
-**最后更新**: 2026-02-13 06:33:20
+**最后更新**: 2026-02-13 06:39:52
 
 ## 📊 统计
 
 - **总任务数**: 47
 - **待完成** (pending): 3
-- **进行中** (in_progress): 1
-- **已完成** (completed): 43
+- **进行中** (in_progress): 0
+- **已完成** (completed): 44
 - **失败** (failed): 0
 
 ## 📋 任务列表
@@ -159,7 +159,7 @@
 
 ---
 
-### [in_progress] run_as 执行身份约束实现 — SKILL_SPEC 已定义但后端完全未使用
+### [completed] run_as 执行身份约束实现 — SKILL_SPEC 已定义但后端完全未使用 ✅
 
 **ID**: skill-075
 **优先级**: P1
@@ -179,7 +179,7 @@
 - 测试 ≥ 6 个新增
 **影响范围**: packages/server/src/core/skill/runner-executor.ts, packages/server/src/core/skill/runner.ts, packages/server/src/core/skill/types.ts, packages/server/src/core/skill/runner-executor.test.ts
 **创建时间**: (自动填充)
-**完成时间**: -
+**完成时间**: 2026-02-13 06:39:52
 
 ---
 
