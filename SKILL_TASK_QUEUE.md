@@ -3,14 +3,14 @@
 > 此队列专注于 Skill 插件系统的设计与实现
 > AI 自动扫描 → 发现缺失 → 设计实现 → 验证
 
-**最后更新**: 2026-02-13 07:36:41
+**最后更新**: 2026-02-13 07:40:22
 
 ## 📊 统计
 
 - **总任务数**: 47
 - **待完成** (pending): 0
-- **进行中** (in_progress): 1
-- **已完成** (completed): 46
+- **进行中** (in_progress): 0
+- **已完成** (completed): 47
 - **失败** (failed): 0
 
 ## 📋 任务列表
@@ -232,7 +232,7 @@
 
 ---
 
-### [in_progress] Skill 执行分析 Dashboard — 成功率、耗时趋势、热门 Skill 统计
+### [completed] Skill 执行分析 Dashboard — 成功率、耗时趋势、热门 Skill 统计 ✅
 
 **ID**: skill-078
 **优先级**: P2
@@ -254,7 +254,7 @@
 - 测试 ≥ 8 个（API 3 + repo 3 + dashboard 2）
 **影响范围**: packages/server/src/api/routes/skills.ts, packages/server/src/db/repositories/skill-repository.ts, packages/dashboard/src/pages/Skills.tsx, packages/dashboard/src/stores/skills.ts, packages/dashboard/src/types/skill.ts
 **创建时间**: (自动填充)
-**完成时间**: -
+**完成时间**: 2026-02-13 07:40:22
 
 ### [completed] Webhook 事件集成 — skill.completed/skill.failed 分发到 WebhookDispatcher ✅
 

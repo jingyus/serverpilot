@@ -1,12 +1,12 @@
-### [pending] Agentic 初始消息数组未做 token 预检 — 超长历史可能导致首次 API 调用失败
+### [pending] 前端 sendMessage 无重入保护 — 快速连续发送导致重复消息
 
-**ID**: chat-057
+**ID**: chat-058
 **优先级**: P1
-**模块路径**: packages/server/src/ai/agentic-chat.ts
-**发现的问题**: agentic-chat.ts 第 205-216 行构建初始消息数组时，将完整的 conversationHistory 和当前 userMessage 追加到 messages 中，但没有在进入循环（第 222 行 `for (let turn = 0; turn < MAX_TURNS; turn++)`）之前调用 `trimMessagesIfNeeded()`。裁剪只在每轮结束后执行（第 280 行附近）。如果用户有很长的对话历史（数百条消息），初始消息可能就超过 MAX_MESSAGES_TOKENS（150K tokens），导致第一次 Anthropic API 调用因超出上下文窗口而失败。
-**改进方案**: 在进入循环前增加一次 `trimMessagesIfNeeded(messages)` 调用，确保初始消息数组在 token 预算内。
-**验收标准**: (1) 超长对话历史不会导致首次 API 调用失败; (2) 裁剪后保留最新消息和首条用户消息; (3) 测试覆盖超长历史场景
-**影响范围**: packages/server/src/ai/agentic-chat.ts
+**模块路径**: packages/dashboard/src/stores/chat.ts
+**发现的问题**: chat.ts（store）第 60-97 行的 `sendMessage()` 没有重入保护。虽然第 90 行会 `getActiveHandle()?.abort()` 中止前一个 SSE 连接，但第 74-88 行的 `set()` 调用会立即将新的 userMsg 追加到 messages 数组。如果用户快速点击两次发送（在 isStreaming 状态更新导致按钮禁用之前），两条用户消息都会被添加到 messages 中，并且第一个 SSE 连接被中止后，第二个连接的 onMessage 回调仍可能收到来自第一个请求的响应（因为服务端可能在 abort 信号到达前已开始流式输出）。
+**改进方案**: 在 `sendMessage` 开头检查 `if (get().isStreaming) return;` 防止重入。或者在 MessageInput 组件层面在 isStreaming 为 true 时禁用发送（Chat.tsx 第 434-445 行的 suggestion cards 也需要同样处理）。
+**验收标准**: (1) 快速连续点击不会发送重复消息; (2) isStreaming 期间发送操作被阻止; (3) suggestion cards 点击也受保护; (4) 测试覆盖快速连续发送场景
+**影响范围**: packages/dashboard/src/stores/chat.ts, packages/dashboard/src/pages/Chat.tsx
 **创建时间**: (自动填充)
 **完成时间**: -
 
