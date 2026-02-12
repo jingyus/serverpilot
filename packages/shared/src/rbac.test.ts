@@ -95,9 +95,10 @@ describe('ROLE_PERMISSIONS', () => {
     );
   });
 
-  it('member should only have read/view permissions and chat', () => {
+  it('member should only have read/view permissions, chat, and skill:execute', () => {
+    const allowedNonRead = new Set(['chat:use', 'skill:execute']);
     for (const perm of ROLE_PERMISSIONS.member) {
-      const isReadOrView = perm.endsWith(':read') || perm.endsWith(':view') || perm === 'chat:use';
+      const isReadOrView = perm.endsWith(':read') || perm.endsWith(':view') || allowedNonRead.has(perm);
       expect(isReadOrView).toBe(true);
     }
   });
@@ -112,6 +113,24 @@ describe('ROLE_PERMISSIONS', () => {
 
   it('owner should have member:update-role', () => {
     expect(ROLE_PERMISSIONS.owner).toContain('member:update-role');
+  });
+
+  it('member should have skill:view and skill:execute', () => {
+    expect(ROLE_PERMISSIONS.member).toContain('skill:view');
+    expect(ROLE_PERMISSIONS.member).toContain('skill:execute');
+    expect(ROLE_PERMISSIONS.member).not.toContain('skill:manage');
+  });
+
+  it('admin should have all skill permissions via inheritance', () => {
+    expect(ROLE_PERMISSIONS.admin).toContain('skill:view');
+    expect(ROLE_PERMISSIONS.admin).toContain('skill:execute');
+    expect(ROLE_PERMISSIONS.admin).toContain('skill:manage');
+  });
+
+  it('owner should have all skill permissions', () => {
+    expect(ROLE_PERMISSIONS.owner).toContain('skill:view');
+    expect(ROLE_PERMISSIONS.owner).toContain('skill:execute');
+    expect(ROLE_PERMISSIONS.owner).toContain('skill:manage');
   });
 });
 
@@ -135,9 +154,12 @@ describe('hasPermission', () => {
     expect(hasPermission('admin', 'member:update-role')).toBe(false);
   });
 
-  it('member only has read permissions', () => {
+  it('member has read permissions, chat, and skill:execute', () => {
     expect(hasPermission('member', 'server:read')).toBe(true);
     expect(hasPermission('member', 'chat:use')).toBe(true);
+    expect(hasPermission('member', 'skill:view')).toBe(true);
+    expect(hasPermission('member', 'skill:execute')).toBe(true);
+    expect(hasPermission('member', 'skill:manage')).toBe(false);
     expect(hasPermission('member', 'server:create')).toBe(false);
     expect(hasPermission('member', 'server:delete')).toBe(false);
     expect(hasPermission('member', 'member:invite')).toBe(false);

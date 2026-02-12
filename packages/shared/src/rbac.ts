@@ -121,6 +121,7 @@ const MEMBER_PERMISSIONS: readonly Permission[] = [
   'metrics:read',
   'snapshot:read',
   'skill:view',
+  'skill:execute',
   'member:read',
   'tenant:read',
 ];
@@ -147,7 +148,6 @@ const ADMIN_PERMISSIONS: readonly Permission[] = [
   'doc-source:update',
   'doc-source:delete',
   'snapshot:create',
-  'skill:execute',
   'skill:manage',
   'member:invite',
   'member:remove',

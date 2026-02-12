@@ -1,21 +1,21 @@
-### [pending] server_scope: 'tagged' 优雅降级替代硬错误
+### [pending] RBAC 权限修正 — skill:execute 应包含 member 角色
 
-**ID**: skill-063
+**ID**: skill-064
 **优先级**: P1
-**模块路径**: packages/server/src/core/skill/batch-executor.ts
-**当前状态**: `batch-executor.ts` 第 59-62 行 `server_scope: 'tagged'` 时直接 `throw new Error()`，导致整个 Skill 执行失败。应改为优雅降级到单服务器模式。
+**模块路径**: packages/shared/src/rbac.ts
+**当前状态**: 开发规范定义 `skill:execute` 应授予 member+admin+owner，但实际代码中 `skill:execute` 仅在 `ADMIN_PERMISSIONS` 数组中（第 150 行），member 角色只有 `skill:view`。这意味着普通成员无法手动执行 Skill。
 **实现方案**: 
-1. 将 `throw new Error(...)` 替换为 `logger.warn(...)` 日志警告
-2. 当 scope 为 `tagged` 时，回退到 `params.serverId` 单服务器执行
-3. 在返回的 `BatchExecutionResult` 中添加 `warnings?: string[]` 字段，记录降级信息
-4. 更新 `types.ts` 中 `BatchExecutionResult` 类型定义
-5. 创建 `batch-executor.test.ts` 测试文件，覆盖 scope='all'、scope='tagged' 降级、空服务器列表、部分失败等场景
+1. 在 `packages/shared/src/rbac.ts` 的 `MEMBER_PERMISSIONS` 数组中添加 `'skill:execute'`（在 `'skill:view'` 之后）
+2. 从 `ADMIN_PERMISSIONS` 中移除 `'skill:execute'`（因为 admin 已继承 member 权限）
+3. 更新 `packages/shared/src/rbac.test.ts` — 添加显式测试验证 member 拥有 skill:execute
+4. 重新构建 shared 包 (`pnpm --filter @aiinstaller/shared build`)
+5. 验证 routes 测试中 member 用户可以执行 skill
 **验收标准**: 
-- `server_scope: 'tagged'` 不再抛出异常
-- 降级时产生 warning 日志 + 返回 warnings 数组
-- 回退到 `params.serverId` 单服务器执行并成功完成
-- `batch-executor.test.ts` 至少 8 个测试用例
-**影响范围**: packages/server/src/core/skill/batch-executor.ts, packages/server/src/core/skill/types.ts, packages/server/src/core/skill/batch-executor.test.ts (新)
+- member 角色拥有 `skill:view` + `skill:execute` 权限
+- admin 角色拥有 `skill:view` + `skill:execute` + `skill:manage` 权限
+- owner 继承所有权限
+- rbac 测试验证三个角色的 skill 权限分配
+**影响范围**: packages/shared/src/rbac.ts, packages/shared/src/rbac.test.ts
 **创建时间**: (自动填充)
 **完成时间**: -
 

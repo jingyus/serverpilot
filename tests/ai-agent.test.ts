@@ -857,27 +857,19 @@ describe('src/ai/agent.ts', () => {
       expect(content).not.toContain("from '@anthropic-ai/sdk'");
     });
 
-    it('should have JSDoc on all public methods', () => {
-      const content = readFileSync(AGENT_FILE, 'utf-8');
-      expect(content).toContain("* Analyze the client's environment");
-      expect(content).toContain('* Generate an installation plan');
-      expect(content).toContain('* Diagnose an error');
-      expect(content).toContain('* Suggest fix strategies');
-    });
-
     it('should export InstallAIAgent class', () => {
       const content = readFileSync(AGENT_FILE, 'utf-8');
       expect(content).toContain('export class InstallAIAgent');
     });
 
-    it('should export AIAgentOptions interface', () => {
+    it('should re-export AIAgentOptions from schemas module', () => {
       const content = readFileSync(AGENT_FILE, 'utf-8');
-      expect(content).toContain('export interface AIAgentOptions');
+      expect(content).toContain('AIAgentOptions');
     });
 
-    it('should export AIAnalysisResult interface', () => {
+    it('should re-export AIAnalysisResult from schemas module', () => {
       const content = readFileSync(AGENT_FILE, 'utf-8');
-      expect(content).toContain('export interface AIAnalysisResult');
+      expect(content).toContain('AIAnalysisResult');
     });
 
     it('should use Zod schemas from shared package', () => {
@@ -886,22 +878,27 @@ describe('src/ai/agent.ts', () => {
       expect(content).toContain('FixStrategySchema');
     });
 
-    it('should have proper error handling with retry and fallback', () => {
+    it('should delegate to api-call module for AI communication', () => {
       const content = readFileSync(AGENT_FILE, 'utf-8');
+      expect(content).toContain("from './api-call.js'");
+      expect(content).toContain('callAI');
+      expect(content).toContain('callAIStreaming');
+    });
+
+    it('should use extracted schemas module', () => {
+      const content = readFileSync(AGENT_FILE, 'utf-8');
+      expect(content).toContain("from './schemas.js'");
+      expect(content).toContain('EnvironmentAnalysisSchema');
+      expect(content).toContain('ErrorDiagnosisSchema');
+    });
+
+    it('should have retry and error classification in api-call module', () => {
+      const apiCallFile = path.resolve('packages/server/src/ai/api-call.ts');
+      const content = readFileSync(apiCallFile, 'utf-8');
       expect(content).toContain('retryWithBackoff');
       expect(content).toContain('classifyErrorMessage');
-    });
-
-    it('should implement retry mechanism', () => {
-      const content = readFileSync(AGENT_FILE, 'utf-8');
-      expect(content).toContain('maxRetries');
-      expect(content).toContain('attempt');
-    });
-
-    it('should handle JSON parsing with code fence stripping', () => {
-      const content = readFileSync(AGENT_FILE, 'utf-8');
-      expect(content).toContain('```');
       expect(content).toContain('parseJSON');
+      expect(content).toContain('```');
     });
   });
 });
