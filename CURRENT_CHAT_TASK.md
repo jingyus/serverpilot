@@ -1,12 +1,12 @@
-### [pending] Agentic 循环不感知客户端断连 — writeSSE 静默吞错导致工具继续执行
+### [pending] TokenTracker 内存无上限增长 — 长运行服务器必定 OOM
 
-**ID**: chat-034
+**ID**: chat-035
 **优先级**: P0
-**模块路径**: packages/server/src/ai/agentic-chat.ts
-**发现的问题**: `writeSSE()` 在第 662-672 行对所有写入错误静默 catch（`// Stream closed, ignore`）。虽然第 192 行有 `stream.onAbort` 设置 `streamAborted` 标志，但在 `run()` 的主循环中，只在循环开头（约第 219 行 `if (streamAborted) break`）检查此标志。如果断连发生在 `executeToolCall()` 执行中途（如长时间命令），AI 会继续在服务器上执行后续工具调用，浪费资源且无人接收结果。`streamAnthropicCall()` 内部也无断连检查。
-**改进方案**: 1) 在 `executeToolCall` 每个 tool 方法开头检查 `streamAborted` 2) 在 `streamAnthropicCall` 中 token 回调时检查 `streamAborted` 并提前 abort Anthropic stream 3) `writeSSE` 检测到写入失败时主动设置 `streamAborted = true`（不依赖 onAbort 回调延迟）。
-**验收标准**: 1) 客户端断连后 500ms 内停止所有工具调用 2) Anthropic API stream 也被中断（节省 token） 3) 新增 2+ 测试验证断连后循环终止
-**影响范围**: `packages/server/src/ai/agentic-chat.ts`
+**模块路径**: packages/server/src/ai/token-tracker.ts
+**发现的问题**: `TokenTracker.entries` 数组（第 143 行）只有 `push()` 没有任何淘汰机制。`record()` 方法（第 154 行）每次 AI 调用都追加条目。对于长时间运行的生产服务器，假设每分钟 10 次 AI 调用，每天 14,400 条 × 每条约 200 字节 = 每天 ~3MB，一个月 ~90MB 纯 entries 数组。`reset()` 方法（第 267 行）标注为测试用途。`getStats()` 和 `getStatsBySession()` 每次调用都遍历全量 entries。
+**改进方案**: 1) 添加 `maxEntries` 配置（默认 10000） 2) `record()` 时检查长度，超出则移除最旧 entries 3) 可选：按 sessionId 分桶，evict 最旧 session 的所有 entries 4) 添加 `prune(olderThanMs)` 方法供定时清理。
+**验收标准**: 1) entries 数组有上限，不再无限增长 2) 超出上限时自动淘汰旧条目 3) getStats 仍返回正确的近期统计 4) 新增 3+ 测试覆盖淘汰行为
+**影响范围**: `packages/server/src/ai/token-tracker.ts`
 **创建时间**: (自动填充)
 **完成时间**: -
 
