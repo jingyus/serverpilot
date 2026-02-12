@@ -258,6 +258,7 @@ export class SkillEngine {
       const runResult = await runner.run({
         manifest,
         resolvedPrompt,
+        skillId,
         serverId,
         userId,
         executionId: execution.id,

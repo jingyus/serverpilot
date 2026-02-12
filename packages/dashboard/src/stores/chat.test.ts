@@ -599,4 +599,139 @@ describe('useChatStore', () => {
       expect(() => useChatStore.getState().cleanup()).not.toThrow();
     });
   });
+
+  describe('agentic confirm flow', () => {
+    function getSSECallbacks(): Record<string, (...args: unknown[]) => void> {
+      const mockFn = createSSEConnection as Mock;
+      const lastCall = mockFn.mock.calls[mockFn.mock.calls.length - 1];
+      return lastCall[2] as Record<string, (...args: unknown[]) => void>;
+    }
+
+    it('onConfirmRequired sets agenticConfirm with confirmId from event', () => {
+      useChatStore.setState({ serverId: 'srv-1' });
+      useChatStore.getState().sendMessage('hello');
+
+      const callbacks = getSSECallbacks();
+      callbacks.onConfirmRequired(JSON.stringify({
+        id: 'tool-1',
+        command: 'apt install nginx',
+        description: 'Install nginx',
+        riskLevel: 'yellow',
+        confirmId: 'session:abc-123',
+      }));
+
+      const state = useChatStore.getState();
+      expect(state.agenticConfirm).toEqual({
+        confirmId: 'session:abc-123',
+        command: 'apt install nginx',
+        description: 'Install nginx',
+        riskLevel: 'yellow',
+      });
+    });
+
+    it('onConfirmRequired defaults confirmId to empty when not in event', () => {
+      useChatStore.setState({ serverId: 'srv-1' });
+      useChatStore.getState().sendMessage('hello');
+
+      const callbacks = getSSECallbacks();
+      callbacks.onConfirmRequired(JSON.stringify({
+        id: 'tool-1',
+        command: 'rm -rf /tmp',
+        description: 'Remove temp files',
+        riskLevel: 'red',
+      }));
+
+      const confirm = useChatStore.getState().agenticConfirm;
+      expect(confirm).not.toBeNull();
+      expect(confirm!.confirmId).toBe('');
+    });
+
+    it('onConfirmId updates an existing agenticConfirm with confirmId', () => {
+      useChatStore.setState({ serverId: 'srv-1' });
+      useChatStore.getState().sendMessage('hello');
+
+      const callbacks = getSSECallbacks();
+      // First set agenticConfirm via onConfirmRequired (without confirmId)
+      callbacks.onConfirmRequired(JSON.stringify({
+        id: 'tool-1',
+        command: 'apt install nginx',
+        description: 'Install',
+        riskLevel: 'yellow',
+      }));
+      expect(useChatStore.getState().agenticConfirm!.confirmId).toBe('');
+
+      // Then receive confirmId via separate event
+      callbacks.onConfirmId(JSON.stringify({ confirmId: 'session:xyz' }));
+
+      expect(useChatStore.getState().agenticConfirm!.confirmId).toBe('session:xyz');
+    });
+
+    it('onConfirmId before onConfirmRequired results in null agenticConfirm', () => {
+      useChatStore.setState({ serverId: 'srv-1' });
+      useChatStore.getState().sendMessage('hello');
+
+      const callbacks = getSSECallbacks();
+      // confirm_id arrives with no prior agenticConfirm state
+      callbacks.onConfirmId(JSON.stringify({ confirmId: 'session:early' }));
+
+      expect(useChatStore.getState().agenticConfirm).toBeNull();
+    });
+
+    it('respondToAgenticConfirm sends API request and clears state', async () => {
+      (apiRequest as Mock).mockResolvedValue({});
+      useChatStore.setState({
+        serverId: 'srv-1',
+        agenticConfirm: {
+          confirmId: 'session:confirm-1',
+          command: 'apt install nginx',
+          description: 'Install',
+          riskLevel: 'yellow',
+        },
+      });
+
+      await useChatStore.getState().respondToAgenticConfirm(true);
+
+      expect(apiRequest).toHaveBeenCalledWith('/chat/srv-1/confirm', {
+        method: 'POST',
+        body: JSON.stringify({
+          confirmId: 'session:confirm-1',
+          approved: true,
+        }),
+      });
+      expect(useChatStore.getState().agenticConfirm).toBeNull();
+    });
+
+    it('respondToAgenticConfirm does nothing when confirmId is empty', async () => {
+      (apiRequest as Mock).mockResolvedValue({});
+      useChatStore.setState({
+        serverId: 'srv-1',
+        agenticConfirm: {
+          confirmId: '',
+          command: 'dangerous command',
+          description: 'dangerous',
+          riskLevel: 'critical',
+        },
+      });
+
+      await useChatStore.getState().respondToAgenticConfirm(true);
+
+      expect(apiRequest).not.toHaveBeenCalled();
+    });
+
+    it('respondToAgenticConfirm does nothing without serverId', async () => {
+      useChatStore.setState({
+        serverId: null,
+        agenticConfirm: {
+          confirmId: 'session:c1',
+          command: 'cmd',
+          description: 'desc',
+          riskLevel: 'yellow',
+        },
+      });
+
+      await useChatStore.getState().respondToAgenticConfirm(false);
+
+      expect(apiRequest).not.toHaveBeenCalled();
+    });
+  });
 });

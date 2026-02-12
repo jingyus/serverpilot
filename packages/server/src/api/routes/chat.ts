@@ -437,22 +437,19 @@ chat.post('/:serverId', requirePermission('chat:use'), validateBody(ChatMessageB
           conversationHistory: history,
           serverProfile: fullProfile,
           serverName: server.name,
-          onConfirmRequired: async (command, riskLevel, description) => {
-            // Wait for user confirmation via HTTP POST to /confirm endpoint
+          onConfirmRequired: (command, riskLevel, description) => {
+            // Generate confirmId synchronously so agentic engine can include
+            // it in the confirm_required SSE event — eliminates the race
+            // condition of a separate confirm_id event arriving late.
             const confirmId = `${session.id}:${randomUUID()}`;
-            return new Promise<boolean>((resolve) => {
+            const approved = new Promise<boolean>((resolve) => {
               const timer = setTimeout(() => {
                 pendingConfirmations.delete(confirmId);
                 resolve(false);
               }, CONFIRM_TIMEOUT_MS);
               pendingConfirmations.set(confirmId, { resolve, timer });
-
-              // Send the confirmId to frontend so it can respond
-              stream.writeSSE({
-                event: 'confirm_id',
-                data: JSON.stringify({ confirmId }),
-              }).catch(() => {});
             });
+            return { confirmId, approved };
           },
         });
 

@@ -539,10 +539,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
           try {
             const parsed = JSON.parse(data) as {
               id: string; command: string; description: string; riskLevel: string;
+              confirmId?: string;
             };
             set({
               agenticConfirm: {
-                confirmId: '', // Will be set by confirm_id event
+                confirmId: parsed.confirmId ?? '',
                 command: parsed.command,
                 description: parsed.description,
                 riskLevel: parsed.riskLevel,
@@ -551,6 +552,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           } catch { /* ignore */ }
         },
 
+        // Fallback: if server sends confirmId as a separate event (backward compat)
         onConfirmId: (data) => {
           try {
             const parsed = JSON.parse(data) as { confirmId: string };

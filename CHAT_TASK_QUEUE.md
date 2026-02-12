@@ -3,14 +3,14 @@
 > 此队列专注于 Chat 和 AI 对话系统的质量改进
 > AI 自动发现问题 → 生成任务 → 实现 → 验证
 
-**最后更新**: 2026-02-12 23:41:52
+**最后更新**: 2026-02-12 23:52:46
 
 ## 📊 统计
 
 - **总任务数**: 20
-- **待完成** (pending): 13
+- **待完成** (pending): 12
 - **进行中** (in_progress): 0
-- **已完成** (completed): 7
+- **已完成** (completed): 8
 - **失败** (failed): 0
 
 ## 📋 任务列表
@@ -57,7 +57,7 @@
 
 ---
 
-### [pending] confirm_required 与 confirm_id 事件竞态 — 用户可能永远无法批准命令
+### [completed] confirm_required 与 confirm_id 事件竞态 — 用户可能永远无法批准命令 ✅
 
 **ID**: chat-008
 **优先级**: P0
@@ -73,7 +73,7 @@
 - 测试覆盖：confirm_id 先于 confirm_required 到达的场景
 **影响范围**: packages/dashboard/src/stores/chat.ts, packages/server/src/ai/agentic-chat.ts, packages/dashboard/src/components/chat/AgenticConfirmBar.tsx
 **创建时间**: (自动填充)
-**完成时间**: -
+**完成时间**: 2026-02-12 23:52:46
 
 ---
 

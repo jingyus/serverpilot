@@ -34,6 +34,7 @@ import { findConnectedAgent } from '../agent/agent-connector.js';
 import { getAuditLogger } from '../security/audit-logger.js';
 import { getWebhookDispatcher } from '../webhook/dispatcher.js';
 import { parseTimeout, exceedsRiskLimit, buildToolDefinitions } from './runner-tools.js';
+import { getSkillKVStore } from './store.js';
 import type { SkillRunParams } from './types.js';
 
 const logger = createContextLogger({ module: 'skill-runner' });
@@ -80,6 +81,7 @@ export interface ToolCallRecord {
 export interface RunnerParams {
   manifest: SkillManifest;
   resolvedPrompt: string;
+  skillId: string;
   serverId: string;
   userId: string;
   executionId: string;
@@ -114,7 +116,7 @@ export class SkillRunner {
    */
   async run(params: RunnerParams): Promise<SkillRunResult> {
     const {
-      manifest, resolvedPrompt, serverId, userId, executionId,
+      manifest, resolvedPrompt, skillId, serverId, userId, executionId,
     } = params;
     const constraints = manifest.constraints;
 
@@ -196,7 +198,7 @@ export class SkillRunner {
 
           try {
             const executed = await this.executeTool(
-              toolCall, serverId, userId, executionId,
+              toolCall, skillId, serverId, userId, executionId,
               riskLevelMax, manifest.metadata.name,
             );
             result = executed.result;
@@ -276,6 +278,7 @@ export class SkillRunner {
   /** Execute a single tool call with security checks. */
   private async executeTool(
     toolCall: ToolUseBlock,
+    skillId: string,
     serverId: string,
     userId: string,
     executionId: string,
@@ -317,6 +320,7 @@ export class SkillRunner {
       case 'store':
         return this.executeStore(
           input as { action: string; key: string; value?: string },
+          skillId,
         );
 
       default:
@@ -563,15 +567,44 @@ export class SkillRunner {
     }
   }
 
-  /** KV store read/write (placeholder — skill-007). */
+  /** KV store read/write. */
   private async executeStore(
     input: { action: string; key: string; value?: string },
+    skillId: string,
   ): Promise<{ result: string; success: boolean }> {
-    // Placeholder until skill-007 implements SkillKVStore
-    return {
-      result: `Store operation "${input.action}" for key "${input.key}" — KV store not yet implemented (skill-007)`,
-      success: false,
-    };
+    const { action, key, value } = input;
+    const store = getSkillKVStore();
+
+    try {
+      switch (action) {
+        case 'get': {
+          const val = await store.get(skillId, key);
+          return {
+            result: val !== null ? val : `Key "${key}" not found`,
+            success: val !== null,
+          };
+        }
+        case 'set': {
+          if (value === undefined) {
+            return { result: 'Missing "value" for set action', success: false };
+          }
+          await store.set(skillId, key, value);
+          return { result: `Stored key "${key}"`, success: true };
+        }
+        case 'delete': {
+          await store.delete(skillId, key);
+          return { result: `Deleted key "${key}"`, success: true };
+        }
+        case 'list': {
+          const entries = await store.list(skillId);
+          return { result: JSON.stringify(entries), success: true };
+        }
+        default:
+          return { result: `Unknown store action: ${action}`, success: false };
+      }
+    } catch (err) {
+      return { result: `Store error: ${(err as Error).message}`, success: false };
+    }
   }
 
   // --------------------------------------------------------------------------

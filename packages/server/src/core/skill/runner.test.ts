@@ -63,10 +63,24 @@ vi.mock('../webhook/dispatcher.js', () => {
   };
 });
 
+vi.mock('./store.js', () => {
+  const mockStore = {
+    get: vi.fn().mockResolvedValue(null),
+    set: vi.fn().mockResolvedValue(undefined),
+    delete: vi.fn().mockResolvedValue(undefined),
+    list: vi.fn().mockResolvedValue({}),
+  };
+  return {
+    getSkillKVStore: vi.fn(() => mockStore),
+    _mockStore: mockStore,
+  };
+});
+
 // Access mocks
 const { getTaskExecutor } = await import('../task/executor.js');
 const { findConnectedAgent } = await import('../agent/agent-connector.js');
 const { getAuditLogger } = await import('../security/audit-logger.js');
+const { getSkillKVStore } = await import('./store.js');
 
 function getMockExecutor() {
   return (getTaskExecutor as ReturnType<typeof vi.fn>)() as {
@@ -78,6 +92,15 @@ function getMockAuditLogger() {
   return (getAuditLogger as ReturnType<typeof vi.fn>)() as {
     log: ReturnType<typeof vi.fn>;
     updateExecutionResult: ReturnType<typeof vi.fn>;
+  };
+}
+
+function getMockStore() {
+  return (getSkillKVStore as ReturnType<typeof vi.fn>)() as {
+    get: ReturnType<typeof vi.fn>;
+    set: ReturnType<typeof vi.fn>;
+    delete: ReturnType<typeof vi.fn>;
+    list: ReturnType<typeof vi.fn>;
   };
 }
 
@@ -114,6 +137,7 @@ function createRunnerParams(overrides: Partial<RunnerParams> = {}): RunnerParams
   return {
     manifest: createManifest(),
     resolvedPrompt: 'Execute the test task on the server.',
+    skillId: 'skill-1',
     serverId: 'server-1',
     userId: 'user-1',
     executionId: 'exec-1',
@@ -228,6 +252,12 @@ describe('SkillRunner', () => {
 
     // Default: agent is connected
     (findConnectedAgent as ReturnType<typeof vi.fn>).mockReturnValue('client-123');
+
+    // Default: store returns null for get, empty for list
+    getMockStore().get.mockResolvedValue(null);
+    getMockStore().set.mockResolvedValue(undefined);
+    getMockStore().delete.mockResolvedValue(undefined);
+    getMockStore().list.mockResolvedValue({});
   });
 
   afterEach(() => {
@@ -778,10 +808,10 @@ describe('SkillRunner', () => {
   });
 
   // --------------------------------------------------------------------------
-  // store tool (placeholder)
+  // store tool
   // --------------------------------------------------------------------------
 
-  it('returns not-implemented for store tool', async () => {
+  it('executes store set action via KV store', async () => {
     const manifest = createManifest({ tools: ['store'] });
 
     const provider = createMockProvider([
@@ -801,8 +831,60 @@ describe('SkillRunner', () => {
     const runner = new SkillRunner(provider);
     const result = await runner.run(createRunnerParams({ manifest }));
 
+    expect(result.toolResults[0].success).toBe(true);
+    expect(result.toolResults[0].result).toContain('Stored key');
+    expect(getMockStore().set).toHaveBeenCalledWith('skill-1', 'last_check', '2026-01-01');
+  });
+
+  it('executes store get action via KV store', async () => {
+    getMockStore().get.mockResolvedValue('some-value');
+    const manifest = createManifest({ tools: ['store'] });
+
+    const provider = createMockProvider([
+      {
+        content: 'Reading data.',
+        usage: { inputTokens: 100, outputTokens: 50 },
+        stopReason: 'tool_use',
+        toolCalls: [toolUse('store', { action: 'get', key: 'my_key' })],
+      },
+      {
+        content: 'Got it.',
+        usage: { inputTokens: 200, outputTokens: 30 },
+        stopReason: 'end_turn',
+      },
+    ]);
+
+    const runner = new SkillRunner(provider);
+    const result = await runner.run(createRunnerParams({ manifest }));
+
+    expect(result.toolResults[0].success).toBe(true);
+    expect(result.toolResults[0].result).toBe('some-value');
+    expect(getMockStore().get).toHaveBeenCalledWith('skill-1', 'my_key');
+  });
+
+  it('returns not found for store get with missing key', async () => {
+    getMockStore().get.mockResolvedValue(null);
+    const manifest = createManifest({ tools: ['store'] });
+
+    const provider = createMockProvider([
+      {
+        content: 'Reading data.',
+        usage: { inputTokens: 100, outputTokens: 50 },
+        stopReason: 'tool_use',
+        toolCalls: [toolUse('store', { action: 'get', key: 'missing' })],
+      },
+      {
+        content: 'Not found.',
+        usage: { inputTokens: 200, outputTokens: 30 },
+        stopReason: 'end_turn',
+      },
+    ]);
+
+    const runner = new SkillRunner(provider);
+    const result = await runner.run(createRunnerParams({ manifest }));
+
     expect(result.toolResults[0].success).toBe(false);
-    expect(result.toolResults[0].result).toContain('not yet implemented');
+    expect(result.toolResults[0].result).toContain('not found');
   });
 
   // --------------------------------------------------------------------------

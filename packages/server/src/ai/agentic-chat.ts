@@ -139,8 +139,12 @@ export interface AgenticRunOptions {
   serverProfile?: unknown;
   /** Server display name */
   serverName?: string;
-  /** Callback when a risky command needs user confirmation */
-  onConfirmRequired?: (command: string, riskLevel: string, description: string) => Promise<boolean>;
+  /** Callback when a risky command needs user confirmation.
+   *  Returns confirmId (for SSE) and a Promise that resolves when the user responds. */
+  onConfirmRequired?: (command: string, riskLevel: string, description: string) => {
+    confirmId: string;
+    approved: Promise<boolean>;
+  };
 }
 
 export interface AgenticRunResult {
@@ -374,7 +378,10 @@ export class AgenticChatEngine {
     sessionId: string,
     clientId: string,
     stream: SSEStreamingApi,
-    onConfirmRequired?: (command: string, riskLevel: string, description: string) => Promise<boolean>,
+    onConfirmRequired?: (command: string, riskLevel: string, description: string) => {
+      confirmId: string;
+      approved: Promise<boolean>;
+    },
   ): Promise<string> {
     const { name, input } = toolCall;
 
@@ -425,7 +432,10 @@ export class AgenticChatEngine {
     clientId: string,
     stream: SSEStreamingApi,
     toolCallId: string,
-    onConfirmRequired?: (command: string, riskLevel: string, description: string) => Promise<boolean>,
+    onConfirmRequired?: (command: string, riskLevel: string, description: string) => {
+      confirmId: string;
+      approved: Promise<boolean>;
+    },
   ): Promise<string> {
     const { command, description } = input;
     const timeoutMs = Math.min((input.timeout_seconds ?? 30) * 1000, 600_000);
@@ -455,14 +465,19 @@ export class AgenticChatEngine {
 
     // YELLOW/RED/CRITICAL → ask user for confirmation
     if (riskLevel !== RiskLevel.GREEN && onConfirmRequired) {
+      const confirmation = onConfirmRequired(command, riskLevel, description);
+
+      // Include confirmId in the SSE event so frontend can respond immediately
+      // without waiting for a separate confirm_id event
       await this.writeSSE(stream, 'confirm_required', {
         id: toolCallId,
         command,
         description,
         riskLevel,
+        confirmId: confirmation.confirmId,
       });
 
-      const approved = await onConfirmRequired(command, riskLevel, description);
+      const approved = await confirmation.approved;
 
       if (!approved) {
         const msg = `用户拒绝执行: ${command}`;

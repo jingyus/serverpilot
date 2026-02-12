@@ -3,19 +3,367 @@
 > 此队列专注于 Skill 插件系统的设计与实现
 > AI 自动扫描 → 发现缺失 → 设计实现 → 验证
 
-**最后更新**: 2026-02-12 23:40:45
+**最后更新**: 2026-02-12 23:47:03
 
 ## 📊 统计
 
-- **总任务数**: 5
-- **待完成** (pending): 0
-- **进行中** (in_progress): 0
+- **总任务数**: 12
+- **待完成** (pending): 6
+- **进行中** (in_progress): 1
 - **已完成** (completed): 5
 - **失败** (failed): 0
 
 ## 📋 任务列表
 
 ### [completed] DB Schema + Migration + SkillRepository 数据层 ✅
+### [in_progress] Skill KV Store — 每个 Skill 的持久化存储 API
+
+**ID**: skill-007
+**优先级**: P2
+**模块路径**: packages/server/src/core/skill/
+**当前状态**: 文件不存在 — `runner.ts:570-574` 中 `store` 工具调用返回占位错误 `"KV store not yet implemented (skill-007)"`；`skill_store` 表已在 schema.ts 中定义并有迁移
+**实现方案**:
+
+1. **store.ts** (~120 行):
+   - `SkillKVStore` 类: 封装对 `skill_store` 表的 CRUD 操作
+   - 方法: `get(skillId, key): Promise<string | null>`, `set(skillId, key, value): Promise<void>`, `delete(skillId, key): Promise<void>`, `list(skillId): Promise<Record<string, string>>`
+   - 值大小限制: 单个 value ≤ 1MB (规范要求)
+   - 通过 `getSkillRepository()` 或直接使用 Drizzle 查询 `skillStore` 表
+   - 单例: `getSkillKVStore()` / `setSkillKVStore()` / `_resetSkillKVStore()`
+2. **更新 runner.ts** — `handleStoreTool()` 方法:
+   - 替换占位逻辑，改为调用 `getSkillKVStore()` 执行真实 get/set/delete/list 操作
+   - action: `get` → 读取, `set` → 写入, `delete` → 删除, `list` → 列出所有 key
+3. **store.test.ts** (~150 行):
+   - 测试 get/set/delete/list 基本 CRUD 操作
+   - 测试 value 大小超限拒绝 (>1MB)
+   - 测试 key 不存在返回 null
+   - 测试多个 skill 之间的数据隔离
+   - 测试 InMemory 实现 (用于 runner 测试)
+
+**验收标准**:
+- `store` 工具能在 runner.ts 中正常执行 get/set/delete/list 4 种操作
+- 数据持久化到 SQLite `skill_store` 表
+- 单值 ≤ 1MB 限制生效
+- 不同 skillId 之间数据隔离
+- 测试 ≥ 12 个
+
+**影响范围**:
+- `packages/server/src/core/skill/store.ts` (新建)
+- `packages/server/src/core/skill/store.test.ts` (新建)
+- `packages/server/src/core/skill/runner.ts` (修改 — 接入真实 KV store)
+
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] TriggerManager — Cron/Event/Threshold 触发调度
+
+**ID**: skill-006
+**优先级**: P2
+**模块路径**: packages/server/src/core/skill/
+**当前状态**: 文件不存在 — `engine.ts:80-85` 中 `start()` 方法为空壳 (注释 "TriggerManager — deferred to future task")；当前仅支持手动执行
+**实现方案**:
+
+1. **trigger-manager.ts** (~350 行):
+   - `TriggerManager` 类: 管理所有已启用 Skill 的自动触发器
+   - **Cron 触发**: 使用 `node-cron` 库 (需新增依赖)
+     - `registerCron(skillId, cronExpression, serverId)` — 注册 cron 定时任务
+     - `unregisterCron(skillId)` — 停止并移除 cron 任务
+     - cron 回调: `SkillEngine.execute(skillId, serverId, userId, 'cron')`
+   - **Event 触发**: 订阅 WebhookDispatcher 事件
+     - `registerEvent(skillId, eventTypes: string[])` — 监听 task.completed / alert.triggered / server.offline 等事件
+     - 事件匹配时调用 `SkillEngine.execute()` with `triggerType='event'`
+     - 通过 EventEmitter 或直接在 webhook dispatch 流程中注入 hook
+   - **Threshold 触发**: 监听 MetricsBus 指标
+     - `registerThreshold(skillId, metric, operator, value)` — 注册阈值监控
+     - 订阅 `getMetricsBus()` 事件，当 cpu.usage > 90 等条件满足时触发
+     - 防抖: 同一 Skill 同一 server 至少间隔 5 分钟才能再次触发
+   - 生命周期:
+     - `start()` — 从 DB 读取所有 enabled 的 Skill，注册各类触发器
+     - `stop()` — 清除所有 cron 任务、取消事件订阅、停止阈值监控
+     - `registerSkill(skill, manifest)` — 安装/启用时调用
+     - `unregisterSkill(skillId)` — 卸载/暂停时调用
+2. **更新 engine.ts**:
+   - `start()` → 创建 TriggerManager 实例并调用 `triggerManager.start()`
+   - `stop()` → 调用 `triggerManager.stop()`
+   - `install()` → 若已 enabled 则 `triggerManager.registerSkill()`
+   - `updateStatus('enabled')` → `triggerManager.registerSkill()`
+   - `updateStatus('paused')` / `uninstall()` → `triggerManager.unregisterSkill()`
+3. **trigger-manager.test.ts** (~300 行):
+   - Cron: 注册 → 触发 → 执行回调验证
+   - Event: 事件发布 → 匹配 → 触发执行验证
+   - Threshold: 指标超限 → 触发 + 防抖逻辑验证
+   - 生命周期: start 加载已有 Skill / stop 清理所有资源
+   - 注册/反注册: Skill 状态变更正确更新触发器
+4. **安装依赖**: `pnpm --filter @aiinstaller/server add node-cron && pnpm --filter @aiinstaller/server add -D @types/node-cron`
+
+**验收标准**:
+- Cron 表达式 (如 `0 8 * * *`) 能定时触发 Skill 执行
+- Event 触发 (如 `alert.triggered`) 能自动执行对应 Skill
+- Threshold 触发 (如 `cpu.usage > 90`) 能通过 MetricsBus 感知并触发
+- 防抖机制防止同一 Skill 频繁触发 (≥5 分钟间隔)
+- engine.ts 的 start/stop/install/updateStatus 正确集成 TriggerManager
+- 测试 ≥ 20 个
+
+**影响范围**:
+- `packages/server/src/core/skill/trigger-manager.ts` (新建)
+- `packages/server/src/core/skill/trigger-manager.test.ts` (新建)
+- `packages/server/src/core/skill/engine.ts` (修改 — 集成 TriggerManager)
+- `packages/server/package.json` (新增 node-cron 依赖)
+
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] Dashboard — 前端类型 + Zustand Store + API 集成
+
+**ID**: skill-008
+**优先级**: P3
+**模块路径**: packages/dashboard/src/
+**当前状态**: 全部不存在 — `pages/Skills.tsx`, `stores/skills.ts`, `types/skill.ts` 均未创建；`App.tsx` 和侧边栏无 Skill 相关路由或导航项
+**实现方案**:
+
+1. **types/skill.ts** (~60 行):
+   - `InstalledSkill`: id, userId, name, displayName, version, source, status, config, createdAt, updatedAt
+   - `SkillExecution`: id, skillId, serverId, triggerType, status, startedAt, completedAt, result, stepsExecuted, duration
+   - `AvailableSkill`: name, displayName, version, description, author, tags, source, installed
+   - `SkillConfig`: Record<string, unknown>
+   - `SkillStatus`: 'installed' | 'configured' | 'enabled' | 'paused' | 'error'
+2. **stores/skills.ts** (~180 行):
+   - Zustand store: `useSkillStore`
+   - 状态: `skills: InstalledSkill[]`, `available: AvailableSkill[]`, `executions: SkillExecution[]`, `loading: boolean`, `error: string | null`
+   - Actions:
+     - `fetchSkills()` → `GET /api/v1/skills`
+     - `fetchAvailable()` → `GET /api/v1/skills/available`
+     - `installSkill(name, source)` → `POST /api/v1/skills/install`
+     - `uninstallSkill(id)` → `DELETE /api/v1/skills/:id`
+     - `configureSkill(id, config)` → `PUT /api/v1/skills/:id/config`
+     - `updateStatus(id, status)` → `PUT /api/v1/skills/:id/status`
+     - `executeSkill(id, serverId)` → `POST /api/v1/skills/:id/execute`
+     - `fetchExecutions(id)` → `GET /api/v1/skills/:id/executions`
+   - 使用 `apiRequest()` 统一 HTTP 调用 (自动 401 刷新)
+3. **更新 App.tsx** — 添加 `/skills` 路由
+4. **更新 Sidebar** — 添加 Skills 导航项 (Puzzle 图标，位于 Webhooks 和 Settings 之间)
+5. **stores/skills.test.ts** (~120 行):
+   - Mock `apiRequest`，测试所有 8 个 actions 的成功/失败路径
+   - 测试 loading 状态变化
+   - 测试 error 处理
+   - 测试 ≥ 10 个
+
+**验收标准**:
+- TypeScript 类型完整覆盖 API 响应结构
+- Store 所有 actions 调用正确的 API 端点
+- 侧边栏出现 Skills 导航项，点击跳转 `/skills`
+- `pnpm --filter @aiinstaller/dashboard build` 无类型错误
+- 测试 ≥ 10 个
+
+**影响范围**:
+- `packages/dashboard/src/types/skill.ts` (新建)
+- `packages/dashboard/src/stores/skills.ts` (新建)
+- `packages/dashboard/src/stores/skills.test.ts` (新建)
+- `packages/dashboard/src/App.tsx` (修改 — 添加路由)
+- `packages/dashboard/src/components/Sidebar.tsx` 或类似 (修改 — 添加导航)
+
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] Dashboard — Skills 管理页面 + UI 组件
+
+**ID**: skill-009
+**优先级**: P3
+**模块路径**: packages/dashboard/src/pages/ + packages/dashboard/src/components/skill/
+**当前状态**: 全部不存在 — 依赖 skill-008 (类型 + Store) 完成后开发
+**实现方案**:
+
+1. **pages/Skills.tsx** (~250 行):
+   - 顶部: 标题 + "安装 Skill" 按钮
+   - Tab 切换: "已安装" / "可用" (marketplace)
+   - 已安装 Tab: SkillCard 列表 (显示名称、版本、状态、操作按钮)
+   - 可用 Tab: AvailableSkillCard 列表 (显示名称、描述、标签、安装按钮)
+   - 空状态: 无 Skill 时引导用户安装
+2. **components/skill/SkillCard.tsx** (~120 行):
+   - 卡片展示: icon + 名称 + 版本 + source badge + status badge
+   - 操作: 启用/暂停 toggle, 配置按钮, 执行按钮, 卸载按钮
+   - 状态颜色: enabled=绿, paused=灰, error=红, installed/configured=蓝
+3. **components/skill/SkillConfigModal.tsx** (~150 行):
+   - Modal 弹窗: 展示 Skill 的 inputs 字段
+   - 动态表单生成: 根据 input.type (string/number/boolean/select/string[]) 渲染对应控件
+   - 必填/可选标记、默认值填充
+   - 提交 → `configureSkill(id, config)`
+4. **components/skill/ExecutionHistory.tsx** (~100 行):
+   - 执行历史列表: 时间、触发类型、状态、耗时、步数
+   - 状态 badge: success=绿, failed=红, running=蓝 动画, timeout=黄
+   - 点击展开查看执行详情 (result JSON)
+5. **pages/Skills.test.tsx** (~150 行):
+   - 渲染测试: 已安装列表、可用列表、空状态
+   - 交互测试: 安装/卸载/启用/暂停按钮点击
+   - Modal 测试: 配置表单提交
+   - 测试 ≥ 12 个
+
+**验收标准**:
+- Skills 页面展示已安装 Skill 列表和可用 Skill marketplace
+- 能完成安装 → 配置 → 启用 → 执行 → 查看历史的完整 UI 流程
+- 配置 Modal 能根据 Skill 的 inputs 定义动态生成表单
+- 响应式布局 (移动端友好)
+- Tailwind CSS 风格一致
+- 测试 ≥ 12 个
+
+**影响范围**:
+- `packages/dashboard/src/pages/Skills.tsx` (新建)
+- `packages/dashboard/src/pages/Skills.test.tsx` (新建)
+- `packages/dashboard/src/components/skill/SkillCard.tsx` (新建)
+- `packages/dashboard/src/components/skill/SkillConfigModal.tsx` (新建)
+- `packages/dashboard/src/components/skill/ExecutionHistory.tsx` (新建)
+
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] SSE 推送 — Skill 执行实时进度流
+
+**ID**: skill-010
+**优先级**: P3
+**模块路径**: packages/server/src/core/skill/ + packages/server/src/api/routes/ + packages/dashboard/src/
+**当前状态**: 不存在 — Skill 执行目前是同步等待返回最终结果，无中间进度推送。已有 MetricsBus SSE 可参考
+**实现方案**:
+
+1. **core/skill/skill-event-bus.ts** (~60 行):
+   - `SkillEventBus` — EventEmitter 封装，发布 Skill 执行进度事件
+   - 事件类型: `step` (工具调用进度), `log` (AI 思考日志), `completed` (执行完成), `error` (错误)
+   - 单例: `getSkillEventBus()` / `_resetSkillEventBus()`
+   - 频道: `skill:${executionId}` — 每次执行一个独立事件流
+2. **更新 runner.ts** — 在 agentic loop 的关键节点发布事件:
+   - 工具调用前: `emit('step', { tool, input })` — 通知前端 "正在执行 shell: ls -la"
+   - 工具调用后: `emit('step', { tool, result, success })` — 通知结果
+   - AI 思考: `emit('log', { text })` — AI 的文本输出
+   - 完成/超时: `emit('completed', { result })` 或 `emit('error', { message })`
+3. **api/routes/skills.ts** — 新增 SSE 端点:
+   - `GET /api/v1/skills/:id/executions/:eid/stream` — SSE 连接
+   - 订阅 `SkillEventBus` 对应 executionId 的事件
+   - 中间件: requireAuth + requirePermission('skill:view')
+4. **Dashboard 集成**:
+   - `api/sse.ts` 新增 `createSkillExecutionSSE(executionId)` 方法
+   - `stores/skills.ts` 新增 `streamExecution(executionId)` 方法
+   - `components/skill/ExecutionStream.tsx` (~100 行) — 实时进度 UI:
+     - 步骤列表: 每步显示工具名、输入、结果、状态图标
+     - AI 思考文本实时追加
+     - 完成/失败状态自动切换
+5. **测试**:
+   - `skill-event-bus.test.ts` (~50 行): emit/subscribe/unsubscribe
+   - SSE 端点测试 (整合到 skills.test.ts): 连接 → 收到事件 → 断开
+
+**验收标准**:
+- 手动执行 Skill 后，前端实时显示每一步工具调用的进度
+- SSE 连接自动重连 (参考 MetricsSSE 的 exponential backoff)
+- 执行完成后 SSE 自动关闭
+- 事件总线不泄漏 (执行完成后清理 listener)
+- 测试 ≥ 8 个
+
+**影响范围**:
+- `packages/server/src/core/skill/skill-event-bus.ts` (新建)
+- `packages/server/src/core/skill/skill-event-bus.test.ts` (新建)
+- `packages/server/src/core/skill/runner.ts` (修改 — 接入事件发布)
+- `packages/server/src/api/routes/skills.ts` (修改 — 新增 SSE 端点)
+- `packages/dashboard/src/api/sse.ts` (修改 — 新增 Skill SSE)
+- `packages/dashboard/src/stores/skills.ts` (修改 — 新增 stream 方法)
+- `packages/dashboard/src/components/skill/ExecutionStream.tsx` (新建)
+
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] 社区 Skill 安装 — 从 Git URL 克隆 + 安全扫描
+
+**ID**: skill-011
+**优先级**: P4
+**模块路径**: packages/server/src/core/skill/
+**当前状态**: 不存在 — 当前仅支持从本地目录安装 (`engine.ts:install()` 接受 `skillDir` 参数为本地路径)；`POST /api/v1/skills/install` 只接收 `{ name, source }`，无 Git URL 字段
+**实现方案**:
+
+1. **core/skill/git-installer.ts** (~120 行):
+   - `installFromGitUrl(url: string, targetDir: string): Promise<string>` — 执行 `git clone --depth 1` 到 `skills/community/<name>/`
+   - URL 验证: 仅允许 `https://` 协议 (拒绝 `git://`, `ssh://`)
+   - 目录命名: 从 URL 提取仓库名 (如 `https://github.com/user/my-skill.git` → `skills/community/my-skill/`)
+   - 克隆后验证: 检查 `skill.yaml` 是否存在 + Schema 验证
+   - 失败回滚: 克隆失败或验证失败则删除目录
+2. **安全扫描** (~50 行，集成到 git-installer.ts 或单独文件):
+   - 检查 skill.yaml 中是否有 `risk_level_max: critical` 或 `forbidden` — 警告用户
+   - 扫描 prompt 长度 (异常大的 prompt 可能是注入尝试)
+   - 不执行任何从 Git 仓库引入的可执行文件
+3. **更新 api/routes/skills.ts**:
+   - `POST /api/v1/skills/install` 扩展 body: `{ name, source, gitUrl? }`
+   - 当 `gitUrl` 存在时: 调用 `installFromGitUrl()` → 再调用 `engine.install()`
+   - 权限: `skill:manage` (仅 admin/owner 可安装社区 Skill)
+4. **git-installer.test.ts** (~100 行):
+   - Mock `child_process.exec` (不实际 git clone)
+   - 测试: 有效 URL 解析、无效 URL 拒绝、协议限制 (ssh 拒绝)
+   - 测试: 克隆后验证成功/失败
+   - 测试: 失败回滚清理目录
+
+**验收标准**:
+- 能通过 API 传入 Git HTTPS URL 安装社区 Skill
+- 仅允许 HTTPS 协议 (拒绝 SSH/Git 协议)
+- 克隆后自动验证 skill.yaml 合规性
+- 失败时自动清理目录 (无残留)
+- 测试 ≥ 8 个
+
+**影响范围**:
+- `packages/server/src/core/skill/git-installer.ts` (新建)
+- `packages/server/src/core/skill/git-installer.test.ts` (新建)
+- `packages/server/src/api/routes/skills.ts` (修改 — 扩展 install 端点)
+- `packages/server/src/api/routes/schemas.ts` (修改 — 扩展 InstallSkillBody)
+
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] Skill 链式触发 — skill.completed 事件驱动下游 Skill
+
+**ID**: skill-012
+**优先级**: P4
+**模块路径**: packages/server/src/core/skill/
+**当前状态**: 不存在 — `engine.ts` 执行完成后不发布任何事件；`trigger-manager.ts` 不存在 (依赖 skill-006)；Skill 的 trigger 类型定义中 `event` 支持 `skill.completed` 但无实现
+**实现方案**:
+
+1. **更新 engine.ts** — 执行成功后发布 `skill.completed` 事件:
+   - 在 `execute()` 方法成功路径末尾: `getSkillEventBus().emit('skill.completed', { skillId, skillName, serverId, executionId, result })`
+   - 失败时发布 `skill.failed` 事件
+2. **更新 trigger-manager.ts** — 订阅 `skill.completed` 事件:
+   - 在 `registerEvent()` 中: 当 eventTypes 包含 `skill.completed` 时注册监听
+   - 事件匹配: 检查 trigger 配置中的 filter 条件 (如 `source_skill: log-auditor`)
+   - 触发: 调用 `SkillEngine.execute()` with `triggerType='event'`
+   - 防循环: 检测 A → B → A 的循环链并拒绝 (深度限制 ≤ 5 级)
+3. **更新 shared/skill-schema.ts** — event trigger 添加 `source_skill` 过滤字段:
+   - `EventTriggerSchema` 扩展: `filter?: { source_skill?: string }` — 仅当指定 Skill 完成时触发
+4. **测试** (~100 行):
+   - Skill A 完成 → 触发 Skill B 执行
+   - 过滤: source_skill 不匹配时不触发
+   - 循环检测: A → B → A 被拦截
+   - 深度限制: 链长度 > 5 被拒绝
+
+**验收标准**:
+- Skill A 执行成功后自动触发配置了 `event: skill.completed` 的 Skill B
+- 支持 `source_skill` 过滤 (只响应特定 Skill 的完成事件)
+- 循环链检测防止无限触发
+- 链深度 ≤ 5 级
+- 测试 ≥ 6 个
+
+**影响范围**:
+- `packages/server/src/core/skill/engine.ts` (修改 — 发布事件)
+- `packages/server/src/core/skill/trigger-manager.ts` (修改 — 订阅 skill.completed)
+- `packages/shared/src/skill-schema.ts` (修改 — 扩展 EventTriggerSchema)
+- `packages/server/src/core/skill/trigger-manager.test.ts` (修改 — 链式触发测试)
+
+**创建时间**: (自动填充)
+**完成时间**: -
+
 
 **ID**: skill-001
 **优先级**: P0
