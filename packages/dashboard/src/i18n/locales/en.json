@@ -167,7 +167,13 @@
     "suggestion4": "Set up a firewall",
     "executionCompleted": "Execution completed successfully",
     "executionFailed": "Execution failed",
-    "reconnecting": "Connection lost. Reconnecting..."
+    "reconnecting": "Connection lost. Reconnecting...",
+    "sessionGroup": {
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "thisWeek": "This Week",
+      "older": "Older"
+    }
   },
   "search": {
     "title": "Knowledge Base",

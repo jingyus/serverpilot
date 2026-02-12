@@ -540,7 +540,7 @@ describe('Chat Page', () => {
         fetchSessions: vi.fn() as unknown as (serverId: string) => Promise<void>,
       });
       renderChat('/chat/srv-1');
-      expect(screen.getByTestId('session-group-Today')).toBeInTheDocument();
+      expect(screen.getByTestId('session-group-today')).toBeInTheDocument();
       expect(screen.getByText('Today session')).toBeInTheDocument();
     });
 
@@ -559,7 +559,7 @@ describe('Chat Page', () => {
         fetchSessions: vi.fn() as unknown as (serverId: string) => Promise<void>,
       });
       renderChat('/chat/srv-1');
-      expect(screen.getByTestId('session-group-Older')).toBeInTheDocument();
+      expect(screen.getByTestId('session-group-older')).toBeInTheDocument();
       expect(screen.getByText('Old session')).toBeInTheDocument();
     });
 
@@ -582,10 +582,10 @@ describe('Chat Page', () => {
 
       expect(screen.getByText('Collapsible session')).toBeInTheDocument();
 
-      await user.click(screen.getByTestId('session-group-toggle-Today'));
+      await user.click(screen.getByTestId('session-group-toggle-today'));
       expect(screen.queryByText('Collapsible session')).not.toBeInTheDocument();
 
-      await user.click(screen.getByTestId('session-group-toggle-Today'));
+      await user.click(screen.getByTestId('session-group-toggle-today'));
       expect(screen.getByText('Collapsible session')).toBeInTheDocument();
     });
   });

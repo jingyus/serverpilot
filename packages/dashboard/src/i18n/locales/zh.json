@@ -167,7 +167,13 @@
     "suggestion4": "设置防火墙",
     "executionCompleted": "执行成功完成",
     "executionFailed": "执行失败",
-    "reconnecting": "连接中断，正在重连..."
+    "reconnecting": "连接中断，正在重连...",
+    "sessionGroup": {
+      "today": "今天",
+      "yesterday": "昨天",
+      "thisWeek": "本周",
+      "older": "更早"
+    }
   },
   "search": {
     "title": "知识库",

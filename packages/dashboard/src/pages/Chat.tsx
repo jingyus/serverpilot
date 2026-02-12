@@ -507,10 +507,10 @@ function getSessionDateGroup(dateStr: string): string {
   const weekAgo = new Date(today);
   weekAgo.setDate(weekAgo.getDate() - 7);
 
-  if (date >= today) return 'Today';
-  if (date >= yesterday) return 'Yesterday';
-  if (date >= weekAgo) return 'This Week';
-  return 'Older';
+  if (date >= today) return 'today';
+  if (date >= yesterday) return 'yesterday';
+  if (date >= weekAgo) return 'thisWeek';
+  return 'older';
 }
 
 function SessionSidebar({
@@ -544,7 +544,7 @@ function SessionSidebar({
     const group = getSessionDateGroup(session.createdAt);
     (grouped[group] ??= []).push(session);
   }
-  const groupOrder = ['Today', 'Yesterday', 'This Week', 'Older'];
+  const groupOrder = ['today', 'yesterday', 'thisWeek', 'older'];
   const sortedGroups = groupOrder.filter((g) => grouped[g]?.length);
 
   const toggleGroup = (group: string) => {
@@ -581,7 +581,7 @@ function SessionSidebar({
                 ) : (
                   <ChevronDown className="h-3 w-3" />
                 )}
-                {group}
+                {t(`chat.sessionGroup.${group}`)}
               </button>
               {!collapsedGroups[group] && (
                 <div className="space-y-0.5">
