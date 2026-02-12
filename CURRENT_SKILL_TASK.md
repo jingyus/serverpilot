@@ -1,22 +1,22 @@
-### [pending] engine.ts 文件拆分 — 提取 Confirmation Flow 到独立模块
+### [pending] Pending Confirmation 过期自动清理定时器
 
-**ID**: skill-061
-**优先级**: P0
-**模块路径**: packages/server/src/core/skill/
-**当前状态**: `engine.ts` 793 行，逼近 800 行硬限制。Confirmation Flow（createPendingConfirmation, confirmExecution, rejectExecution, listPendingConfirmations, expirePendingConfirmations, executeConfirmed）占约 100 行，可独立为模块。
+**ID**: skill-062
+**优先级**: P1
+**模块路径**: packages/server/src/core/skill/engine.ts, packages/server/src/index.ts
+**当前状态**: `expirePendingConfirmations()` 方法已实现但从未被定时调用。Pending confirmation 会无限积累，不会自动过期清理。
 **实现方案**: 
-1. 创建 `packages/server/src/core/skill/engine-confirmation.ts`（约 120 行）
-2. 将 `createPendingConfirmation`, `confirmExecution`, `rejectExecution`, `listPendingConfirmations`, `expirePendingConfirmations`, `executeConfirmed` 方法提取为独立类 `SkillConfirmationManager`
-3. `SkillConfirmationManager` 接收 `SkillRepository` 和 `execute` 回调作为依赖注入
-4. `engine.ts` 中组合 `SkillConfirmationManager` 实例，委托调用
-5. 对应测试拆分到 `engine-confirmation.test.ts`
-6. 目标：`engine.ts` 降至 650 行以下
+1. 在 `SkillEngine.start()` 方法中添加 `setInterval` 定时器，每 10 分钟调用 `this.expirePendingConfirmations()`
+2. 定时器句柄保存为 `private confirmationCleanupTimer: NodeJS.Timeout | null`
+3. `stop()` 方法中 `clearInterval(this.confirmationCleanupTimer)`
+4. 定时器使用 `.unref()` 避免阻止进程退出
+5. 添加日志记录过期清理的数量
+6. 添加对应测试 — 验证定时器启停和清理调用
 **验收标准**: 
-- `engine.ts` ≤ 650 行
-- `engine-confirmation.ts` ≤ 200 行
-- 所有现有 engine 测试通过不变
-- Confirmation 相关测试迁移到独立测试文件
-**影响范围**: packages/server/src/core/skill/engine.ts, packages/server/src/core/skill/engine-confirmation.ts (新), packages/server/src/core/skill/engine-confirmation.test.ts (新)
+- `start()` 启动后自动每 10 分钟清理过期 pending confirmations
+- `stop()` 正确清除定时器
+- 清理结果有日志输出
+- 至少 2 个测试验证定时器行为
+**影响范围**: packages/server/src/core/skill/engine.ts, packages/server/src/core/skill/engine.test.ts
 **创建时间**: (自动填充)
 **完成时间**: -
 

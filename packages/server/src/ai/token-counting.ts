@@ -69,19 +69,21 @@ export interface AggregatedTokenUsage {
  * console.log(`Used ${usage.inputTokens} input, ${usage.outputTokens} output`);
  * ```
  */
-export function extractClaudeTokens(response: any): TokenUsage | null {
+export function extractClaudeTokens(response: unknown): TokenUsage | null {
   if (!response || typeof response !== 'object') {
     return null;
   }
 
   // Check for usage in response
-  const usage = response.usage;
+  const resp = response as Record<string, unknown>;
+  const usage = resp.usage;
   if (!usage || typeof usage !== 'object') {
     return null;
   }
 
-  const inputTokens = typeof usage.input_tokens === 'number' ? usage.input_tokens : 0;
-  const outputTokens = typeof usage.output_tokens === 'number' ? usage.output_tokens : 0;
+  const u = usage as Record<string, unknown>;
+  const inputTokens = typeof u.input_tokens === 'number' ? u.input_tokens : 0;
+  const outputTokens = typeof u.output_tokens === 'number' ? u.output_tokens : 0;
 
   return {
     inputTokens,
@@ -107,18 +109,20 @@ export function extractClaudeTokens(response: any): TokenUsage | null {
  * console.log(`Used ${usage.inputTokens} input, ${usage.outputTokens} output`);
  * ```
  */
-export function extractOpenAITokens(response: any): TokenUsage | null {
+export function extractOpenAITokens(response: unknown): TokenUsage | null {
   if (!response || typeof response !== 'object') {
     return null;
   }
 
-  const usage = response.usage;
+  const resp = response as Record<string, unknown>;
+  const usage = resp.usage;
   if (!usage || typeof usage !== 'object') {
     return null;
   }
 
-  const inputTokens = typeof usage.prompt_tokens === 'number' ? usage.prompt_tokens : 0;
-  const outputTokens = typeof usage.completion_tokens === 'number' ? usage.completion_tokens : 0;
+  const u = usage as Record<string, unknown>;
+  const inputTokens = typeof u.prompt_tokens === 'number' ? u.prompt_tokens : 0;
+  const outputTokens = typeof u.completion_tokens === 'number' ? u.completion_tokens : 0;
 
   return {
     inputTokens,
@@ -136,7 +140,7 @@ export function extractOpenAITokens(response: any): TokenUsage | null {
  * @param response - DeepSeek API response object
  * @returns Token usage or null if not available
  */
-export function extractDeepSeekTokens(response: any): TokenUsage | null {
+export function extractDeepSeekTokens(response: unknown): TokenUsage | null {
   // DeepSeek is OpenAI-compatible
   return extractOpenAITokens(response);
 }
@@ -153,13 +157,14 @@ export function extractDeepSeekTokens(response: any): TokenUsage | null {
  * @param response - Ollama API response object
  * @returns Token usage or null if not available
  */
-export function extractOllamaTokens(response: any): TokenUsage | null {
+export function extractOllamaTokens(response: unknown): TokenUsage | null {
   if (!response || typeof response !== 'object') {
     return null;
   }
 
-  const inputTokens = typeof response.prompt_eval_count === 'number' ? response.prompt_eval_count : 0;
-  const outputTokens = typeof response.eval_count === 'number' ? response.eval_count : 0;
+  const resp = response as Record<string, unknown>;
+  const inputTokens = typeof resp.prompt_eval_count === 'number' ? resp.prompt_eval_count : 0;
+  const outputTokens = typeof resp.eval_count === 'number' ? resp.eval_count : 0;
 
   // Return null if both are 0 (model doesn't support counting)
   if (inputTokens === 0 && outputTokens === 0) {
@@ -189,7 +194,7 @@ export function extractOllamaTokens(response: any): TokenUsage | null {
  * }
  * ```
  */
-export function extractTokenUsage(response: any, provider: AIProvider): TokenUsage | null {
+export function extractTokenUsage(response: unknown, provider: AIProvider): TokenUsage | null {
   switch (provider) {
     case 'claude':
     case 'anthropic':
@@ -351,16 +356,17 @@ export function estimateTokenUsage(prompt: string, response: string): TokenUsage
  * @param usage - Token usage object to validate
  * @returns True if valid, false otherwise
  */
-export function isValidTokenUsage(usage: any): usage is TokenUsage {
+export function isValidTokenUsage(usage: unknown): usage is TokenUsage {
   if (!usage || typeof usage !== 'object') {
     return false;
   }
 
+  const u = usage as Record<string, unknown>;
   return (
-    typeof usage.inputTokens === 'number' &&
-    usage.inputTokens >= 0 &&
-    typeof usage.outputTokens === 'number' &&
-    usage.outputTokens >= 0
+    typeof u.inputTokens === 'number' &&
+    u.inputTokens >= 0 &&
+    typeof u.outputTokens === 'number' &&
+    u.outputTokens >= 0
   );
 }
 
@@ -370,7 +376,7 @@ export function isValidTokenUsage(usage: any): usage is TokenUsage {
  * @param usage - Potentially invalid token usage
  * @returns Valid token usage (zero if invalid)
  */
-export function safeTokenUsage(usage: any): TokenUsage {
+export function safeTokenUsage(usage: unknown): TokenUsage {
   if (isValidTokenUsage(usage)) {
     return usage;
   }

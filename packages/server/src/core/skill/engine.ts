@@ -48,6 +48,9 @@ const DEFAULT_SKILL_PATHS = ['skills/official', 'skills/community'];
 
 const MAX_CHAIN_DEPTH = 5;
 
+/** Interval for cleaning up expired pending confirmations (10 minutes). */
+const CONFIRMATION_CLEANUP_INTERVAL_MS = 10 * 60 * 1000;
+
 const STATUS_TRANSITIONS: Record<SkillStatus, SkillStatus[]> = {
   installed:  ['configured', 'enabled', 'error'],
   configured: ['enabled', 'paused', 'error'],
@@ -61,6 +64,7 @@ export class SkillEngine {
   private repo: SkillRepository;
   private running = false;
   private triggerManager: TriggerManager | null = null;
+  private confirmationCleanupTimer: NodeJS.Timeout | null = null;
   private confirmationManager: SkillConfirmationManager;
 
   constructor(projectRoot: string, repo?: SkillRepository) {
@@ -90,6 +94,20 @@ export class SkillEngine {
     setTriggerManager(this.triggerManager);
     await this.triggerManager.start();
 
+    // Start periodic cleanup of expired pending confirmations
+    this.confirmationCleanupTimer = setInterval(() => {
+      this.expirePendingConfirmations()
+        .then((count) => {
+          if (count > 0) {
+            logger.info({ expiredCount: count }, 'Expired pending confirmations cleaned up');
+          }
+        })
+        .catch((err) => {
+          logger.error({ error: (err as Error).message }, 'Failed to expire pending confirmations');
+        });
+    }, CONFIRMATION_CLEANUP_INTERVAL_MS);
+    this.confirmationCleanupTimer.unref();
+
     logger.info('SkillEngine started');
   }
 
@@ -97,6 +115,11 @@ export class SkillEngine {
   stop(): void {
     if (!this.running) return;
     this.running = false;
+
+    if (this.confirmationCleanupTimer) {
+      clearInterval(this.confirmationCleanupTimer);
+      this.confirmationCleanupTimer = null;
+    }
 
     if (this.triggerManager) {
       this.triggerManager.stop();

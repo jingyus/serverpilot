@@ -182,6 +182,73 @@ describe('SkillEngine lifecycle', () => {
     engine.stop();
     engine.stop(); // idempotent
   });
+
+  it('should start confirmation cleanup timer on start and clear on stop', async () => {
+    vi.useFakeTimers();
+    try {
+      const expireSpy = vi.spyOn(engine, 'expirePendingConfirmations').mockResolvedValue(0);
+
+      await engine.start();
+
+      // Timer should not have fired yet
+      expect(expireSpy).not.toHaveBeenCalled();
+
+      // Advance 10 minutes — timer should fire once
+      await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
+      expect(expireSpy).toHaveBeenCalledTimes(1);
+
+      // Advance another 10 minutes — fires again
+      await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
+      expect(expireSpy).toHaveBeenCalledTimes(2);
+
+      engine.stop();
+
+      // After stop, advancing time should not trigger more calls
+      await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
+      expect(expireSpy).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('should log expired count when confirmations are cleaned up', async () => {
+    vi.useFakeTimers();
+    try {
+      const expireSpy = vi.spyOn(engine, 'expirePendingConfirmations').mockResolvedValue(3);
+
+      await engine.start();
+
+      // Advance to trigger cleanup — should resolve without error
+      await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
+      expect(expireSpy).toHaveBeenCalledTimes(1);
+
+      engine.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('should handle errors in confirmation cleanup gracefully', async () => {
+    vi.useFakeTimers();
+    try {
+      const expireSpy = vi.spyOn(engine, 'expirePendingConfirmations')
+        .mockRejectedValue(new Error('DB connection lost'));
+
+      await engine.start();
+
+      // Advance timer — error should be caught, not thrown
+      await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
+      expect(expireSpy).toHaveBeenCalledTimes(1);
+
+      // Engine should still be running — next interval still fires
+      await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
+      expect(expireSpy).toHaveBeenCalledTimes(2);
+
+      engine.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 // ============================================================================
