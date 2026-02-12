@@ -1,51 +1,50 @@
-### [pending] SkillEngine 核心引擎 — 单例编排 + 手动执行流程
+### [pending] RBAC 权限 + REST API 路由 + 服务注册
 
-**ID**: skill-003
+**ID**: skill-004
 **优先级**: P0
-**模块路径**: packages/server/src/core/skill/
-**当前状态**: 不存在 — 依赖 skill-001 (Repository) 和 skill-002 (Loader) 完成
+**模块路径**: packages/shared/src/rbac.ts + packages/server/src/api/routes/
+**当前状态**: `rbac.ts` 中无任何 skill 权限 (当前 32 权限，0 个 skill:*)；`api/routes/skills.ts` 不存在；`index.ts` 和 `routes/index.ts` 中无 skill 引用
 **实现方案**:
 
-1. **types.ts** (~80 行) — 引擎内部类型:
-   - `SkillExecutionResult`: status, stepsExecuted, duration, result (JSON), errors
-   - `AvailableSkill`: manifest + source + installed (boolean)
-   - `SkillRunParams`: skillId, serverId, userId, triggerType, config
-   - `InstalledSkillWithManifest`: InstalledSkill + parsed SkillManifest
-2. **engine.ts** (~300 行):
-   - `SkillEngine` 类: 单例模式 (`getSkillEngine()` / `setSkillEngine()` / `_resetSkillEngine()`)
-   - 构造参数: `InstallServer` 引用 (用于获取 TaskExecutor 等服务)
-   - `install(userId, skillDir, source): Promise<InstalledSkill>` — 加载 → 验证 → 持久化到 DB
-   - `uninstall(skillId): Promise<void>` — 停止触发器 → 删除 DB 记录
-   - `configure(skillId, config): Promise<void>` — 更新用户配置 (inputs 值)
-   - `updateStatus(skillId, status): Promise<void>` — enabled/paused/error 切换
-   - `execute(skillId, serverId, userId, triggerType): Promise<SkillExecutionResult>` — 核心执行:
-     - 从 DB 加载 InstalledSkill → 用 Loader 解析 YAML → 检查需求
-     - 解析模板变量 (注入 config + server info)
-     - 创建执行记录 (status=running)
-     - **Phase 1 (本任务)**: 记录 prompt 到结果 (AI Runner 在 skill-005 接入)
-     - 更新执行记录 (status=success/failed)
-   - `listInstalled(userId): Promise<InstalledSkill[]>` — 列表查询
-   - `listAvailable(): Promise<AvailableSkill[]>` — 扫描所有可安装 Skill
-   - `getExecutions(skillId, limit): Promise<SkillExecution[]>` — 执行历史
-   - `start()` / `stop()` — 生命周期 (TriggerManager 留给后续任务)
-3. **engine.test.ts** (~250 行):
-   - 使用 InMemory repositories + 临时 Skill 目录 (含有效 skill.yaml)
-   - 测试: 安装流程 (成功、重复安装拒绝、无效 Skill 拒绝)
-   - 测试: 卸载 (成功、不存在报错)
-   - 测试: 配置更新、状态切换
-   - 测试: 执行 (手动触发成功、Skill 未启用拒绝)
-   - 测试: 列表查询、执行历史
+1. **shared/src/rbac.ts** — 新增 3 个权限:
+   - `'skill:view'` → MEMBER_PERMISSIONS (查看列表和历史)
+   - `'skill:execute'` → ADMIN_PERMISSIONS (手动执行, admin+owner)
+   - `'skill:manage'` → ADMIN_PERMISSIONS (安装/卸载/配置, admin+owner)
+   - 更新 PERMISSIONS 数组 (保持按模块分组)
+2. **rebuild shared**: `pnpm --filter @aiinstaller/shared build`
+3. **api/routes/skills.ts** (~300 行):
+   - `GET /` — 列出已安装 Skills (requirePermission('skill:view'))
+   - `POST /install` — 安装 Skill (requirePermission('skill:manage'))
+   - `DELETE /:id` — 卸载 (requirePermission('skill:manage'))
+   - `PUT /:id/config` — 配置 inputs (requirePermission('skill:manage'))
+   - `PUT /:id/status` — 启用/暂停 (requirePermission('skill:manage'))
+   - `POST /:id/execute` — 手动执行 (requirePermission('skill:execute'))，接收 `{ serverId }` body
+   - `GET /:id/executions` — 执行历史 (requirePermission('skill:view'))
+   - `GET /:id/executions/:eid` — 执行详情 (requirePermission('skill:view'))
+   - `GET /available` — 可安装列表 (requirePermission('skill:view'))
+   - 所有写入端点使用 Zod 验证请求体
+   - 全链路中间件: requireAuth → resolveRole → requirePermission
+4. **api/routes/index.ts** — 挂载 `v1.route('/skills', skills)`
+5. **index.ts** — 在 `createServer()` 中初始化 `getSkillEngine(server)`；在 `startServer()` 中调用 `getSkillEngine().start()`
+6. **api/routes/skills.test.ts** (~300 行):
+   - 使用 InMemory repositories + mock auth
+   - 测试所有 9 个端点: 正常响应 + 输入验证
+   - 测试 RBAC: member 只能 view，不能 manage/execute
+   - 测试错误: 404 skillId, 400 缺参数
 
 **验收标准**:
-- 完整的安装→配置→执行→卸载生命周期
-- 单例模式正确 (get/set/_reset)
-- 手动执行能走通完整流程 (不含 AI，留给 skill-005)
-- 测试 ≥ 20 个
+- 所有 9 个 API 端点返回正确状态码和格式
+- RBAC 权限正确隔离 (member/admin/owner)
+- `pnpm --filter @aiinstaller/shared build` + `pnpm typecheck` 全部通过
+- 测试 ≥ 25 个 (路由 + RBAC)
 
 **影响范围**:
-- `packages/server/src/core/skill/engine.ts` (新建)
-- `packages/server/src/core/skill/engine.test.ts` (新建)
-- `packages/server/src/core/skill/types.ts` (新建)
+- `packages/shared/src/rbac.ts` (修改 — 新增 3 权限)
+- `packages/server/src/api/routes/skills.ts` (新建)
+- `packages/server/src/api/routes/skills.test.ts` (新建)
+- `packages/server/src/api/routes/index.ts` (修改 — 挂载路由)
+- `packages/server/src/api/routes/schemas.ts` (修改 — 新增请求体 Zod schemas)
+- `packages/server/src/index.ts` (修改 — SkillEngine 初始化 + 启动)
 
 **创建时间**: 2026-02-12
 **完成时间**: -
