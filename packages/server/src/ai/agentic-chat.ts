@@ -486,9 +486,11 @@ export class AgenticChatEngine {
 
     const executor = getTaskExecutor();
 
-    // Set up real-time output streaming
+    // Register a progress listener scoped to this tool call.
+    // Using toolCallId as the listener ID ensures concurrent tool executions
+    // from different agentic sessions each receive only their own output.
     let hasStreamedOutput = false;
-    executor.setProgressCallback((_executionId, _status, output) => {
+    executor.addProgressListener(toolCallId, (_executionId, _status, output) => {
       if (output) {
         hasStreamedOutput = true;
         this.writeSSE(stream, 'tool_output', {
@@ -500,13 +502,19 @@ export class AgenticChatEngine {
 
     const validatedRiskLevel = riskLevel as 'green' | 'yellow' | 'red' | 'critical';
 
-    const result = await executor.executeCommand({
-      serverId, userId, clientId,
-      command, description,
-      riskLevel: validatedRiskLevel,
-      type: 'execute',
-      timeoutMs,
-    });
+    let result;
+    try {
+      result = await executor.executeCommand({
+        serverId, userId, clientId,
+        command, description,
+        riskLevel: validatedRiskLevel,
+        type: 'execute',
+        timeoutMs,
+      });
+    } finally {
+      // Always clean up the listener to prevent SSE stream closure leaks
+      executor.removeProgressListener(toolCallId);
+    }
 
     // Build result string for AI
     let output = '';

@@ -999,3 +999,193 @@ describe('snapshot integration', () => {
     // No error
   });
 });
+
+// ============================================================================
+// Progress Listeners (concurrent-safe)
+// ============================================================================
+
+describe('progress listeners', () => {
+  it('should support multiple concurrent listeners', async () => {
+    const listener1 = vi.fn();
+    const listener2 = vi.fn();
+
+    executor.addProgressListener('plan-1', listener1);
+    executor.addProgressListener('plan-2', listener2);
+
+    const { promise, stepId } = await startCommandAndWaitForSend(executor, server);
+
+    // Both listeners should receive the 'running' notification
+    expect(listener1).toHaveBeenCalledWith(expect.any(String), 'running', undefined);
+    expect(listener2).toHaveBeenCalledWith(expect.any(String), 'running', undefined);
+
+    executor.handleStepComplete(makeStepResult(stepId));
+    await promise;
+
+    // Both should receive the 'success' notification
+    expect(listener1).toHaveBeenCalledWith(expect.any(String), 'success', undefined);
+    expect(listener2).toHaveBeenCalledWith(expect.any(String), 'success', undefined);
+  });
+
+  it('should not notify removed listeners', async () => {
+    const listener1 = vi.fn();
+    const listener2 = vi.fn();
+
+    executor.addProgressListener('plan-1', listener1);
+    executor.addProgressListener('plan-2', listener2);
+
+    // Remove listener 1 before execution
+    executor.removeProgressListener('plan-1');
+
+    const { promise, stepId } = await startCommandAndWaitForSend(executor, server);
+
+    expect(listener1).not.toHaveBeenCalled();
+    expect(listener2).toHaveBeenCalled();
+
+    executor.handleStepComplete(makeStepResult(stepId));
+    await promise;
+  });
+
+  it('should forward step output to all listeners', async () => {
+    const listener1 = vi.fn();
+    const listener2 = vi.fn();
+
+    executor.addProgressListener('plan-1', listener1);
+    executor.addProgressListener('plan-2', listener2);
+
+    const { promise, stepId } = await startCommandAndWaitForSend(executor, server);
+
+    executor.handleStepOutput(stepId, 'some output');
+
+    expect(listener1).toHaveBeenCalledWith(expect.any(String), 'running', 'some output');
+    expect(listener2).toHaveBeenCalledWith(expect.any(String), 'running', 'some output');
+
+    executor.handleStepComplete(makeStepResult(stepId));
+    await promise;
+  });
+
+  it('should isolate listeners so one failing does not block others', async () => {
+    const listener1 = vi.fn(() => { throw new Error('listener 1 exploded'); });
+    const listener2 = vi.fn();
+
+    executor.addProgressListener('plan-1', listener1);
+    executor.addProgressListener('plan-2', listener2);
+
+    const { promise, stepId } = await startCommandAndWaitForSend(executor, server);
+
+    // listener2 should still be called despite listener1 throwing
+    expect(listener2).toHaveBeenCalledWith(expect.any(String), 'running', undefined);
+
+    executor.handleStepComplete(makeStepResult(stepId));
+    const result = await promise;
+    expect(result.success).toBe(true);
+  });
+
+  it('should coexist with legacy setProgressCallback', async () => {
+    const legacyFn = vi.fn();
+    const newFn = vi.fn();
+
+    executor.setProgressCallback(legacyFn);
+    executor.addProgressListener('my-listener', newFn);
+
+    const { promise, stepId } = await startCommandAndWaitForSend(executor, server);
+
+    expect(legacyFn).toHaveBeenCalledWith(expect.any(String), 'running', undefined);
+    expect(newFn).toHaveBeenCalledWith(expect.any(String), 'running', undefined);
+
+    executor.handleStepComplete(makeStepResult(stepId));
+    await promise;
+  });
+
+  it('should clear legacy callback without affecting named listeners', async () => {
+    const legacyFn = vi.fn();
+    const newFn = vi.fn();
+
+    executor.setProgressCallback(legacyFn);
+    executor.addProgressListener('my-listener', newFn);
+    executor.setProgressCallback(null); // clear legacy only
+
+    const { promise, stepId } = await startCommandAndWaitForSend(executor, server);
+
+    expect(legacyFn).not.toHaveBeenCalled();
+    expect(newFn).toHaveBeenCalledWith(expect.any(String), 'running', undefined);
+
+    executor.handleStepComplete(makeStepResult(stepId));
+    await promise;
+  });
+
+  it('should clear all listeners on shutdown', async () => {
+    const listener = vi.fn();
+    executor.addProgressListener('plan-1', listener);
+
+    // Start an execution — listener will be called with 'running'
+    const p = executor.executeCommand(makeCommandInput());
+    await flushMicrotasks();
+
+    expect(listener).toHaveBeenCalled();
+
+    executor.shutdown();
+    await p;
+
+    // After shutdown, the listener map should be cleared.
+    // Verify by adding a new listener and checking the old one
+    // does NOT receive events from subsequent executions on this executor.
+    listener.mockClear();
+
+    // Re-create executor (old one is shut down)
+    const executor2 = new TaskExecutor(server, opRepo, taskRepo);
+    const fn2 = vi.fn();
+    executor2.addProgressListener('plan-2', fn2);
+
+    const { promise: p2, stepId: s2 } = await startCommandAndWaitForSend(executor2, server);
+
+    expect(fn2).toHaveBeenCalled();
+    // The old listener was on the old executor — it should not be called
+    expect(listener).not.toHaveBeenCalled();
+
+    executor2.handleStepComplete(makeStepResult(s2));
+    await p2;
+    executor2.shutdown();
+  });
+
+  it('should handle removing non-existent listener gracefully', () => {
+    // Should not throw
+    executor.removeProgressListener('does-not-exist');
+  });
+
+  it('should support concurrent executions with per-listener progress', async () => {
+    // Simulate two users each running a command concurrently
+    const user1Progress: string[] = [];
+    const user2Progress: string[] = [];
+
+    executor.addProgressListener('user-1-session', (_execId, _status, output) => {
+      if (output) user1Progress.push(output);
+    });
+    executor.addProgressListener('user-2-session', (_execId, _status, output) => {
+      if (output) user2Progress.push(output);
+    });
+
+    // Start two concurrent executions
+    const p1 = executor.executeCommand(makeCommandInput({ clientId: 'c1', command: 'cmd1' }));
+    const p2 = executor.executeCommand(makeCommandInput({ clientId: 'c2', command: 'cmd2' }));
+    await flushMicrotasks();
+
+    const sendMock = server.send as ReturnType<typeof vi.fn>;
+    const step1 = sendMock.mock.calls[0][1].payload.id as string;
+    const step2 = sendMock.mock.calls[1][1].payload.id as string;
+
+    // Send output for step1 — both listeners receive it
+    executor.handleStepOutput(step1, 'output-from-cmd1');
+    expect(user1Progress).toEqual(['output-from-cmd1']);
+    expect(user2Progress).toEqual(['output-from-cmd1']);
+
+    // Send output for step2 — both listeners receive it
+    executor.handleStepOutput(step2, 'output-from-cmd2');
+    expect(user1Progress).toEqual(['output-from-cmd1', 'output-from-cmd2']);
+    expect(user2Progress).toEqual(['output-from-cmd1', 'output-from-cmd2']);
+
+    // Complete both
+    executor.handleStepComplete(makeStepResult(step1));
+    executor.handleStepComplete(makeStepResult(step2));
+    await Promise.all([p1, p2]);
+  });
+});

@@ -7,7 +7,7 @@
  * - Install / uninstall skills from disk
  * - Configure user-facing inputs
  * - Enable / pause / error status transitions
- * - Execute skills (manual trigger — AI runner deferred to skill-005)
+ * - Execute skills (manual trigger via AI SkillRunner)
  * - Query installed skills, available skills, and execution history
  *
  * Uses singleton pattern consistent with all other core services.
@@ -38,6 +38,7 @@ import type {
   AvailableSkill,
   SkillRunParams,
 } from './types.js';
+import { SkillRunner } from './runner.js';
 
 const logger = createContextLogger({ module: 'skill-engine' });
 
@@ -203,10 +204,10 @@ export class SkillEngine {
   // --------------------------------------------------------------------------
 
   /**
-   * Execute a skill (manual trigger).
+   * Execute a skill (manual trigger) via the AI SkillRunner.
    *
-   * Phase 1: Creates execution record, resolves prompt template, records result.
-   * AI Runner integration is deferred to skill-005.
+   * Creates execution record, resolves the prompt template, then delegates
+   * to SkillRunner for autonomous AI-driven execution with security checks.
    */
   async execute(params: SkillRunParams): Promise<SkillExecutionResult> {
     const { skillId, serverId, userId, triggerType } = params;
@@ -252,39 +253,48 @@ export class SkillEngine {
         now: new Date().toISOString(),
       });
 
-      // Phase 1: Record the resolved prompt as result (AI Runner in skill-005)
-      const result: Record<string, unknown> = {
+      // Run via AI SkillRunner
+      const runner = new SkillRunner();
+      const runResult = await runner.run({
+        manifest,
         resolvedPrompt,
-        manifest: {
-          name: manifest.metadata.name,
-          version: manifest.metadata.version,
-          tools: manifest.tools,
-          constraints: manifest.constraints,
-        },
-        phase: 'stub — AI Runner pending (skill-005)',
-      };
+        serverId,
+        userId,
+        executionId: execution.id,
+        config: mergedConfig,
+      });
 
       const duration = Date.now() - startTime;
+      const status = runResult.status === 'success' ? 'success'
+        : runResult.status === 'timeout' ? 'timeout'
+        : 'failed';
+
+      const result: Record<string, unknown> = {
+        output: runResult.output,
+        toolResults: runResult.toolResults,
+        errors: runResult.errors,
+      };
+
       await this.repo.completeExecution(
         execution.id,
-        'success',
+        status,
         result,
-        0,
+        runResult.stepsExecuted,
         duration,
       );
 
       logger.info(
-        { executionId: execution.id, skillId, serverId, duration },
-        'Skill execution completed (Phase 1 stub)',
+        { executionId: execution.id, skillId, serverId, duration, steps: runResult.stepsExecuted },
+        'Skill execution completed',
       );
 
       return {
         executionId: execution.id,
-        status: 'success',
-        stepsExecuted: 0,
+        status,
+        stepsExecuted: runResult.stepsExecuted,
         duration,
         result,
-        errors: [],
+        errors: runResult.errors,
       };
     } catch (err) {
       const duration = Date.now() - startTime;

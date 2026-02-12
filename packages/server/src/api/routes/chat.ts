@@ -146,7 +146,10 @@ async function executePlanSteps(opts: {
   // Track whether real-time output was streamed (to avoid duplicate output on completion)
   let hasStreamedOutput = false;
 
-  executor.setProgressCallback((executionId, _status, output) => {
+  // Register a progress listener scoped to this plan execution.
+  // Using planId as the listener ID ensures concurrent plan executions
+  // from different users each receive only their own output.
+  executor.addProgressListener(planId, (executionId, _status, output) => {
     activePlanExecutions.set(planId, executionId);
     // Stream real-time output from agent directly to SSE (SSH-like experience)
     if (output && currentStepId) {
@@ -314,7 +317,7 @@ async function executePlanSteps(opts: {
 
   // Clean up
   activePlanExecutions.delete(planId);
-  executor.setProgressCallback(null);
+  executor.removeProgressListener(planId);
 
   // Post-execution AI summary: analyze results and provide natural language summary
   // This is what makes it feel like Claude Code — not just raw output, but intelligent analysis

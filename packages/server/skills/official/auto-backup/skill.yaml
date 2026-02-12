@@ -1,0 +1,64 @@
+kind: skill
+version: "1.0"
+
+metadata:
+  name: auto-backup
+  displayName: "自动备份"
+  description: "自动备份关键系统配置和数据文件"
+  version: "1.0.0"
+  author: "ServerPilot"
+  tags:
+    - backup
+    - maintenance
+
+triggers:
+  - type: manual
+  - type: cron
+    schedule: "0 2 * * *"
+
+tools:
+  - shell
+  - read_file
+  - write_file
+
+inputs:
+  - name: backup_dir
+    type: string
+    required: false
+    default: "/var/backups/serverpilot"
+    description: "备份文件存储目录"
+  - name: retention_days
+    type: number
+    required: false
+    default: 7
+    description: "备份保留天数"
+
+constraints:
+  risk_level_max: red
+  timeout: "10m"
+  max_steps: 30
+  requires_confirmation: true
+
+requires:
+  os:
+    - linux
+    - darwin
+  commands:
+    - tar
+    - gzip
+
+prompt: |
+  你是一个系统备份助手。请执行以下备份任务：
+
+  1. 创建备份目录（如不存在）：{{backup_dir}}
+  2. 备份关键配置文件：
+     - /etc/nginx/ (如存在)
+     - /etc/ssh/sshd_config
+     - /etc/crontab
+     - 数据库配置文件
+  3. 使用 tar + gzip 压缩备份文件
+  4. 命名格式：backup-YYYY-MM-DD-HHmmss.tar.gz
+  5. 清理超过 {{retention_days}} 天的旧备份
+  6. 验证备份文件完整性
+
+  备份完成后输出：备份文件路径、大小、包含的文件列表。

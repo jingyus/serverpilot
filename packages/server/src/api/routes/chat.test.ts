@@ -91,6 +91,8 @@ vi.mock('../../core/task/executor.js', () => ({
       operationId: 'mock-op-id',
     })),
     setProgressCallback: vi.fn(),
+    addProgressListener: vi.fn(),
+    removeProgressListener: vi.fn(),
   })),
 }));
 

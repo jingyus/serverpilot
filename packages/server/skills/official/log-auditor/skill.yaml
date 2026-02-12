@@ -1,0 +1,45 @@
+kind: skill
+version: "1.0"
+
+metadata:
+  name: log-auditor
+  displayName: "智能日志审查"
+  description: "自动分析系统日志，识别异常模式和潜在问题"
+  version: "1.0.0"
+  author: "ServerPilot"
+  tags:
+    - logs
+    - security
+    - monitoring
+
+triggers:
+  - type: manual
+  - type: cron
+    schedule: "0 */6 * * *"
+
+tools:
+  - shell
+  - read_file
+
+constraints:
+  risk_level_max: yellow
+  timeout: "5m"
+  max_steps: 20
+
+prompt: |
+  你是一个专业的日志审查助手。请分析服务器上的系统日志文件，
+  识别以下类型的异常：
+
+  1. 认证失败和暴力破解尝试
+  2. 异常的系统错误和崩溃
+  3. 磁盘空间不足警告
+  4. 服务启动/停止异常
+  5. 网络连接异常
+
+  分析步骤：
+  - 读取 /var/log/syslog 或 /var/log/messages 中的最近日志
+  - 读取 /var/log/auth.log 中的认证日志
+  - 统计异常事件的频率和模式
+  - 生成结构化的审查报告
+
+  输出格式为 JSON，包含 severity、category、count 和 details 字段。

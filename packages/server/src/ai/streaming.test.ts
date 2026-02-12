@@ -26,7 +26,7 @@ import type {
   StreamUsage,
 } from './streaming.js';
 
-const STREAMING_FILE = path.resolve('packages/server/src/ai/streaming.ts');
+const STREAMING_FILE = path.resolve('src/ai/streaming.ts');
 
 // ============================================================================
 // Test Helpers

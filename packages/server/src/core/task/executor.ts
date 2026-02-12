@@ -180,8 +180,14 @@ export class TaskExecutor {
   /** Maps step IDs to execution IDs for result routing */
   private stepToExecution = new Map<string, string>();
 
-  /** Optional progress callback */
-  private onProgress: ExecutionProgressCallback | null = null;
+  /** Progress listeners keyed by listener ID (supports concurrent callers) */
+  private progressListeners = new Map<string, ExecutionProgressCallback>();
+
+  /**
+   * @deprecated Use `addProgressListener(listenerId, callback)` / `removeProgressListener(listenerId)` instead.
+   * Kept for backward compatibility — internally stored under key '__legacy__'.
+   */
+  private static readonly LEGACY_KEY = '__legacy__';
 
   /** Optional snapshot service for pre-operation snapshots */
   private snapshotService: SnapshotService | null = null;
@@ -537,10 +543,38 @@ export class TaskExecutor {
   /**
    * Set a callback for receiving execution progress updates.
    *
+   * @deprecated Use `onProgress(listenerId, callback)` / `offProgress(listenerId)` instead.
+   *   This method sets a single global callback that can be overwritten by concurrent callers.
    * @param callback - Progress callback function
    */
   setProgressCallback(callback: ExecutionProgressCallback | null): void {
-    this.onProgress = callback;
+    if (callback) {
+      this.progressListeners.set(TaskExecutor.LEGACY_KEY, callback);
+    } else {
+      this.progressListeners.delete(TaskExecutor.LEGACY_KEY);
+    }
+  }
+
+  /**
+   * Register a progress listener with a unique ID.
+   *
+   * Multiple listeners can be registered concurrently (e.g. for different
+   * users' SSE streams). Each listener receives all execution progress events.
+   *
+   * @param listenerId - Unique ID for this listener (e.g. planId or sessionId)
+   * @param callback - Progress callback function
+   */
+  addProgressListener(listenerId: string, callback: ExecutionProgressCallback): void {
+    this.progressListeners.set(listenerId, callback);
+  }
+
+  /**
+   * Remove a progress listener by its ID.
+   *
+   * @param listenerId - The listener ID to remove
+   */
+  removeProgressListener(listenerId: string): void {
+    this.progressListeners.delete(listenerId);
   }
 
   /**
@@ -581,6 +615,7 @@ export class TaskExecutor {
       }
       this.cleanup(executionId);
     }
+    this.progressListeners.clear();
   }
 
   // --------------------------------------------------------------------------
@@ -646,9 +681,9 @@ export class TaskExecutor {
     status: ExecutionStatus,
     output?: string,
   ): void {
-    if (this.onProgress) {
+    for (const callback of this.progressListeners.values()) {
       try {
-        this.onProgress(executionId, status, output);
+        callback(executionId, status, output);
       } catch {
         // Ignore callback errors
       }

@@ -1,0 +1,45 @@
+kind: skill
+version: "1.0"
+
+metadata:
+  name: intrusion-detector
+  displayName: "入侵检测扫描"
+  description: "检测服务器上的可疑活动和潜在入侵迹象"
+  version: "1.0.0"
+  author: "ServerPilot"
+  tags:
+    - security
+    - intrusion-detection
+
+triggers:
+  - type: manual
+  - type: event
+    on: alert.triggered
+
+tools:
+  - shell
+  - read_file
+
+constraints:
+  risk_level_max: yellow
+  timeout: "5m"
+  max_steps: 25
+
+requires:
+  commands:
+    - ss
+    - ps
+    - find
+
+prompt: |
+  你是一个安全专家。请对服务器进行入侵检测扫描，检查以下方面：
+
+  1. 使用 ss 检查异常的网络连接和监听端口
+  2. 使用 ps 检查可疑的进程
+  3. 检查 /tmp 和 /var/tmp 中的可疑文件
+  4. 检查最近修改的系统文件
+  5. 检查 crontab 中的异常定时任务
+  6. 检查 authorized_keys 中的未知公钥
+
+  对每个发现进行风险评级（low/medium/high/critical），
+  并提供具体的修复建议。输出结构化的扫描报告。
