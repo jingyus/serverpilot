@@ -1,21 +1,24 @@
-### [pending] Agent 版本检查实现 — requires.agent 字段被跳过
+### [pending] Server 标签系统 — 支持 server_scope: 'tagged' 真正按标签筛选
 
-**ID**: skill-076
+**ID**: skill-077
 **优先级**: P2
-**模块路径**: packages/server/src/core/skill/loader.ts
-**当前状态**: 功能缺失 — `loader.ts` line 267-268 显示 `requires.agent` 被 `logger.debug('Agent version check deferred')` 跳过，永远不执行版本比较。SKILL_SPEC.md 定义了 `requires.agent: ">=1.0.0"` 语义版本约束，但 Agent 协议尚未标准化版本号格式。
+**模块路径**: packages/server/src/db/schema.ts, packages/server/src/core/skill/batch-executor.ts
+**当前状态**: 功能缺失 — `batch-executor.ts` 在 `server_scope: 'tagged'` 时优雅降级到单服务器执行（产生 warning），但实际的标签筛选功能从未实现。`servers` 表无 `tags` 列，Dashboard 无标签管理 UI。
 **实现方案**: 
-1. 在 Agent 认证时，要求 Agent 报告版本号（已有 `device.info` 或 `env.report` 中可能包含版本）
-2. 在 `loader.ts` 的 `checkRequirements()` 中，通过 Server 的已连接 Agent 信息获取版本
-3. 使用 SemVer 比较库（`semver` npm 包或手写简单比较）验证 `requires.agent` 约束
-4. 如果 Agent 未报告版本，降级为警告（不阻断执行），而非静默跳过
-5. 添加测试: 版本匹配通过、版本不匹配拒绝、无版本信息降级警告
+1. 在 `db/schema.ts` 的 `servers` 表添加 `tags: text('tags')` 列（JSON string array）
+2. 创建 migration `0012_server_tags.sql`
+3. 在 `ServerRepository` 添加 `findByTags(userId, tags[])` 方法
+4. 在 `batch-executor.ts` 中，scope='tagged' 时调用 `findByTags()` 替代降级逻辑
+5. Skill manifest 的 `constraints.server_scope` 为 `'tagged'` 时，需要配合 `constraints.server_tags: string[]` 字段
+6. 更新 `shared/src/skill-schema.ts` 添加 `server_tags` 约束字段
+7. Dashboard: Server 详情页添加标签编辑 UI
+8. 测试: findByTags 查询、batch-executor tagged 筛选、schema 验证
 **验收标准**: 
-- `requires.agent` 约束被实际检查（非静默跳过）
-- 版本不满足时返回明确的 `missing` 错误信息
-- Agent 无版本时降级为 warning 而非 error
-- 测试 ≥ 5 个新增
-**影响范围**: packages/server/src/core/skill/loader.ts, packages/server/src/core/skill/loader.test.ts
+- servers 表支持 tags 字段
+- `server_scope: 'tagged'` 按标签真正筛选服务器
+- Dashboard 可以给服务器添加/删除标签
+- 至少 10 个新测试
+**影响范围**: packages/server/src/db/schema.ts, packages/server/src/db/migrations/0012_server_tags.sql (新), packages/server/src/db/repositories/server-repository.ts, packages/server/src/core/skill/batch-executor.ts, packages/shared/src/skill-schema.ts, packages/dashboard/src/pages/ServerDetail.tsx
 **创建时间**: (自动填充)
 **完成时间**: -
 
