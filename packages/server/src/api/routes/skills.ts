@@ -122,6 +122,33 @@ skillsRoute.post('/install', requirePermission('skill:manage'), validateBody(Ins
 });
 
 // ============================================================================
+// POST /skills/:id/upgrade — Upgrade a skill (preserve config + history)
+// ============================================================================
+
+skillsRoute.post('/:id/upgrade', requirePermission('skill:manage'), async (c) => {
+  const skillId = c.req.param('id');
+  const userId = c.get('userId');
+  const engine = getSkillEngine();
+
+  try {
+    const skill = await engine.upgrade(skillId, userId);
+    return c.json({ skill });
+  } catch (err) {
+    const msg = (err as Error).message;
+    if (msg.includes('not found')) {
+      throw ApiError.notFound('Skill');
+    }
+    if (msg.includes('Not authorized')) {
+      throw ApiError.forbidden(msg);
+    }
+    if (msg.includes('Git clone failed') || msg.includes('validation failed') || msg.includes('cannot determine')) {
+      throw ApiError.badRequest(msg);
+    }
+    throw err;
+  }
+});
+
+// ============================================================================
 // DELETE /skills/:id — Uninstall a skill
 // ============================================================================
 

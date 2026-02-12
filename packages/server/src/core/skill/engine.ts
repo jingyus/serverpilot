@@ -26,6 +26,7 @@ import {
 } from '../../db/repositories/server-repository.js';
 import { getWebhookDispatcher } from '../webhook/dispatcher.js';
 import { upgradeFromGitUrl } from './git-installer.js';
+import { getGitRemoteUrl } from './git-utils.js';
 import { SkillConfirmationManager } from './engine-confirmation.js';
 import type { SkillManifest, SkillInput } from '@aiinstaller/shared';
 import type { SkillStatus } from '../../db/schema.js';
@@ -263,7 +264,7 @@ export class SkillEngine {
    */
   private async upgradeGitSkill(skill: InstalledSkill): Promise<SkillManifest> {
     // Read git remote URL from the existing clone
-    const gitUrl = await this.getGitRemoteUrl(skill.skillPath);
+    const gitUrl = await getGitRemoteUrl(skill.skillPath);
     if (!gitUrl) {
       throw new Error(
         `Cannot determine git remote URL for skill '${skill.name}' at ${skill.skillPath}. ` +
@@ -273,17 +274,6 @@ export class SkillEngine {
 
     const result = await upgradeFromGitUrl(skill.skillPath, gitUrl);
     return result.manifest;
-  }
-
-  /** Read the origin remote URL from a git repository directory. */
-  private async getGitRemoteUrl(dirPath: string): Promise<string | null> {
-    try {
-      const { execAsync } = await import('./git-utils.js');
-      const { stdout } = await execAsync('git remote get-url origin', { cwd: dirPath });
-      return stdout.trim() || null;
-    } catch {
-      return null;
-    }
   }
 
   /** Update user configuration (input values) for an installed skill. */

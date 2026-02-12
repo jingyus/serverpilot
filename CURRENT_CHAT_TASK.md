@@ -1,12 +1,12 @@
-### [pending] session/manager.ts 超过 500 行软限制 — 715 行可提取缓存和重试队列逻辑
+### [pending] Chat.tsx 超过 500 行软限制 — 631 行应提取子组件
 
-**ID**: chat-060
+**ID**: chat-061
 **优先级**: P2
-**模块路径**: packages/server/src/core/session/manager.ts
-**发现的问题**: manager.ts 当前 715 行，超出 500 行软限制 215 行。文件包含：(1) 类型定义（第 30-80 行）; (2) 缓存配置和 CacheEntry（第 82-130 行）; (3) SessionManager 类（第 132-700 行，含 LRU 缓存管理、重试队列、上下文构建、持久化等多个职责）; (4) 单例管理（第 702-715 行）。SessionManager 类承担了过多职责，违反单一职责原则。
-**改进方案**: 提取以下独立模块：(1) `session-cache.ts` — LRU 缓存逻辑（get/set/evict/sweep/protect），约 150 行; (2) `session-retry-queue.ts` — 重试队列处理逻辑（processRetryQueue/markMessagePersisted），约 80 行。主文件保留 SessionManager 公共 API 和编排逻辑，约 480 行。
-**验收标准**: (1) manager.ts 降至 500 行以内; (2) 拆分后模块独立可测试; (3) 所有现有测试通过; (4) SessionManager 公共 API 不变
-**影响范围**: packages/server/src/core/session/manager.ts, 新文件 session-cache.ts, session-retry-queue.ts
+**模块路径**: packages/dashboard/src/pages/Chat.tsx
+**发现的问题**: Chat.tsx 当前 631 行，超出 500 行软限制 131 行。文件在同一个文件中定义了 4 个组件：(1) ChatPage 主组件（第 1-356 行）; (2) ChatHeader（第 357-401 行，45 行）; (3) EmptyState（第 403-449 行，47 行）; (4) ServerSelector（第 451-499 行，49 行）; (5) SessionSidebar（第 516-631 行，115 行）。以及一个工具函数 getSessionDateGroup（第 501-514 行）。
+**改进方案**: 将以下组件提取到 `packages/dashboard/src/components/chat/` 目录：(1) `ChatHeader.tsx`; (2) `ChatEmptyState.tsx`; (3) `ServerSelector.tsx`; (4) `SessionSidebar.tsx`（含 getSessionDateGroup 工具函数）。主文件只保留 ChatPage 主组件和路由逻辑。
+**验收标准**: (1) Chat.tsx 降至 400 行以内; (2) 各子组件文件不超过 150 行; (3) 所有现有测试通过; (4) UI 行为和渲染不变
+**影响范围**: packages/dashboard/src/pages/Chat.tsx, 新文件 ChatHeader.tsx, ChatEmptyState.tsx, ServerSelector.tsx, SessionSidebar.tsx
 **创建时间**: (自动填充)
 **完成时间**: -
 

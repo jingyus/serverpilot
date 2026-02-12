@@ -16,6 +16,7 @@ import {
   extractRepoName,
   scanManifestSecurity,
   installFromGitUrl,
+  upgradeFromGitUrl,
 } from './git-installer.js';
 import type { SkillManifest } from '@aiinstaller/shared';
 
@@ -420,5 +421,135 @@ prompt: |
     // Verify directory was cleaned up
     const { access } = await import('node:fs/promises');
     await expect(access(targetDir)).rejects.toThrow();
+  });
+});
+
+// ============================================================================
+// upgradeFromGitUrl
+// ============================================================================
+
+describe('upgradeFromGitUrl', () => {
+  it('should reject non-HTTPS URLs', async () => {
+    const existingDir = await createTempDir('existing-');
+
+    await expect(
+      upgradeFromGitUrl(existingDir, 'git@github.com:user/repo.git'),
+    ).rejects.toThrow(/Only HTTPS/);
+  });
+
+  it('should fail if existing directory does not exist', async () => {
+    await expect(
+      upgradeFromGitUrl('/nonexistent/path', 'https://github.com/user/repo.git'),
+    ).rejects.toThrow(/not found/);
+  });
+
+  it('should clone to temp dir, validate, and swap atomically', async () => {
+    const existingDir = await createTempDir('existing-');
+    await writeSkillYaml(existingDir, { name: 'existing-skill' });
+
+    const tempDir = existingDir + '.upgrade-tmp';
+
+    const execMock = exec as unknown as ReturnType<typeof vi.fn>;
+    execMock.mockImplementation(async (_cmd: string, _opts: unknown, callback?: Function) => {
+      // Simulate cloning into temp dir
+      await mkdir(tempDir, { recursive: true });
+      // Write upgraded skill.yaml
+      const yaml = `kind: skill
+version: "1.0"
+
+metadata:
+  name: existing-skill
+  displayName: "Upgraded Skill"
+  version: "2.0.0"
+
+triggers:
+  - type: manual
+
+tools:
+  - shell
+
+prompt: |
+  Upgraded prompt content that is long enough to pass the 50 character minimum validation.
+`;
+      await writeFile(join(tempDir, 'skill.yaml'), yaml, 'utf-8');
+
+      if (typeof _opts === 'function') {
+        _opts(null, { stdout: '', stderr: '' });
+      } else if (callback) {
+        callback(null, { stdout: '', stderr: '' });
+      }
+      return { pid: 1234 };
+    });
+
+    const result = await upgradeFromGitUrl(
+      existingDir,
+      'https://github.com/user/existing-skill.git',
+    );
+
+    expect(result.manifest.metadata.version).toBe('2.0.0');
+    expect(result.manifest.metadata.displayName).toBe('Upgraded Skill');
+    expect(result.skillDir).toBe(existingDir);
+  });
+
+  it('should clean up temp dir on clone failure', async () => {
+    const existingDir = await createTempDir('existing-');
+    await writeSkillYaml(existingDir, { name: 'existing-skill' });
+
+    const tempDir = existingDir + '.upgrade-tmp';
+
+    const execMock = exec as unknown as ReturnType<typeof vi.fn>;
+    execMock.mockImplementation(async (_cmd: string, _opts: unknown, callback?: Function) => {
+      await mkdir(tempDir, { recursive: true });
+      const err = new Error('Network timeout');
+      if (typeof _opts === 'function') {
+        _opts(err);
+      } else if (callback) {
+        callback(err);
+      }
+      return { pid: 1234 };
+    });
+
+    await expect(
+      upgradeFromGitUrl(existingDir, 'https://github.com/user/repo.git'),
+    ).rejects.toThrow(/Git clone failed during upgrade/);
+
+    // Temp dir should be cleaned up
+    const { access } = await import('node:fs/promises');
+    await expect(access(tempDir)).rejects.toThrow();
+
+    // Original dir should still exist
+    await expect(access(existingDir)).resolves.not.toThrow();
+  });
+
+  it('should clean up temp dir on validation failure', async () => {
+    const existingDir = await createTempDir('existing-');
+    await writeSkillYaml(existingDir, { name: 'existing-skill' });
+
+    const tempDir = existingDir + '.upgrade-tmp';
+
+    const execMock = exec as unknown as ReturnType<typeof vi.fn>;
+    execMock.mockImplementation(async (_cmd: string, _opts: unknown, callback?: Function) => {
+      await mkdir(tempDir, { recursive: true });
+      // Write invalid skill.yaml
+      await writeFile(join(tempDir, 'skill.yaml'), 'kind: invalid\n', 'utf-8');
+
+      if (typeof _opts === 'function') {
+        _opts(null, { stdout: '', stderr: '' });
+      } else if (callback) {
+        callback(null, { stdout: '', stderr: '' });
+      }
+      return { pid: 1234 };
+    });
+
+    await expect(
+      upgradeFromGitUrl(existingDir, 'https://github.com/user/repo.git'),
+    ).rejects.toThrow(/Skill validation failed during upgrade/);
+
+    // Temp dir should be cleaned up
+    const { access } = await import('node:fs/promises');
+    await expect(access(tempDir)).rejects.toThrow();
+
+    // Original dir should still exist
+    await expect(access(existingDir)).resolves.not.toThrow();
   });
 });
