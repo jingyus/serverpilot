@@ -1,20 +1,19 @@
-### [pending] Token 估算对中文内容偏差 4 倍 — 可能导致上下文溢出或 AI 请求失败
+### [pending] SSE token 刷新无去重保护 — 并发 401 可能引发 token 轮换冲突
 
-**ID**: chat-012
+**ID**: chat-013
 **优先级**: P1
-**模块路径**: packages/server/src/ai/profile-context.ts, packages/server/src/core/session/manager.ts
-**发现的问题**: `profile-context.ts:54` 使用 `CHARS_PER_TOKEN = 4` 作为全局 token 估算比率。这对英文文本合理（约 4 字符/token），但本项目 AI 系统提示要求用中文回复（agentic-chat.ts:672），中文文本实际约 1-2 字符/token。这意味着 `buildContextWithLimit(sessionId, 8000)` 实际可能放入 32000 真实 token；`buildHistoryWithLimit(sessionId, 40000)` 可能放入 160000 真实 token，远超模型限制。`estimateTokens()` 在 `manager.ts:260` 和 `manager.ts:322` 被用于上下文裁剪决策。
+**模块路径**: packages/dashboard/src/api/sse.ts
+**发现的问题**: `sse.ts:28-47` 的 `tryRefreshToken()` 独立于 `client.ts:52-82` 的 `refreshAccessToken()`，后者有 `refreshPromise` 去重机制防止并发刷新，但 SSE 版本没有。如果 Chat SSE 和 Metrics SSE 同时遇到 401，两者各自调用 `tryRefreshToken()`，向服务端发送两次 refresh 请求。如果服务端实现了 refresh token 轮换（首次使用后失效），第二次请求会失败，导致用户被强制登出。
 **改进方案**: 
-1. 改进 `estimateTokens()` 函数，检测文本中的非 ASCII 字符比例
-2. 对于高 CJK 比例文本使用 `CHARS_PER_TOKEN = 1.5`；纯英文使用 `CHARS_PER_TOKEN = 4`；混合文本加权平均
-3. 或引入轻量级 tokenizer 库（如 `tiktoken` 的 WASM 版本）做精确计算
-4. 保持 `estimateTokens()` 的接口不变，仅改进内部实现
+1. 将 `sse.ts` 的 `tryRefreshToken()` 替换为调用 `client.ts` 的 `refreshAccessToken()` + 去重逻辑
+2. 或将 token 刷新逻辑提取到独立的 `auth.ts` 模块，SSE 和 API 客户端共用
+3. 确保任意时刻只有一个 refresh 请求在 flight
 **验收标准**: 
-- 中文对话 100 轮后不会因 token 溢出导致 AI 请求 400 错误
-- `estimateTokens('你好世界')` 返回值在 3-5 之间（而非当前的 1）
-- 英文估算精度不变
-- 新增测试覆盖中文、英文、混合文本场景
-**影响范围**: packages/server/src/ai/profile-context.ts, packages/server/src/core/session/manager.ts
+- 多个 SSE 连接同时 401 时只发送一次 refresh 请求
+- refresh 成功后所有等待者拿到新 token
+- refresh 失败后所有等待者收到 null
+- 新增测试覆盖并发 refresh 场景
+**影响范围**: packages/dashboard/src/api/sse.ts, packages/dashboard/src/api/client.ts
 **创建时间**: (自动填充)
 **完成时间**: -
 

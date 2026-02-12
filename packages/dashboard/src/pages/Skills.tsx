@@ -25,7 +25,7 @@ import { useSkillsStore } from '@/stores/skills';
 import { SkillCard } from '@/components/skill/SkillCard';
 import { SkillConfigModal } from '@/components/skill/SkillConfigModal';
 import { ExecutionHistory } from '@/components/skill/ExecutionHistory';
-import type { InstalledSkill, AvailableSkill, SkillSource } from '@/types/skill';
+import type { InstalledSkill, AvailableSkill } from '@/types/skill';
 import { SKILL_SOURCE_LABELS } from '@/types/skill';
 import type { SkillInputDef } from '@/components/skill/SkillConfigModal';
 

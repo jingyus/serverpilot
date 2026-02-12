@@ -1,6 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
 import { API_BASE_URL } from '@/utils/constants';
+import {
+  getToken,
+  clearToken,
+  refreshAccessToken,
+} from './auth';
+
+// Re-export token helpers so existing consumers don't break
+export { setToken, clearToken } from './auth';
 
 export class ApiError extends Error {
   constructor(
@@ -24,62 +32,6 @@ const ERROR_MESSAGES: Record<string, string> = {
   AI_UNAVAILABLE: 'AI service is temporarily unavailable',
   INTERNAL_ERROR: 'An unexpected error occurred, please try again',
 };
-
-function getToken(): string | null {
-  return localStorage.getItem('auth_token');
-}
-
-export function setToken(token: string): void {
-  localStorage.setItem('auth_token', token);
-}
-
-export function clearToken(): void {
-  localStorage.removeItem('auth_token');
-}
-
-function getRefreshToken(): string | null {
-  return localStorage.getItem('refresh_token');
-}
-
-// Prevent multiple concurrent refresh attempts
-let refreshPromise: Promise<boolean> | null = null;
-
-interface RefreshResponse {
-  accessToken: string;
-  refreshToken: string;
-}
-
-async function refreshAccessToken(): Promise<boolean> {
-  const refreshToken = getRefreshToken();
-  if (!refreshToken) return false;
-
-  try {
-    const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken }),
-    });
-
-    if (!response.ok) return false;
-
-    const data = (await response.json()) as RefreshResponse;
-    setToken(data.accessToken);
-    localStorage.setItem('refresh_token', data.refreshToken);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** Attempt token refresh, deduplicating concurrent calls. */
-function tryRefresh(): Promise<boolean> {
-  if (!refreshPromise) {
-    refreshPromise = refreshAccessToken().finally(() => {
-      refreshPromise = null;
-    });
-  }
-  return refreshPromise;
-}
 
 function friendlyMessage(code: string, fallback: string, isAuthPath: boolean): string {
   // For auth endpoints (login/register), use the server's message directly
@@ -111,12 +63,9 @@ export async function apiRequest<T>(
 
   // On 401, attempt token refresh and retry once
   if (response.status === 401 && !path.startsWith('/auth/')) {
-    const refreshed = await tryRefresh();
-    if (refreshed) {
-      const newToken = getToken();
-      if (newToken) {
-        headers['Authorization'] = `Bearer ${newToken}`;
-      }
+    const newToken = await refreshAccessToken();
+    if (newToken) {
+      headers['Authorization'] = `Bearer ${newToken}`;
       response = await fetch(`${API_BASE_URL}${path}`, {
         ...options,
         headers,

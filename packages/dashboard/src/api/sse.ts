@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
 import { API_BASE_URL } from '@/utils/constants';
+import { refreshAccessToken } from './auth';
 
 export interface SSECallbacks {
   onMessage?: (data: string) => void;
@@ -25,27 +26,6 @@ export interface SSECallbacks {
   onConfirmId?: (data: string) => void;
 }
 
-async function tryRefreshToken(): Promise<string | null> {
-  const refreshToken = localStorage.getItem('refresh_token');
-  if (!refreshToken) return null;
-
-  try {
-    const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken }),
-    });
-    if (!response.ok) return null;
-
-    const data = (await response.json()) as { accessToken: string; refreshToken: string };
-    localStorage.setItem('auth_token', data.accessToken);
-    localStorage.setItem('refresh_token', data.refreshToken);
-    return data.accessToken;
-  } catch {
-    return null;
-  }
-}
-
 async function sseRequest(
   path: string,
   body: Record<string, unknown>,
@@ -64,7 +44,7 @@ async function sseRequest(
 
   // On 401, attempt token refresh and retry once
   if (response.status === 401) {
-    const newToken = await tryRefreshToken();
+    const newToken = await refreshAccessToken();
     if (newToken) {
       return fetch(`${API_BASE_URL}${path}`, {
         method: 'POST',
@@ -317,7 +297,7 @@ export function createMetricsSSE(
 
       // On 401, attempt token refresh and retry once
       if (response.status === 401) {
-        const newToken = await tryRefreshToken();
+        const newToken = await refreshAccessToken();
         if (newToken) {
           headers['Authorization'] = `Bearer ${newToken}`;
           response = await fetch(`${API_BASE_URL}${path}`, {
@@ -449,7 +429,7 @@ export function createServerStatusSSE(
 
       // On 401, attempt token refresh and retry once
       if (response.status === 401) {
-        const newToken = await tryRefreshToken();
+        const newToken = await refreshAccessToken();
         if (newToken) {
           headers['Authorization'] = `Bearer ${newToken}`;
           response = await fetch(`${API_BASE_URL}/servers/status/stream`, {
