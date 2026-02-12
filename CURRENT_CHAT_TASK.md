@@ -1,12 +1,12 @@
-### [pending] Agentic 确认流在客户端断连后仍继续等待 — confirmation.approved 未与 abort 联动
+### [pending] Agentic 初始消息数组未做 token 预检 — 超长历史可能导致首次 API 调用失败
 
-**ID**: chat-056
+**ID**: chat-057
 **优先级**: P1
 **模块路径**: packages/server/src/ai/agentic-chat.ts
-**发现的问题**: agentic-chat.ts 第 491-514 行的确认流程中，第 502 行 `const approved = await confirmation.approved` 会无条件等待用户确认。如果客户端已断连（abort.aborted=true），这个 await 仍然会挂起最多 5 分钟（由 chat.ts 的 CONFIRM_TIMEOUT_MS 控制）。虽然第 517-520 行有 abort 检查，但只在确认 resolve 后才到达。这意味着一个已断连的客户端会让服务端的 agentic 循环挂起 5 分钟，占用内存和协程资源。
-**改进方案**: 使用 `Promise.race()` 将 `confirmation.approved` 与一个 abort 感知的 Promise 竞争。当 abort.aborted 为 true 时立即 resolve(false)。可以实现为：`const approved = await Promise.race([confirmation.approved, this.waitForAbort(abort)])` 其中 waitForAbort 定期检查 abort 状态或监听 abort 事件。
-**验收标准**: (1) 客户端断连后确认等待在 1 秒内结束; (2) 不再有 5 分钟挂起; (3) abort 后工具执行不会继续; (4) 测试覆盖断连+确认竞态场景
-**影响范围**: packages/server/src/ai/agentic-chat.ts, packages/server/src/api/routes/chat.ts
+**发现的问题**: agentic-chat.ts 第 205-216 行构建初始消息数组时，将完整的 conversationHistory 和当前 userMessage 追加到 messages 中，但没有在进入循环（第 222 行 `for (let turn = 0; turn < MAX_TURNS; turn++)`）之前调用 `trimMessagesIfNeeded()`。裁剪只在每轮结束后执行（第 280 行附近）。如果用户有很长的对话历史（数百条消息），初始消息可能就超过 MAX_MESSAGES_TOKENS（150K tokens），导致第一次 Anthropic API 调用因超出上下文窗口而失败。
+**改进方案**: 在进入循环前增加一次 `trimMessagesIfNeeded(messages)` 调用，确保初始消息数组在 token 预算内。
+**验收标准**: (1) 超长对话历史不会导致首次 API 调用失败; (2) 裁剪后保留最新消息和首条用户消息; (3) 测试覆盖超长历史场景
+**影响范围**: packages/server/src/ai/agentic-chat.ts
 **创建时间**: (自动填充)
 **完成时间**: -
 

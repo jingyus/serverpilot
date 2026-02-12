@@ -3,14 +3,14 @@
 > 此队列专注于 Skill 插件系统的设计与实现
 > AI 自动扫描 → 发现缺失 → 设计实现 → 验证
 
-**最后更新**: 2026-02-13 07:24:57
+**最后更新**: 2026-02-13 07:36:10
 
 ## 📊 统计
 
 - **总任务数**: 47
 - **待完成** (pending): 0
-- **进行中** (in_progress): 2
-- **已完成** (completed): 45
+- **进行中** (in_progress): 1
+- **已完成** (completed): 46
 - **失败** (failed): 0
 
 ## 📋 任务列表
@@ -206,7 +206,7 @@
 
 ---
 
-### [in_progress] Server 标签系统 — 支持 server_scope: 'tagged' 真正按标签筛选
+### [completed] Server 标签系统 — 支持 server_scope: 'tagged' 真正按标签筛选 ✅
 
 **ID**: skill-077
 **优先级**: P2
@@ -228,7 +228,7 @@
 - 至少 10 个新测试
 **影响范围**: packages/server/src/db/schema.ts, packages/server/src/db/migrations/0012_server_tags.sql (新), packages/server/src/db/repositories/server-repository.ts, packages/server/src/core/skill/batch-executor.ts, packages/shared/src/skill-schema.ts, packages/dashboard/src/pages/ServerDetail.tsx
 **创建时间**: (自动填充)
-**完成时间**: -
+**完成时间**: 2026-02-13 07:36:10
 
 ---
 
