@@ -1242,3 +1242,102 @@ describe('POST /api/v1/chat/:serverId/step-decision (success path)', () => {
     expect(body.message).toBe('No pending decision for this step');
   });
 });
+
+// ============================================================================
+// cleanupSessionConfirmations — SSE disconnect cleanup (chat-050)
+// ============================================================================
+
+describe('cleanupSessionConfirmations', () => {
+  it('should clear all pending confirmations for a given session', () => {
+    const sessionId = 'session-cleanup-1';
+    const resolved: Record<string, boolean | undefined> = {};
+
+    _setPendingConfirmation(
+      `${sessionId}:confirm-a`,
+      (v) => { resolved['a'] = v; },
+      setTimeout(() => {}, 60000),
+    );
+    _setPendingConfirmation(
+      `${sessionId}:confirm-b`,
+      (v) => { resolved['b'] = v; },
+      setTimeout(() => {}, 60000),
+    );
+
+    expect(_hasPendingConfirmation(`${sessionId}:confirm-a`)).toBe(true);
+    expect(_hasPendingConfirmation(`${sessionId}:confirm-b`)).toBe(true);
+
+    const cleaned = cleanupSessionConfirmations(sessionId);
+
+    expect(cleaned).toBe(2);
+    expect(_hasPendingConfirmation(`${sessionId}:confirm-a`)).toBe(false);
+    expect(_hasPendingConfirmation(`${sessionId}:confirm-b`)).toBe(false);
+    expect(resolved['a']).toBe(false);
+    expect(resolved['b']).toBe(false);
+  });
+
+  it('should not affect confirmations from other sessions', () => {
+    const sessionA = 'session-a';
+    const sessionB = 'session-b';
+    const resolvedA: { value?: boolean } = {};
+    const resolvedB: { value?: boolean } = {};
+
+    _setPendingConfirmation(
+      `${sessionA}:confirm-1`,
+      (v) => { resolvedA.value = v; },
+      setTimeout(() => {}, 60000),
+    );
+    _setPendingConfirmation(
+      `${sessionB}:confirm-2`,
+      (v) => { resolvedB.value = v; },
+      setTimeout(() => {}, 60000),
+    );
+
+    const cleaned = cleanupSessionConfirmations(sessionA);
+
+    expect(cleaned).toBe(1);
+    expect(_hasPendingConfirmation(`${sessionA}:confirm-1`)).toBe(false);
+    expect(_hasPendingConfirmation(`${sessionB}:confirm-2`)).toBe(true);
+    expect(resolvedA.value).toBe(false);
+    expect(resolvedB.value).toBeUndefined();
+  });
+
+  it('should return 0 when no confirmations exist for the session', () => {
+    const cleaned = cleanupSessionConfirmations('nonexistent-session');
+    expect(cleaned).toBe(0);
+  });
+
+  it('should clear timers to prevent 5-minute leak', () => {
+    const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
+    const sessionId = 'session-timer-test';
+
+    const timer1 = setTimeout(() => {}, 60000);
+    const timer2 = setTimeout(() => {}, 60000);
+
+    _setPendingConfirmation(`${sessionId}:c1`, () => {}, timer1);
+    _setPendingConfirmation(`${sessionId}:c2`, () => {}, timer2);
+
+    cleanupSessionConfirmations(sessionId);
+
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(timer1);
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(timer2);
+    clearTimeoutSpy.mockRestore();
+  });
+
+  it('should resolve pending promises with false so agentic loop unblocks', async () => {
+    const sessionId = 'session-unblock';
+    let resolveValue: boolean | undefined;
+
+    const approved = new Promise<boolean>((resolve) => {
+      const timer = setTimeout(() => {
+        resolve(false);
+      }, CONFIRM_TIMEOUT_MS);
+      _setPendingConfirmation(`${sessionId}:c1`, resolve, timer);
+    });
+
+    // Simulate SSE disconnect — cleanup should resolve the promise immediately
+    cleanupSessionConfirmations(sessionId);
+
+    resolveValue = await approved;
+    expect(resolveValue).toBe(false);
+  });
+});
