@@ -12,6 +12,7 @@ import {
   Trash2,
   ChevronDown,
   ChevronRight,
+  WifiOff,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -48,6 +49,7 @@ export function Chat() {
     executionMode,
     sessionId,
     pendingConfirm,
+    isReconnecting,
     agenticConfirm,
     isAgenticMode,
     setServerId,
@@ -146,6 +148,17 @@ export function Chat() {
             >
               {t('common.dismiss')}
             </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Reconnecting banner */}
+      {isReconnecting && (
+        <div className="mx-2 mt-2 sm:mx-4" data-testid="reconnecting-banner">
+          <div className="flex items-center gap-2 rounded-md border border-yellow-500/50 bg-yellow-50 p-2 text-sm text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400 sm:p-3">
+            <WifiOff className="h-4 w-4 shrink-0" />
+            <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+            <span className="text-xs sm:text-sm">{t('chat.reconnecting')}</span>
           </div>
         </div>
       )}

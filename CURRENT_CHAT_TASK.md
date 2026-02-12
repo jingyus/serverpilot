@@ -1,37 +1,36 @@
-### [pending] ChatMessage 组件缺少 Markdown 渲染 — AI 回复丢失格式和代码高亮
+### [pending] SSE 连接无自动重连 — 网络抖动导致 Chat 流式响应永久中断
 
-**ID**: chat-003
+**ID**: chat-004
 **优先级**: P1
-**模块路径**: packages/dashboard/src/components/chat/ChatMessage.tsx
+**模块路径**: packages/dashboard/src/api/sse.ts, packages/dashboard/src/stores/chat.ts
 **发现的问题**:
-`ChatMessage.tsx:69` 使用纯 `<p className="whitespace-pre-wrap break-words">{message.content}</p>` 渲染消息内容。AI 回复通常包含大量 Markdown 格式（标题、列表、代码块、加粗等），全部以纯文本展示，严重影响可读性。
+Chat SSE 连接 (`createSSEConnection()` at sse.ts:82-137) 没有任何重连机制。对比同文件中的 `createMetricsSSE()` (sse.ts:158-271) 和 `createServerStatusSSE()` (sse.ts:291-398) 都有完整的自动重连（指数退避、`scheduleReconnect()`），但 Chat SSE 完全没有。
 
-具体表现：
-1. 代码块 (\`\`\`bash...\`\`\`) 没有语法高亮，没有复制按钮
-2. 列表、标题、粗体等 Markdown 语法直接显示为原始字符
-3. Agentic 模式中，streaming content（Chat.tsx:192）同样是 `<pre>` 纯文本
-4. 对比 ChatGPT / Claude.ai，Markdown 渲染是 AI 聊天应用的基本要求
+具体问题：
+1. `sse.ts:128` — `while (true)` reader 循环结束后直接返回，不尝试重连
+2. `sse.ts:129-134` — catch 块只调用 `callbacks.onError?.(error)`，然后结束
+3. `chat.ts:560-569` — `onError` 回调直接设置 `isStreaming: false`，丢弃所有已接收的流式内容
+4. 如果网络短暂断开（WiFi 切换、VPN 重连），正在进行的 AI 回复直接丢失，用户需要重新发送消息
+5. 更严重的是：如果在执行阶段断开，SSE 断了但服务器端命令仍在执行，用户无法看到结果也无法取消
 
 **改进方案**:
-1. 安装 `react-markdown` + `remark-gfm`（GFM 表格/删除线支持）
-2. 安装 `react-syntax-highlighter` 或使用 Shiki 进行代码高亮
-3. 在 `ChatMessage.tsx` 中将 assistant 消息通过 `<ReactMarkdown>` 渲染
-4. 为代码块添加复制按钮（Copy to clipboard）
-5. 用户消息保持纯文本（用户输入通常不含 Markdown）
-6. 流式内容（streaming）也需要支持 Markdown 实时渲染
+1. 为 `createSSEConnection()` 添加重连逻辑（参考同文件的 Metrics SSE 实现）
+2. 重连时携带 sessionId，服务端支持从断点续传（或至少返回错过的事件）
+3. `onError` 回调区分可重连错误（网络）和不可重连错误（401、404）
+4. 添加 `onReconnecting` / `onReconnected` 回调，让 UI 显示重连状态
+5. 在 chat store 中，网络中断时保留已收到的 `streamingContent`，重连后继续追加
 
 **验收标准**:
-- AI 回复中的代码块有语法高亮和复制按钮
-- 标题、列表、粗体、链接正确渲染
-- 流式输出过程中 Markdown 能逐步渲染（不等到完成）
-- 不影响用户消息的展示
-- ChatMessage.test.tsx 更新覆盖 Markdown 渲染场景
+- 网络短暂中断（<30s）后 SSE 自动恢复
+- 重连过程中 UI 显示 "重连中" 提示
+- 已收到的流式内容不丢失
+- 401 错误不无限重连（走 token 刷新流程）
+- 新增测试覆盖：重连成功、重连失败、401 不重连
 
 **影响范围**:
-- `packages/dashboard/src/components/chat/ChatMessage.tsx` — 主要修改
-- `packages/dashboard/src/pages/Chat.tsx` — streaming 内容的渲染
-- `packages/dashboard/package.json` — 新增依赖
-- `packages/dashboard/src/components/chat/ChatMessage.test.tsx` — 更新测试
+- `packages/dashboard/src/api/sse.ts` — 核心修改
+- `packages/dashboard/src/stores/chat.ts` — 错误处理调整
+- `packages/dashboard/src/pages/Chat.tsx` — 可选：显示重连状态
 
 **创建时间**: 2026-02-12
 **完成时间**: -

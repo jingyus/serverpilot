@@ -165,7 +165,8 @@
     "suggestion3": "Show all running services",
     "suggestion4": "Set up a firewall",
     "executionCompleted": "Execution completed successfully",
-    "executionFailed": "Execution failed"
+    "executionFailed": "Execution failed",
+    "reconnecting": "Connection lost. Reconnecting..."
   },
   "search": {
     "title": "Knowledge Base",

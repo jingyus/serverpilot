@@ -20,7 +20,7 @@ import { InstallClient, ConnectionState } from '../packages/agent/src/client.js'
 // Helpers
 // ============================================================================
 
-let testPort = 19800;
+let testPort = 19820;
 function nextPort() {
   return testPort++;
 }

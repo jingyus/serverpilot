@@ -33,7 +33,7 @@ const NGINX_DIR = join(PROJECT_ROOT, 'nginx');
 const SCRIPTS_DIR = join(PROJECT_ROOT, 'scripts');
 const DOMAIN = 'api.aiinstaller.dev';
 
-let testPort = 19800;
+let testPort = 19840;
 function nextPort() {
   return testPort++;
 }

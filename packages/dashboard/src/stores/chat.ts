@@ -3,6 +3,7 @@
 import { create } from 'zustand';
 
 import { createSSEConnection } from '@/api/sse';
+import type { SSEConnectionHandle } from '@/api/sse';
 import { apiRequest, ApiError } from '@/api/client';
 import {
   ExecutionPlanSchema,
@@ -85,6 +86,7 @@ interface ChatState {
   sessions: SessionSummary[];
   isLoading: boolean;
   isStreaming: boolean;
+  isReconnecting: boolean;
   streamingContent: string;
   error: string | null;
   currentPlan: ExecutionPlan | null;
@@ -112,7 +114,7 @@ interface ChatState {
   clearError: () => void;
 }
 
-let activeController: AbortController | null = null;
+let activeHandle: SSEConnectionHandle | null = null;
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -125,6 +127,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   sessions: [],
   isLoading: false,
   isStreaming: false,
+  isReconnecting: false,
   streamingContent: '',
   error: null,
   currentPlan: null,
@@ -163,6 +166,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set((state) => ({
       messages: [...state.messages, userMsg],
       isStreaming: true,
+      isReconnecting: false,
       streamingContent: '',
       error: null,
       currentPlan: null,
@@ -174,8 +178,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       isAgenticMode: false,
     }));
 
-    activeController?.abort();
-    activeController = createSSEConnection(
+    activeHandle?.abort();
+    activeHandle = createSSEConnection(
       `/chat/${serverId}`,
       { message, sessionId: sessionId ?? undefined },
       {
@@ -557,15 +561,45 @@ export const useChatStore = create<ChatState>((set, get) => ({
           } catch { /* ignore */ }
         },
 
+        onReconnecting: (attempt) => {
+          set({ isReconnecting: true, error: null });
+        },
+
+        onReconnected: () => {
+          set({ isReconnecting: false });
+        },
+
         onError: (error) => {
-          set({
-            error: error.message,
-            isStreaming: false,
-            streamingContent: '',
-            executionMode: 'none',
-            pendingConfirm: null,
-            agenticConfirm: null,
-          });
+          // Preserve streamingContent so partial responses aren't lost
+          const { streamingContent } = get();
+          if (streamingContent) {
+            const partialMsg: ChatMessage = {
+              id: generateId(),
+              role: 'assistant',
+              content: streamingContent + '\n\n[Connection lost]',
+              timestamp: new Date().toISOString(),
+            };
+            set((state) => ({
+              messages: [...state.messages, partialMsg],
+              error: error.message,
+              isStreaming: false,
+              isReconnecting: false,
+              streamingContent: '',
+              executionMode: 'none',
+              pendingConfirm: null,
+              agenticConfirm: null,
+            }));
+          } else {
+            set({
+              error: error.message,
+              isStreaming: false,
+              isReconnecting: false,
+              streamingContent: '',
+              executionMode: 'none',
+              pendingConfirm: null,
+              agenticConfirm: null,
+            });
+          }
         },
       }
     );
@@ -589,8 +623,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       },
     });
 
-    activeController?.abort();
-    activeController = createSSEConnection(
+    activeHandle?.abort();
+    activeHandle = createSSEConnection(
       `/chat/${serverId}/execute`,
       { planId: currentPlan.planId, sessionId },
       {
@@ -661,10 +695,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
           }
         },
 
+        onReconnecting: () => {
+          set({ isReconnecting: true, error: null });
+        },
+
+        onReconnected: () => {
+          set({ isReconnecting: false });
+        },
+
         onError: (error) => {
           set({
             error: error.message,
             planStatus: 'preview',
+            isReconnecting: false,
             pendingConfirm: null,
           });
         },
@@ -728,8 +771,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const { serverId, sessionId, currentPlan } = get();
     if (!serverId || !sessionId || !currentPlan) return;
 
-    activeController?.abort();
-    activeController = null;
+    activeHandle?.abort();
+    activeHandle = null;
 
     try {
       await apiRequest(`/chat/${serverId}/execute/cancel`, {
@@ -820,13 +863,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   newSession: () => {
-    activeController?.abort();
+    activeHandle?.abort();
     set({
       sessionId: null,
       messages: [],
       currentPlan: null,
       planStatus: 'none',
       isStreaming: false,
+      isReconnecting: false,
       streamingContent: '',
       error: null,
       executionMode: 'none',
@@ -847,8 +891,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   cancelStream: () => {
-    activeController?.abort();
-    activeController = null;
+    activeHandle?.abort();
+    activeHandle = null;
     const { streamingContent } = get();
     if (streamingContent) {
       const partialMsg: ChatMessage = {

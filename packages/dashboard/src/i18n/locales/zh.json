@@ -165,7 +165,8 @@
     "suggestion3": "显示所有运行中的服务",
     "suggestion4": "设置防火墙",
     "executionCompleted": "执行成功完成",
-    "executionFailed": "执行失败"
+    "executionFailed": "执行失败",
+    "reconnecting": "连接中断，正在重连..."
   },
   "search": {
     "title": "知识库",

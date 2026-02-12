@@ -14,6 +14,8 @@ export interface SSECallbacks {
   onDiagnosis?: (data: string) => void;
   onComplete?: (data: string) => void;
   onError?: (error: Error) => void;
+  onReconnecting?: (attempt: number) => void;
+  onReconnected?: () => void;
   // Agentic mode events
   onToolCall?: (data: string) => void;
   onToolExecuting?: (data: string) => void;
@@ -79,22 +81,115 @@ async function sseRequest(
   return response;
 }
 
+/** Maximum number of reconnection attempts for Chat SSE */
+const MAX_RECONNECT_ATTEMPTS = 5;
+/** Maximum backoff delay in milliseconds */
+const MAX_RECONNECT_DELAY_MS = 30_000;
+
+/** HTTP status codes that should NOT trigger reconnection */
+const NON_RETRIABLE_STATUSES = new Set([400, 401, 403, 404, 422]);
+
+/**
+ * Determine whether an error is a transient network failure worth retrying.
+ * Returns false for auth/client errors (4xx) that won't succeed on retry.
+ */
+export function isRetriableError(error: unknown): boolean {
+  if (error instanceof TypeError) return true; // fetch network failures
+  if (error instanceof DOMException && error.name === 'AbortError') return false;
+  if (error instanceof Error) {
+    const msg = error.message.toLowerCase();
+    if (msg.includes('network') || msg.includes('failed to fetch')) return true;
+    // HTTP status errors encoded in message
+    for (const status of NON_RETRIABLE_STATUSES) {
+      if (msg.includes(`status ${status}`)) return false;
+    }
+  }
+  return false;
+}
+
+/** Compute exponential backoff delay: 1s, 2s, 4s, 8s, ... capped at MAX */
+export function computeReconnectDelay(attempt: number): number {
+  return Math.min(1000 * Math.pow(2, attempt), MAX_RECONNECT_DELAY_MS);
+}
+
+export interface SSEConnectionHandle {
+  abort: () => void;
+  /** For backward-compat: the underlying AbortController */
+  controller: AbortController;
+}
+
 export function createSSEConnection(
   path: string,
   body: Record<string, unknown>,
   callbacks: SSECallbacks
-): AbortController {
+): SSEConnectionHandle {
   const controller = new AbortController();
-  const token = localStorage.getItem('auth_token');
+  let reconnectAttempt = 0;
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let stopped = false;
+  let completed = false;
 
-  sseRequest(path, body, controller, token)
-    .then(async (response) => {
+  function cleanup() {
+    stopped = true;
+    if (reconnectTimer !== null) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+    if (!controller.signal.aborted) {
+      controller.abort();
+    }
+  }
+
+  function scheduleReconnect() {
+    if (stopped || completed) return;
+    if (reconnectAttempt >= MAX_RECONNECT_ATTEMPTS) {
+      callbacks.onError?.(new Error('Connection lost. Max reconnection attempts reached.'));
+      return;
+    }
+    const delay = computeReconnectDelay(reconnectAttempt);
+    reconnectAttempt++;
+    callbacks.onReconnecting?.(reconnectAttempt);
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      connect(true);
+    }, delay);
+  }
+
+  async function connect(isReconnect: boolean) {
+    if (stopped) return;
+
+    const token = localStorage.getItem('auth_token');
+
+    try {
+      // On reconnect, use a new AbortController for the fetch but keep the
+      // same outer lifecycle. We create a child signal linked to the parent.
+      const fetchController = isReconnect ? new AbortController() : controller;
+      if (isReconnect) {
+        // If parent is aborted, also abort the child
+        controller.signal.addEventListener('abort', () => fetchController.abort(), { once: true });
+      }
+
+      const response = await sseRequest(path, body, fetchController, token);
+
       if (!response.ok) {
+        if (response.status === 401) {
+          // Auth failure — don't reconnect, let token refresh in sseRequest handle it
+          const errorBody = await response.json().catch(() => ({}));
+          const msg = (errorBody as Record<string, { message?: string }>).error?.message
+            ?? 'Authentication failed';
+          throw new SSEHttpError(msg, response.status);
+        }
         const errorBody = await response.json().catch(() => ({}));
         const msg =
-          errorBody.error?.message ??
+          (errorBody as Record<string, { message?: string }>).error?.message ??
           `Request failed with status ${response.status}`;
-        throw new Error(msg);
+        throw new SSEHttpError(msg, response.status);
+      }
+
+      // Connection success — reset reconnect counter
+      if (isReconnect) {
+        reconnectAttempt = 0;
+        callbacks.onReconnected?.();
       }
 
       const reader = response.body?.getReader();
@@ -120,20 +215,49 @@ export function createSSEConnection(
           } else if (line.startsWith('data: ')) {
             const data = line.slice(6);
             dispatchSSEEvent(currentEvent, data, callbacks);
+            if (currentEvent === 'complete') {
+              completed = true;
+            }
           } else if (line === '') {
             currentEvent = 'message';
           }
         }
       }
-    })
-    .catch((err: unknown) => {
-      if (controller.signal.aborted) return;
+
+      // Stream ended without 'complete' event — might be network drop
+      if (!completed && !stopped) {
+        scheduleReconnect();
+      }
+    } catch (err: unknown) {
+      if (stopped || controller.signal.aborted) return;
+
       const error =
         err instanceof Error ? err : new Error('SSE connection failed');
-      callbacks.onError?.(error);
-    });
 
-  return controller;
+      // If it's a retriable error and we haven't exceeded attempts, reconnect
+      if (isRetriableError(err) && reconnectAttempt < MAX_RECONNECT_ATTEMPTS) {
+        scheduleReconnect();
+        return;
+      }
+
+      // Non-retriable or max attempts exceeded
+      callbacks.onError?.(error);
+    }
+  }
+
+  connect(false);
+
+  return { abort: cleanup, controller };
+}
+
+/** Error with an HTTP status code — used to distinguish retriable vs non-retriable errors */
+class SSEHttpError extends Error {
+  readonly status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'SSEHttpError';
+    this.status = status;
+  }
 }
 
 // ============================================================================
