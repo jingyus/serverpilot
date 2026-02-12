@@ -1,26 +1,32 @@
-### [pending] Prompt 模板变量注入缺失 — engine.ts 未传递 server/skill 上下文
+### [pending] requires_confirmation 执行确认流 — SSE 暂停/确认/恢复机制
 
-**ID**: skill-025
-**优先级**: P0
-**模块路径**: packages/server/src/core/skill/engine.ts
-**当前状态**: 功能缺失 — `engine.ts:314` 调用 `resolvePromptTemplate(manifest.prompt, { input, now })` 仅传递了 `input` 和 `now` 两个变量命名空间。但 `loader.ts` 的 `resolveVariable()` 支持 4 个命名空间: `input`, `server`, `skill`, `env`。SKILL_SPEC.md 明确列出 `{{server.name}}`, `{{server.os}}`, `{{server.ip}}`, `{{skill.last_run}}`, `{{skill.last_result}}` 为可用变量。当前所有使用这些变量的 Skill prompt 将无法正确解析（变量原样保留）
+**ID**: skill-026
+**优先级**: P1
+**模块路径**: packages/server/src/core/skill/
+**当前状态**: 功能缺失 — SKILL_SPEC.md (line 147-150) 定义了 `requires_confirmation: boolean` 约束，建议 `risk_level_max >= red` 时设为 true。当前 engine.ts execute() 完全忽略此字段，直接进入 AI 循环执行。schema 已在 `@aiinstaller/shared` 中定义并验证，但后端和前端均无确认流实现
 **实现方案**:
-1. **engine.ts execute() 方法** — 补充 `server` 和 `skill` 变量:
-   - 通过 `getServerRepository().findById(serverId)` 获取 server 信息 (name, os, hostname/ip)
-   - 通过 `this.repo.listExecutions(skillId, 1)` 获取上次执行记录 → `skill.last_run` (completedAt) + `skill.last_result` (result summary)
-   - 传递完整 TemplateVars: `{ input, server: { name, os, ip }, skill: { last_run, last_result }, now }`
-2. **可选 — env 变量**: 根据 skill manifest 的 `requires` 或配置决定是否传入 env (当前可跳过，低优先)
-3. **测试**:
-   - engine.test.ts 新增: 验证 resolvedPrompt 包含 server.name 替换
-   - engine.test.ts 新增: 验证 skill.last_run 从上次执行记录获取
-   - engine.test.ts 新增: 无上次执行时 skill.last_run 为空字符串或 "N/A"
+1. **engine.ts** — execute() 方法检测 `manifest.constraints.requires_confirmation`:
+   - 如果为 true 且 triggerType !== 'manual'（cron/event/threshold 自动触发）: 创建 execution 记录但状态设为 `pending_confirmation`，通过 SkillEventBus 发送 `confirmation_required` 事件，等待确认
+   - 如果为 true 且 triggerType === 'manual': 立即执行（手动触发已经是用户主动行为）
+2. **新增 execution 状态**: `pending_confirmation` 加入 SkillExecutionStatus 枚举 (schema.ts + types)
+3. **新增 API**: `POST /api/v1/skills/executions/:eid/confirm` — 确认执行，将 pending_confirmation → running
+4. **新增 API**: `POST /api/v1/skills/executions/:eid/reject` — 拒绝执行，将 pending_confirmation → cancelled
+5. **SkillEventBus** — 新增 `SkillConfirmationEvent` 类型
+6. **Dashboard** — 待确认执行列表 + 确认/拒绝按钮 + SSE 实时通知
+7. **测试**: engine 确认流 + API 端点 + Dashboard 交互
 **验收标准**:
-- `resolvePromptTemplate` 接收完整 4 命名空间变量
-- 官方 Skill 的 `{{server.os}}` 等模板变量能正确替换
-- 测试 ≥ 4 个新增
+- `requires_confirmation: true` 的 Skill 自动触发时暂停等待确认
+- Dashboard 显示待确认执行，用户可确认或拒绝
+- 手动触发不受影响（直接执行）
+- 过期未确认的执行自动取消 (可选: 30min TTL)
+- 测试 ≥ 12 个
 **影响范围**:
-- `packages/server/src/core/skill/engine.ts` (修改 — execute 方法)
-- `packages/server/src/core/skill/engine.test.ts` (修改 — 新增变量注入测试)
+- `packages/server/src/db/schema.ts` (修改 — 新增 pending_confirmation 状态)
+- `packages/server/src/core/skill/engine.ts` (修改 — 确认流逻辑)
+- `packages/server/src/core/skill/skill-event-bus.ts` (修改 — 新增事件类型)
+- `packages/server/src/api/routes/skills.ts` (修改 — 新增 confirm/reject 端点)
+- `packages/dashboard/src/pages/Skills.tsx` (修改 — 确认 UI)
+- `packages/dashboard/src/stores/skills.ts` (修改 — confirm/reject actions)
 **创建时间**: (自动填充)
 **完成时间**: -
 

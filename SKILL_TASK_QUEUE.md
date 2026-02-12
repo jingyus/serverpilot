@@ -3,13 +3,13 @@
 > 此队列专注于 Skill 插件系统的设计与实现
 > AI 自动扫描 → 发现缺失 → 设计实现 → 验证
 
-**最后更新**: 2026-02-13 03:26:49
+**最后更新**: 2026-02-13 03:27:20
 
 ## 📊 统计
 
 - **总任务数**: 28
-- **待完成** (pending): 3
-- **进行中** (in_progress): 0
+- **待完成** (pending): 2
+- **进行中** (in_progress): 1
 - **已完成** (completed): 25
 - **失败** (failed): 0
 
@@ -105,7 +105,7 @@
 
 ---
 
-### [pending] requires_confirmation 执行确认流 — SSE 暂停/确认/恢复机制
+### [in_progress] requires_confirmation 执行确认流 — SSE 暂停/确认/恢复机制
 
 **ID**: skill-026
 **优先级**: P1
