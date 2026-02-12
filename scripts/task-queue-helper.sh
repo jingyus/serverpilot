@@ -341,6 +341,35 @@ mark_task_failed() {
 }
 
 # =====================================================
+# 卡住任务恢复
+# =====================================================
+
+# 将所有 [in_progress] 任务重置为 [pending]
+# 用于脚本重启后恢复上次中断遗留的任务
+# 返回重置的任务数
+reset_stale_in_progress_tasks() {
+    local queue_file="$1"
+
+    if [ ! -f "$queue_file" ]; then
+        echo "0"
+        return
+    fi
+
+    local count=$(grep -c '^\### \[in_progress\]' "$queue_file" 2>/dev/null || echo "0")
+
+    if [ "$count" -eq 0 ]; then
+        echo "0"
+        return
+    fi
+
+    sed -i.bak 's/^### \[in_progress\]/### [pending]/' "$queue_file"
+    rm -f "${queue_file}.bak"
+    update_task_stats "$queue_file"
+
+    echo "$count"
+}
+
+# =====================================================
 # 失败任务重试与重置
 # =====================================================
 

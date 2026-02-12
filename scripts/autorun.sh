@@ -696,8 +696,18 @@ check_and_generate_tasks() {
     completed="${completed:-0}"
     failed="${failed:-0}"
 
-    # 有待执行或进行中的任务 → 直接继续
-    if [ "$pending" -gt 0 ] || [ "$in_progress" -gt 0 ]; then
+    # 恢复卡在 in_progress 的任务（上次运行中断遗留）
+    if [ "$in_progress" -gt 0 ] && [ "$pending" -eq 0 ]; then
+        local reset_count=$(reset_stale_in_progress_tasks "$TASK_QUEUE")
+        log_warning "恢复 $reset_count 个上次中断遗留的 in_progress 任务为 pending"
+        stats=$(get_task_stats "$TASK_QUEUE")
+        read total pending in_progress completed failed <<< "$stats"
+        pending="${pending:-0}"
+        in_progress="${in_progress:-0}"
+    fi
+
+    # 有待执行的任务 → 直接继续
+    if [ "$pending" -gt 0 ]; then
         log_info "任务队列状态: 总计 $total | 待完成 $pending | 进行中 $in_progress | 已完成 $completed | 失败 $failed"
         return 0
     fi
