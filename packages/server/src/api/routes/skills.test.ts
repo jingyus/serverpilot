@@ -11,7 +11,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Hono } from 'hono';
 
 import type { ApiEnv } from './types.js';
-import type { InstalledSkill, SkillExecution, SkillExecutionResult, AvailableSkill } from '../../core/skill/types.js';
+import type { InstalledSkill, InstalledSkillWithInputs, SkillExecution, SkillExecutionResult, AvailableSkill } from '../../core/skill/types.js';
 import { onError } from '../middleware/error-handler.js';
 
 // ============================================================================
@@ -20,6 +20,7 @@ import { onError } from '../middleware/error-handler.js';
 
 const mockEngine = {
   listInstalled: vi.fn(),
+  listInstalledWithInputs: vi.fn(),
   listAvailable: vi.fn(),
   install: vi.fn(),
   uninstall: vi.fn(),
@@ -27,6 +28,7 @@ const mockEngine = {
   updateStatus: vi.fn(),
   execute: vi.fn(),
   getInstalled: vi.fn(),
+  getInstalledWithInputs: vi.fn(),
   getExecutions: vi.fn(),
   getExecution: vi.fn(),
   start: vi.fn(),
@@ -163,9 +165,11 @@ afterEach(() => {
 // ============================================================================
 
 describe('GET /skills', () => {
-  it('should return list of installed skills', async () => {
-    const skills = [makeSkill()];
-    mockEngine.listInstalled.mockResolvedValue(skills);
+  it('should return list of installed skills with inputs', async () => {
+    const skills: InstalledSkillWithInputs[] = [
+      { ...makeSkill(), inputs: [{ name: 'port', type: 'number', required: true, description: 'Port number', default: 80 }] },
+    ];
+    mockEngine.listInstalledWithInputs.mockResolvedValue(skills);
 
     const res = await app.request('/skills');
     expect(res.status).toBe(200);
@@ -173,10 +177,43 @@ describe('GET /skills', () => {
     const body = await res.json();
     expect(body.skills).toHaveLength(1);
     expect(body.skills[0].name).toBe('nginx-hardening');
+    expect(body.skills[0].inputs).toHaveLength(1);
+    expect(body.skills[0].inputs[0].name).toBe('port');
+    expect(body.skills[0].inputs[0].type).toBe('number');
+    expect(body.skills[0].inputs[0].required).toBe(true);
+  });
+
+  it('should return empty inputs array when skill has no manifest inputs', async () => {
+    const skills: InstalledSkillWithInputs[] = [{ ...makeSkill(), inputs: [] }];
+    mockEngine.listInstalledWithInputs.mockResolvedValue(skills);
+
+    const res = await app.request('/skills');
+    expect(res.status).toBe(200);
+
+    const body = await res.json();
+    expect(body.skills[0].inputs).toEqual([]);
+  });
+
+  it('should return enum inputs with options', async () => {
+    const skills: InstalledSkillWithInputs[] = [{
+      ...makeSkill(),
+      inputs: [{
+        name: 'log_level',
+        type: 'enum',
+        required: false,
+        description: 'Logging level',
+        options: ['debug', 'info', 'warn', 'error'],
+      }],
+    }];
+    mockEngine.listInstalledWithInputs.mockResolvedValue(skills);
+
+    const res = await app.request('/skills');
+    const body = await res.json();
+    expect(body.skills[0].inputs[0].options).toEqual(['debug', 'info', 'warn', 'error']);
   });
 
   it('should return empty array when no skills installed', async () => {
-    mockEngine.listInstalled.mockResolvedValue([]);
+    mockEngine.listInstalledWithInputs.mockResolvedValue([]);
 
     const res = await app.request('/skills');
     expect(res.status).toBe(200);
@@ -187,7 +224,7 @@ describe('GET /skills', () => {
 
   it('should be accessible by member role (skill:view)', async () => {
     mockUserRole = 'member';
-    mockEngine.listInstalled.mockResolvedValue([]);
+    mockEngine.listInstalledWithInputs.mockResolvedValue([]);
 
     const res = await app.request('/skills');
     expect(res.status).toBe(200);
@@ -664,7 +701,7 @@ describe('GET /skills/:id/executions/:eid', () => {
 describe('RBAC integration', () => {
   it('member can GET /skills (skill:view)', async () => {
     mockUserRole = 'member';
-    mockEngine.listInstalled.mockResolvedValue([]);
+    mockEngine.listInstalledWithInputs.mockResolvedValue([]);
 
     const res = await app.request('/skills');
     expect(res.status).toBe(200);

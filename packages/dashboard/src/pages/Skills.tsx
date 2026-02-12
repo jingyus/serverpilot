@@ -550,11 +550,23 @@ function ExecuteDialog({
 // ============================================================================
 
 /**
- * Extract SkillInputDef[] from the skill's config or return empty.
- * In a real implementation, inputs come from the skill manifest (fetched server-side).
- * For now, we derive basic inputs from the existing config keys.
+ * Extract SkillInputDef[] from the skill's manifest inputs (provided by server API).
+ * Falls back to inferring from config keys for backward compatibility.
  */
 function getSkillInputs(skill: InstalledSkill): SkillInputDef[] {
+  // Prefer manifest inputs from server API
+  if (skill.inputs && skill.inputs.length > 0) {
+    return skill.inputs.map((input) => ({
+      name: input.name,
+      type: input.type,
+      required: input.required,
+      default: input.default,
+      description: input.description,
+      options: input.options,
+    }));
+  }
+
+  // Fallback: infer from config keys (backward compatibility)
   if (!skill.config) return [];
   return Object.entries(skill.config).map(([key, value]) => ({
     name: key,

@@ -28,6 +28,16 @@ export const SKILL_SOURCE_LABELS: Record<SkillSource, string> = {
 // Installed Skill (mirrors server InstalledSkill)
 // ============================================================================
 
+/** Input definition from skill manifest. */
+export interface SkillManifestInput {
+  name: string;
+  type: 'string' | 'number' | 'boolean' | 'string[]' | 'enum';
+  required: boolean;
+  default?: unknown;
+  description: string;
+  options?: string[];
+}
+
 export interface InstalledSkill {
   id: string;
   userId: string;
@@ -39,6 +49,8 @@ export interface InstalledSkill {
   skillPath: string;
   status: SkillStatus;
   config: Record<string, unknown> | null;
+  /** Input definitions from the skill manifest. */
+  inputs?: SkillManifestInput[];
   createdAt: string;
   updatedAt: string;
 }

@@ -296,6 +296,112 @@ describe('Skills Page', () => {
     expect(screen.getByText('Save Configuration')).toBeInTheDocument();
   });
 
+  // --------------------------------------------------------------------------
+  // Manifest Inputs (skill-019)
+  // --------------------------------------------------------------------------
+
+  it('should render manifest inputs in config modal when available', async () => {
+    setupStore({
+      skills: [makeSkill({
+        inputs: [
+          { name: 'port', type: 'number', required: true, description: 'Server port', default: 80 },
+          { name: 'enable_ssl', type: 'boolean', required: false, description: 'Enable SSL' },
+        ],
+      })],
+    });
+    const user = userEvent.setup();
+    renderSkills();
+
+    const configButtons = screen.getAllByTitle('Configure');
+    await user.click(configButtons[0]);
+
+    // Should show manifest input descriptions, not generic "Configuration for port"
+    expect(screen.getByText('Server port')).toBeInTheDocument();
+    expect(screen.getByText('Enable SSL')).toBeInTheDocument();
+  });
+
+  it('should render enum input as dropdown with options from manifest', async () => {
+    setupStore({
+      skills: [makeSkill({
+        config: { log_level: 'info' },
+        inputs: [
+          { name: 'log_level', type: 'enum', required: false, description: 'Logging level', options: ['debug', 'info', 'warn', 'error'] },
+        ],
+      })],
+    });
+    const user = userEvent.setup();
+    renderSkills();
+
+    const configButtons = screen.getAllByTitle('Configure');
+    await user.click(configButtons[0]);
+
+    expect(screen.getByText('Logging level')).toBeInTheDocument();
+    // Enum should render as a select with options
+    const select = screen.getByRole('combobox') as HTMLSelectElement;
+    const options = Array.from(select.options).map((o) => o.value);
+    expect(options).toContain('debug');
+    expect(options).toContain('info');
+    expect(options).toContain('warn');
+    expect(options).toContain('error');
+  });
+
+  it('should mark required inputs with asterisk in config modal', async () => {
+    setupStore({
+      skills: [makeSkill({
+        inputs: [
+          { name: 'api_key', type: 'string', required: true, description: 'API key for service' },
+        ],
+      })],
+    });
+    const user = userEvent.setup();
+    renderSkills();
+
+    const configButtons = screen.getAllByTitle('Configure');
+    await user.click(configButtons[0]);
+
+    // Required inputs should have " *" after their name
+    expect(screen.getByText('api_key *')).toBeInTheDocument();
+  });
+
+  it('should fall back to config key inference when inputs are absent', async () => {
+    setupStore({
+      skills: [makeSkill({
+        config: { port: 80, debug: true },
+        inputs: undefined,
+      })],
+    });
+    const user = userEvent.setup();
+    renderSkills();
+
+    const configButtons = screen.getAllByTitle('Configure');
+    await user.click(configButtons[0]);
+
+    // Fallback: generic descriptions from config key inference
+    expect(screen.getByText('Configuration for port')).toBeInTheDocument();
+    expect(screen.getByText('Configuration for debug')).toBeInTheDocument();
+  });
+
+  it('should show default values from manifest inputs', async () => {
+    setupStore({
+      skills: [makeSkill({
+        config: null,
+        inputs: [
+          { name: 'timeout', type: 'number', required: false, description: 'Request timeout in seconds', default: 30 },
+        ],
+      })],
+    });
+    const user = userEvent.setup();
+    renderSkills();
+
+    const configButtons = screen.getAllByTitle('Configure');
+    await user.click(configButtons[0]);
+
+    expect(screen.getByText('Request timeout in seconds')).toBeInTheDocument();
+    // Default value should be pre-filled in the input
+    const input = screen.getByRole('spinbutton') as HTMLInputElement;
+    expect(input.value).toBe('30');
+  });
+
   it('should call updateStatus when toggling skill', async () => {
     const updateStatus = vi.fn().mockResolvedValue(undefined);
     setupStore({ updateStatus });

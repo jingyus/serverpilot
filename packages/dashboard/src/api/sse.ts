@@ -184,32 +184,13 @@ export function createSSEConnection(
         throw new Error('No response body');
       }
 
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
-
-        let currentEvent = 'message';
-        for (const line of lines) {
-          if (line.startsWith('event: ')) {
-            currentEvent = line.slice(7).trim();
-          } else if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-            dispatchSSEEvent(currentEvent, data, callbacks);
-            if (currentEvent === 'complete') {
-              completed = true;
-            }
-          } else if (line === '') {
-            currentEvent = 'message';
-          }
+      await parseSSEStream(reader, (event, data) => {
+        dispatchSSEEvent(event, data, callbacks);
+        if (event === 'complete') {
+          completed = true;
+          return true;
         }
-      }
+      });
 
       // Stream ended without 'complete' event — might be network drop
       if (!completed && !stopped) {
@@ -327,33 +308,13 @@ export function createMetricsSSE(
       const reader = response.body?.getReader();
       if (!reader) throw new Error('No response body');
 
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
-
-        let currentEvent = 'metric';
-        for (const line of lines) {
-          if (line.startsWith('event: ')) {
-            currentEvent = line.slice(7).trim();
-          } else if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-            if (currentEvent === 'metric') {
-              callbacks.onMetric?.(data);
-            } else if (currentEvent === 'connected') {
-              callbacks.onConnected?.(data);
-            }
-          } else if (line === '') {
-            currentEvent = 'metric';
-          }
+      await parseSSEStream(reader, (event, data) => {
+        if (event === 'metric') {
+          callbacks.onMetric?.(data);
+        } else if (event === 'connected') {
+          callbacks.onConnected?.(data);
         }
-      }
+      });
 
       // Stream ended normally — reconnect if not aborted
       if (!stopped) scheduleReconnect();
@@ -456,33 +417,13 @@ export function createServerStatusSSE(
       const reader = response.body?.getReader();
       if (!reader) throw new Error('No response body');
 
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
-
-        let currentEvent = 'status';
-        for (const line of lines) {
-          if (line.startsWith('event: ')) {
-            currentEvent = line.slice(7).trim();
-          } else if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-            if (currentEvent === 'status') {
-              callbacks.onStatus?.(data);
-            } else if (currentEvent === 'connected') {
-              callbacks.onConnected?.(data);
-            }
-          } else if (line === '') {
-            currentEvent = 'status';
-          }
+      await parseSSEStream(reader, (event, data) => {
+        if (event === 'status') {
+          callbacks.onStatus?.(data);
+        } else if (event === 'connected') {
+          callbacks.onConnected?.(data);
         }
-      }
+      });
 
       if (!stopped) scheduleReconnect();
     } catch (err: unknown) {
@@ -579,49 +520,28 @@ export function createSkillExecutionSSE(
       const reader = response.body?.getReader();
       if (!reader) throw new Error('No response body');
 
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
-
-        let currentEvent = 'step';
-        for (const line of lines) {
-          if (line.startsWith('event: ')) {
-            currentEvent = line.slice(7).trim();
-          } else if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-            if (currentEvent === 'step') {
-              callbacks.onStep?.(data);
-            } else if (currentEvent === 'log') {
-              callbacks.onLog?.(data);
-            } else if (currentEvent === 'completed') {
-              callbacks.onCompleted?.(data);
-              // Auto-close on completion
-              cleanup();
-              return;
-            } else if (currentEvent === 'connected') {
-              callbacks.onConnected?.(data);
-            } else if (currentEvent === 'error') {
-              try {
-                const parsed = JSON.parse(data) as { message?: string };
-                callbacks.onError?.(new Error(parsed.message ?? 'Execution error'));
-              } catch {
-                callbacks.onError?.(new Error(data));
-              }
-              cleanup();
-              return;
-            }
-          } else if (line === '') {
-            currentEvent = 'step';
+      await parseSSEStream(reader, (event, data) => {
+        if (event === 'step') {
+          callbacks.onStep?.(data);
+        } else if (event === 'log') {
+          callbacks.onLog?.(data);
+        } else if (event === 'completed') {
+          callbacks.onCompleted?.(data);
+          cleanup();
+          return true;
+        } else if (event === 'connected') {
+          callbacks.onConnected?.(data);
+        } else if (event === 'error') {
+          try {
+            const parsed = JSON.parse(data) as { message?: string };
+            callbacks.onError?.(new Error(parsed.message ?? 'Execution error'));
+          } catch {
+            callbacks.onError?.(new Error(data));
           }
+          cleanup();
+          return true;
         }
-      }
+      });
     } catch (err: unknown) {
       if (stopped || controller.signal.aborted) return;
       const error = err instanceof Error ? err : new Error('SSE connection failed');
@@ -632,6 +552,68 @@ export function createSkillExecutionSSE(
   connect();
 
   return { abort: cleanup };
+}
+
+// ============================================================================
+// SSE Stream Parser (shared across all SSE connection types)
+// ============================================================================
+
+/**
+ * SSE event dispatch callback.
+ * @param event - The event type (from `event:` field, defaults to 'message' per SSE spec)
+ * @param data - The accumulated data (from one or more `data:` lines, joined with '\n')
+ * @returns true if the stream should be closed after this event
+ */
+export type SSEDispatchFn = (event: string, data: string) => boolean | void;
+
+/**
+ * Parse an SSE stream according to the W3C EventSource spec.
+ *
+ * - Accumulates `event:` and `data:` fields across lines
+ * - Dispatches accumulated event on blank line (end-of-event marker)
+ * - Supports multi-line `data:` (multiple data: lines joined with '\n')
+ * - Default event type is 'message' per SSE spec
+ */
+export async function parseSSEStream(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  dispatch: SSEDispatchFn,
+): Promise<void> {
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let currentEvent = 'message';
+  let dataLines: string[] = [];
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+
+    for (const line of lines) {
+      if (line.startsWith('event: ')) {
+        currentEvent = line.slice(7).trim();
+      } else if (line.startsWith('data: ')) {
+        dataLines.push(line.slice(6));
+      } else if (line === '') {
+        // Blank line = end of event — dispatch if we have data
+        if (dataLines.length > 0) {
+          const shouldClose = dispatch(currentEvent, dataLines.join('\n'));
+          if (shouldClose) return;
+        }
+        // Reset for next event
+        currentEvent = 'message';
+        dataLines = [];
+      }
+      // Lines starting with ':' are comments — ignore per spec
+    }
+  }
+
+  // Flush any remaining event data at stream end (no trailing blank line)
+  if (dataLines.length > 0) {
+    dispatch(currentEvent, dataLines.join('\n'));
+  }
 }
 
 // ============================================================================

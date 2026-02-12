@@ -5,8 +5,9 @@ import {
   isRetriableError,
   computeReconnectDelay,
   createSSEConnection,
+  parseSSEStream,
 } from './sse';
-import type { SSECallbacks, SSEConnectionHandle } from './sse';
+import type { SSECallbacks, SSEConnectionHandle, SSEDispatchFn } from './sse';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -103,6 +104,170 @@ describe('computeReconnectDelay', () => {
 
   it('caps at 30000ms', () => {
     expect(computeReconnectDelay(100)).toBe(30_000);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseSSEStream
+// ---------------------------------------------------------------------------
+
+/** Helper: create a reader from SSE text chunks */
+function readerFromChunks(chunks: string[]): ReadableStreamDefaultReader<Uint8Array> {
+  return makeSSEStream(chunks).getReader();
+}
+
+describe('parseSSEStream', () => {
+  it('dispatches a simple event with event + data + blank line', async () => {
+    const dispatch = vi.fn();
+    const reader = readerFromChunks(['event: plan\ndata: {"steps":[]}\n\n']);
+
+    await parseSSEStream(reader, dispatch);
+
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(dispatch).toHaveBeenCalledWith('plan', '{"steps":[]}');
+  });
+
+  it('defaults event type to "message" when no event: field', async () => {
+    const dispatch = vi.fn();
+    const reader = readerFromChunks(['data: hello\n\n']);
+
+    await parseSSEStream(reader, dispatch);
+
+    expect(dispatch).toHaveBeenCalledWith('message', 'hello');
+  });
+
+  it('preserves event type when blank line appears between events, not within', async () => {
+    const dispatch = vi.fn();
+    // Two separate events: tool_call then message
+    const reader = readerFromChunks([
+      'event: tool_call\ndata: {"tool":"ls"}\n\n',
+      'data: fallback\n\n',
+    ]);
+
+    await parseSSEStream(reader, dispatch);
+
+    expect(dispatch).toHaveBeenCalledTimes(2);
+    expect(dispatch).toHaveBeenCalledWith('tool_call', '{"tool":"ls"}');
+    expect(dispatch).toHaveBeenCalledWith('message', 'fallback');
+  });
+
+  it('joins multiple data: lines with newline (multi-line data)', async () => {
+    const dispatch = vi.fn();
+    const reader = readerFromChunks([
+      'event: output\ndata: line1\ndata: line2\ndata: line3\n\n',
+    ]);
+
+    await parseSSEStream(reader, dispatch);
+
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(dispatch).toHaveBeenCalledWith('output', 'line1\nline2\nline3');
+  });
+
+  it('does not dispatch on blank line if no data lines were accumulated', async () => {
+    const dispatch = vi.fn();
+    // Just blank lines, no data
+    const reader = readerFromChunks(['\n\n\n']);
+
+    await parseSSEStream(reader, dispatch);
+
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it('handles multiple events in a single chunk', async () => {
+    const dispatch = vi.fn();
+    const reader = readerFromChunks([
+      'event: step_start\ndata: {"id":1}\n\nevent: step_complete\ndata: {"id":1,"ok":true}\n\n',
+    ]);
+
+    await parseSSEStream(reader, dispatch);
+
+    expect(dispatch).toHaveBeenCalledTimes(2);
+    expect(dispatch).toHaveBeenCalledWith('step_start', '{"id":1}');
+    expect(dispatch).toHaveBeenCalledWith('step_complete', '{"id":1,"ok":true}');
+  });
+
+  it('handles events split across multiple chunks', async () => {
+    const dispatch = vi.fn();
+    // Event split mid-line across chunks
+    const reader = readerFromChunks([
+      'event: tool_',
+      'call\ndata: {"t":"x"}\n\n',
+    ]);
+
+    await parseSSEStream(reader, dispatch);
+
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(dispatch).toHaveBeenCalledWith('tool_call', '{"t":"x"}');
+  });
+
+  it('stops parsing when dispatch returns true', async () => {
+    const dispatch = vi.fn().mockReturnValueOnce(true);
+    const reader = readerFromChunks([
+      'event: complete\ndata: done\n\nevent: message\ndata: ignored\n\n',
+    ]);
+
+    await parseSSEStream(reader, dispatch);
+
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(dispatch).toHaveBeenCalledWith('complete', 'done');
+  });
+
+  it('resets event type to "message" after dispatching', async () => {
+    const dispatch = vi.fn();
+    const reader = readerFromChunks([
+      'event: confirm_required\ndata: {"id":"c1"}\n\ndata: no-event\n\n',
+    ]);
+
+    await parseSSEStream(reader, dispatch);
+
+    expect(dispatch).toHaveBeenCalledTimes(2);
+    expect(dispatch.mock.calls[0]).toEqual(['confirm_required', '{"id":"c1"}']);
+    expect(dispatch.mock.calls[1]).toEqual(['message', 'no-event']);
+  });
+
+  it('flushes remaining data at stream end without trailing blank line', async () => {
+    const dispatch = vi.fn();
+    // No trailing \n\n — data is still in accumulator when stream closes
+    const reader = readerFromChunks(['event: metric\ndata: {"cpu":50}\n']);
+
+    await parseSSEStream(reader, dispatch);
+
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(dispatch).toHaveBeenCalledWith('metric', '{"cpu":50}');
+  });
+
+  it('ignores SSE comment lines (starting with :)', async () => {
+    const dispatch = vi.fn();
+    const reader = readerFromChunks([
+      ': this is a comment\nevent: status\ndata: online\n\n',
+    ]);
+
+    await parseSSEStream(reader, dispatch);
+
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(dispatch).toHaveBeenCalledWith('status', 'online');
+  });
+
+  it('handles event: field appearing before and overriding previous event', async () => {
+    const dispatch = vi.fn();
+    // Two event: fields — last one wins per SSE spec
+    const reader = readerFromChunks([
+      'event: old_type\nevent: new_type\ndata: value\n\n',
+    ]);
+
+    await parseSSEStream(reader, dispatch);
+
+    expect(dispatch).toHaveBeenCalledWith('new_type', 'value');
+  });
+
+  it('handles empty data field', async () => {
+    const dispatch = vi.fn();
+    const reader = readerFromChunks(['event: ping\ndata: \n\n']);
+
+    await parseSSEStream(reader, dispatch);
+
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(dispatch).toHaveBeenCalledWith('ping', '');
   });
 });
 

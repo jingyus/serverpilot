@@ -1,19 +1,20 @@
-### [pending] respondToStep/respondToAgenticConfirm 失败时无用户反馈 — 用户操作被静默吞没
+### [pending] SSE 解析后 currentEvent 在空行处重置 — 多行 data 的事件类型丢失
 
-**ID**: chat-026
+**ID**: chat-027
 **优先级**: P1
-**模块路径**: packages/dashboard/src/stores/chat-execution.ts
-**发现的问题**: `chat-execution.ts:153-167` 的 `createRespondToStep` 在 `set({ pendingConfirm: null })` 之后才发送 API 请求。如果 API 调用失败（网络断开、500 错误），catch 块（165-167）空且注释"let server timeout auto-reject"。用户点击 Allow 后确认栏消失（看起来操作成功），但实际决策未到达服务端，5 分钟后服务端超时自动 reject。`createRespondToAgenticConfirm`（188-201）有完全相同的问题。对比 `emergencyStop`（204-236）虽然也吞没错误，但至少立即更新状态为 cancelled。
+**模块路径**: packages/dashboard/src/api/sse.ts
+**发现的问题**: `sse.ts:198-211` 的 SSE 解析循环中，遇到空行时 `currentEvent = 'message'`（行 209）。按 SSE 规范，空行表示事件结束，应该 dispatch 当前事件并重置。但此处只重置 `currentEvent`，不 dispatch。如果服务端在 `event:` 和 `data:` 之间有空行（某些 SSE 库会这样做），`currentEvent` 会被错误重置为 `'message'`，导致 `tool_call`、`confirm_required` 等事件被路由到 `onMessage` 回调。同样的问题在 `createMetricsSSE`（行 341-354）、`createServerStatusSSE`（行 470-484）、`createSkillExecutionSSE`（行 593-623）中重复出现。4 处 SSE 解析逻辑完全重复（违反 DRY）。
 **改进方案**: 
-1. 在 catch 块中恢复 `pendingConfirm`/`agenticConfirm` 状态（让用户可以重试）
-2. 或在 catch 块中 `set({ error: 'Failed to send decision. Please try again.' })`
-3. 显示短暂的 toast 通知"决策发送失败"
-4. 将 `set({ pendingConfirm: null })` 移到 API 成功之后（乐观更新 → 悲观更新）
+1. 提取一个 `parseSSEStream(reader: ReadableStreamDefaultReader, dispatch: (event: string, data: string) => void)` 通用函数
+2. 所有 4 个 SSE 连接类型复用该函数
+3. 修正空行处理：空行触发 `dispatch(currentEvent, accumulatedData)` 然后重置，而非仅重置 event name
+4. 支持多行 `data:` 拼接（SSE 规范允许）
 **验收标准**: 
-- API 失败时 pendingConfirm/agenticConfirm 恢复，用户可以重试
-- 或有明确的错误提示告知用户操作失败
-- 新增测试：模拟 API 失败，验证状态恢复或错误提示
-**影响范围**: packages/dashboard/src/stores/chat-execution.ts
+- SSE 解析逻辑只有一份实现
+- 空行后事件类型不会意外变为 'message'
+- 多行 data 被正确拼接
+- 所有现有 SSE 相关测试通过
+**影响范围**: packages/dashboard/src/api/sse.ts
 **创建时间**: (自动填充)
 **完成时间**: -
 
