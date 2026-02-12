@@ -366,7 +366,7 @@ export class SkillRunner {
 
       case 'store':
         return this.executeStore(
-          input as { action: string; key: string; value?: string },
+          input as { action: string; key?: string; value?: string },
           skillId,
         );
 
@@ -614,9 +614,9 @@ export class SkillRunner {
     }
   }
 
-  /** KV store read/write. */
+  /** KV store read/write/list. */
   private async executeStore(
-    input: { action: string; key: string; value?: string },
+    input: { action: string; key?: string; value?: string },
     skillId: string,
   ): Promise<{ result: string; success: boolean }> {
     const { action, key, value } = input;
@@ -625,6 +625,9 @@ export class SkillRunner {
     try {
       switch (action) {
         case 'get': {
+          if (!key) {
+            return { result: 'Missing "key" for get action', success: false };
+          }
           const val = await store.get(skillId, key);
           return {
             result: val !== null ? val : `Key "${key}" not found`,
@@ -632,6 +635,9 @@ export class SkillRunner {
           };
         }
         case 'set': {
+          if (!key) {
+            return { result: 'Missing "key" for set action', success: false };
+          }
           if (value === undefined) {
             return { result: 'Missing "value" for set action', success: false };
           }
@@ -639,6 +645,9 @@ export class SkillRunner {
           return { result: `Stored key "${key}"`, success: true };
         }
         case 'delete': {
+          if (!key) {
+            return { result: 'Missing "key" for delete action', success: false };
+          }
           await store.delete(skillId, key);
           return { result: `Deleted key "${key}"`, success: true };
         }

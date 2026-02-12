@@ -200,19 +200,19 @@ export function buildToolDefinitions(tools: SkillToolType[]): ToolDefinition[] {
         properties: {
           action: {
             type: 'string',
-            enum: ['get', 'set', 'delete'],
-            description: 'Store operation',
+            enum: ['get', 'set', 'delete', 'list'],
+            description: 'Store operation: get/set/delete require a key; list returns all key-value pairs for this skill',
           },
           key: {
             type: 'string',
-            description: 'Storage key',
+            description: 'Storage key (required for get, set, delete; ignored for list)',
           },
           value: {
             type: 'string',
             description: 'Value to store (for set action)',
           },
         },
-        required: ['action', 'key'],
+        required: ['action'],
       },
     });
   }

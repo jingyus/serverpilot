@@ -220,6 +220,17 @@ describe('buildToolDefinitions', () => {
     expect(names).toContain('store');
   });
 
+  it('store tool definition includes list action and key is optional', () => {
+    const tools = buildToolDefinitions(['store']);
+    expect(tools).toHaveLength(1);
+    const store = tools[0];
+    expect(store.name).toBe('store');
+    const schema = store.input_schema as Record<string, unknown>;
+    const props = schema.properties as Record<string, { enum?: string[] }>;
+    expect(props.action.enum).toEqual(['get', 'set', 'delete', 'list']);
+    expect(schema.required).toEqual(['action']);
+  });
+
   it('skips unsupported tools', () => {
     const tools = buildToolDefinitions(['shell']);
     expect(tools).toHaveLength(1);
@@ -860,6 +871,105 @@ describe('SkillRunner', () => {
     expect(result.toolResults[0].success).toBe(true);
     expect(result.toolResults[0].result).toBe('some-value');
     expect(getMockStore().get).toHaveBeenCalledWith('skill-1', 'my_key');
+  });
+
+  it('executes store list action without key', async () => {
+    getMockStore().list.mockResolvedValue({ last_check: '2026-01-01', version: '3.0' });
+    const manifest = createManifest({ tools: ['store'] });
+
+    const provider = createMockProvider([
+      {
+        content: 'Listing all stored data.',
+        usage: { inputTokens: 100, outputTokens: 50 },
+        stopReason: 'tool_use',
+        toolCalls: [toolUse('store', { action: 'list' })],
+      },
+      {
+        content: 'Done.',
+        usage: { inputTokens: 200, outputTokens: 30 },
+        stopReason: 'end_turn',
+      },
+    ]);
+
+    const runner = new SkillRunner(provider);
+    const result = await runner.run(createRunnerParams({ manifest }));
+
+    expect(result.toolResults[0].success).toBe(true);
+    const parsed = JSON.parse(result.toolResults[0].result);
+    expect(parsed).toEqual({ last_check: '2026-01-01', version: '3.0' });
+    expect(getMockStore().list).toHaveBeenCalledWith('skill-1');
+  });
+
+  it('returns error for store get without key', async () => {
+    const manifest = createManifest({ tools: ['store'] });
+
+    const provider = createMockProvider([
+      {
+        content: 'Getting data.',
+        usage: { inputTokens: 100, outputTokens: 50 },
+        stopReason: 'tool_use',
+        toolCalls: [toolUse('store', { action: 'get' })],
+      },
+      {
+        content: 'Failed.',
+        usage: { inputTokens: 200, outputTokens: 30 },
+        stopReason: 'end_turn',
+      },
+    ]);
+
+    const runner = new SkillRunner(provider);
+    const result = await runner.run(createRunnerParams({ manifest }));
+
+    expect(result.toolResults[0].success).toBe(false);
+    expect(result.toolResults[0].result).toContain('Missing "key"');
+  });
+
+  it('returns error for store delete without key', async () => {
+    const manifest = createManifest({ tools: ['store'] });
+
+    const provider = createMockProvider([
+      {
+        content: 'Deleting data.',
+        usage: { inputTokens: 100, outputTokens: 50 },
+        stopReason: 'tool_use',
+        toolCalls: [toolUse('store', { action: 'delete' })],
+      },
+      {
+        content: 'Failed.',
+        usage: { inputTokens: 200, outputTokens: 30 },
+        stopReason: 'end_turn',
+      },
+    ]);
+
+    const runner = new SkillRunner(provider);
+    const result = await runner.run(createRunnerParams({ manifest }));
+
+    expect(result.toolResults[0].success).toBe(false);
+    expect(result.toolResults[0].result).toContain('Missing "key"');
+  });
+
+  it('returns error for store set without key', async () => {
+    const manifest = createManifest({ tools: ['store'] });
+
+    const provider = createMockProvider([
+      {
+        content: 'Setting data.',
+        usage: { inputTokens: 100, outputTokens: 50 },
+        stopReason: 'tool_use',
+        toolCalls: [toolUse('store', { action: 'set', value: 'some-value' })],
+      },
+      {
+        content: 'Failed.',
+        usage: { inputTokens: 200, outputTokens: 30 },
+        stopReason: 'end_turn',
+      },
+    ]);
+
+    const runner = new SkillRunner(provider);
+    const result = await runner.run(createRunnerParams({ manifest }));
+
+    expect(result.toolResults[0].success).toBe(false);
+    expect(result.toolResults[0].result).toContain('Missing "key"');
   });
 
   it('returns not found for store get with missing key', async () => {

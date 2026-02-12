@@ -3,19 +3,272 @@
 > 此队列专注于 Chat 和 AI 对话系统的质量改进
 > AI 自动发现问题 → 生成任务 → 实现 → 验证
 
-**最后更新**: 2026-02-13 01:49:15
+**最后更新**: 2026-02-13 01:56:14
 
 ## 📊 统计
 
-- **总任务数**: 20
-- **待完成** (pending): 0
-- **进行中** (in_progress): 0
+- **总任务数**: 32
+- **待完成** (pending): 11
+- **进行中** (in_progress): 1
 - **已完成** (completed): 20
 - **失败** (failed): 0
 
 ## 📋 任务列表
 
 ### [completed] 聊天会话持久化到 SQLite — 消除服务器重启丢失对话的致命问题 ✅
+### [in_progress] loadSession 未重置执行/Agentic 状态 — 切换会话后显示旧执行数据
+
+**ID**: chat-021
+**优先级**: P0
+**模块路径**: packages/dashboard/src/stores/chat-sessions.ts
+**发现的问题**: `chat-sessions.ts:41-47` 的 `createLoadSession` 函数在加载新会话时只重置了 `currentPlan` 和 `planStatus`，但没有重置 `execution`、`executionMode`、`pendingConfirm`、`agenticConfirm`、`toolCalls`、`isStreaming`、`isAgenticMode`、`streamingContent`、`sseParseErrors` 状态。对比 `chat.ts:125-143` 的 `newSession` 函数会完整重置所有状态。当用户从一个正在执行的会话 A 切换到会话 B 时，ExecutionLog 仍显示 A 的执行步骤，AgenticConfirmBar 可能还显示旧的确认请求，toolCalls 数组保留了旧数据。
+**改进方案**: 
+1. 在 `createLoadSession` 成功加载会话后，增加完整的状态重置
+2. 重置字段应与 `newSession` 保持一致：`execution: INITIAL_EXECUTION`、`executionMode: 'none'`、`pendingConfirm: null`、`agenticConfirm: null`、`toolCalls: []`、`isAgenticMode: false`、`isStreaming: false`、`streamingContent: ''`、`sseParseErrors: 0`
+3. 同时调用 `getActiveHandle()?.abort()` 中止当前 SSE 连接（避免旧连接继续写入新会话状态）
+**验收标准**: 
+- 从有执行进度的会话切换到另一个会话后，ExecutionLog 不显示
+- AgenticConfirmBar 和 StepConfirmBar 不显示旧确认
+- toolCalls 数组清空
+- 活跃 SSE 连接被正确中止
+- 新增测试：验证 loadSession 后所有执行状态已重置
+**影响范围**: packages/dashboard/src/stores/chat-sessions.ts, packages/dashboard/src/stores/chat-sessions.test.ts
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] agentic-chat.ts 的 trimMessagesIfNeeded 算法有 token 估算累减偏差
+
+**ID**: chat-022
+**优先级**: P0
+**模块路径**: packages/server/src/ai/agentic-chat.ts
+**发现的问题**: `agentic-chat.ts:748-765` 的 `trimMessagesIfNeeded()` 使用 `currentTokens -= removedTokens` 累减方式计算剩余 token 数。但 `estimateMessagesTokens()` 对不同消息类型（string content vs structured tool_use/tool_result blocks）的估算精度不同，累减多次后误差会放大。更关键的是：`agentic-chat.ts:37` 使用 `CHARS_PER_TOKEN = 4` 常量做 ASCII 估算，而项目已在 task-012 中修复了 `profile-context.ts:estimateTokens()` 支持 CJK 混合文本。此处是独立的实现，未复用已修复的 `estimateTokens`。当中文对话达到 20+ turns 时，150K token 预算（`agentic-chat.ts:34`）实际可能允许 600K+ 真实 token 进入 API，触发 Anthropic 的 `context_length_exceeded` 错误。
+**改进方案**: 
+1. 将 `estimateMessagesTokens()` 改为使用 `estimateTokens()` from `profile-context.ts`（已支持 CJK）
+2. 对 structured content blocks（tool_use、tool_result），提取文本部分再调用 `estimateTokens()` 而非用 `JSON.stringify().length / 4`
+3. 每次 `splice` 后使用 `estimateMessagesTokens(messages)` 重新计算（而非累减），避免误差放大
+4. 添加中文对话场景的单元测试
+**验收标准**: 
+- 中文 20 轮 agentic 对话后不会触发 context_length_exceeded 错误
+- `estimateMessagesTokens()` 对中文消息估算误差在 2x 以内
+- 累减 vs 重算的差异 < 10%
+- 测试覆盖：中文、英文、混合、structured content blocks
+**影响范围**: packages/server/src/ai/agentic-chat.ts
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] 双 pendingConfirmations Map 导致 agentic 确认可能路由到错误系统
+
+**ID**: chat-023
+**优先级**: P0
+**模块路径**: packages/server/src/api/routes/chat.ts, packages/server/src/ai/agentic-chat.ts
+**发现的问题**: 存在两个独立的 `pendingConfirmations` Map：`chat.ts:50-53` 和 `agentic-chat.ts:165-168`。`chat.ts` 中的 Map 由 `chat.ts:137-147` 的 `onConfirmRequired` 回调写入，由 `chat.ts:332-350` 的 `/confirm` 端点消费。而 `agentic-chat.ts:165-168` 的 Map 通过 `resolveConfirmation()` 导出但仅在测试中使用。前端统一调用 `/confirm` 端点（`chat-execution.ts:190-197`），该端点只查 `chat.ts` 的 Map。如果有代码直接调用 `agentic-chat.ts` 的 `resolveConfirmation()`，会因 confirmId 不在该 Map 中而返回 false。两套系统增加维护负担和 bug 风险。
+**改进方案**: 
+1. 删除 `agentic-chat.ts:165-168` 中的 `pendingConfirmations` Map 和 `resolveConfirmation()` 函数
+2. Agentic engine 的确认完全通过 `opts.onConfirmRequired` 回调（定义在 `chat.ts:137-147`）与 `chat.ts` 的 Map 交互
+3. 确保只有一个 `pendingConfirmations` 管理点（`chat.ts`），避免状态分裂
+4. 更新相关测试，移除对 `resolveConfirmation` 的直接调用
+**验收标准**: 
+- 项目中只有一个 `pendingConfirmations` Map（在 chat.ts 中）
+- 所有确认流程通过 `/confirm` 端点正确路由
+- agentic-chat.ts 不再导出 `resolveConfirmation`
+- 现有确认流程测试通过
+**影响范围**: packages/server/src/ai/agentic-chat.ts, packages/server/src/api/routes/chat.ts
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] activePlanExecutions 初始值为空字符串 — 取消执行可能失败
+
+**ID**: chat-024
+**优先级**: P1
+**模块路径**: packages/server/src/api/routes/chat-execution.ts
+**发现的问题**: `chat-execution.ts:259` 将 `activePlanExecutions.set(planId, '')` 设为空字符串，表示执行已开始但 executionId 尚未就绪。然后在 `chat-execution.ts:268`（progress listener 回调中）才更新为真实 executionId。如果用户在这两行之间发起取消请求，`chat.ts:412` 的 `getActiveExecution(body.planId)` 返回空字符串 `''`，传入 `executor.cancelExecution('')` 导致取消失败（因为没有 executionId 为空的执行）。虽然 `removeActiveExecution` 仍会清除 Map 条目使 step 循环在 `chat-execution.ts:277` break，但 `chat.ts:422` 的 `cancelled` 变量为 false，返回 `{ success: false }` 给前端——用户看到"取消失败"但实际已停止。
+**改进方案**: 
+1. 在 `executePlanSteps` 入口处生成 executionId（`randomUUID()`），直接 `activePlanExecutions.set(planId, executionId)` 
+2. 将 executionId 传入 progress listener，listener 只用于路由 output
+3. 或在 `getActiveExecution` 返回空字符串时返回 undefined（视为无活跃执行）
+4. 在取消端点中，如果 `executionId` 为空则至少返回 `success: true`（因为 step 循环会 break）
+**验收标准**: 
+- 用户在执行刚开始时点击取消，前端收到 `{ success: true }`
+- `activePlanExecutions` 不再出现空字符串值
+- 新增测试：执行开始后立即取消的场景
+**影响范围**: packages/server/src/api/routes/chat-execution.ts, packages/server/src/api/routes/chat.ts
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] Plan 完成后未从 Session.plans Map 中清除 — 阻止缓存驱逐
+
+**ID**: chat-025
+**优先级**: P1
+**模块路径**: packages/server/src/core/session/manager.ts, packages/server/src/api/routes/chat-execution.ts
+**发现的问题**: `manager.ts:174-176` 的 `isActive()` 判断 `session.plans.size > 0` 来保护活跃会话不被驱逐。但 plan 执行完成后，`chat-execution.ts:424` 只从 `activePlanExecutions` Map 中删除了 planId，**从未**调用 `sessionMgr.removePlan(sessionId, planId)` 或类似方法清除 `session.plans` Map 中的条目。这意味着任何执行过至少一个 plan 的会话的 `plans.size` 永远 > 0，`isActive()` 永远返回 true，该会话**永远不会被 LRU 驱逐或 TTL 过期**。长期运行的服务器会因此累积所有曾执行过 plan 的会话，内存持续增长。
+**改进方案**: 
+1. 在 `SessionManager` 中添加 `removePlan(sessionId: string, planId: string)` 方法
+2. 在 `executePlanSteps` 完成后（`chat-execution.ts:424` 附近）调用 `sessionMgr.removePlan(sessionId, planId)` 
+3. 在 `rejectAllPendingDecisions` 和取消流程中也清理对应 plan
+4. 或改进 `isActive()` 逻辑，让它区分"有活跃执行的 plan"和"已完成的 plan"
+**验收标准**: 
+- Plan 执行完成后 `session.plans.size` 回到 0
+- 执行完 plan 的不活跃会话可以被 LRU 驱逐和 TTL 过期
+- 新增测试：plan 执行后验证 plans Map 被清理
+**影响范围**: packages/server/src/core/session/manager.ts, packages/server/src/api/routes/chat-execution.ts
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] respondToStep/respondToAgenticConfirm 失败时无用户反馈 — 用户操作被静默吞没
+
+**ID**: chat-026
+**优先级**: P1
+**模块路径**: packages/dashboard/src/stores/chat-execution.ts
+**发现的问题**: `chat-execution.ts:153-167` 的 `createRespondToStep` 在 `set({ pendingConfirm: null })` 之后才发送 API 请求。如果 API 调用失败（网络断开、500 错误），catch 块（165-167）空且注释"let server timeout auto-reject"。用户点击 Allow 后确认栏消失（看起来操作成功），但实际决策未到达服务端，5 分钟后服务端超时自动 reject。`createRespondToAgenticConfirm`（188-201）有完全相同的问题。对比 `emergencyStop`（204-236）虽然也吞没错误，但至少立即更新状态为 cancelled。
+**改进方案**: 
+1. 在 catch 块中恢复 `pendingConfirm`/`agenticConfirm` 状态（让用户可以重试）
+2. 或在 catch 块中 `set({ error: 'Failed to send decision. Please try again.' })`
+3. 显示短暂的 toast 通知"决策发送失败"
+4. 将 `set({ pendingConfirm: null })` 移到 API 成功之后（乐观更新 → 悲观更新）
+**验收标准**: 
+- API 失败时 pendingConfirm/agenticConfirm 恢复，用户可以重试
+- 或有明确的错误提示告知用户操作失败
+- 新增测试：模拟 API 失败，验证状态恢复或错误提示
+**影响范围**: packages/dashboard/src/stores/chat-execution.ts
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] SSE 解析后 currentEvent 在空行处重置 — 多行 data 的事件类型丢失
+
+**ID**: chat-027
+**优先级**: P1
+**模块路径**: packages/dashboard/src/api/sse.ts
+**发现的问题**: `sse.ts:198-211` 的 SSE 解析循环中，遇到空行时 `currentEvent = 'message'`（行 209）。按 SSE 规范，空行表示事件结束，应该 dispatch 当前事件并重置。但此处只重置 `currentEvent`，不 dispatch。如果服务端在 `event:` 和 `data:` 之间有空行（某些 SSE 库会这样做），`currentEvent` 会被错误重置为 `'message'`，导致 `tool_call`、`confirm_required` 等事件被路由到 `onMessage` 回调。同样的问题在 `createMetricsSSE`（行 341-354）、`createServerStatusSSE`（行 470-484）、`createSkillExecutionSSE`（行 593-623）中重复出现。4 处 SSE 解析逻辑完全重复（违反 DRY）。
+**改进方案**: 
+1. 提取一个 `parseSSEStream(reader: ReadableStreamDefaultReader, dispatch: (event: string, data: string) => void)` 通用函数
+2. 所有 4 个 SSE 连接类型复用该函数
+3. 修正空行处理：空行触发 `dispatch(currentEvent, accumulatedData)` 然后重置，而非仅重置 event name
+4. 支持多行 `data:` 拼接（SSE 规范允许）
+**验收标准**: 
+- SSE 解析逻辑只有一份实现
+- 空行后事件类型不会意外变为 'message'
+- 多行 data 被正确拼接
+- 所有现有 SSE 相关测试通过
+**影响范围**: packages/dashboard/src/api/sse.ts
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] onComplete 未清理 agenticConfirm 状态 — 执行成功后仍显示确认栏
+
+**ID**: chat-028
+**优先级**: P2
+**模块路径**: packages/dashboard/src/stores/chat-execution.ts
+**发现的问题**: `chat-execution.ts:405-481` 的 `onComplete` 回调在执行完成时设置了 `pendingConfirm: null` 但**没有**设置 `agenticConfirm: null`。对比 `onError`（行 583-613）正确清理了 `agenticConfirm: null`。如果 agentic 模式的最后一个 tool call 需要确认，用户批准后命令执行完成，`complete` 事件到达——但 `agenticConfirm` 仍保留着旧值，`AgenticConfirmBar` 继续渲染。用户看到一个已无意义的确认栏。另外 `chat-execution.ts:608` 的 `executionMode: 'none'` 缺少 `as const`，在 TypeScript 严格模式下可能产生类型宽化为 `string`。
+**改进方案**: 
+1. 在 `onComplete` 的所有分支中添加 `agenticConfirm: null`、`isAgenticMode: false`、`toolCalls: []`
+2. 修复 `chat-execution.ts:608` 添加 `as const`
+3. 验证 `onComplete` 和 `onError` 的状态重置保持一致
+**验收标准**: 
+- Agentic 执行完成后 AgenticConfirmBar 不显示
+- TypeScript 编译无类型宽化警告
+- 新增测试：agentic 模式 complete 后验证 agenticConfirm 为 null
+**影响范围**: packages/dashboard/src/stores/chat-execution.ts
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] SSE 流关闭后服务端 executePlanSteps 继续执行 — 浪费资源
+
+**ID**: chat-029
+**优先级**: P2
+**模块路径**: packages/server/src/api/routes/chat-execution.ts
+**发现的问题**: `chat-execution.ts:271-272` 中 `stream.writeSSE().catch(() => {})` 静默吞没写入错误。当客户端断开连接（关闭浏览器、网络断开）后，SSE stream 的所有 write 都会失败，但 `executePlanSteps` 的 for 循环（行 276-421）仍继续执行每个 step：调用 `executor.executeCommand()`、`auditLogger.log()`、`autoDiagnoseStepFailure()` 等。一个 5 步 plan，每步 30 秒超时，可能在客户端断开后白白执行 2.5 分钟。同样，`agentic-chat.ts:330` 的 `writeSSE().catch(() => {})` 也有此问题——AI 循环继续调用 Anthropic API（每次约 $0.01-0.05），浪费 API 费用。
+**改进方案**: 
+1. 在 `writeSSE` catch 中设置一个 `streamClosed = true` 标志
+2. 在 step 循环的每次迭代开头检查 `if (streamClosed) break`
+3. 或使用 Hono 的 `stream.onAbort(() => { aborted = true })` 回调
+4. 对 agentic engine 同理：writeSSE 失败后设置标志，在 turn 循环中检查
+**验收标准**: 
+- 客户端断开后服务端在当前 step 完成后停止执行后续步骤
+- Agentic 循环在 stream 关闭后停止调用 Anthropic API
+- 审计日志记录"execution aborted: client disconnected"
+- 新增测试：模拟 stream 关闭后验证执行中止
+**影响范围**: packages/server/src/api/routes/chat-execution.ts, packages/server/src/ai/agentic-chat.ts
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] sse.ts 文件超 500 行且含 4 套重复 SSE 解析逻辑 — 需提取通用解析器
+
+**ID**: chat-030
+**优先级**: P2
+**模块路径**: packages/dashboard/src/api/sse.ts
+**发现的问题**: `sse.ts` 当前 700 行，超出 500 行软限制。文件中 4 个 SSE 连接函数（`createSSEConnection` 行 101-238、`createMetricsSSE` 行 269-382、`createServerStatusSSE` 行 402-509、`createSkillExecutionSSE` 行 531-635）各自独立实现了完全相同的 SSE 流解析逻辑：`decoder + buffer + split('\n') + lines.pop() + event:/data: 解析`。同样的 `cleanup` + `scheduleReconnect` + `connect` 三件套也重复了 3 次。任何解析 bug 的修复需要在 4 处同步更新。
+**改进方案**: 
+1. 提取 `parseSSEStream(reader, dispatch)` 通用解析函数处理 buffer/decode/line-split/event dispatch
+2. 提取 `createReconnectableSSE(connectFn, maxAttempts, onReconnecting)` 通用重连包装器
+3. 4 个 SSE 函数简化为：配置 URL + 事件类型映射 + 调用通用函数
+4. 主文件降至 300 行以内
+**验收标准**: 
+- `sse.ts` 降至 500 行以内
+- SSE 解析逻辑只有一份
+- 重连逻辑只有一份
+- 所有现有 SSE 测试通过
+- 无功能回归
+**影响范围**: packages/dashboard/src/api/sse.ts
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] SessionSidebar 日期分组使用硬编码英文 — 与项目 i18n 不一致
+
+**ID**: chat-031
+**优先级**: P2
+**模块路径**: packages/dashboard/src/pages/Chat.tsx
+**发现的问题**: `Chat.tsx:501-514` 的 `getSessionDateGroup()` 函数和 `Chat.tsx:547` 的 `groupOrder` 数组使用硬编码英文字符串 `'Today'`、`'Yesterday'`、`'This Week'`、`'Older'`。项目使用 `react-i18next` 做国际化，其他所有 UI 文本都通过 `t()` 函数获取。SessionSidebar 中这些分组标题直接在 `Chat.tsx:584` 渲染为英文文本，与中文 UI 的其他部分不一致。
+**改进方案**: 
+1. 将日期分组文本移入 i18n 翻译文件（`chat.sessionGroupToday`、`chat.sessionGroupYesterday` 等）
+2. `getSessionDateGroup` 返回 key（如 `'today'`），渲染时通过 `t(`chat.sessionGroup.${key}`)` 转换
+3. 或在 `SessionSidebar` 组件中使用 `useTranslation` 翻译分组标题
+**验收标准**: 
+- 日期分组标题根据当前语言显示（中文环境显示"今天"、"昨天"等）
+- 所有现有 Chat 页面测试通过
+**影响范围**: packages/dashboard/src/pages/Chat.tsx, 国际化翻译文件
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] StepConfirmBar 类型安全 — PendingConfirm 使用 `as` 断言无运行时验证
+
+**ID**: chat-032
+**优先级**: P2
+**模块路径**: packages/dashboard/src/stores/chat-execution.ts
+**发现的问题**: `chat-execution.ts:101` 使用 `JSON.parse(data) as PendingConfirm` 类型断言，`chat-execution.ts:396` 同样如此。`PendingConfirm` 要求 `stepId`、`command`、`description`、`riskLevel` 四个字段（定义在 `chat-types.ts:20-25`）。如果服务端发送的 JSON 缺少任何字段（如 `description` 为 undefined），前端不会报错，但 `StepConfirmBar` 组件会渲染 `undefined` 文本。同理 `chat-execution.ts:531` 的 `parsed.status as ToolCallEntry['status']` 不验证 status 是否是合法联合类型值。`chat-execution.ts:549-551` 的 `confirmId` 可能为 undefined，被 `?? ''` 默认为空字符串，导致 `respondToAgenticConfirm`（行 186）因 `!agenticConfirm?.confirmId` 为 true 而直接 return。
+**改进方案**: 
+1. 为 `PendingConfirm`、`ToolCallEntry` 状态更新和 `AgenticConfirm` 创建 Zod schema
+2. 替换 `as` 断言为 `schema.parse(JSON.parse(data))`，解析失败走 `warnParseFail`
+3. 或至少添加必填字段检查：`if (!parsed.stepId || !parsed.command) return`
+**验收标准**: 
+- 畸形 SSE 数据不会导致 UI 渲染 undefined
+- 缺失 confirmId 时有明确的 console.warn 而非静默失败
+- 新增测试：验证畸形数据被正确拒绝
+**影响范围**: packages/dashboard/src/stores/chat-execution.ts, packages/dashboard/src/stores/chat-types.ts
+**创建时间**: (自动填充)
+**完成时间**: -
+
 ### [completed] SSE 连接组件卸载时未清理 — Chat 页面离开后 SSE 连接泄漏 ✅
 
 **ID**: chat-006

@@ -24,6 +24,7 @@ vi.mock('@/api/sse', () => ({
 }));
 
 import { apiRequest } from '@/api/client';
+import { setActiveHandle } from './chat-execution';
 
 describe('chat-sessions (via useChatStore)', () => {
   beforeEach(() => {
@@ -54,6 +55,7 @@ describe('chat-sessions (via useChatStore)', () => {
       agenticConfirm: null,
       isAgenticMode: false,
     });
+    setActiveHandle(null);
     vi.clearAllMocks();
   });
 
@@ -122,6 +124,68 @@ describe('chat-sessions (via useChatStore)', () => {
       expect(state.isLoading).toBe(false);
       expect(state.currentPlan).toBeNull();
       expect(state.planStatus).toBe('none');
+    });
+
+    it('resets all execution and agentic state on load', async () => {
+      // Simulate dirty state from a previous session
+      useChatStore.setState({
+        execution: {
+          activeStepId: 'step-1',
+          outputs: { 'step-1': 'some output' },
+          completedSteps: { 'step-1': { exitCode: 0, duration: 100 } },
+          success: true,
+          operationId: 'op-1',
+          startTime: Date.now(),
+          cancelled: false,
+        },
+        executionMode: 'log',
+        pendingConfirm: { stepId: 's1', command: 'rm -rf /', description: 'danger', riskLevel: 'critical' },
+        agenticConfirm: { confirmId: 'c1', command: 'apt install', description: 'install', riskLevel: 'medium' },
+        toolCalls: [{ id: 't1', tool: 'execute_command', status: 'running', output: '' }],
+        isAgenticMode: true,
+        isStreaming: true,
+        streamingContent: 'partial response...',
+        sseParseErrors: 3,
+      });
+
+      (apiRequest as Mock).mockResolvedValueOnce({
+        session: { id: 'sess-2', messages: [{ id: '1', role: 'user', content: 'hello', timestamp: '2025-01-01' }] },
+      });
+
+      await useChatStore.getState().loadSession('srv-1', 'sess-2');
+
+      const state = useChatStore.getState();
+      expect(state.sessionId).toBe('sess-2');
+      expect(state.execution).toEqual({
+        activeStepId: null,
+        outputs: {},
+        completedSteps: {},
+        success: null,
+        operationId: null,
+        startTime: null,
+        cancelled: false,
+      });
+      expect(state.executionMode).toBe('none');
+      expect(state.pendingConfirm).toBeNull();
+      expect(state.agenticConfirm).toBeNull();
+      expect(state.toolCalls).toEqual([]);
+      expect(state.isAgenticMode).toBe(false);
+      expect(state.isStreaming).toBe(false);
+      expect(state.streamingContent).toBe('');
+      expect(state.sseParseErrors).toBe(0);
+    });
+
+    it('aborts active SSE connection before loading', async () => {
+      const mockAbort = vi.fn();
+      setActiveHandle({ abort: mockAbort, controller: new AbortController() });
+
+      (apiRequest as Mock).mockResolvedValueOnce({
+        session: { id: 'sess-2', messages: [] },
+      });
+
+      await useChatStore.getState().loadSession('srv-1', 'sess-2');
+
+      expect(mockAbort).toHaveBeenCalledOnce();
     });
 
     it('sets error on failure', async () => {

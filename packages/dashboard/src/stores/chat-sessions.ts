@@ -9,6 +9,8 @@
 import { apiRequest, ApiError } from '@/api/client';
 import type { ChatMessage, SessionSummary } from '@/types/chat';
 import type { ChatState } from './chat-types.js';
+import { INITIAL_EXECUTION } from './chat-types.js';
+import { getActiveHandle, setActiveHandle } from './chat-execution.js';
 
 type SetFn = (
   partial: Partial<ChatState> | ((state: ChatState) => Partial<ChatState>),
@@ -35,6 +37,8 @@ export function createLoadSession(set: SetFn, _get: GetFn) {
   return async (serverId: string, sessionId: string): Promise<void> => {
     set({ isLoading: true, error: null });
     try {
+      getActiveHandle()?.abort();
+      setActiveHandle(null);
       const data = await apiRequest<{
         session: { id: string; messages: ChatMessage[] };
       }>(`/chat/${serverId}/sessions/${sessionId}`);
@@ -44,6 +48,15 @@ export function createLoadSession(set: SetFn, _get: GetFn) {
         isLoading: false,
         currentPlan: null,
         planStatus: 'none',
+        execution: { ...INITIAL_EXECUTION },
+        executionMode: 'none',
+        pendingConfirm: null,
+        agenticConfirm: null,
+        toolCalls: [],
+        isAgenticMode: false,
+        isStreaming: false,
+        streamingContent: '',
+        sseParseErrors: 0,
       });
     } catch (err) {
       const message =

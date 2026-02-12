@@ -1,63 +1,21 @@
-### [pending] server 端 chat.ts 路由文件超 800 行硬限制 — `any` 类型逃逸需修复
+### [pending] loadSession 未重置执行/Agentic 状态 — 切换会话后显示旧执行数据
 
-**ID**: chat-020
-**优先级**: P2
-**模块路径**: packages/server/src/api/routes/chat.ts
-**发现的问题**: 
-1. `chat.ts` 当前 873 行，超出 800 行硬限制
-2. `chat.ts:101-104` 定义了 `type StoredPlan = any` 和 `type ServerProfile = any`（带 eslint-disable），完全绕过 TypeScript 类型检查。`executePlanSteps` 函数（114-369，共 255 行）内所有 `plan.steps`、`step.id`、`step.command` 等访问都无类型安全
-3. `executePlanSteps` 单独就有 255 行，应提取为独立模块
+**ID**: chat-021
+**优先级**: P0
+**模块路径**: packages/dashboard/src/stores/chat-sessions.ts
+**发现的问题**: `chat-sessions.ts:41-47` 的 `createLoadSession` 函数在加载新会话时只重置了 `currentPlan` 和 `planStatus`，但没有重置 `execution`、`executionMode`、`pendingConfirm`、`agenticConfirm`、`toolCalls`、`isStreaming`、`isAgenticMode`、`streamingContent`、`sseParseErrors` 状态。对比 `chat.ts:125-143` 的 `newSession` 函数会完整重置所有状态。当用户从一个正在执行的会话 A 切换到会话 B 时，ExecutionLog 仍显示 A 的执行步骤，AgenticConfirmBar 可能还显示旧的确认请求，toolCalls 数组保留了旧数据。
 **改进方案**: 
-1. 将 `executePlanSteps` 提取到 `api/routes/chat-execution.ts`
-2. 为 `StoredPlan` 和 `ServerProfile` 定义真正的 TypeScript 接口（参考 shared 中已有的 PlanStep schema）
-3. 消除所有 `any` 类型逃逸
-4. 主 `chat.ts` 只保留路由注册和请求处理
+1. 在 `createLoadSession` 成功加载会话后，增加完整的状态重置
+2. 重置字段应与 `newSession` 保持一致：`execution: INITIAL_EXECUTION`、`executionMode: 'none'`、`pendingConfirm: null`、`agenticConfirm: null`、`toolCalls: []`、`isAgenticMode: false`、`isStreaming: false`、`streamingContent: ''`、`sseParseErrors: 0`
+3. 同时调用 `getActiveHandle()?.abort()` 中止当前 SSE 连接（避免旧连接继续写入新会话状态）
 **验收标准**: 
-- `chat.ts` 降至 500 行以内
-- 不再有 `any` 类型别名
-- `executePlanSteps` 中所有属性访问有类型检查
-- TypeScript 编译无 `@ts-ignore` 或 `eslint-disable`
-**影响范围**: packages/server/src/api/routes/chat.ts, packages/server/src/api/routes/chat-execution.ts (新)
+- 从有执行进度的会话切换到另一个会话后，ExecutionLog 不显示
+- AgenticConfirmBar 和 StepConfirmBar 不显示旧确认
+- toolCalls 数组清空
+- 活跃 SSE 连接被正确中止
+- 新增测试：验证 loadSession 后所有执行状态已重置
+**影响范围**: packages/dashboard/src/stores/chat-sessions.ts, packages/dashboard/src/stores/chat-sessions.test.ts
 **创建时间**: (自动填充)
 **完成时间**: -
-
-
-**ID**: chat-001
-**优先级**: P0
-**模块路径**: packages/server/src/core/session/manager.ts, packages/server/src/db/
-**发现的问题**:
-`SessionManager` 类 (manager.ts:70-176) 使用纯内存 `Map<string, Session>` 存储所有会话数据。服务器重启、进程崩溃或 OOM kill 后，所有聊天记录永久丢失。这是生产环境中最严重的数据丢失风险。
-
-具体问题：
-1. `manager.ts:72` — `private sessions = new Map<string, Session>()` 纯内存存储
-2. `manager.ts:98-113` — `addMessage()` 只写入 Map，无任何持久化
-3. `manager.ts:116-123` — `storePlan()` 同样纯内存
-4. 随着对话累积，内存持续增长无上限（无 TTL、无 LRU 淘汰），可能导致 OOM
-
-**改进方案**:
-1. 新建 `chat_sessions` 和 `chat_messages` 两张 SQLite 表（Drizzle schema）
-2. 创建 `DrizzleSessionRepository` 实现，使用与项目现有模式一致的 Repository + singleton 模式
-3. `addMessage()` 同步写入 SQLite；`getSession()` 先查内存缓存再查 DB
-4. 保留 `InMemorySessionRepository` 供测试使用
-5. 添加迁移脚本 `0009_chat_sessions.sql`
-6. 可选：添加 TTL / max-sessions-per-server 限制以防无限增长
-
-**验收标准**:
-- 服务器重启后，之前的聊天会话和消息仍可通过 API 查询
-- Dashboard 加载历史会话列表正常
-- 现有 chat.test.ts 和 session manager 测试全部通过
-- 新增 DrizzleSessionRepository 测试覆盖 CRUD + 边界场景
-- 无 N+1 查询问题
-
-**影响范围**:
-- `packages/server/src/core/session/manager.ts` — 重构为 Repository 接口
-- `packages/server/src/db/schema.ts` — 新增表定义
-- `packages/server/src/db/repositories/` — 新增 session-repository.ts
-- `packages/server/src/db/migrations/` — 新增迁移文件
-- `packages/server/src/api/routes/chat.ts` — 使用新的 Repository
-- `packages/server/src/core/session/manager.test.ts` — 适配新接口
-
-**创建时间**: 2026-02-12
-**完成时间**: 2026-02-12 22:04:06
 
 ---

@@ -1,35 +1,33 @@
-### [pending] SkillRepository.findAllEnabled() — 启动时加载已启用 Skill 的触发器
+### [pending] Store 工具定义缺少 `list` action — AI 无法使用 KV 列表功能
 
-**ID**: skill-013
+**ID**: skill-014
 **优先级**: P0
-**模块路径**: packages/server/src/db/repositories/skill-repository.ts
-**当前状态**: 功能缺失 — `TriggerManager.findAllEnabledSkills()` (trigger-manager.ts:408-414) 使用 duck-typing 检测 `repo['findAllEnabled']`，但 `SkillRepository` 接口和两个实现类 (`DrizzleSkillRepository`, `InMemorySkillRepository`) 都没有定义 `findAllEnabled()` 方法。导致服务器重启后，已启用 Skill 的 cron/event/threshold 触发器不会被重新注册，只能通过手动重新启用来恢复
+**模块路径**: packages/server/src/core/skill/runner-tools.ts
+**当前状态**: 功能缺失 — `buildToolDefinitions()` 中 `store` 工具的 `action` enum 为 `['get', 'set', 'delete']` (runner-tools.ts:203)，但 `runner.ts:645-648` 的 `executeStore()` 实现了 `list` action。AI 不知道 `list` 操作存在，因此永远不会调用它。规范文档 (SKILL_SPEC.md) 要求 store 工具支持 get/set/delete/list 四种操作
 **实现方案**:
 
-1. **SkillRepository 接口** — 新增方法签名:
-   - `findAllEnabled(): Promise<InstalledSkill[]>` — 返回所有 `status === 'enabled'` 的 Skill (跨用户)
-2. **DrizzleSkillRepository** — 实现:
-   - `SELECT * FROM installed_skills WHERE status = 'enabled' ORDER BY created_at DESC`
-   - 使用 Drizzle: `db.select().from(installedSkills).where(eq(installedSkills.status, 'enabled')).all()`
-3. **InMemorySkillRepository** — 实现:
-   - `this.skills.filter(s => s.status === 'enabled')`
-4. **TriggerManager** — 移除 duck-typing hack (trigger-manager.ts:408-414):
-   - 直接调用 `this.repo.findAllEnabled()` (接口类型保证方法存在)
-5. **测试**:
-   - DrizzleSkillRepository: 测试 findAllEnabled 只返回 enabled 状态
-   - InMemorySkillRepository: 同上
-   - TriggerManager: 测试 start() 时从 DB 加载已启用的 Skill 并注册触发器
+1. **runner-tools.ts** — 修改 `buildToolDefinitions()` 中 store 工具:
+   - `action.enum`: `['get', 'set', 'delete']` → `['get', 'set', 'delete', 'list']`
+   - 更新 `action.description`: 说明 `list` 返回该 Skill 所有键值对
+   - `list` 操作不需要 `key` 参数，但 `key` 仍标记为 required — 需改为 optional 或允许 `list` 忽略 `key`
+   - 最佳方案: 将 `required` 改为 `['action']`，`key` 和 `value` 都变为 optional；在 runner.ts 中对 `get`/`set`/`delete` 做参数存在性检查
+2. **runner.ts** — 在 `executeStore()` 中增加 `key` 缺失检查:
+   - `get`/`delete`: 如果 `key` 为空字符串或 undefined → 返回错误
+   - `list`: 忽略 `key` 参数 (已实现)
+3. **测试**:
+   - runner-tools.test.ts (如存在): 验证 store 工具定义包含 `list`
+   - runner.test.ts: 新增 `list` 操作测试
 
 **验收标准**:
-- 服务器重启后，所有 `status=enabled` 的 Skill 的触发器被自动恢复
-- `TriggerManager.start()` 不再使用 duck-typing 检测
-- 测试 ≥ 6 个新增
+- AI 可以成功调用 `store` 工具的 `list` action
+- `key` 对 `list` 操作不再是必填
+- `get`/`set`/`delete` 仍要求 `key`
+- 测试覆盖所有 4 种 store 操作
 
 **影响范围**:
-- `packages/server/src/db/repositories/skill-repository.ts` (修改 — 接口 + 两个实现)
-- `packages/server/src/core/skill/trigger-manager.ts` (修改 — 移除 duck-typing)
-- `packages/server/src/core/skill/trigger-manager.test.ts` (修改 — 新增 startup 加载测试)
-- `packages/server/src/db/repositories/skill-repository.test.ts` (如存在则修改)
+- `packages/server/src/core/skill/runner-tools.ts` (修改 — enum + required)
+- `packages/server/src/core/skill/runner.ts` (修改 — 参数校验)
+- `packages/server/src/core/skill/runner.test.ts` (修改 — 新增 list 测试)
 
 **创建时间**: (自动填充)
 **完成时间**: -
