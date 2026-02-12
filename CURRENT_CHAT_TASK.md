@@ -1,12 +1,12 @@
-### [pending] quality-checker.ts 重复定义 RiskLevel — 与 shared 模块不同步风险
+### [pending] token-counting.ts 7 处 `any` 类型 — TypeScript strict 模式下的类型安全漏洞
 
-**ID**: chat-041
+**ID**: chat-042
 **优先级**: P2
-**模块路径**: packages/server/src/ai/quality-checker.ts
-**发现的问题**: 第 24-32 行定义了本地 `RiskLevel` 常量 `{ GREEN, YELLOW, RED, CRITICAL, FORBIDDEN }`，而 `@aiinstaller/shared/security` 已有完整的 RiskLevel 定义（5 个级别 + 类型）。两份定义需要手动保持同步。如果 shared 模块新增一个风险级别（如 `ORANGE`），`quality-checker.ts` 不会自动感知。
-**改进方案**: 删除 `quality-checker.ts` 中的本地 `RiskLevel` 定义，改为从 `@aiinstaller/shared` 导入。检查值映射是否完全一致（shared 用 `'green'|'yellow'|'red'|'critical'|'forbidden'` 字符串），确保 quality-checker 的 switch/if 逻辑兼容。
-**验收标准**: 1) quality-checker.ts 不再有本地 RiskLevel 定义 2) 从 shared 导入并正常工作 3) 类型检查通过 4) 现有测试不变
-**影响范围**: `packages/server/src/ai/quality-checker.ts`
+**模块路径**: packages/server/src/ai/token-counting.ts
+**发现的问题**: 第 72、110、139、156、192、354、373 行共 7 处使用 `any` 类型参数。例如 `extractClaudeTokens(response: any)` — 调用方可传入任意值（string、null、undefined）且编译器不会报错。`isValidTokenUsage(usage: any)` 和 `safeTokenUsage(usage: any)` 是 type guard 函数但用 `any` 入参，丧失了 TypeScript 的类型收窄优势。
+**改进方案**: 1) 将所有 `any` 改为 `unknown` 2) 在函数体内使用类型收窄（`typeof`/`in` 检查）访问属性 3) 对 `isValidTokenUsage` 使用 `is` 类型谓词 `(usage: unknown): usage is TokenUsage` 4) 所有 extract 函数入参改为 `unknown`。
+**验收标准**: 1) token-counting.ts 零 `any` 类型 2) 所有函数使用 `unknown` + 运行时类型收窄 3) 现有测试全部通过 4) TypeScript strict 无新增错误
+**影响范围**: `packages/server/src/ai/token-counting.ts`
 **创建时间**: (自动填充)
 **完成时间**: -
 
