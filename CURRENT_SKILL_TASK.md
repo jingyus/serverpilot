@@ -1,50 +1,51 @@
-### [pending] Dashboard — Skills 管理页面 + UI 组件
+### [pending] SSE 推送 — Skill 执行实时进度流
 
-**ID**: skill-009
+**ID**: skill-010
 **优先级**: P3
-**模块路径**: packages/dashboard/src/pages/ + packages/dashboard/src/components/skill/
-**当前状态**: 全部不存在 — 依赖 skill-008 (类型 + Store) 完成后开发
+**模块路径**: packages/server/src/core/skill/ + packages/server/src/api/routes/ + packages/dashboard/src/
+**当前状态**: 不存在 — Skill 执行目前是同步等待返回最终结果，无中间进度推送。已有 MetricsBus SSE 可参考
 **实现方案**:
 
-1. **pages/Skills.tsx** (~250 行):
-   - 顶部: 标题 + "安装 Skill" 按钮
-   - Tab 切换: "已安装" / "可用" (marketplace)
-   - 已安装 Tab: SkillCard 列表 (显示名称、版本、状态、操作按钮)
-   - 可用 Tab: AvailableSkillCard 列表 (显示名称、描述、标签、安装按钮)
-   - 空状态: 无 Skill 时引导用户安装
-2. **components/skill/SkillCard.tsx** (~120 行):
-   - 卡片展示: icon + 名称 + 版本 + source badge + status badge
-   - 操作: 启用/暂停 toggle, 配置按钮, 执行按钮, 卸载按钮
-   - 状态颜色: enabled=绿, paused=灰, error=红, installed/configured=蓝
-3. **components/skill/SkillConfigModal.tsx** (~150 行):
-   - Modal 弹窗: 展示 Skill 的 inputs 字段
-   - 动态表单生成: 根据 input.type (string/number/boolean/select/string[]) 渲染对应控件
-   - 必填/可选标记、默认值填充
-   - 提交 → `configureSkill(id, config)`
-4. **components/skill/ExecutionHistory.tsx** (~100 行):
-   - 执行历史列表: 时间、触发类型、状态、耗时、步数
-   - 状态 badge: success=绿, failed=红, running=蓝 动画, timeout=黄
-   - 点击展开查看执行详情 (result JSON)
-5. **pages/Skills.test.tsx** (~150 行):
-   - 渲染测试: 已安装列表、可用列表、空状态
-   - 交互测试: 安装/卸载/启用/暂停按钮点击
-   - Modal 测试: 配置表单提交
-   - 测试 ≥ 12 个
+1. **core/skill/skill-event-bus.ts** (~60 行):
+   - `SkillEventBus` — EventEmitter 封装，发布 Skill 执行进度事件
+   - 事件类型: `step` (工具调用进度), `log` (AI 思考日志), `completed` (执行完成), `error` (错误)
+   - 单例: `getSkillEventBus()` / `_resetSkillEventBus()`
+   - 频道: `skill:${executionId}` — 每次执行一个独立事件流
+2. **更新 runner.ts** — 在 agentic loop 的关键节点发布事件:
+   - 工具调用前: `emit('step', { tool, input })` — 通知前端 "正在执行 shell: ls -la"
+   - 工具调用后: `emit('step', { tool, result, success })` — 通知结果
+   - AI 思考: `emit('log', { text })` — AI 的文本输出
+   - 完成/超时: `emit('completed', { result })` 或 `emit('error', { message })`
+3. **api/routes/skills.ts** — 新增 SSE 端点:
+   - `GET /api/v1/skills/:id/executions/:eid/stream` — SSE 连接
+   - 订阅 `SkillEventBus` 对应 executionId 的事件
+   - 中间件: requireAuth + requirePermission('skill:view')
+4. **Dashboard 集成**:
+   - `api/sse.ts` 新增 `createSkillExecutionSSE(executionId)` 方法
+   - `stores/skills.ts` 新增 `streamExecution(executionId)` 方法
+   - `components/skill/ExecutionStream.tsx` (~100 行) — 实时进度 UI:
+     - 步骤列表: 每步显示工具名、输入、结果、状态图标
+     - AI 思考文本实时追加
+     - 完成/失败状态自动切换
+5. **测试**:
+   - `skill-event-bus.test.ts` (~50 行): emit/subscribe/unsubscribe
+   - SSE 端点测试 (整合到 skills.test.ts): 连接 → 收到事件 → 断开
 
 **验收标准**:
-- Skills 页面展示已安装 Skill 列表和可用 Skill marketplace
-- 能完成安装 → 配置 → 启用 → 执行 → 查看历史的完整 UI 流程
-- 配置 Modal 能根据 Skill 的 inputs 定义动态生成表单
-- 响应式布局 (移动端友好)
-- Tailwind CSS 风格一致
-- 测试 ≥ 12 个
+- 手动执行 Skill 后，前端实时显示每一步工具调用的进度
+- SSE 连接自动重连 (参考 MetricsSSE 的 exponential backoff)
+- 执行完成后 SSE 自动关闭
+- 事件总线不泄漏 (执行完成后清理 listener)
+- 测试 ≥ 8 个
 
 **影响范围**:
-- `packages/dashboard/src/pages/Skills.tsx` (新建)
-- `packages/dashboard/src/pages/Skills.test.tsx` (新建)
-- `packages/dashboard/src/components/skill/SkillCard.tsx` (新建)
-- `packages/dashboard/src/components/skill/SkillConfigModal.tsx` (新建)
-- `packages/dashboard/src/components/skill/ExecutionHistory.tsx` (新建)
+- `packages/server/src/core/skill/skill-event-bus.ts` (新建)
+- `packages/server/src/core/skill/skill-event-bus.test.ts` (新建)
+- `packages/server/src/core/skill/runner.ts` (修改 — 接入事件发布)
+- `packages/server/src/api/routes/skills.ts` (修改 — 新增 SSE 端点)
+- `packages/dashboard/src/api/sse.ts` (修改 — 新增 Skill SSE)
+- `packages/dashboard/src/stores/skills.ts` (修改 — 新增 stream 方法)
+- `packages/dashboard/src/components/skill/ExecutionStream.tsx` (新建)
 
 **创建时间**: (自动填充)
 **完成时间**: -
