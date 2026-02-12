@@ -574,9 +574,9 @@ export async function startServer(): Promise<InstallServer> {
   });
   logger.info({ operation: 'startup' }, 'RAG pipeline initialized');
 
-  // Start the skill engine
+  // Start the skill engine (loads trigger registrations for enabled skills)
   const skillEngine = getSkillEngine();
-  skillEngine.start();
+  await skillEngine.start();
   logger.info({ operation: 'startup' }, 'Skill engine started');
 
   // Start the metrics cleanup scheduler

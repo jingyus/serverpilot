@@ -34,6 +34,22 @@ vi.mock('./runner.js', () => ({
   })),
 }));
 
+// Mock TriggerManager to isolate engine tests from trigger logic
+vi.mock('./trigger-manager.js', () => {
+  const mockManager = {
+    start: vi.fn().mockResolvedValue(undefined),
+    stop: vi.fn(),
+    registerSkill: vi.fn().mockResolvedValue(undefined),
+    unregisterSkill: vi.fn(),
+    isRunning: vi.fn().mockReturnValue(false),
+  };
+  return {
+    TriggerManager: vi.fn().mockImplementation(() => mockManager),
+    setTriggerManager: vi.fn(),
+    _resetTriggerManager: vi.fn(),
+  };
+});
+
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -139,9 +155,9 @@ afterEach(async () => {
 // ============================================================================
 
 describe('SkillEngine lifecycle', () => {
-  it('should start and stop without error', () => {
-    engine.start();
-    engine.start(); // idempotent
+  it('should start and stop without error', async () => {
+    await engine.start();
+    await engine.start(); // idempotent
     engine.stop();
     engine.stop(); // idempotent
   });

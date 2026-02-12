@@ -39,6 +39,7 @@ import type {
   SkillRunParams,
 } from './types.js';
 import { SkillRunner } from './runner.js';
+import { TriggerManager, setTriggerManager, _resetTriggerManager } from './trigger-manager.js';
 
 const logger = createContextLogger({ module: 'skill-engine' });
 
@@ -66,6 +67,7 @@ export class SkillEngine {
   private projectRoot: string;
   private repo: SkillRepository;
   private running = false;
+  private triggerManager: TriggerManager | null = null;
 
   constructor(projectRoot: string, repo?: SkillRepository) {
     this.projectRoot = resolve(projectRoot);
@@ -77,10 +79,21 @@ export class SkillEngine {
   // Lifecycle
   // --------------------------------------------------------------------------
 
-  /** Start background services (TriggerManager — deferred to future task). */
-  start(): void {
+  /** Start background services including TriggerManager. */
+  async start(): Promise<void> {
     if (this.running) return;
     this.running = true;
+
+    // Create and start TriggerManager
+    this.triggerManager = new TriggerManager(
+      async (skillId, serverId, userId, triggerType) => {
+        await this.execute({ skillId, serverId, userId, triggerType });
+      },
+      this.repo,
+    );
+    setTriggerManager(this.triggerManager);
+    await this.triggerManager.start();
+
     logger.info('SkillEngine started');
   }
 
@@ -88,6 +101,13 @@ export class SkillEngine {
   stop(): void {
     if (!this.running) return;
     this.running = false;
+
+    if (this.triggerManager) {
+      this.triggerManager.stop();
+      this.triggerManager = null;
+      _resetTriggerManager();
+    }
+
     logger.info('SkillEngine stopped');
   }
 
@@ -144,6 +164,10 @@ export class SkillEngine {
     if (!skill) {
       throw new Error(`Skill not found: ${skillId}`);
     }
+
+    // Unregister triggers before removing from DB
+    this.triggerManager?.unregisterSkill(skillId);
+
     await this.repo.uninstall(skillId);
     logger.info({ skillId, name: skill.name }, 'Skill uninstalled');
   }
@@ -193,6 +217,19 @@ export class SkillEngine {
     }
 
     await this.repo.updateStatus(skillId, newStatus);
+
+    // Update trigger registration based on new status
+    if (this.triggerManager) {
+      if (newStatus === 'enabled') {
+        const updatedSkill = await this.repo.findById(skillId);
+        if (updatedSkill) {
+          await this.triggerManager.registerSkill(updatedSkill);
+        }
+      } else if (newStatus === 'paused' || newStatus === 'error') {
+        this.triggerManager.unregisterSkill(skillId);
+      }
+    }
+
     logger.info(
       { skillId, name: skill.name, from: skill.status, to: newStatus },
       'Skill status updated',
