@@ -7,9 +7,10 @@
  * conversation context building, and DB persistence.
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { SessionManager } from './manager.js';
 import { InMemorySessionRepository } from '../../db/repositories/session-repository.js';
+import { logger } from '../../utils/logger.js';
 
 const USER_ID = 'user-1';
 const SERVER_ID = 'server-1';
@@ -481,5 +482,133 @@ describe('persistence', () => {
     const loaded = await mgr2.getSession(session.id, USER_ID);
     expect(loaded).toBeDefined();
     expect(mgr2.getPlan(session.id, 'p1')).toBeUndefined();
+  });
+});
+
+// ============================================================================
+// Persistence error handling (retry + logging)
+// ============================================================================
+
+describe('addMessage persistence error handling', () => {
+  it('should log warning and retry when DB write fails once then succeeds', async () => {
+    const session = await mgr.getOrCreate(SERVER_ID, USER_ID);
+    const warnSpy = vi.spyOn(logger, 'warn');
+    const infoSpy = vi.spyOn(logger, 'info');
+    const errorSpy = vi.spyOn(logger, 'error');
+
+    let callCount = 0;
+    vi.spyOn(repo, 'addMessage').mockImplementation(async () => {
+      callCount++;
+      if (callCount === 1) throw new Error('SQLITE_BUSY');
+      return true;
+    });
+
+    await mgr.addMessage(session.id, USER_ID, 'user', 'Hello');
+
+    // Wait for the async persist (first call + 500ms delay + retry)
+    await new Promise((r) => setTimeout(r, 700));
+
+    expect(callCount).toBe(2);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: session.id }),
+      expect.stringContaining('retrying'),
+    );
+    expect(infoSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: session.id }),
+      expect.stringContaining('retry succeeded'),
+    );
+    expect(errorSpy).not.toHaveBeenCalled();
+
+    warnSpy.mockRestore();
+    infoSpy.mockRestore();
+    errorSpy.mockRestore();
+  });
+
+  it('should log error when DB write fails on both attempts', async () => {
+    const session = await mgr.getOrCreate(SERVER_ID, USER_ID);
+    const warnSpy = vi.spyOn(logger, 'warn');
+    const errorSpy = vi.spyOn(logger, 'error');
+
+    vi.spyOn(repo, 'addMessage').mockRejectedValue(new Error('disk full'));
+
+    await mgr.addMessage(session.id, USER_ID, 'user', 'Hello');
+
+    // Wait for the async persist (first call + 500ms delay + retry)
+    await new Promise((r) => setTimeout(r, 700));
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: session.id }),
+      expect.stringContaining('retrying'),
+    );
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: session.id }),
+      expect.stringContaining('failed after retry'),
+    );
+
+    warnSpy.mockRestore();
+    errorSpy.mockRestore();
+  });
+
+  it('should still return message even when persistence fails', async () => {
+    const session = await mgr.getOrCreate(SERVER_ID, USER_ID);
+    vi.spyOn(repo, 'addMessage').mockRejectedValue(new Error('DB error'));
+
+    const msg = await mgr.addMessage(session.id, USER_ID, 'user', 'Hello');
+
+    // Message returned immediately (not blocked by persistence)
+    expect(msg.content).toBe('Hello');
+    expect(msg.role).toBe('user');
+    expect(msg.id).toBeDefined();
+
+    // Message is in the in-memory cache
+    expect(session.messages).toHaveLength(1);
+    expect(session.messages[0].content).toBe('Hello');
+
+    // Wait for async persist to complete
+    await new Promise((r) => setTimeout(r, 700));
+  });
+
+  it('should not log anything when persistence succeeds on first try', async () => {
+    const session = await mgr.getOrCreate(SERVER_ID, USER_ID);
+    const warnSpy = vi.spyOn(logger, 'warn');
+    const errorSpy = vi.spyOn(logger, 'error');
+
+    // repo.addMessage works normally (InMemorySessionRepository)
+    await mgr.addMessage(session.id, USER_ID, 'user', 'Hello');
+
+    // Wait for async persist
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(warnSpy).not.toHaveBeenCalled();
+    expect(errorSpy).not.toHaveBeenCalled();
+
+    warnSpy.mockRestore();
+    errorSpy.mockRestore();
+  });
+
+  it('should not block SSE response while retrying', async () => {
+    const session = await mgr.getOrCreate(SERVER_ID, USER_ID);
+
+    let callCount = 0;
+    vi.spyOn(repo, 'addMessage').mockImplementation(async () => {
+      callCount++;
+      if (callCount === 1) throw new Error('SQLITE_BUSY');
+      return true;
+    });
+
+    const start = Date.now();
+    const msg = await mgr.addMessage(session.id, USER_ID, 'user', 'Hello');
+    const elapsed = Date.now() - start;
+
+    // addMessage should return immediately (< 50ms), not wait 500ms for retry
+    expect(elapsed).toBeLessThan(50);
+    expect(msg.content).toBe('Hello');
+
+    // Retry is still pending at this point
+    expect(callCount).toBe(1);
+
+    // Wait for retry to complete
+    await new Promise((r) => setTimeout(r, 700));
+    expect(callCount).toBe(2);
   });
 });

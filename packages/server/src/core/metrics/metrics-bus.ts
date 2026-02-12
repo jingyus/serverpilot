@@ -37,6 +37,7 @@ class MetricsBus {
   /** Publish a new metric point for a server. */
   publish(serverId: string, metric: MetricEvent): void {
     this.emitter.emit(`metric:${serverId}`, metric);
+    this.emitter.emit('metric:*', metric);
   }
 
   /** Subscribe to metric updates for a specific server. Returns unsubscribe fn. */
@@ -45,6 +46,14 @@ class MetricsBus {
     this.emitter.on(event, listener);
     return () => {
       this.emitter.off(event, listener);
+    };
+  }
+
+  /** Subscribe to metric updates for ALL servers. Returns unsubscribe fn. */
+  subscribeAll(listener: MetricListener): () => void {
+    this.emitter.on('metric:*', listener);
+    return () => {
+      this.emitter.off('metric:*', listener);
     };
   }
 

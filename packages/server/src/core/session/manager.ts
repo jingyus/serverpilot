@@ -18,6 +18,7 @@ import {
 import type { SessionRepository } from '../../db/repositories/session-repository.js';
 import type { SessionMessage } from '../../db/schema.js';
 import { estimateTokens } from '../../ai/profile-context.js';
+import { logger } from '../../utils/logger.js';
 
 // ============================================================================
 // Types
@@ -163,9 +164,7 @@ export class SessionManager {
     session.updatedAt = new Date().toISOString();
 
     // Persist to DB (fire-and-forget to not block SSE streaming)
-    this.repo.addMessage(sessionId, userId, toSessionMessage(message)).catch(() => {
-      // Already in memory cache, log silently handled
-    });
+    this.persistMessage(sessionId, userId, toSessionMessage(message));
 
     return message;
   }
@@ -355,6 +354,35 @@ export class SessionManager {
     }
 
     return selected;
+  }
+
+  /**
+   * Persist a message to the DB with one retry.
+   * Never throws — errors are logged but don't block the SSE stream.
+   */
+  private async persistMessage(
+    sessionId: string,
+    userId: string,
+    message: SessionMessage,
+  ): Promise<void> {
+    try {
+      await this.repo.addMessage(sessionId, userId, message);
+    } catch (firstError) {
+      logger.warn(
+        { sessionId, messageId: message.id, error: firstError },
+        'Message persistence failed, retrying in 500ms',
+      );
+      await new Promise((r) => setTimeout(r, 500));
+      try {
+        await this.repo.addMessage(sessionId, userId, message);
+        logger.info({ sessionId, messageId: message.id }, 'Message persistence retry succeeded');
+      } catch (retryError) {
+        logger.error(
+          { sessionId, messageId: message.id, error: retryError },
+          'Message persistence failed after retry — message only in memory cache',
+        );
+      }
+    }
   }
 
   /** Convert DB session to in-memory Session format. */
