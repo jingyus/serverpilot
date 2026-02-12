@@ -927,7 +927,7 @@ export const installedSkills = sqliteTable(
 // ============================================================================
 
 export type SkillTriggerType = 'manual' | 'cron' | 'event' | 'threshold';
-export type SkillExecutionStatus = 'running' | 'success' | 'failed' | 'timeout';
+export type SkillExecutionStatus = 'pending_confirmation' | 'running' | 'success' | 'failed' | 'timeout' | 'cancelled';
 
 export const skillExecutions = sqliteTable(
   'skill_executions',
@@ -946,7 +946,7 @@ export const skillExecutions = sqliteTable(
       enum: ['manual', 'cron', 'event', 'threshold'],
     }).notNull(),
     status: text('status', {
-      enum: ['running', 'success', 'failed', 'timeout'],
+      enum: ['pending_confirmation', 'running', 'success', 'failed', 'timeout', 'cancelled'],
     })
       .default('running')
       .notNull(),

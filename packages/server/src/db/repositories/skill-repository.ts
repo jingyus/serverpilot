@@ -73,6 +73,8 @@ export interface SkillRepository {
   ): Promise<void>;
   listExecutions(skillId: string, limit: number): Promise<SkillExecution[]>;
   findExecutionById(id: string): Promise<SkillExecution | null>;
+  listPendingConfirmations(userId: string): Promise<SkillExecution[]>;
+  expirePendingConfirmations(cutoff: Date): Promise<number>;
 }
 
 // ============================================================================
@@ -224,6 +226,31 @@ export class DrizzleSkillRepository implements SkillRepository {
       .limit(1)
       .all();
     return rows[0] ? this.toExecution(rows[0]) : null;
+  }
+
+  async listPendingConfirmations(userId: string): Promise<SkillExecution[]> {
+    const rows = this.db
+      .select()
+      .from(skillExecutions)
+      .where(and(eq(skillExecutions.userId, userId), eq(skillExecutions.status, 'pending_confirmation')))
+      .orderBy(desc(skillExecutions.startedAt))
+      .all();
+    return rows.map((r) => this.toExecution(r));
+  }
+
+  async expirePendingConfirmations(cutoff: Date): Promise<number> {
+    const rows = this.db.select().from(skillExecutions)
+      .where(eq(skillExecutions.status, 'pending_confirmation')).all();
+    let expired = 0;
+    for (const row of rows) {
+      if (row.startedAt && row.startedAt < cutoff) {
+        this.db.update(skillExecutions)
+          .set({ status: 'cancelled', result: { reason: 'expired' } as Record<string, unknown>, completedAt: new Date() })
+          .where(eq(skillExecutions.id, row.id)).run();
+        expired++;
+      }
+    }
+    return expired;
   }
 
   // --------------------------------------------------------------------------
@@ -380,6 +407,26 @@ export class InMemorySkillRepository implements SkillRepository {
 
   async findExecutionById(id: string): Promise<SkillExecution | null> {
     return this.executions.find((e) => e.id === id) ?? null;
+  }
+
+  async listPendingConfirmations(userId: string): Promise<SkillExecution[]> {
+    return this.executions
+      .filter((e) => e.userId === userId && e.status === 'pending_confirmation')
+      .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+  }
+
+  async expirePendingConfirmations(cutoff: Date): Promise<number> {
+    const cutoffStr = cutoff.toISOString();
+    let expired = 0;
+    for (const e of this.executions) {
+      if (e.status === 'pending_confirmation' && e.startedAt < cutoffStr) {
+        e.status = 'cancelled';
+        e.result = { reason: 'expired' };
+        e.completedAt = new Date().toISOString();
+        expired++;
+      }
+    }
+    return expired;
   }
 }
 

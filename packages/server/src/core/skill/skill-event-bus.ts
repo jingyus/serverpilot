@@ -16,7 +16,7 @@ import { EventEmitter } from 'node:events';
 // Event Types
 // ============================================================================
 
-export type SkillEventType = 'step' | 'log' | 'completed' | 'error';
+export type SkillEventType = 'step' | 'log' | 'completed' | 'error' | 'confirmation_required';
 
 export interface SkillStepEvent {
   type: 'step';
@@ -54,11 +54,22 @@ export interface SkillErrorEvent {
   message: string;
 }
 
+export interface SkillConfirmationEvent {
+  type: 'confirmation_required';
+  executionId: string;
+  timestamp: string;
+  skillId: string;
+  skillName: string;
+  serverId: string;
+  triggerType: string;
+}
+
 export type SkillEvent =
   | SkillStepEvent
   | SkillLogEvent
   | SkillCompletedEvent
-  | SkillErrorEvent;
+  | SkillErrorEvent
+  | SkillConfirmationEvent;
 
 type SkillEventListener = (event: SkillEvent) => void;
 
