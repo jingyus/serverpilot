@@ -1,20 +1,19 @@
-### [pending] 会话内存缓存无驱逐机制 — 长期运行服务器内存持续增长
+### [pending] SSE 重连复用原始请求体 — 可能导致服务端重复处理用户消息
 
-**ID**: chat-018
+**ID**: chat-019
 **优先级**: P2
-**模块路径**: packages/server/src/core/session/manager.ts
-**发现的问题**: `manager.ts:103` 的 `private cache = new Map<string, Session>()` 在 `getOrCreate()` 和 `getSession()` 时填充，但除了 `deleteSession()` 外无任何驱逐机制。每个 Session 对象包含完整的 `messages[]` 数组和 `plans: Map`。服务器持续运行时，所有曾被访问的会话永久驻留内存。100 个用户各 10 个会话，每个会话 50 条消息，可能消耗数百 MB 内存。
+**模块路径**: packages/dashboard/src/api/sse.ts
+**发现的问题**: `sse.ts:172` 重连时复用创建连接时的 `body` 闭包（包含原始 `message` 字段）。Chat SSE 是 POST 请求，重连会再次发送 `{ message: "用户的问题", sessionId: "xxx" }`。如果服务端的 `/chat/:serverId` 路由不是幂等的（每次都创建新 assistant 消息和 AI 调用），重连会导致用户消息被重复处理、AI 重复回答。
 **改进方案**: 
-1. 添加 LRU 驱逐策略：最多缓存 100 个会话（可配置），超限时淘汰最久未访问的
-2. 或添加 TTL：会话 30 分钟未访问从缓存移除（DB 中仍保留）
-3. 使用 `updatedAt` 时间戳排序，驱逐时将 dirty 数据刷回 DB
-4. 保留 `plans` 在缓存驱逐时的处理（plans 是纯内存的，驱逐后丢失——需记录警告或拒绝驱逐活跃执行的会话）
+1. 重连时移除 `message` 字段，只发送 `{ sessionId, reconnect: true }`
+2. 服务端识别 `reconnect: true` 后恢复现有 SSE 流（而非开始新对话）
+3. 或改为 GET 请求 + EventSource 标准协议（可利用浏览器原生重连的 `Last-Event-Id`）
+4. 至少：在重连时添加 `X-Reconnect: true` 头部让服务端判断
 **验收标准**: 
-- 缓存大小有上限，超限时自动驱逐
-- 驱逐后的会话再次访问时从 DB 重新加载
-- 活跃执行中的会话不被驱逐
-- 新增测试覆盖缓存驱逐和重新加载
-**影响范围**: packages/server/src/core/session/manager.ts
+- 网络断开重连后不产生重复的 AI 回复
+- 重连后 SSE 流从断点恢复（或至少不重复已发送的内容）
+- 新增测试覆盖重连幂等性
+**影响范围**: packages/dashboard/src/api/sse.ts, packages/server/src/api/routes/chat.ts
 **创建时间**: (自动填充)
 **完成时间**: -
 
