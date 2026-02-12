@@ -980,3 +980,196 @@ describe('TriggerManager startup loading', () => {
     expect(manager.getThresholdCount()).toBe(1);
   });
 });
+
+// ============================================================================
+// WebhookDispatcher → TriggerManager integration (subscribeToDispatcher)
+// ============================================================================
+
+function createMockWebhookRepo(): WebhookRepository {
+  return {
+    create: vi.fn(),
+    findById: vi.fn(),
+    findByIdInternal: vi.fn(),
+    listByUser: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+    findEnabledByEvent: vi.fn().mockResolvedValue([]),
+    createDelivery: vi.fn().mockResolvedValue({
+      id: 'del-1', webhookId: 'wh-1', eventType: 'task.completed',
+      payload: {}, status: 'pending', httpStatus: null, responseBody: null,
+      attempts: 0, lastAttemptAt: null, nextRetryAt: null,
+      createdAt: new Date().toISOString(),
+    }),
+    updateDeliveryStatus: vi.fn().mockResolvedValue(true),
+    findPendingRetries: vi.fn().mockResolvedValue([]),
+    listDeliveries: vi.fn().mockResolvedValue({ deliveries: [], total: 0 }),
+  };
+}
+
+describe('TriggerManager subscribeToDispatcher', () => {
+  let webhookRepo: WebhookRepository;
+  let dispatcher: WebhookDispatcher;
+
+  beforeEach(() => {
+    webhookRepo = createMockWebhookRepo();
+    dispatcher = new WebhookDispatcher(webhookRepo, { retryIntervalMs: 60_000 });
+  });
+
+  afterEach(() => {
+    dispatcher.stop();
+    _resetWebhookDispatcher();
+  });
+
+  it('should trigger skill when dispatcher emits a matching event', async () => {
+    const manifest = createMockManifest({
+      triggers: [{ type: 'event', on: 'alert.triggered' }],
+    });
+
+    manager.registerTriggersFromManifest('skill-1', 'user-1', manifest);
+    manager.subscribeToDispatcher(dispatcher);
+
+    await dispatcher.dispatch({
+      type: 'alert.triggered',
+      userId: 'user-1',
+      data: { serverId: 'server-1', severity: 'critical' },
+    });
+
+    // Allow async handleEvent promise to settle
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(executeCallback).toHaveBeenCalledWith(
+      'skill-1', 'server-1', 'user-1', 'event', undefined,
+    );
+  });
+
+  it('should not trigger skill for non-matching event type', async () => {
+    const manifest = createMockManifest({
+      triggers: [{ type: 'event', on: 'alert.triggered' }],
+    });
+
+    manager.registerTriggersFromManifest('skill-1', 'user-1', manifest);
+    manager.subscribeToDispatcher(dispatcher);
+
+    await dispatcher.dispatch({
+      type: 'task.completed',
+      userId: 'user-1',
+      data: { serverId: 'server-1' },
+    });
+
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(executeCallback).not.toHaveBeenCalled();
+  });
+
+  it('should trigger skill even when no webhooks match the event', async () => {
+    (webhookRepo.findEnabledByEvent as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+
+    const manifest = createMockManifest({
+      triggers: [{ type: 'event', on: 'server.offline' }],
+    });
+
+    manager.registerTriggersFromManifest('skill-1', 'user-1', manifest);
+    manager.subscribeToDispatcher(dispatcher);
+
+    await dispatcher.dispatch({
+      type: 'server.offline',
+      userId: 'user-1',
+      data: { serverId: 'server-1' },
+    });
+
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(executeCallback).toHaveBeenCalledWith(
+      'skill-1', 'server-1', 'user-1', 'event', undefined,
+    );
+  });
+
+  it('should unsubscribe from dispatcher when TriggerManager stops', async () => {
+    const manifest = createMockManifest({
+      triggers: [{ type: 'event', on: 'alert.triggered' }],
+    });
+
+    manager.registerTriggersFromManifest('skill-1', 'user-1', manifest);
+    manager.subscribeToDispatcher(dispatcher);
+
+    // First dispatch — should trigger
+    await dispatcher.dispatch({
+      type: 'alert.triggered',
+      userId: 'user-1',
+      data: { serverId: 'server-1' },
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(executeCallback).toHaveBeenCalledTimes(1);
+
+    // Stop — should unsubscribe and clear triggers
+    manager.stop();
+    executeCallback.mockClear();
+
+    // Dispatch again — should NOT trigger (unsubscribed)
+    await dispatcher.dispatch({
+      type: 'alert.triggered',
+      userId: 'user-1',
+      data: { serverId: 'server-2' },
+    });
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(executeCallback).not.toHaveBeenCalled();
+  });
+
+  it('should replace previous subscription when called again', async () => {
+    const manifest = createMockManifest({
+      triggers: [{ type: 'event', on: 'alert.triggered' }],
+    });
+
+    manager.registerTriggersFromManifest('skill-1', 'user-1', manifest);
+
+    // Subscribe twice
+    manager.subscribeToDispatcher(dispatcher);
+    manager.subscribeToDispatcher(dispatcher);
+
+    await dispatcher.dispatch({
+      type: 'alert.triggered',
+      userId: 'user-1',
+      data: { serverId: 'server-1' },
+    });
+
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Should only be called once (not duplicated from double subscription)
+    expect(executeCallback).toHaveBeenCalledTimes(1);
+  });
+
+  it('should handle multiple event types from dispatcher', async () => {
+    const manifest = createMockManifest({
+      triggers: [
+        { type: 'event', on: 'alert.triggered' },
+        { type: 'event', on: 'server.offline' },
+      ],
+    });
+
+    manager.registerTriggersFromManifest('skill-1', 'user-1', manifest);
+    manager.subscribeToDispatcher(dispatcher);
+
+    await dispatcher.dispatch({
+      type: 'alert.triggered',
+      userId: 'user-1',
+      data: { serverId: 'server-1' },
+    });
+
+    await dispatcher.dispatch({
+      type: 'server.offline',
+      userId: 'user-1',
+      data: { serverId: 'server-2' },
+    });
+
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(executeCallback).toHaveBeenCalledTimes(2);
+    expect(executeCallback).toHaveBeenCalledWith(
+      'skill-1', 'server-1', 'user-1', 'event', undefined,
+    );
+    expect(executeCallback).toHaveBeenCalledWith(
+      'skill-1', 'server-2', 'user-1', 'event', undefined,
+    );
+  });
+});

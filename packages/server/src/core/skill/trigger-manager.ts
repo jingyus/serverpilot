@@ -111,6 +111,12 @@ export class TriggerManager {
   }
 
   stop(): void {
+    // Always unsubscribe from dispatcher (can be set without start())
+    if (this.dispatcherUnsubscribe) {
+      this.dispatcherUnsubscribe();
+      this.dispatcherUnsubscribe = null;
+    }
+
     if (!this.running) return;
     this.running = false;
 
@@ -121,10 +127,6 @@ export class TriggerManager {
     if (this.metricsUnsubscribe) {
       this.metricsUnsubscribe();
       this.metricsUnsubscribe = null;
-    }
-    if (this.dispatcherUnsubscribe) {
-      this.dispatcherUnsubscribe();
-      this.dispatcherUnsubscribe = null;
     }
 
     this.cronJobs.clear();

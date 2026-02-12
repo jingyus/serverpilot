@@ -275,6 +275,13 @@ export async function executePlanSteps(opts: ExecutePlanStepsOptions): Promise<E
   // Track this plan execution for the cancel endpoint
   activePlanExecutions.set(planId, '');
 
+  // Detect client disconnect: set flag when SSE stream is aborted
+  let streamAborted = false;
+  stream.onAbort(() => {
+    streamAborted = true;
+    logger.info({ operation: 'plan_execute', serverId, planId }, 'Client disconnected, aborting plan execution');
+  });
+
   // Track current step for real-time output routing
   let currentStepId: string | null = null;
   // Track whether real-time output was streamed (to avoid duplicate output on completion)
@@ -283,14 +290,28 @@ export async function executePlanSteps(opts: ExecutePlanStepsOptions): Promise<E
   // Register a progress listener scoped to this plan execution.
   executor.addProgressListener(planId, (executionId, _status, output) => {
     activePlanExecutions.set(planId, executionId);
-    if (output && currentStepId) {
+    if (output && currentStepId && !streamAborted) {
       hasStreamedOutput = true;
       stream.writeSSE({ event: 'output', data: JSON.stringify({ stepId: currentStepId, content: output }) })
-        .catch(() => { /* SSE write failed, stream likely closed */ });
+        .catch(() => { streamAborted = true; });
     }
   });
 
   for (const step of plan.steps) {
+    // Abort if client disconnected
+    if (streamAborted) {
+      logger.info({ operation: 'plan_execute', serverId, planId, stoppedBefore: step.id }, 'Execution aborted: client disconnected');
+      await auditLogger.log({
+        serverId, userId, sessionId,
+        command: `[plan:${planId}] execution aborted: client disconnected`,
+        validation: validateCommand('echo aborted'),
+      });
+      cancelled = true;
+      allSucceeded = false;
+      firstFailedStep = step.id;
+      break;
+    }
+
     if (!activePlanExecutions.has(planId)) {
       cancelled = true;
       allSucceeded = false;
@@ -442,8 +463,8 @@ export async function executePlanSteps(opts: ExecutePlanStepsOptions): Promise<E
   executor.removeProgressListener(planId);
   sessionMgr.removePlan(sessionId, planId);
 
-  // Post-execution AI summary
-  if (completedSteps.length > 0 && !cancelled) {
+  // Post-execution AI summary — skip if client disconnected
+  if (completedSteps.length > 0 && !cancelled && !streamAborted) {
     try {
       const agent = getChatAIAgent();
       if (agent) {
@@ -477,17 +498,21 @@ export async function executePlanSteps(opts: ExecutePlanStepsOptions): Promise<E
     }
   }
 
-  const resultMessage = cancelled
-    ? `Plan execution cancelled at step ${firstFailedStep}: ${plan.description}`
-    : allSucceeded
-      ? `Plan executed successfully: ${plan.description}`
-      : `Plan execution failed at step ${firstFailedStep}: ${plan.description}`;
+  const resultMessage = streamAborted
+    ? `Plan execution aborted (client disconnected) at step ${firstFailedStep}: ${plan.description}`
+    : cancelled
+      ? `Plan execution cancelled at step ${firstFailedStep}: ${plan.description}`
+      : allSucceeded
+        ? `Plan executed successfully: ${plan.description}`
+        : `Plan execution failed at step ${firstFailedStep}: ${plan.description}`;
   await sessionMgr.addMessage(sessionId, userId, 'system', resultMessage);
 
-  await stream.writeSSE({
-    event: 'complete',
-    data: JSON.stringify({ success: allSucceeded, operationId, failedAtStep: firstFailedStep, cancelled }),
-  });
+  if (!streamAborted) {
+    await stream.writeSSE({
+      event: 'complete',
+      data: JSON.stringify({ success: allSucceeded, operationId, failedAtStep: firstFailedStep, cancelled }),
+    });
+  }
 
   return { success: allSucceeded, operationId, failedAtStep: firstFailedStep, cancelled };
 }

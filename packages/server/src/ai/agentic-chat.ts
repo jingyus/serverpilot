@@ -187,6 +187,13 @@ export class AgenticChatEngine {
       return { success: false, turns: 0, toolCallCount: 0, finalText: '' };
     }
 
+    // Detect client disconnect via SSE stream abort
+    let streamAborted = false;
+    stream.onAbort(() => {
+      streamAborted = true;
+      logger.info({ operation: 'agentic_loop', serverId }, 'Client disconnected, aborting agentic loop');
+    });
+
     // Build system prompt with profile + knowledge context
     const systemPrompt = await this.buildFullSystemPrompt(
       userMessage, serverProfile, serverName,
@@ -213,6 +220,12 @@ export class AgenticChatEngine {
       for (let turn = 0; turn < MAX_TURNS; turn++) {
         turns = turn + 1;
 
+        // Abort if client disconnected — avoid wasting API calls
+        if (streamAborted) {
+          logger.info({ operation: 'agentic_loop', serverId, turn }, 'Agentic loop aborted: client disconnected');
+          return { success: false, turns, toolCallCount, finalText };
+        }
+
         // Call Claude with tools — streaming
         const collected = await this.streamAnthropicCall(
           systemPrompt, messages, stream,
@@ -228,10 +241,16 @@ export class AgenticChatEngine {
           break;
         }
 
-        // Process tool calls
+        // Process tool calls — skip if client disconnected
+        if (streamAborted) {
+          logger.info({ operation: 'agentic_loop', serverId, turn }, 'Agentic loop aborted after AI call: client disconnected');
+          return { success: false, turns, toolCallCount, finalText };
+        }
+
         const toolResults: Anthropic.ToolResultBlockParam[] = [];
 
         for (const toolCall of collected.toolUseBlocks) {
+          if (streamAborted) break;
           toolCallCount++;
           const result = await this.executeToolCall(
             toolCall, serverId, userId, sessionId, clientId, stream, opts.onConfirmRequired,
@@ -243,6 +262,12 @@ export class AgenticChatEngine {
           });
         }
 
+        // If aborted during tool execution, don't continue the loop
+        if (streamAborted) {
+          logger.info({ operation: 'agentic_loop', serverId, turn }, 'Agentic loop aborted during tool execution: client disconnected');
+          return { success: false, turns, toolCallCount, finalText };
+        }
+
         // Append assistant response + tool results to conversation
         messages.push({ role: 'assistant', content: collected.rawContent });
         messages.push({ role: 'user', content: toolResults });
@@ -252,7 +277,9 @@ export class AgenticChatEngine {
         trimMessagesIfNeeded(messages, MAX_MESSAGES_TOKENS);
       }
 
-      await this.writeSSE(stream, 'complete', { success: true, turns, toolCallCount });
+      if (!streamAborted) {
+        await this.writeSSE(stream, 'complete', { success: true, turns, toolCallCount });
+      }
       return { success: true, turns, toolCallCount, finalText };
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
@@ -260,10 +287,12 @@ export class AgenticChatEngine {
         { operation: 'agentic_loop', serverId, error: errorMsg },
         'Agentic loop error',
       );
-      await this.writeSSE(stream, 'message', {
-        content: `\n\n执行过程中发生错误: ${errorMsg}`,
-      });
-      await this.writeSSE(stream, 'complete', { success: false, error: errorMsg });
+      if (!streamAborted) {
+        await this.writeSSE(stream, 'message', {
+          content: `\n\n执行过程中发生错误: ${errorMsg}`,
+        });
+        await this.writeSSE(stream, 'complete', { success: false, error: errorMsg });
+      }
       return { success: false, turns, toolCallCount, finalText };
     }
   }
