@@ -30,6 +30,9 @@ vi.mock('./loader.js', () => ({
   checkRequirements: vi.fn(),
 }));
 
+import { loadSkillFromDir } from './loader.js';
+const mockLoadSkillFromDir = vi.mocked(loadSkillFromDir);
+
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -87,6 +90,7 @@ beforeEach(() => {
     .mockResolvedValue(undefined);
   repo = new InMemorySkillRepository();
   setSkillRepository(repo);
+  mockLoadSkillFromDir.mockReset();
 
   manager = new TriggerManager(executeCallback, repo);
 });
@@ -856,5 +860,118 @@ describe('TriggerManager chain triggers', () => {
     });
 
     expect(executeCallback).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ============================================================================
+// Startup Loading — findAllEnabled integration
+// ============================================================================
+
+describe('TriggerManager startup loading', () => {
+  it('should load enabled skills from repo on start and register their triggers', async () => {
+    const skill = await repo.install({
+      userId: 'user-1',
+      name: 'cron-backup',
+      version: '1.0.0',
+      source: 'local',
+      skillPath: '/skills/cron-backup',
+    });
+    await repo.updateStatus(skill.id, 'enabled');
+
+    const manifest = createMockManifest({
+      triggers: [{ type: 'cron', schedule: '0 2 * * *' }],
+    });
+    mockLoadSkillFromDir.mockResolvedValueOnce(manifest);
+
+    await manager.start();
+
+    expect(mockLoadSkillFromDir).toHaveBeenCalledWith('/skills/cron-backup');
+    expect(manager.getCronCount()).toBe(1);
+  });
+
+  it('should not register triggers for non-enabled skills', async () => {
+    // installed (not enabled)
+    await repo.install({
+      userId: 'user-1',
+      name: 'not-enabled',
+      version: '1.0.0',
+      source: 'local',
+      skillPath: '/skills/not-enabled',
+    });
+
+    await manager.start();
+
+    expect(mockLoadSkillFromDir).not.toHaveBeenCalled();
+    expect(manager.getCronCount()).toBe(0);
+    expect(manager.getEventCount()).toBe(0);
+    expect(manager.getThresholdCount()).toBe(0);
+  });
+
+  it('should load multiple enabled skills on start', async () => {
+    const s1 = await repo.install({
+      userId: 'user-1',
+      name: 'skill-cron',
+      version: '1.0.0',
+      source: 'local',
+      skillPath: '/skills/cron',
+    });
+    const s2 = await repo.install({
+      userId: 'user-2',
+      name: 'skill-event',
+      version: '1.0.0',
+      source: 'local',
+      skillPath: '/skills/event',
+    });
+    await repo.updateStatus(s1.id, 'enabled');
+    await repo.updateStatus(s2.id, 'enabled');
+
+    const cronManifest = createMockManifest({
+      triggers: [{ type: 'cron', schedule: '*/10 * * * *' }],
+    });
+    const eventManifest = createMockManifest({
+      triggers: [{ type: 'event', on: 'server.offline' }],
+    });
+
+    mockLoadSkillFromDir
+      .mockResolvedValueOnce(cronManifest)
+      .mockResolvedValueOnce(eventManifest);
+
+    await manager.start();
+
+    expect(manager.getCronCount()).toBe(1);
+    expect(manager.getEventCount()).toBe(1);
+  });
+
+  it('should gracefully handle manifest load failure for individual skills', async () => {
+    const s1 = await repo.install({
+      userId: 'user-1',
+      name: 'broken-skill',
+      version: '1.0.0',
+      source: 'local',
+      skillPath: '/skills/broken',
+    });
+    const s2 = await repo.install({
+      userId: 'user-1',
+      name: 'good-skill',
+      version: '1.0.0',
+      source: 'local',
+      skillPath: '/skills/good',
+    });
+    await repo.updateStatus(s1.id, 'enabled');
+    await repo.updateStatus(s2.id, 'enabled');
+
+    const goodManifest = createMockManifest({
+      triggers: [{ type: 'threshold', metric: 'cpu.usage', operator: 'gt', value: 80 }],
+    });
+
+    // First skill fails to load, second succeeds
+    mockLoadSkillFromDir
+      .mockRejectedValueOnce(new Error('Manifest not found'))
+      .mockResolvedValueOnce(goodManifest);
+
+    await manager.start();
+
+    // The good skill should still be registered
+    expect(manager.getThresholdCount()).toBe(1);
   });
 });

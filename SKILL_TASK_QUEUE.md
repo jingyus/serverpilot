@@ -3,19 +3,391 @@
 > 此队列专注于 Skill 插件系统的设计与实现
 > AI 自动扫描 → 发现缺失 → 设计实现 → 验证
 
-**最后更新**: 2026-02-13 01:43:29
+**最后更新**: 2026-02-13 01:55:03
 
 ## 📊 统计
 
-- **总任务数**: 12
-- **待完成** (pending): 0
+- **总任务数**: 22
+- **待完成** (pending): 9
 - **进行中** (in_progress): 0
-- **已完成** (completed): 12
+- **已完成** (completed): 13
 - **失败** (failed): 0
 
 ## 📋 任务列表
 
 ### [completed] DB Schema + Migration + SkillRepository 数据层 ✅
+### [completed] SkillRepository.findAllEnabled() — 启动时加载已启用 Skill 的触发器 ✅
+
+**ID**: skill-013
+**优先级**: P0
+**模块路径**: packages/server/src/db/repositories/skill-repository.ts
+**当前状态**: 功能缺失 — `TriggerManager.findAllEnabledSkills()` (trigger-manager.ts:408-414) 使用 duck-typing 检测 `repo['findAllEnabled']`，但 `SkillRepository` 接口和两个实现类 (`DrizzleSkillRepository`, `InMemorySkillRepository`) 都没有定义 `findAllEnabled()` 方法。导致服务器重启后，已启用 Skill 的 cron/event/threshold 触发器不会被重新注册，只能通过手动重新启用来恢复
+**实现方案**:
+
+1. **SkillRepository 接口** — 新增方法签名:
+   - `findAllEnabled(): Promise<InstalledSkill[]>` — 返回所有 `status === 'enabled'` 的 Skill (跨用户)
+2. **DrizzleSkillRepository** — 实现:
+   - `SELECT * FROM installed_skills WHERE status = 'enabled' ORDER BY created_at DESC`
+   - 使用 Drizzle: `db.select().from(installedSkills).where(eq(installedSkills.status, 'enabled')).all()`
+3. **InMemorySkillRepository** — 实现:
+   - `this.skills.filter(s => s.status === 'enabled')`
+4. **TriggerManager** — 移除 duck-typing hack (trigger-manager.ts:408-414):
+   - 直接调用 `this.repo.findAllEnabled()` (接口类型保证方法存在)
+5. **测试**:
+   - DrizzleSkillRepository: 测试 findAllEnabled 只返回 enabled 状态
+   - InMemorySkillRepository: 同上
+   - TriggerManager: 测试 start() 时从 DB 加载已启用的 Skill 并注册触发器
+
+**验收标准**:
+- 服务器重启后，所有 `status=enabled` 的 Skill 的触发器被自动恢复
+- `TriggerManager.start()` 不再使用 duck-typing 检测
+- 测试 ≥ 6 个新增
+
+**影响范围**:
+- `packages/server/src/db/repositories/skill-repository.ts` (修改 — 接口 + 两个实现)
+- `packages/server/src/core/skill/trigger-manager.ts` (修改 — 移除 duck-typing)
+- `packages/server/src/core/skill/trigger-manager.test.ts` (修改 — 新增 startup 加载测试)
+- `packages/server/src/db/repositories/skill-repository.test.ts` (如存在则修改)
+
+**创建时间**: (自动填充)
+**完成时间**: 2026-02-13 01:55:03
+
+---
+
+### [pending] Store 工具定义缺少 `list` action — AI 无法使用 KV 列表功能
+
+**ID**: skill-014
+**优先级**: P0
+**模块路径**: packages/server/src/core/skill/runner-tools.ts
+**当前状态**: 功能缺失 — `buildToolDefinitions()` 中 `store` 工具的 `action` enum 为 `['get', 'set', 'delete']` (runner-tools.ts:203)，但 `runner.ts:645-648` 的 `executeStore()` 实现了 `list` action。AI 不知道 `list` 操作存在，因此永远不会调用它。规范文档 (SKILL_SPEC.md) 要求 store 工具支持 get/set/delete/list 四种操作
+**实现方案**:
+
+1. **runner-tools.ts** — 修改 `buildToolDefinitions()` 中 store 工具:
+   - `action.enum`: `['get', 'set', 'delete']` → `['get', 'set', 'delete', 'list']`
+   - 更新 `action.description`: 说明 `list` 返回该 Skill 所有键值对
+   - `list` 操作不需要 `key` 参数，但 `key` 仍标记为 required — 需改为 optional 或允许 `list` 忽略 `key`
+   - 最佳方案: 将 `required` 改为 `['action']`，`key` 和 `value` 都变为 optional；在 runner.ts 中对 `get`/`set`/`delete` 做参数存在性检查
+2. **runner.ts** — 在 `executeStore()` 中增加 `key` 缺失检查:
+   - `get`/`delete`: 如果 `key` 为空字符串或 undefined → 返回错误
+   - `list`: 忽略 `key` 参数 (已实现)
+3. **测试**:
+   - runner-tools.test.ts (如存在): 验证 store 工具定义包含 `list`
+   - runner.test.ts: 新增 `list` 操作测试
+
+**验收标准**:
+- AI 可以成功调用 `store` 工具的 `list` action
+- `key` 对 `list` 操作不再是必填
+- `get`/`set`/`delete` 仍要求 `key`
+- 测试覆盖所有 4 种 store 操作
+
+**影响范围**:
+- `packages/server/src/core/skill/runner-tools.ts` (修改 — enum + required)
+- `packages/server/src/core/skill/runner.ts` (修改 — 参数校验)
+- `packages/server/src/core/skill/runner.test.ts` (修改 — 新增 list 测试)
+
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] Dashboard Skill 执行按钮无功能 — onExecute 为空回调
+
+**ID**: skill-015
+**优先级**: P1
+**模块路径**: packages/dashboard/src/pages/Skills.tsx
+**当前状态**: 功能缺失 — `Skills.tsx:148` 中 `onExecute={() => {}}` 传递空回调，点击 SkillCard 的执行按钮 (⚡ Zap icon) 无任何效果。缺少服务器选择器和执行触发流程。Store 中已有 `executeSkill(id, serverId, config)` 方法和 `startExecutionStream(executionId)` 方法，但页面未集成
+**实现方案**:
+
+1. **Skills.tsx** — 添加执行流程:
+   - 新增 `executeTarget` state: `useState<InstalledSkill | null>(null)`
+   - 点击执行 → `setExecuteTarget(skill)` → 打开执行 Dialog
+   - 执行 Dialog 内容:
+     - 服务器选择器: 下拉列表从 servers store 获取在线服务器
+     - "执行" 确认按钮 → `executeSkill(skill.id, selectedServerId)` → 获取 executionId
+     - 执行后展示 `ExecutionStream` 组件 (实时进度)
+   - 替换 `onExecute={() => {}}` 为 `onExecute={setExecuteTarget}`
+2. **i18n** — en.json + zh.json 新增:
+   - `skills.executeSkill`: "Execute Skill" / "执行技能"
+   - `skills.selectServer`: "Select a server" / "选择服务器"
+   - `skills.noServers`: "No servers available" / "无可用服务器"
+   - `skills.executing`: "Executing..." / "执行中..."
+3. **测试**:
+   - Skills.test.tsx: 新增执行按钮点击 → Dialog 打开 → 服务器选择 → 触发执行
+
+**验收标准**:
+- 点击执行按钮弹出 Dialog，包含服务器选择器
+- 选择服务器后点击确认，触发 `executeSkill()` API 调用
+- 执行中显示实时 SSE 进度流 (`ExecutionStream` 组件)
+- 执行完成后可查看结果
+- 测试 ≥ 3 个新增
+
+**影响范围**:
+- `packages/dashboard/src/pages/Skills.tsx` (修改 — 执行流程)
+- `packages/dashboard/src/pages/Skills.test.tsx` (修改 — 新增测试)
+- `packages/dashboard/src/i18n/locales/en.json` (修改 — 新增 keys)
+- `packages/dashboard/src/i18n/locales/zh.json` (修改 — 新增 keys)
+
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] configureSkill store 盲写 status='configured' — 覆盖已启用/暂停状态
+
+**ID**: skill-016
+**优先级**: P1
+**模块路径**: packages/dashboard/src/stores/skills.ts
+**当前状态**: Bug — `skills.ts:113` 在 `configureSkill` 成功后强制将 status 设为 `'configured'`，即使 Skill 原本是 `'enabled'` 或 `'paused'` 状态。服务端 `engine.ts:196-198` 只在 `status === 'installed'` 时才自动转为 configured，其他状态保持不变。前端乐观更新与服务端行为不一致，导致 UI 显示错误状态
+**实现方案**:
+
+1. **stores/skills.ts** — 修改 `configureSkill`:
+   - 移除盲写 `status: 'configured' as SkillStatus` 逻辑
+   - 改为: 只在 `s.status === 'installed'` 时将 status 更新为 `'configured'`
+   - 其他状态保持原样: `s.id === id ? { ...s, config, ...(s.status === 'installed' ? { status: 'configured' as SkillStatus } : {}) } : s`
+2. **测试**:
+   - skills.test.ts: 新增测试 — configureSkill 对 enabled/paused 状态的 Skill 不改变 status
+
+**验收标准**:
+- 配置已启用的 Skill 后，UI 仍显示 "Enabled" 而非 "Configured"
+- 配置已安装 (installed) 的 Skill 后，UI 正确显示 "Configured"
+- 测试 ≥ 2 个新增
+
+**影响范围**:
+- `packages/dashboard/src/stores/skills.ts` (修改 — 条件状态更新)
+- `packages/dashboard/src/stores/skills.test.ts` (修改 — 新增测试)
+
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] runner.ts 超 500 行限制 — 提取工具执行方法到独立模块
+
+**ID**: skill-017
+**优先级**: P2
+**模块路径**: packages/server/src/core/skill/runner.ts
+**当前状态**: 需要改进 — `runner.ts` 当前 677 行，超过项目标准的 500 行软限制。文件包含 SkillRunner 核心循环 + 6 种工具执行方法 (shell/read_file/write_file/notify/http/store) + 审计方法 + helper 方法。工具执行逻辑可独立提取
+**实现方案**:
+
+1. **新建 `runner-executor.ts`** (~250 行):
+   - 提取 6 个 `execute*` 方法 + `auditShell` 方法为独立类 `SkillToolExecutor`:
+     - `executeShell()`, `executeReadFile()`, `executeWriteFile()`, `executeNotify()`, `executeHttp()`, `executeStore()`
+     - `auditShell()` 辅助方法
+   - 构造参数: 接收所需依赖 (taskExecutor, auditLogger, webhookDispatcher 等)
+   - 导出 `SkillToolExecutor` 类
+2. **修改 `runner.ts`** (~350 行):
+   - 移除工具执行方法，改为实例化 `SkillToolExecutor` 并调用
+   - 保留核心 agentic loop 逻辑
+3. **测试**:
+   - 现有 runner.test.ts 无需大改 (接口不变)
+   - 可选: 新增 runner-executor.test.ts 对工具执行方法做独立单元测试
+
+**验收标准**:
+- `runner.ts` 降至 ≤ 500 行
+- `runner-executor.ts` ≤ 300 行
+- 所有现有 runner.test.ts 测试继续通过
+- 无行为变化，纯重构
+
+**影响范围**:
+- `packages/server/src/core/skill/runner.ts` (修改 — 拆分)
+- `packages/server/src/core/skill/runner-executor.ts` (新建)
+- `packages/server/src/core/skill/runner.test.ts` (可能微调 import)
+
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] Skill 执行 E2E 集成测试 — 覆盖完整生命周期
+
+**ID**: skill-018
+**优先级**: P2
+**模块路径**: tests/ 或 packages/server/src/core/skill/
+**当前状态**: 功能缺失 — 现有测试全部为单元测试 (mock AI provider、mock executor)。缺少验证完整 install → configure → enable → manual execute → verify execution result 的集成测试。特别是以下集成点未被测试覆盖:
+  - SkillEngine + SkillRunner + TriggerManager 协同
+  - RBAC 权限在 skill 路由上的端到端验证
+  - SSE 事件流从 SkillRunner → SkillEventBus → SSE endpoint 的完整链路
+**实现方案**:
+
+1. **skill-integration.test.ts** (~300 行):
+   - 使用 InMemory repositories + Mock AI Provider
+   - 测试完整生命周期:
+     - 安装 → 验证 DB 持久化
+     - 配置 → 验证状态自动转换 (installed → configured)
+     - 启用 → 验证 TriggerManager 注册触发器
+     - 手动执行 → Mock AI 返回 tool_use → 验证工具调用链
+     - 暂停 → 验证 TriggerManager 注销触发器
+     - 卸载 → 验证 DB 清理 + 关联执行记录级联删除
+   - 测试 SSE 事件流:
+     - 启动执行 → 订阅 SkillEventBus → 验证 step/log/completed 事件序列
+   - 测试 RBAC 端到端:
+     - member 角色只能 view，不能 manage/execute
+     - admin 角色可以 manage + execute
+   - 测试错误恢复:
+     - Skill manifest 损坏 → 执行失败 → status 设为 error
+     - 执行超时 → 正确记录 timeout 状态
+
+**验收标准**:
+- 完整的 install→configure→enable→execute→result 链路覆盖
+- SSE 事件流验证
+- RBAC 权限验证
+- 测试 ≥ 15 个
+
+**影响范围**:
+- `packages/server/src/core/skill/skill-integration.test.ts` (新建)
+
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] Skill 输入定义从 Manifest 获取 — 替代 config key 推断
+
+**ID**: skill-019
+**优先级**: P2
+**模块路径**: packages/dashboard/src/pages/Skills.tsx + packages/server/src/api/routes/skills.ts
+**当前状态**: 功能缺失 — `Skills.tsx:426-441` 中 `getSkillInputs()` 从 skill.config 的 key 推断输入类型，无法获取 manifest 中定义的真实 `inputs[]` (名称、类型、描述、默认值、required、enum options)。例如一个 enum 类型的 input 会被误推断为 string。API 端的 GET /skills 和 GET /skills/:id 只返回 DB 数据，不包含 manifest 中的 inputs 定义
+**实现方案**:
+
+1. **Server API** — GET /skills 响应中附带 manifest inputs:
+   - `engine.listInstalled()` 返回结果时，对每个 skill 尝试加载 manifest 并提取 `inputs[]`
+   - 或新增专用端点 `GET /skills/:id/manifest` 返回 manifest 的 inputs + triggers + tools
+   - 推荐方案: 在 install 时将 manifest 的 inputs JSON 保存到 `installed_skills.config` 的 `_inputs` 字段，或新增 `manifest_inputs` 列
+2. **Dashboard** — `getSkillInputs()` 优先使用 manifest inputs:
+   - API 返回的 skill 包含 `inputs?: SkillInputDef[]` 字段
+   - 配置 Modal 使用 manifest inputs 生成表单 (支持 enum 下拉、boolean 开关、数字输入等)
+   - 回退: 无 inputs 时仍用 config key 推断 (向后兼容)
+3. **types/skill.ts** — InstalledSkill 类型新增 `inputs?: SkillInputDef[]`
+
+**验收标准**:
+- 配置 Modal 能正确渲染 enum 类型为下拉选择器
+- 配置 Modal 能显示 input 的 description 和 default 值
+- 配置 Modal 对 required input 做必填验证
+- 测试 ≥ 5 个
+
+**影响范围**:
+- `packages/server/src/api/routes/skills.ts` (修改 — 返回 inputs)
+- `packages/server/src/core/skill/engine.ts` (修改 — 查询时附带 manifest inputs)
+- `packages/dashboard/src/pages/Skills.tsx` (修改 — 使用 manifest inputs)
+- `packages/dashboard/src/types/skill.ts` (修改 — InstalledSkill 新增字段)
+
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] Webhook 事件集成 — 系统事件自动触发 Skill
+
+**ID**: skill-020
+**优先级**: P2
+**模块路径**: packages/server/src/core/skill/trigger-manager.ts + packages/server/src/core/webhook/dispatcher.ts
+**当前状态**: 功能缺失 — TriggerManager 的 event trigger 注册了事件类型 (如 `alert.triggered`, `server.offline`)，但 `handleEvent()` 方法仅被 SkillEngine 在 `skill.completed`/`skill.failed` 时调用。WebhookDispatcher 分发 5 种系统事件 (`task.completed`, `alert.triggered`, `server.offline`, `operation.failed`, `agent.disconnected`) 时不通知 TriggerManager。系统事件无法触发 Skill 执行
+**实现方案**:
+
+1. **集成方式** (低耦合):
+   - 在 `index.ts` 的 `startServer()` 中注册事件桥接:
+     - `getWebhookDispatcher().onDispatch((event) => getTriggerManager().handleEvent(event.type, event.data))`
+   - 或在 TriggerManager.start() 中订阅 WebhookDispatcher 的 EventEmitter
+   - 推荐方案: WebhookDispatcher 已有 `dispatch()` 方法 → 在 dispatch 成功后 emit 一个本地事件 → TriggerManager 订阅
+2. **WebhookDispatcher** — 新增 EventEmitter 或回调:
+   - 在 `dispatch()` 方法末尾发布事件: `this.emitter.emit('dispatched', { type, data })`
+   - 或添加 `onDispatch(callback)` 注册方法
+3. **TriggerManager** — 在 `start()` 中订阅 dispatcher 事件
+4. **测试**:
+   - WebhookDispatcher dispatch → TriggerManager handleEvent 被调用
+   - `alert.triggered` 事件 → 匹配 event trigger 的 Skill 被执行
+   - 不匹配的事件类型不触发
+
+**验收标准**:
+- `alert.triggered` 等系统事件能自动触发配置了对应 event trigger 的 Skill
+- WebhookDispatcher 无需知道 SkillEngine/TriggerManager 的存在 (反转依赖)
+- 测试 ≥ 6 个
+
+**影响范围**:
+- `packages/server/src/core/webhook/dispatcher.ts` (修改 — 新增事件发射)
+- `packages/server/src/core/skill/trigger-manager.ts` (修改 — 订阅 dispatcher)
+- `packages/server/src/index.ts` (修改 — 注册桥接)
+- 测试文件 (新增/修改)
+
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] Skill manifest_inputs 持久化 — 安装时保存输入定义到 DB
+
+**ID**: skill-021
+**优先级**: P3
+**模块路径**: packages/server/src/db/schema.ts + packages/server/src/core/skill/engine.ts
+**当前状态**: 功能缺失 — `installed_skills` 表没有存储 manifest 中的 `inputs[]` 定义。每次需要 inputs 信息时必须从磁盘加载 `skill.yaml` 并解析。如果 Skill 目录被删除或损坏，inputs 信息丢失。Dashboard 配置 Modal 无法获取正确的输入类型定义 (依赖 skill-019)
+**实现方案**:
+
+1. **DB Schema** — `installed_skills` 表新增列:
+   - `manifest_inputs TEXT` — JSON 序列化的 `SkillManifest.inputs[]`
+   - 或重用 `config` 列的 `_manifest` 子键 (不推荐，混淆用户配置和元数据)
+2. **Migration** — `0011_skill_manifest_inputs.sql`:
+   - `ALTER TABLE installed_skills ADD COLUMN manifest_inputs TEXT`
+3. **engine.ts** — `install()` 方法:
+   - 解析 manifest 后，将 `manifest.inputs` JSON 序列化保存到 `manifest_inputs` 列
+4. **SkillRepository** — 更新 `install()` 输入类型:
+   - `InstallSkillInput` 新增 `manifestInputs?: unknown[]`
+5. **API 返回** — GET /skills 的响应中包含 `manifestInputs` 字段
+
+**验收标准**:
+- 安装 Skill 后 DB 持久化了 inputs 定义
+- API 返回 InstalledSkill 包含 manifestInputs
+- 即使磁盘 skill.yaml 损坏，仍可从 DB 获取 inputs 定义
+- Migration 平滑执行 (nullable 列)
+
+**影响范围**:
+- `packages/server/src/db/schema.ts` (修改)
+- `packages/server/src/db/migrations/0011_skill_manifest_inputs.sql` (新建)
+- `packages/server/src/db/connection.ts` (修改 — createTables)
+- `packages/server/src/db/repositories/skill-repository.ts` (修改)
+- `packages/server/src/core/skill/engine.ts` (修改)
+- `packages/server/src/core/skill/types.ts` (修改 — InstalledSkill 新增字段)
+
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] Skill 执行历史增强 — 执行详情页 + 重新执行
+
+**ID**: skill-022
+**优先级**: P3
+**模块路径**: packages/dashboard/src/components/skill/
+**当前状态**: 功能缺失 — `ExecutionHistory.tsx` 只显示执行列表 (时间、状态、步数、耗时)，无法展开查看单条执行的详细结果 (AI 输出、工具调用记录、错误信息)。API 已有 `GET /skills/:id/executions/:eid` 返回执行详情，但 Dashboard 未调用。也无法从历史中重新执行 Skill
+**实现方案**:
+
+1. **ExecutionDetail.tsx** (~150 行):
+   - 执行详情展示: AI 输出文本、工具调用列表 (名称、输入、结果、耗时)、错误列表
+   - 工具调用折叠/展开
+   - "重新执行" 按钮 → 使用相同的 skillId + serverId 触发新执行
+2. **ExecutionHistory.tsx** — 修改:
+   - 点击执行记录行 → 展开/切换到 ExecutionDetail 视图
+   - 或使用 Dialog 展示详情
+3. **stores/skills.ts** — 新增:
+   - `fetchExecutionDetail(skillId, executionId)` → `GET /skills/:id/executions/:eid`
+   - `selectedExecution: SkillExecution | null` state
+4. **i18n** — 新增 keys: executionDetail, reExecute, toolCalls, aiOutput, errors
+5. **测试**: ≥ 4 个 (详情加载、重新执行、错误处理)
+
+**验收标准**:
+- 点击历史记录可查看执行详情 (AI 输出 + 工具调用记录)
+- 详情页有"重新执行"按钮
+- 测试 ≥ 4 个
+
+**影响范围**:
+- `packages/dashboard/src/components/skill/ExecutionDetail.tsx` (新建)
+- `packages/dashboard/src/components/skill/ExecutionHistory.tsx` (修改)
+- `packages/dashboard/src/stores/skills.ts` (修改)
+- `packages/dashboard/src/i18n/locales/en.json` (修改)
+- `packages/dashboard/src/i18n/locales/zh.json` (修改)
+
+**创建时间**: (自动填充)
+**完成时间**: -
+
 ### [completed] Skill KV Store — 每个 Skill 的持久化存储 API ✅
 
 **ID**: skill-007

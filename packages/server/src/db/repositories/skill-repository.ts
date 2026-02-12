@@ -54,6 +54,7 @@ export interface CreateExecutionInput {
 
 export interface SkillRepository {
   findAll(userId: string): Promise<InstalledSkill[]>;
+  findAllEnabled(): Promise<InstalledSkill[]>;
   findById(id: string): Promise<InstalledSkill | null>;
   findByName(userId: string, name: string): Promise<InstalledSkill | null>;
   install(input: InstallSkillInput): Promise<InstalledSkill>;
@@ -85,6 +86,16 @@ export class DrizzleSkillRepository implements SkillRepository {
       .select()
       .from(installedSkills)
       .where(eq(installedSkills.userId, userId))
+      .orderBy(desc(installedSkills.createdAt))
+      .all();
+    return rows.map((r) => this.toInstalledSkill(r));
+  }
+
+  async findAllEnabled(): Promise<InstalledSkill[]> {
+    const rows = this.db
+      .select()
+      .from(installedSkills)
+      .where(eq(installedSkills.status, 'enabled'))
       .orderBy(desc(installedSkills.createdAt))
       .all();
     return rows.map((r) => this.toInstalledSkill(r));
@@ -262,6 +273,12 @@ export class InMemorySkillRepository implements SkillRepository {
   async findAll(userId: string): Promise<InstalledSkill[]> {
     return this.skills
       .filter((s) => s.userId === userId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
+  async findAllEnabled(): Promise<InstalledSkill[]> {
+    return this.skills
+      .filter((s) => s.status === 'enabled')
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 

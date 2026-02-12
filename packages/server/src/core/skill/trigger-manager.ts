@@ -406,12 +406,7 @@ export class TriggerManager {
   }
 
   private async findAllEnabledSkills(): Promise<InstalledSkill[]> {
-    const repo = this.repo as unknown as Record<string, unknown>;
-    if (typeof repo['findAllEnabled'] === 'function') {
-      return (repo['findAllEnabled'] as () => Promise<InstalledSkill[]>)();
-    }
-    logger.debug('No findAllEnabled on repo — skills registered on status change only');
-    return [];
+    return this.repo.findAllEnabled();
   }
 
   // --- Introspection (for testing) ---
