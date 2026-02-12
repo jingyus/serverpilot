@@ -16,8 +16,8 @@ import { logger } from '../../utils/logger.js';
 const USER_ID = 'user-1';
 const SERVER_ID = 'server-1';
 
-/** Disable sweep timer in tests to avoid timer leaks */
-const TEST_CACHE_OPTS: Partial<SessionCacheOptions> = { sweepIntervalMs: 0 };
+/** Disable sweep and retry timers in tests to avoid timer leaks */
+const TEST_CACHE_OPTS: Partial<SessionCacheOptions> = { sweepIntervalMs: 0, retryIntervalMs: 0 };
 
 let repo: InMemorySessionRepository;
 let mgr: SessionManager;
@@ -251,9 +251,7 @@ describe('addMessage', () => {
     const session = await mgr.getOrCreate(SERVER_ID, USER_ID);
     await mgr.addMessage(session.id, USER_ID, 'user', 'Hello DB');
 
-    // Wait for fire-and-forget promise to settle
-    await new Promise((r) => setTimeout(r, 10));
-
+    // User messages are synchronously persisted — no wait needed
     const fromDb = await repo.getById(session.id, USER_ID);
     expect(fromDb!.messages).toHaveLength(1);
     expect(fromDb!.messages[0].content).toBe('Hello DB');
@@ -332,7 +330,7 @@ describe('removePlan', () => {
   });
 
   it('should allow eviction after plan removal', async () => {
-    const smallMgr = new SessionManager(repo, { maxSize: 2, sweepIntervalMs: 0 });
+    const smallMgr = new SessionManager(repo, { maxSize: 2, sweepIntervalMs: 0, retryIntervalMs: 0 });
 
     const s1 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
     const s2 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
@@ -360,7 +358,7 @@ describe('removePlan', () => {
   });
 
   it('should allow TTL sweep after plan removal', async () => {
-    const ttlMgr = new SessionManager(repo, { ttlMs: 50, sweepIntervalMs: 0 });
+    const ttlMgr = new SessionManager(repo, { ttlMs: 50, sweepIntervalMs: 0, retryIntervalMs: 0 });
 
     const s1 = await ttlMgr.getOrCreate(SERVER_ID, USER_ID);
     ttlMgr.storePlan(s1.id, {
@@ -600,15 +598,25 @@ describe('persistence', () => {
 });
 
 // ============================================================================
-// Persistence error handling (retry + logging)
+// Persistence error handling (sync user + async assistant + retry queue)
 // ============================================================================
 
-describe('addMessage persistence error handling', () => {
-  it('should log warning and retry when DB write fails once then succeeds', async () => {
+describe('user message sync persistence', () => {
+  it('should synchronously persist user messages and set persisted=true', async () => {
+    const session = await mgr.getOrCreate(SERVER_ID, USER_ID);
+    const msg = await mgr.addMessage(session.id, USER_ID, 'user', 'Hello');
+
+    expect(msg.persisted).toBe(true);
+
+    const fromDb = await repo.getById(session.id, USER_ID);
+    expect(fromDb!.messages).toHaveLength(1);
+    expect(fromDb!.messages[0].content).toBe('Hello');
+  });
+
+  it('should retry once and succeed when first DB write fails', async () => {
     const session = await mgr.getOrCreate(SERVER_ID, USER_ID);
     const warnSpy = vi.spyOn(logger, 'warn');
     const infoSpy = vi.spyOn(logger, 'info');
-    const errorSpy = vi.spyOn(logger, 'error');
 
     let callCount = 0;
     vi.spyOn(repo, 'addMessage').mockImplementation(async () => {
@@ -617,81 +625,42 @@ describe('addMessage persistence error handling', () => {
       return true;
     });
 
-    await mgr.addMessage(session.id, USER_ID, 'user', 'Hello');
-
-    // Wait for the async persist (first call + 500ms delay + retry)
-    await new Promise((r) => setTimeout(r, 700));
+    const msg = await mgr.addMessage(session.id, USER_ID, 'user', 'Hello');
 
     expect(callCount).toBe(2);
+    expect(msg.persisted).toBe(true);
     expect(warnSpy).toHaveBeenCalledWith(
       expect.objectContaining({ sessionId: session.id }),
-      expect.stringContaining('retrying'),
+      expect.stringContaining('User message persistence failed, retrying'),
     );
     expect(infoSpy).toHaveBeenCalledWith(
       expect.objectContaining({ sessionId: session.id }),
       expect.stringContaining('retry succeeded'),
     );
-    expect(errorSpy).not.toHaveBeenCalled();
 
     warnSpy.mockRestore();
     infoSpy.mockRestore();
-    errorSpy.mockRestore();
   });
 
-  it('should log error when DB write fails on both attempts', async () => {
+  it('should throw when both persistence attempts fail for user message', async () => {
     const session = await mgr.getOrCreate(SERVER_ID, USER_ID);
-    const warnSpy = vi.spyOn(logger, 'warn');
-    const errorSpy = vi.spyOn(logger, 'error');
-
     vi.spyOn(repo, 'addMessage').mockRejectedValue(new Error('disk full'));
 
-    await mgr.addMessage(session.id, USER_ID, 'user', 'Hello');
+    await expect(
+      mgr.addMessage(session.id, USER_ID, 'user', 'Hello'),
+    ).rejects.toThrow('disk full');
 
-    // Wait for the async persist (first call + 500ms delay + retry)
-    await new Promise((r) => setTimeout(r, 700));
-
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ sessionId: session.id }),
-      expect.stringContaining('retrying'),
-    );
-    expect(errorSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ sessionId: session.id }),
-      expect.stringContaining('failed after retry'),
-    );
-
-    warnSpy.mockRestore();
-    errorSpy.mockRestore();
-  });
-
-  it('should still return message even when persistence fails', async () => {
-    const session = await mgr.getOrCreate(SERVER_ID, USER_ID);
-    vi.spyOn(repo, 'addMessage').mockRejectedValue(new Error('DB error'));
-
-    const msg = await mgr.addMessage(session.id, USER_ID, 'user', 'Hello');
-
-    // Message returned immediately (not blocked by persistence)
-    expect(msg.content).toBe('Hello');
-    expect(msg.role).toBe('user');
-    expect(msg.id).toBeDefined();
-
-    // Message is in the in-memory cache
+    // Message is still in memory cache (was added before persist)
     expect(session.messages).toHaveLength(1);
-    expect(session.messages[0].content).toBe('Hello');
-
-    // Wait for async persist to complete
-    await new Promise((r) => setTimeout(r, 700));
+    expect(session.messages[0].persisted).toBe(false);
   });
 
-  it('should not log anything when persistence succeeds on first try', async () => {
+  it('should not log anything when user persistence succeeds on first try', async () => {
     const session = await mgr.getOrCreate(SERVER_ID, USER_ID);
     const warnSpy = vi.spyOn(logger, 'warn');
     const errorSpy = vi.spyOn(logger, 'error');
 
-    // repo.addMessage works normally (InMemorySessionRepository)
     await mgr.addMessage(session.id, USER_ID, 'user', 'Hello');
-
-    // Wait for async persist
-    await new Promise((r) => setTimeout(r, 50));
 
     expect(warnSpy).not.toHaveBeenCalled();
     expect(errorSpy).not.toHaveBeenCalled();
@@ -699,31 +668,156 @@ describe('addMessage persistence error handling', () => {
     warnSpy.mockRestore();
     errorSpy.mockRestore();
   });
+});
 
-  it('should not block SSE response while retrying', async () => {
+// ============================================================================
+// Assistant/system message async persistence + retry queue
+// ============================================================================
+
+describe('assistant message async persistence', () => {
+  it('should persist assistant messages asynchronously with persisted=true after DB write', async () => {
+    const session = await mgr.getOrCreate(SERVER_ID, USER_ID);
+    const msg = await mgr.addMessage(session.id, USER_ID, 'assistant', 'Hi there');
+
+    // Returned immediately — persisted may not yet be true
+    expect(msg.content).toBe('Hi there');
+
+    // Wait for async persist
+    await new Promise((r) => setTimeout(r, 50));
+    expect(msg.persisted).toBe(true);
+  });
+
+  it('should not block on assistant message persistence', async () => {
+    const session = await mgr.getOrCreate(SERVER_ID, USER_ID);
+
+    // Slow persistence
+    vi.spyOn(repo, 'addMessage').mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, 200));
+      return true;
+    });
+
+    const start = Date.now();
+    const msg = await mgr.addMessage(session.id, USER_ID, 'assistant', 'Reply');
+    const elapsed = Date.now() - start;
+
+    // Should return immediately (< 50ms), not wait for the 200ms DB write
+    expect(elapsed).toBeLessThan(50);
+    expect(msg.content).toBe('Reply');
+    expect(msg.persisted).toBe(false);
+
+    // Wait for persistence to complete
+    await new Promise((r) => setTimeout(r, 300));
+    expect(msg.persisted).toBe(true);
+  });
+
+  it('should enqueue failed assistant messages to retry queue', async () => {
+    const session = await mgr.getOrCreate(SERVER_ID, USER_ID);
+    const warnSpy = vi.spyOn(logger, 'warn');
+
+    vi.spyOn(repo, 'addMessage').mockRejectedValue(new Error('DB error'));
+
+    const msg = await mgr.addMessage(session.id, USER_ID, 'assistant', 'Reply');
+    expect(msg.persisted).toBe(false);
+
+    // Wait for the async error to be caught
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(mgr.pendingRetryCount).toBe(1);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: session.id }),
+      expect.stringContaining('enqueueing for retry'),
+    );
+
+    warnSpy.mockRestore();
+  });
+
+  it('should also handle system messages asynchronously', async () => {
+    const session = await mgr.getOrCreate(SERVER_ID, USER_ID);
+
+    vi.spyOn(repo, 'addMessage').mockRejectedValue(new Error('DB error'));
+
+    const msg = await mgr.addMessage(session.id, USER_ID, 'system', 'Plan executed');
+
+    // Wait for the async error to be caught
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(msg.persisted).toBe(false);
+    expect(mgr.pendingRetryCount).toBe(1);
+  });
+});
+
+describe('retry queue processing', () => {
+  it('should persist queued messages on retry', async () => {
     const session = await mgr.getOrCreate(SERVER_ID, USER_ID);
 
     let callCount = 0;
     vi.spyOn(repo, 'addMessage').mockImplementation(async () => {
       callCount++;
-      if (callCount === 1) throw new Error('SQLITE_BUSY');
+      if (callCount === 1) throw new Error('DB error');
       return true;
     });
 
-    const start = Date.now();
-    const msg = await mgr.addMessage(session.id, USER_ID, 'user', 'Hello');
-    const elapsed = Date.now() - start;
+    const msg = await mgr.addMessage(session.id, USER_ID, 'assistant', 'Reply');
+    await new Promise((r) => setTimeout(r, 50)); // Wait for async error
+    expect(mgr.pendingRetryCount).toBe(1);
 
-    // addMessage should return immediately (< 50ms), not wait 500ms for retry
-    expect(elapsed).toBeLessThan(50);
-    expect(msg.content).toBe('Hello');
+    // Manually trigger retry queue processing
+    await (mgr as unknown as { processRetryQueue: () => Promise<void> }).processRetryQueue();
 
-    // Retry is still pending at this point
-    expect(callCount).toBe(1);
+    expect(mgr.pendingRetryCount).toBe(0);
+    expect(msg.persisted).toBe(true);
+  });
 
-    // Wait for retry to complete
-    await new Promise((r) => setTimeout(r, 700));
-    expect(callCount).toBe(2);
+  it('should requeue if retry also fails', async () => {
+    const retryMgr = new SessionManager(repo, { ...TEST_CACHE_OPTS, maxRetryAttempts: 3 });
+    const session = await retryMgr.getOrCreate(SERVER_ID, USER_ID);
+
+    vi.spyOn(repo, 'addMessage').mockRejectedValue(new Error('DB error'));
+
+    await retryMgr.addMessage(session.id, USER_ID, 'assistant', 'Reply');
+    await new Promise((r) => setTimeout(r, 50));
+    expect(retryMgr.pendingRetryCount).toBe(1);
+
+    // First retry: still fails, requeued (attempts: 2)
+    await (retryMgr as unknown as { processRetryQueue: () => Promise<void> }).processRetryQueue();
+    expect(retryMgr.pendingRetryCount).toBe(1);
+
+    retryMgr.stopSweep();
+  });
+
+  it('should invoke onPersistenceFailure and drop after max retries', async () => {
+    const retryMgr = new SessionManager(repo, { ...TEST_CACHE_OPTS, maxRetryAttempts: 2 });
+    const session = await retryMgr.getOrCreate(SERVER_ID, USER_ID);
+    const errorSpy = vi.spyOn(logger, 'error');
+
+    const failedMessages: string[] = [];
+    retryMgr.onPersistenceFailure = (_sid, msgId) => { failedMessages.push(msgId); };
+
+    vi.spyOn(repo, 'addMessage').mockRejectedValue(new Error('DB error'));
+
+    const msg = await retryMgr.addMessage(session.id, USER_ID, 'assistant', 'Reply');
+    await new Promise((r) => setTimeout(r, 50));
+
+    // attempts=1 after initial fail. processRetryQueue increments to 2 >= maxRetryAttempts(2)
+    await (retryMgr as unknown as { processRetryQueue: () => Promise<void> }).processRetryQueue();
+
+    expect(retryMgr.pendingRetryCount).toBe(0);
+    expect(failedMessages).toHaveLength(1);
+    expect(failedMessages[0]).toBe(msg.id);
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ messageId: msg.id }),
+      expect.stringContaining('exhausted'),
+    );
+
+    errorSpy.mockRestore();
+    retryMgr.stopSweep();
+  });
+
+  it('should handle empty retry queue gracefully', async () => {
+    expect(mgr.pendingRetryCount).toBe(0);
+    // Should not throw
+    await (mgr as unknown as { processRetryQueue: () => Promise<void> }).processRetryQueue();
+    expect(mgr.pendingRetryCount).toBe(0);
   });
 });
 
@@ -734,7 +828,7 @@ describe('addMessage persistence error handling', () => {
 describe('cache eviction', () => {
   describe('LRU eviction on capacity', () => {
     it('should evict the oldest session when cache is full', async () => {
-      const smallMgr = new SessionManager(repo, { maxSize: 3, sweepIntervalMs: 0 });
+      const smallMgr = new SessionManager(repo, { maxSize: 3, sweepIntervalMs: 0, retryIntervalMs: 0 });
 
       const s1 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
       await smallMgr.addMessage(s1.id, USER_ID, 'user', 'Session 1 msg');
@@ -749,7 +843,7 @@ describe('cache eviction', () => {
 
       // s1 was evicted from cache but still in DB
       // Access from a fresh manager should reload from DB
-      const freshMgr = new SessionManager(repo, { sweepIntervalMs: 0 });
+      const freshMgr = new SessionManager(repo, { sweepIntervalMs: 0, retryIntervalMs: 0 });
       const reloaded = await freshMgr.getSession(s1.id, USER_ID);
       expect(reloaded).toBeDefined();
       expect(reloaded!.messages).toHaveLength(1);
@@ -763,7 +857,7 @@ describe('cache eviction', () => {
     });
 
     it('should evict the least-recently-used, not just the oldest created', async () => {
-      const smallMgr = new SessionManager(repo, { maxSize: 3, sweepIntervalMs: 0 });
+      const smallMgr = new SessionManager(repo, { maxSize: 3, sweepIntervalMs: 0, retryIntervalMs: 0 });
 
       const s1 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
       const s2 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
@@ -800,7 +894,7 @@ describe('cache eviction', () => {
 
   describe('active session protection', () => {
     it('should not evict sessions with active plans', async () => {
-      const smallMgr = new SessionManager(repo, { maxSize: 2, sweepIntervalMs: 0 });
+      const smallMgr = new SessionManager(repo, { maxSize: 2, sweepIntervalMs: 0, retryIntervalMs: 0 });
       const warnSpy = vi.spyOn(logger, 'warn');
 
       const s1 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
@@ -830,7 +924,7 @@ describe('cache eviction', () => {
     });
 
     it('should evict non-active session when mixed with active ones', async () => {
-      const smallMgr = new SessionManager(repo, { maxSize: 2, sweepIntervalMs: 0 });
+      const smallMgr = new SessionManager(repo, { maxSize: 2, sweepIntervalMs: 0, retryIntervalMs: 0 });
 
       const s1 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
       const s2 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
@@ -855,7 +949,7 @@ describe('cache eviction', () => {
   describe('TTL-based eviction', () => {
     it('should sweep expired sessions', async () => {
       // Use a very short TTL for testing
-      const ttlMgr = new SessionManager(repo, { ttlMs: 50, sweepIntervalMs: 0 });
+      const ttlMgr = new SessionManager(repo, { ttlMs: 50, sweepIntervalMs: 0, retryIntervalMs: 0 });
 
       const s1 = await ttlMgr.getOrCreate(SERVER_ID, USER_ID);
       await ttlMgr.addMessage(s1.id, USER_ID, 'user', 'Hello');
@@ -881,7 +975,7 @@ describe('cache eviction', () => {
     });
 
     it('should not sweep active sessions even when TTL expired', async () => {
-      const ttlMgr = new SessionManager(repo, { ttlMs: 50, sweepIntervalMs: 0 });
+      const ttlMgr = new SessionManager(repo, { ttlMs: 50, sweepIntervalMs: 0, retryIntervalMs: 0 });
 
       const s1 = await ttlMgr.getOrCreate(SERVER_ID, USER_ID);
       ttlMgr.storePlan(s1.id, {
@@ -902,7 +996,7 @@ describe('cache eviction', () => {
     });
 
     it('should not sweep recently accessed sessions', async () => {
-      const ttlMgr = new SessionManager(repo, { ttlMs: 200, sweepIntervalMs: 0 });
+      const ttlMgr = new SessionManager(repo, { ttlMs: 200, sweepIntervalMs: 0, retryIntervalMs: 0 });
 
       const s1 = await ttlMgr.getOrCreate(SERVER_ID, USER_ID);
 
@@ -923,7 +1017,7 @@ describe('cache eviction', () => {
 
   describe('eviction and reload cycle', () => {
     it('should reload evicted session from DB with messages intact', async () => {
-      const smallMgr = new SessionManager(repo, { maxSize: 2, sweepIntervalMs: 0 });
+      const smallMgr = new SessionManager(repo, { maxSize: 2, sweepIntervalMs: 0, retryIntervalMs: 0 });
 
       const s1 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
       await smallMgr.addMessage(s1.id, USER_ID, 'user', 'First');
@@ -951,7 +1045,7 @@ describe('cache eviction', () => {
     });
 
     it('should lose plans after eviction and reload', async () => {
-      const smallMgr = new SessionManager(repo, { maxSize: 1, sweepIntervalMs: 0 });
+      const smallMgr = new SessionManager(repo, { maxSize: 1, sweepIntervalMs: 0, retryIntervalMs: 0 });
 
       const s1 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
       // Note: storing a plan makes session active, so it won't be evicted
@@ -972,7 +1066,7 @@ describe('cache eviction', () => {
 
   describe('addMessage after cache eviction (auto-reload)', () => {
     it('should auto-reload session from DB when evicted before addMessage', async () => {
-      const smallMgr = new SessionManager(repo, { maxSize: 2, sweepIntervalMs: 0 });
+      const smallMgr = new SessionManager(repo, { maxSize: 2, sweepIntervalMs: 0, retryIntervalMs: 0 });
 
       const s1 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
       await smallMgr.addMessage(s1.id, USER_ID, 'user', 'Before eviction');
@@ -1001,7 +1095,7 @@ describe('cache eviction', () => {
     });
 
     it('should increment cacheReloads counter on auto-reload', async () => {
-      const smallMgr = new SessionManager(repo, { maxSize: 1, sweepIntervalMs: 0 });
+      const smallMgr = new SessionManager(repo, { maxSize: 1, sweepIntervalMs: 0, retryIntervalMs: 0 });
 
       const s1 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
       await new Promise((r) => setTimeout(r, 10));
@@ -1018,7 +1112,7 @@ describe('cache eviction', () => {
     });
 
     it('should log reload event on cache miss', async () => {
-      const smallMgr = new SessionManager(repo, { maxSize: 1, sweepIntervalMs: 0 });
+      const smallMgr = new SessionManager(repo, { maxSize: 1, sweepIntervalMs: 0, retryIntervalMs: 0 });
       const infoSpy = vi.spyOn(logger, 'info');
 
       const s1 = await smallMgr.getOrCreate(SERVER_ID, USER_ID);
@@ -1045,7 +1139,7 @@ describe('cache eviction', () => {
     });
 
     it('should auto-reload after TTL sweep eviction', async () => {
-      const ttlMgr = new SessionManager(repo, { ttlMs: 50, sweepIntervalMs: 0 });
+      const ttlMgr = new SessionManager(repo, { ttlMs: 50, sweepIntervalMs: 0, retryIntervalMs: 0 });
 
       const s1 = await ttlMgr.getOrCreate(SERVER_ID, USER_ID);
       await ttlMgr.addMessage(s1.id, USER_ID, 'user', 'Original');
@@ -1079,7 +1173,7 @@ describe('cache eviction', () => {
 
   describe('stopSweep', () => {
     it('should stop the sweep timer', () => {
-      const timerMgr = new SessionManager(repo, { sweepIntervalMs: 100 });
+      const timerMgr = new SessionManager(repo, { sweepIntervalMs: 100, retryIntervalMs: 0 });
       timerMgr.stopSweep();
       // No error should occur; test would hang if timer was not stopped
       timerMgr.stopSweep(); // double stop is safe

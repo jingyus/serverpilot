@@ -33,6 +33,8 @@ export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: string;
+  /** Whether this message has been persisted to DB. Defaults to true for DB-loaded messages. */
+  persisted?: boolean;
 }
 
 /** A stored execution plan (in-memory only) */
@@ -75,6 +77,12 @@ export interface Session {
   updatedAt: string;
 }
 
+/** Callback invoked when async message persistence fails after all retries. */
+export type PersistenceFailureCallback = (
+  sessionId: string,
+  messageId: string,
+) => void;
+
 /** Cache configuration for SessionManager */
 export interface SessionCacheOptions {
   /** Maximum number of sessions in cache (default: 100) */
@@ -83,18 +91,32 @@ export interface SessionCacheOptions {
   ttlMs: number;
   /** Interval for TTL sweep in milliseconds (default: 60 seconds) */
   sweepIntervalMs: number;
+  /** Interval for retry queue sweep in milliseconds (default: 5 seconds) */
+  retryIntervalMs: number;
+  /** Maximum number of retry attempts for queued messages (default: 5) */
+  maxRetryAttempts: number;
 }
 
 const DEFAULT_CACHE_OPTIONS: SessionCacheOptions = {
   maxSize: 100,
   ttlMs: 30 * 60 * 1000,       // 30 minutes
   sweepIntervalMs: 60 * 1000,   // 1 minute
+  retryIntervalMs: 5 * 1000,    // 5 seconds
+  maxRetryAttempts: 5,
 };
 
 /** Internal cache entry wrapping a Session with access tracking */
 interface CacheEntry {
   session: Session;
   lastAccessedAt: number;
+}
+
+/** Entry in the persistence retry queue */
+interface RetryEntry {
+  sessionId: string;
+  userId: string;
+  message: SessionMessage;
+  attempts: number;
 }
 
 // ============================================================================
@@ -128,12 +150,16 @@ export class SessionManager {
   private cache = new Map<string, CacheEntry>();
   private cacheOptions: SessionCacheOptions;
   private sweepTimer: ReturnType<typeof setInterval> | null = null;
+  private retryTimer: ReturnType<typeof setInterval> | null = null;
+  private retryQueue: RetryEntry[] = [];
   private cacheReloadCount = 0;
+  private _onPersistenceFailure: PersistenceFailureCallback | null = null;
 
   constructor(repo?: SessionRepository, cacheOptions?: Partial<SessionCacheOptions>) {
     this.repo = repo ?? getSessionRepository();
     this.cacheOptions = { ...DEFAULT_CACHE_OPTIONS, ...cacheOptions };
     this.startSweep();
+    this.startRetryQueue();
   }
 
   // ==========================================================================
@@ -237,6 +263,65 @@ export class SessionManager {
       clearInterval(this.sweepTimer);
       this.sweepTimer = null;
     }
+    if (this.retryTimer) {
+      clearInterval(this.retryTimer);
+      this.retryTimer = null;
+    }
+  }
+
+  /** Start periodic retry queue processing. */
+  private startRetryQueue(): void {
+    if (this.cacheOptions.retryIntervalMs <= 0) return;
+    this.retryTimer = setInterval(() => this.processRetryQueue(), this.cacheOptions.retryIntervalMs);
+    this.retryTimer.unref();
+  }
+
+  /** Process queued persistence retries. */
+  private async processRetryQueue(): Promise<void> {
+    if (this.retryQueue.length === 0) return;
+
+    const batch = this.retryQueue.splice(0, this.retryQueue.length);
+    const requeue: RetryEntry[] = [];
+
+    for (const entry of batch) {
+      try {
+        await this.repo.addMessage(entry.sessionId, entry.userId, entry.message);
+        // Mark in-memory message as persisted
+        this.markMessagePersisted(entry.sessionId, entry.message.id);
+        logger.info(
+          { sessionId: entry.sessionId, messageId: entry.message.id, attempt: entry.attempts + 1 },
+          'Retry queue: message persisted successfully',
+        );
+      } catch {
+        entry.attempts++;
+        if (entry.attempts < this.cacheOptions.maxRetryAttempts) {
+          requeue.push(entry);
+        } else {
+          logger.error(
+            { sessionId: entry.sessionId, messageId: entry.message.id, attempts: entry.attempts },
+            'Retry queue: message persistence exhausted — message lost on restart',
+          );
+          this._onPersistenceFailure?.(entry.sessionId, entry.message.id);
+        }
+      }
+    }
+
+    if (requeue.length > 0) {
+      this.retryQueue.push(...requeue);
+    }
+  }
+
+  /** Mark a cached message as persisted. */
+  private markMessagePersisted(sessionId: string, messageId: string): void {
+    const entry = this.cache.get(sessionId);
+    if (!entry) return;
+    const msg = entry.session.messages.find((m) => m.id === messageId);
+    if (msg) msg.persisted = true;
+  }
+
+  /** Set a callback to be invoked when async persistence fails after all retries. */
+  set onPersistenceFailure(cb: PersistenceFailureCallback | null) {
+    this._onPersistenceFailure = cb;
   }
 
   /** Get current cache size (for monitoring/testing). */
@@ -247,6 +332,11 @@ export class SessionManager {
   /** Get count of sessions reloaded from DB after cache eviction (for monitoring/testing). */
   get cacheReloads(): number {
     return this.cacheReloadCount;
+  }
+
+  /** Get number of messages pending in the retry queue (for monitoring/testing). */
+  get pendingRetryCount(): number {
+    return this.retryQueue.length;
   }
 
   // ==========================================================================
@@ -287,7 +377,15 @@ export class SessionManager {
     return session;
   }
 
-  /** Add a message to a session. Persists to DB. Auto-reloads from DB on cache miss. */
+  /**
+   * Add a message to a session. Persists to DB.
+   *
+   * - User messages (role=user) are persisted synchronously — the caller awaits DB write.
+   * - Assistant/system messages are persisted asynchronously (fire-and-forget) with a retry queue
+   *   so they don't block SSE streaming.
+   *
+   * Auto-reloads from DB on cache miss.
+   */
   async addMessage(
     sessionId: string,
     userId: string,
@@ -317,13 +415,22 @@ export class SessionManager {
       role,
       content,
       timestamp: new Date().toISOString(),
+      persisted: false,
     };
 
     entry.session.messages.push(message);
     entry.session.updatedAt = new Date().toISOString();
 
-    // Persist to DB (fire-and-forget to not block SSE streaming)
-    this.persistMessage(sessionId, userId, toSessionMessage(message));
+    const sessionMsg = toSessionMessage(message);
+
+    if (role === 'user') {
+      // User messages: synchronous persistence — caller knows if it failed
+      await this.persistMessageSync(sessionId, userId, sessionMsg);
+      message.persisted = true;
+    } else {
+      // Assistant/system: fire-and-forget with retry queue fallback
+      this.persistMessageAsync(sessionId, userId, sessionMsg, message);
+    }
 
     return message;
   }
@@ -510,10 +617,10 @@ export class SessionManager {
   }
 
   /**
-   * Persist a message to the DB with one retry.
-   * Never throws — errors are logged but don't block the SSE stream.
+   * Persist a user message synchronously with one retry.
+   * Throws if both attempts fail — callers should handle the error.
    */
-  private async persistMessage(
+  private async persistMessageSync(
     sessionId: string,
     userId: string,
     message: SessionMessage,
@@ -523,19 +630,47 @@ export class SessionManager {
     } catch (firstError) {
       logger.warn(
         { sessionId, messageId: message.id, error: firstError },
-        'Message persistence failed, retrying in 500ms',
+        'User message persistence failed, retrying once',
       );
-      await new Promise((r) => setTimeout(r, 500));
       try {
         await this.repo.addMessage(sessionId, userId, message);
-        logger.info({ sessionId, messageId: message.id }, 'Message persistence retry succeeded');
+        logger.info({ sessionId, messageId: message.id }, 'User message persistence retry succeeded');
       } catch (retryError) {
         logger.error(
           { sessionId, messageId: message.id, error: retryError },
-          'Message persistence failed after retry — message only in memory cache',
+          'User message persistence failed after retry',
         );
+        throw retryError;
       }
     }
+  }
+
+  /**
+   * Persist an assistant/system message asynchronously.
+   * Tries once immediately, then enqueues to the retry queue on failure.
+   * Never throws — errors are queued for background retry.
+   */
+  private persistMessageAsync(
+    sessionId: string,
+    userId: string,
+    sessionMsg: SessionMessage,
+    chatMsg: ChatMessage,
+  ): void {
+    this.repo.addMessage(sessionId, userId, sessionMsg).then(
+      () => { chatMsg.persisted = true; },
+      (error) => {
+        logger.warn(
+          { sessionId, messageId: sessionMsg.id, error },
+          'Async message persistence failed, enqueueing for retry',
+        );
+        this.retryQueue.push({
+          sessionId,
+          userId,
+          message: sessionMsg,
+          attempts: 1,
+        });
+      },
+    );
   }
 
   /** Convert DB session to in-memory Session format. */

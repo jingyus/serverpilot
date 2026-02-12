@@ -1,21 +1,19 @@
-### [pending] engine.test.ts 拆分 — 1689 行远超 800 行硬限制
+### [pending] runner.test.ts 拆分 — 1240 行超出 800 行硬限制
 
-**ID**: skill-068
+**ID**: skill-069
 **优先级**: P0
 **模块路径**: packages/server/src/core/skill/
-**当前状态**: `engine.test.ts` 1689 行，是 800 行硬限制的 2.1 倍。包含 14 个 describe 块，覆盖 lifecycle、install、uninstall、configure、updateStatus、execute、webhook dispatch、chain context、template variable injection、queries、singleton、listAvailable、full lifecycle、batch execution。
+**当前状态**: `runner.test.ts` 1240 行，超出硬限制 55%。包含 3 个顶层 describe: `parseTimeout` (L174)、`buildToolDefinitions` (L203)、`SkillRunner` (L244)。其中 `SkillRunner` 块占约 1000 行，是主要的 AI agentic loop 测试。
 **实现方案**: 
-1. 创建 `engine-execute.test.ts` — 提取 `SkillEngine.execute` (L513-719) + `SkillEngine batch execution` (L1381-end) + `SkillEngine template variable injection` (L918-1101) ≈ 600 行
-2. 创建 `engine-webhook.test.ts` — 提取 `SkillEngine webhook dispatch` (L720-831) + `SkillEngine chain context` (L832-917) ≈ 200 行
-3. 创建 `engine-queries.test.ts` — 提取 `SkillEngine queries` (L1102-1227) + `SkillEngine singleton` (L1228-1270) + `SkillEngine.listAvailable` (L1271-1312) + `SkillEngine full lifecycle` (L1313-1380) ≈ 400 行
-4. 原 `engine.test.ts` 保留 lifecycle + install + uninstall + configure + updateStatus ≈ 500 行
-5. 共享 mock 和 helpers 提取到 `engine-test-utils.ts`（如果需要避免重复）
+1. 将 `parseTimeout` 和 `buildToolDefinitions` 测试已经在 `runner-tools.test.ts` (225 行) 中有独立覆盖 — 从 `runner.test.ts` 中删除这两个 describe 块（约 70 行），避免重复
+2. 将 `SkillRunner` 按场景拆分: 创建 `runner-agentic-loop.test.ts` — 提取 AI 循环多步骤、超时、max_steps、SSE 事件发布等测试（约 500 行）
+3. 原 `runner.test.ts` 保留基础运行、单步执行、安全拒绝、错误处理（约 650 行）
 **验收标准**: 
-- `engine.test.ts` ≤ 550 行
-- 3 个新测试文件各 ≤ 650 行
-- 所有 414 个 skill 测试仍通过
-- `pnpm vitest run packages/server/src/core/skill/engine` 无失败
-**影响范围**: packages/server/src/core/skill/engine.test.ts, packages/server/src/core/skill/engine-execute.test.ts (新), packages/server/src/core/skill/engine-webhook.test.ts (新), packages/server/src/core/skill/engine-queries.test.ts (新)
+- `runner.test.ts` ≤ 700 行
+- `runner-agentic-loop.test.ts` ≤ 600 行
+- 无重复测试（删除与 runner-tools.test.ts 重叠的用例）
+- 所有测试仍通过
+**影响范围**: packages/server/src/core/skill/runner.test.ts, packages/server/src/core/skill/runner-agentic-loop.test.ts (新)
 **创建时间**: (自动填充)
 **完成时间**: -
 

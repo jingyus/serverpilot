@@ -105,7 +105,11 @@ chat.post('/:serverId', requirePermission('chat:use'), validateBody(ChatMessageB
 
   const session = await sessionMgr.getOrCreate(serverId, userId, body.sessionId);
 
-  await sessionMgr.addMessage(session.id, userId, 'user', body.message!);
+  try {
+    await sessionMgr.addMessage(session.id, userId, 'user', body.message!);
+  } catch {
+    throw ApiError.internal('Failed to save message — please try again');
+  }
   logger.info({ operation: 'chat_message', serverId, sessionId: session.id, userId }, `Chat message received for server ${server.name}`);
 
   const profileMgr = getProfileManager();
