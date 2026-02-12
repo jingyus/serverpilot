@@ -149,7 +149,14 @@ export function createSSEConnection(
         controller.signal.addEventListener('abort', () => fetchController.abort(), { once: true });
       }
 
-      const response = await sseRequest(path, body, fetchController, token);
+      // On reconnect, strip the message field to prevent the server from
+      // re-processing the user message (duplicate AI responses). Send only
+      // sessionId + reconnect flag so the server resumes the existing stream.
+      const requestBody = isReconnect
+        ? { ...body, message: undefined, reconnect: true }
+        : body;
+
+      const response = await sseRequest(path, requestBody, fetchController, token);
 
       if (!response.ok) {
         if (response.status === 401) {

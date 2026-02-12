@@ -165,8 +165,18 @@ export type UpdateOperationStatusBody = z.infer<typeof UpdateOperationStatusBody
 // ============================================================================
 
 export const ChatMessageBodySchema = z.object({
-  message: z.string().min(1, 'Message is required').max(4000),
+  message: z.string().max(4000).optional(),
   sessionId: z.string().optional(),
+  reconnect: z.boolean().optional(),
+}).superRefine((data, ctx) => {
+  // message is required for normal requests, optional for reconnect
+  if (!data.reconnect && (!data.message || data.message.length < 1)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Message is required',
+      path: ['message'],
+    });
+  }
 });
 export type ChatMessageBody = z.infer<typeof ChatMessageBodySchema>;
 

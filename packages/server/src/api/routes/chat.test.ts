@@ -476,6 +476,108 @@ describe('POST /api/v1/chat/:serverId', () => {
 });
 
 // ============================================================================
+// POST /chat/:serverId — Reconnect (SSE)
+// ============================================================================
+
+describe('POST /api/v1/chat/:serverId (reconnect)', () => {
+  it('should return 400 when reconnect=true but no sessionId', async () => {
+    const server = await createServer('web-01', tokenA);
+    const res = await jsonPost(
+      `/api/v1/chat/${server.id}`,
+      { reconnect: true },
+      tokenA,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('should return 404 when reconnect=true with invalid sessionId', async () => {
+    const server = await createServer('web-01', tokenA);
+    const res = await jsonPost(
+      `/api/v1/chat/${server.id}`,
+      { reconnect: true, sessionId: 'nonexistent-session' },
+      tokenA,
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it('should not re-process user message on reconnect', async () => {
+    const server = await createServer('web-01', tokenA);
+    const sessionMgr = getSessionManager();
+    const session = await sessionMgr.getOrCreate(server.id, USER_A);
+    await sessionMgr.addMessage(session.id, USER_A, 'user', 'original message');
+
+    const mockAgent = {
+      chat: vi.fn().mockResolvedValue({ text: 'response', plan: null }),
+    };
+    _setMockAgent(mockAgent);
+
+    const res = await jsonPost(
+      `/api/v1/chat/${server.id}`,
+      { reconnect: true, sessionId: session.id },
+      tokenA,
+    );
+
+    expect(res.status).toBe(200);
+    const events = await parseSSEEvents(res);
+
+    // Should NOT call AI agent (no duplicate processing)
+    expect(mockAgent.chat).not.toHaveBeenCalled();
+
+    // Should emit a message with reconnected=true
+    const msgEvent = events.find(e =>
+      e.event === 'message' && JSON.parse(e.data).reconnected,
+    );
+    expect(msgEvent).toBeDefined();
+    const msgData = JSON.parse(msgEvent!.data);
+    expect(msgData.sessionId).toBe(session.id);
+    expect(msgData.reconnected).toBe(true);
+
+    // Should complete with reconnected=true
+    const completeEvent = events.find(e => e.event === 'complete');
+    expect(completeEvent).toBeDefined();
+    const completeData = JSON.parse(completeEvent!.data);
+    expect(completeData.success).toBe(true);
+    expect(completeData.reconnected).toBe(true);
+
+    // Session should still have only the original message (no duplicates)
+    const updatedSession = await sessionMgr.getSession(session.id, USER_A);
+    expect(updatedSession!.messages).toHaveLength(1);
+    expect(updatedSession!.messages[0].content).toBe('original message');
+  });
+
+  it('should return 404 when reconnecting to another user\'s session', async () => {
+    const server = await createServer('web-01', tokenA);
+    const sessionMgr = getSessionManager();
+    const session = await sessionMgr.getOrCreate(server.id, USER_A);
+
+    const res = await jsonPost(
+      `/api/v1/chat/${server.id}`,
+      { reconnect: true, sessionId: session.id },
+      tokenB,
+    );
+    // Server not found for user B
+    expect(res.status).toBe(404);
+  });
+
+  it('should allow normal message without reconnect flag', async () => {
+    const server = await createServer('web-01', tokenA);
+    _setMockAgent({
+      chat: vi.fn().mockResolvedValue({ text: 'hello', plan: null }),
+    });
+
+    const res = await jsonPost(
+      `/api/v1/chat/${server.id}`,
+      { message: 'hello' },
+      tokenA,
+    );
+    expect(res.status).toBe(200);
+    const events = await parseSSEEvents(res);
+    const completeEvent = events.find(e => e.event === 'complete');
+    expect(completeEvent).toBeDefined();
+  });
+});
+
+// ============================================================================
 // POST /chat/:serverId/execute — Execute Plan (SSE)
 // ============================================================================
 

@@ -406,7 +406,7 @@ export class TriggerManager {
   }
 
   private async findAllEnabledSkills(): Promise<InstalledSkill[]> {
-    const repo = this.repo as Record<string, unknown>;
+    const repo = this.repo as unknown as Record<string, unknown>;
     if (typeof repo['findAllEnabled'] === 'function') {
       return (repo['findAllEnabled'] as () => Promise<InstalledSkill[]>)();
     }

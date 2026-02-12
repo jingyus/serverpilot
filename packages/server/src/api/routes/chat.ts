@@ -398,10 +398,39 @@ chat.post('/:serverId', requirePermission('chat:use'), validateBody(ChatMessageB
   }
 
   const sessionMgr = getSessionManager();
+
+  // Handle SSE reconnection: client lost connection and is reconnecting.
+  // Do NOT re-process the user message — just resume the session stream.
+  if (body.reconnect) {
+    if (!body.sessionId) {
+      throw ApiError.badRequest('sessionId is required for reconnect');
+    }
+    const session = await sessionMgr.getSession(body.sessionId, userId);
+    if (!session || session.serverId !== serverId) {
+      throw ApiError.notFound('Session');
+    }
+
+    logger.info(
+      { operation: 'chat_reconnect', serverId, sessionId: session.id, userId },
+      `SSE reconnect for server ${server.name}`,
+    );
+
+    return streamSSE(c, async (stream) => {
+      await stream.writeSSE({
+        event: 'message',
+        data: JSON.stringify({ sessionId: session.id, reconnected: true }),
+      });
+      await stream.writeSSE({
+        event: 'complete',
+        data: JSON.stringify({ success: true, reconnected: true }),
+      });
+    });
+  }
+
   const session = await sessionMgr.getOrCreate(serverId, userId, body.sessionId);
 
-  // Store user message
-  await sessionMgr.addMessage(session.id, userId, 'user', body.message);
+  // Store user message (body.message is guaranteed non-empty for non-reconnect)
+  await sessionMgr.addMessage(session.id, userId, 'user', body.message!);
 
   logger.info(
     { operation: 'chat_message', serverId, sessionId: session.id, userId },
@@ -430,7 +459,7 @@ chat.post('/:serverId', requirePermission('chat:use'), validateBody(ChatMessageB
         const history = sessionMgr.buildHistoryWithLimit(session.id, 40000);
 
         const result = await agenticEngine.run({
-          userMessage: body.message,
+          userMessage: body.message!,
           serverId,
           userId,
           sessionId: session.id,
@@ -513,7 +542,7 @@ chat.post('/:serverId', requirePermission('chat:use'), validateBody(ChatMessageB
       let knowledgeContext: string | undefined;
       const ragPipeline = getRagPipeline();
       if (ragPipeline) {
-        const ragResult = await ragPipeline.search(body.message);
+        const ragResult = await ragPipeline.search(body.message!);
         if (ragResult.hasResults) {
           knowledgeContext = ragResult.contextText;
         }
@@ -539,14 +568,14 @@ chat.post('/:serverId', requirePermission('chat:use'), validateBody(ChatMessageB
       let result;
       try {
         result = await agent.chat(
-          body.message, serverLabel, conversationContext,
+          body.message!, serverLabel, conversationContext,
           chatCallbacks, profileCtx.text, caveats, knowledgeContext,
         );
       } catch (retryErr) {
         if (retryErr instanceof ChatRetryExhaustedError) {
           fullResponse = '';
           const fallbackResult = await agent.chatWithFallback(
-            body.message, serverLabel, conversationContext,
+            body.message!, serverLabel, conversationContext,
             chatCallbacks, profileCtx.text, caveats, knowledgeContext,
           );
           if (!fallbackResult) throw retryErr;

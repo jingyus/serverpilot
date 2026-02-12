@@ -353,4 +353,84 @@ describe('createSSEConnection', () => {
     expect(handle.controller).toBeInstanceOf(AbortController);
     handle.abort();
   });
+
+  it('strips message and adds reconnect flag on reconnect', async () => {
+    const onReconnecting = vi.fn();
+    const onComplete = vi.fn();
+
+    // First call: network error to trigger reconnect
+    fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    // Second call: success
+    fetchMock.mockResolvedValueOnce(
+      okSSEResponse(['event: complete\ndata: {"reconnected":true}\n\n']),
+    );
+
+    const handle = createSSEConnection(
+      '/chat/srv-1',
+      { message: 'hello', sessionId: 'sess-1' },
+      { onReconnecting, onComplete },
+    );
+
+    // Wait for first attempt to fail
+    await vi.advanceTimersByTimeAsync(0);
+    expect(onReconnecting).toHaveBeenCalledWith(1);
+
+    // Advance past backoff (1s)
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.runAllTimersAsync();
+
+    // Verify the reconnect request body: message removed, reconnect added
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const reconnectCall = fetchMock.mock.calls[1];
+    const reconnectBody = JSON.parse(reconnectCall[1].body as string);
+    expect(reconnectBody.reconnect).toBe(true);
+    expect(reconnectBody.message).toBeUndefined();
+    expect(reconnectBody.sessionId).toBe('sess-1');
+
+    // First call should have the original message
+    const firstCall = fetchMock.mock.calls[0];
+    const firstBody = JSON.parse(firstCall[1].body as string);
+    expect(firstBody.message).toBe('hello');
+    expect(firstBody.reconnect).toBeUndefined();
+
+    handle.abort();
+  });
+
+  it('sends reconnect body on stream-end reconnect (no complete event)', async () => {
+    const onReconnecting = vi.fn();
+    const onComplete = vi.fn();
+
+    // First stream ends without complete event (triggers reconnect)
+    fetchMock.mockResolvedValueOnce(
+      okSSEResponse(['event: message\ndata: {"content":"partial"}\n\n']),
+    );
+    // Reconnect succeeds with complete
+    fetchMock.mockResolvedValueOnce(
+      okSSEResponse(['event: complete\ndata: {"reconnected":true}\n\n']),
+    );
+
+    const handle = createSSEConnection(
+      '/chat/srv-1',
+      { message: 'test', sessionId: 'sess-2' },
+      { onReconnecting, onComplete },
+    );
+
+    // Let first stream complete
+    await vi.runAllTimersAsync();
+    expect(onReconnecting).toHaveBeenCalledWith(1);
+
+    // Advance past backoff
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.runAllTimersAsync();
+
+    // Verify reconnect request strips message
+    const reconnectCall = fetchMock.mock.calls[1];
+    const reconnectBody = JSON.parse(reconnectCall[1].body as string);
+    expect(reconnectBody.reconnect).toBe(true);
+    expect(reconnectBody.message).toBeUndefined();
+    expect(reconnectBody.sessionId).toBe('sess-2');
+
+    expect(onComplete).toHaveBeenCalled();
+    handle.abort();
+  });
 });
