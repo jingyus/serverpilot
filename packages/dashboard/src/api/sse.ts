@@ -9,6 +9,7 @@ export interface SSECallbacks {
   onRetry?: (data: string) => void;
   onAutoExecute?: (data: string) => void;
   onStepConfirm?: (data: string) => void;
+  onStepDecisionTimeout?: (data: string) => void;
   onStepStart?: (data: string) => void;
   onOutput?: (data: string) => void;
   onStepComplete?: (data: string) => void;
@@ -476,6 +477,7 @@ const SSE_EVENT_MAP: Record<string, keyof SSECallbacks> = {
   retry: 'onRetry',
   auto_execute: 'onAutoExecute',
   step_confirm: 'onStepConfirm',
+  step_decision_timeout: 'onStepDecisionTimeout',
   step_start: 'onStepStart',
   output: 'onOutput',
   step_complete: 'onStepComplete',

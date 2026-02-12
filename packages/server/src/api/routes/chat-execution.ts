@@ -112,20 +112,29 @@ const pendingDecisions = new Map<string, {
 }>();
 
 /** Decision timeout: 5 minutes of inactivity auto-rejects. */
-const STEP_DECISION_TIMEOUT_MS = 5 * 60 * 1000;
+export const STEP_DECISION_TIMEOUT_MS = 5 * 60 * 1000;
 
 /**
  * Wait for a user decision on a specific step.
  * Returns a promise that resolves when the user calls the step-decision API.
+ * On timeout, sends a `step_decision_timeout` SSE event before auto-rejecting.
  */
 function waitForStepDecision(
   planId: string,
   stepId: string,
+  stream: SSEStreamingApi,
+  streamAborted: () => boolean,
 ): Promise<'allow' | 'allow_all' | 'reject'> {
   return new Promise((resolve) => {
     const key = `${planId}:${stepId}`;
     const timer = setTimeout(() => {
       pendingDecisions.delete(key);
+      if (!streamAborted()) {
+        stream.writeSSE({
+          event: 'step_decision_timeout',
+          data: JSON.stringify({ stepId, timeoutMs: STEP_DECISION_TIMEOUT_MS }),
+        }).catch(() => { /* stream already closed */ });
+      }
       resolve('reject');
     }, STEP_DECISION_TIMEOUT_MS);
     pendingDecisions.set(key, { resolve, timer });
@@ -361,10 +370,11 @@ export async function executePlanSteps(opts: ExecutePlanStepsOptions): Promise<E
           command: step.command,
           description: step.description,
           riskLevel: validation.classification.riskLevel,
+          timeoutMs: STEP_DECISION_TIMEOUT_MS,
         }),
       });
 
-      const decision = await waitForStepDecision(planId, step.id);
+      const decision = await waitForStepDecision(planId, step.id, stream, () => streamAborted);
 
       if (decision === 'reject') {
         cancelled = true;

@@ -54,6 +54,15 @@ vi.mock('./chat-ai.js', () => ({
   getChatAIAgent: vi.fn(() => null),
 }));
 
+vi.mock('../../core/security/command-validator.js', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../core/security/command-validator.js')>();
+  return {
+    ...original,
+    validateCommand: vi.fn(original.validateCommand),
+    validatePlan: vi.fn(original.validatePlan),
+  };
+});
+
 import {
   getActiveExecution,
   hasActiveExecution,
@@ -61,9 +70,12 @@ import {
   _setActiveExecution,
   _resetActiveExecutions,
   executePlanSteps,
+  STEP_DECISION_TIMEOUT_MS,
+  resolveStepDecision,
   type StoredPlan,
   type ExecutePlanStepsOptions,
 } from './chat-execution.js';
+import { validateCommand } from '../../core/security/command-validator.js';
 
 beforeEach(() => {
   _resetActiveExecutions();
@@ -359,5 +371,132 @@ describe('executePlanSteps — stream abort', () => {
     // Since writeSSE throws in the main flow too (after progress listener set
     // the flag), the step's remaining writes throw and are caught, causing abort
     expect(result.cancelled).toBe(true);
+  });
+});
+
+// ============================================================================
+// waitForStepDecision — timeout sends SSE event (chat-039)
+// ============================================================================
+
+describe('step_confirm timeout sends SSE event (chat-039)', () => {
+  function makeYellowPlan(): StoredPlan {
+    return {
+      planId: 'plan-timeout',
+      description: 'Timeout test plan',
+      steps: [{
+        id: 'step-1',
+        description: 'Risky step',
+        command: 'rm -rf /tmp/test',
+        riskLevel: 'yellow' as const,
+        timeout: 5000,
+        canRollback: false,
+      }],
+      totalRisk: 'yellow' as const,
+      requiresConfirmation: true,
+    };
+  }
+
+  it('should include timeoutMs in step_confirm SSE event', async () => {
+    const mockValidateCommand = vi.mocked(validateCommand);
+    mockValidateCommand.mockReturnValue({
+      action: 'requires_confirmation' as const,
+      reasons: ['yellow risk command'],
+      classification: {
+        riskLevel: 'yellow' as const,
+        reason: 'potential destructive command',
+        command: 'rm -rf /tmp/test',
+        type: 'system',
+        matchedPattern: 'rm -rf',
+      },
+    });
+
+    const { stream, sseEvents } = createMockStream();
+    const plan = makeYellowPlan();
+    const opts = makeExecOpts(plan, stream);
+    opts.mode = 'step_confirm';
+
+    // Resolve the decision immediately so the test doesn't hang
+    const execPromise = executePlanSteps(opts);
+    // Wait for the step_confirm event to be written
+    await new Promise((r) => setTimeout(r, 50));
+    resolveStepDecision('plan-timeout', 'step-1', 'allow');
+    await execPromise;
+
+    const confirmEvent = sseEvents.find((e) => e.event === 'step_confirm');
+    expect(confirmEvent).toBeDefined();
+    const parsed = JSON.parse(confirmEvent!.data);
+    expect(parsed.timeoutMs).toBe(STEP_DECISION_TIMEOUT_MS);
+    expect(parsed.stepId).toBe('step-1');
+  });
+
+  it('should send step_decision_timeout SSE event on timeout and auto-reject', async () => {
+    vi.useFakeTimers();
+
+    const mockValidateCommand = vi.mocked(validateCommand);
+    mockValidateCommand.mockReturnValue({
+      action: 'requires_confirmation' as const,
+      reasons: ['yellow risk command'],
+      classification: {
+        riskLevel: 'yellow' as const,
+        reason: 'potential destructive command',
+        command: 'rm -rf /tmp/test',
+        type: 'system',
+        matchedPattern: 'rm -rf',
+      },
+    });
+
+    const { stream, sseEvents } = createMockStream();
+    const plan = makeYellowPlan();
+    const opts = makeExecOpts(plan, stream);
+    opts.mode = 'step_confirm';
+
+    const execPromise = executePlanSteps(opts);
+
+    // Advance time past the timeout
+    await vi.advanceTimersByTimeAsync(STEP_DECISION_TIMEOUT_MS + 100);
+
+    const result = await execPromise;
+
+    // Should have sent the timeout event
+    const timeoutEvent = sseEvents.find((e) => e.event === 'step_decision_timeout');
+    expect(timeoutEvent).toBeDefined();
+    const parsed = JSON.parse(timeoutEvent!.data);
+    expect(parsed.stepId).toBe('step-1');
+    expect(parsed.timeoutMs).toBe(STEP_DECISION_TIMEOUT_MS);
+
+    // Should have auto-rejected
+    expect(result.cancelled).toBe(true);
+    expect(result.success).toBe(false);
+
+    vi.useRealTimers();
+  });
+
+  it('should NOT send step_decision_timeout when user decides before timeout', async () => {
+    const mockValidateCommand = vi.mocked(validateCommand);
+    mockValidateCommand.mockReturnValue({
+      action: 'requires_confirmation' as const,
+      reasons: ['yellow risk command'],
+      classification: {
+        riskLevel: 'yellow' as const,
+        reason: 'potential destructive command',
+        command: 'rm -rf /tmp/test',
+        type: 'system',
+        matchedPattern: 'rm -rf',
+      },
+    });
+
+    const { stream, sseEvents } = createMockStream();
+    const plan = makeYellowPlan();
+    const opts = makeExecOpts(plan, stream);
+    opts.mode = 'step_confirm';
+
+    const execPromise = executePlanSteps(opts);
+    // Resolve quickly before timeout
+    await new Promise((r) => setTimeout(r, 50));
+    resolveStepDecision('plan-timeout', 'step-1', 'reject');
+    await execPromise;
+
+    const timeoutEvent = sseEvents.find((e) => e.event === 'step_decision_timeout');
+    expect(timeoutEvent).toBeUndefined();
   });
 });

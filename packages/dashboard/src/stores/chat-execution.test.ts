@@ -519,6 +519,58 @@ describe('chat-execution (via useChatStore)', () => {
       expect(useChatStore.getState().sseParseErrors).toBe(0);
     });
 
+    it('onStepDecisionTimeout clears pendingConfirm and sets error message', () => {
+      useChatStore.setState({ serverId: 'srv-1' });
+      useChatStore.getState().sendMessage('test');
+
+      useChatStore.setState({
+        pendingConfirm: {
+          stepId: 'step-1', command: 'rm -rf /tmp', description: 'Remove', riskLevel: 'red', timeoutMs: 300000,
+        },
+      });
+
+      const callbacks = getSSECallbacks();
+      callbacks.onStepDecisionTimeout(JSON.stringify({ stepId: 'step-1', timeoutMs: 300000 }));
+
+      const state = useChatStore.getState();
+      expect(state.pendingConfirm).toBeNull();
+      expect(state.error).toBe('Step confirmation timed out. The step was automatically rejected.');
+    });
+
+    it('onStepDecisionTimeout with malformed data increments parse error', () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      useChatStore.setState({ serverId: 'srv-1' });
+      useChatStore.getState().sendMessage('test');
+
+      useChatStore.setState({
+        pendingConfirm: {
+          stepId: 'step-1', command: 'rm -rf /tmp', description: 'Remove', riskLevel: 'red',
+        },
+      });
+
+      const callbacks = getSSECallbacks();
+      callbacks.onStepDecisionTimeout('not-json');
+
+      const state = useChatStore.getState();
+      // Should NOT have cleared pendingConfirm since parse failed
+      expect(state.pendingConfirm).not.toBeNull();
+      expect(state.sseParseErrors).toBe(1);
+      warnSpy.mockRestore();
+    });
+
+    it('onStepConfirm passes through timeoutMs when present', () => {
+      useChatStore.setState({ serverId: 'srv-1' });
+      useChatStore.getState().sendMessage('test');
+
+      const callbacks = getSSECallbacks();
+      callbacks.onStepConfirm(JSON.stringify({
+        stepId: 's1', command: 'apt install nginx', description: 'Install', riskLevel: 'yellow', timeoutMs: 300000,
+      }));
+
+      const state = useChatStore.getState();
+      expect(state.pendingConfirm?.timeoutMs).toBe(300000);
+    });
+
     it('resets sseParseErrors on new session', () => {
       useChatStore.setState({ sseParseErrors: 3 });
       useChatStore.getState().newSession();

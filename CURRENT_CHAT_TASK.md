@@ -1,12 +1,12 @@
-### [pending] addMessage 在 cache eviction 后抛异常 — 高并发下用户丢消息
+### [pending] waitForStepDecision 超时无 SSE 反馈 — 用户等 5 分钟后无任何提示
 
-**ID**: chat-038
+**ID**: chat-039
 **优先级**: P1
-**模块路径**: packages/server/src/core/session/manager.ts
-**发现的问题**: `addMessage()`（第 285-311 行）在第 292 行检查 `this.cache.get(sessionId)`，如果返回 null 则抛出 `Error('Session ${sessionId} not found')`。但在高负载场景下，用户调用 `getOrCreate()` 后 session 进入 cache，若在 `addMessage()` 调用前另一个请求触发了 `evictIfNeeded()`（第 174-204 行），该 session 可能已被 LRU 驱逐。此时用户会收到 500 错误，且消息丢失。`evictIfNeeded` 虽然保护 active session（`plans.size > 0`），但普通聊天 session 无 plan 时不受保护。
-**改进方案**: `addMessage()` 在 cache miss 时不抛异常，而是自动从 DB 重新加载 session（调用 `loadSessionFromDb`），然后继续添加消息。添加 `cache_reload` 计数器监控此场景频率。
-**验收标准**: 1) cache miss 时自动 reload，用户无感知 2) 消息不再丢失 3) 新增测试：evict session 后 addMessage 仍成功 4) 日志记录 reload 事件
-**影响范围**: `packages/server/src/core/session/manager.ts`
+**模块路径**: packages/server/src/api/routes/chat-execution.ts
+**发现的问题**: `waitForStepDecision()`（第 121-133 行）创建 Promise，5 分钟后 `setTimeout` 自动 resolve('reject')。但超时发生时：1) 没有 SSE 事件通知前端 2) 前端仍显示 step confirm UI，用户以为还在等待 3) `pendingDecisions.delete(key)` 后，如果用户此时点击 approve，`resolveStepDecision()` 返回 false（未找到），前端收到 404 但不知道原因。
+**改进方案**: 1) 超时时发送 SSE 事件 `step_decision_timeout`（含 stepId 和原因） 2) 前端收到此事件后自动关闭 confirm UI 并显示 "Step confirmation timed out" 提示 3) 前端 step confirm UI 显示倒计时。
+**验收标准**: 1) 超时发送 SSE 事件 2) 前端自动关闭过期的 confirm UI 3) 新增 2+ 测试覆盖超时场景 4) 用户体验无"静默失败"
+**影响范围**: `packages/server/src/api/routes/chat-execution.ts`, `packages/dashboard/src/stores/chat-execution.ts`
 **创建时间**: (自动填充)
 **完成时间**: -
 

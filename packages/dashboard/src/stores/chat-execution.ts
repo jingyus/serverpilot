@@ -19,7 +19,7 @@ import {
 import type { ToolCallEntry, ExecutionMode, ChatState } from './chat-types.js';
 import {
   INITIAL_EXECUTION, generateId, stripJsonPlan,
-  PendingConfirmSchema, StepStartSchema,
+  PendingConfirmSchema, StepDecisionTimeoutSchema, StepStartSchema,
   ToolCallEventSchema, ToolExecutingEventSchema, ToolOutputEventSchema, ToolResultEventSchema,
   ConfirmRequiredEventSchema, ConfirmIdEventSchema,
   MessageEventSchema, RetryEventSchema,
@@ -107,6 +107,13 @@ export function createConfirmPlan(set: SetFn, get: GetFn) {
             const parsed = PendingConfirmSchema.parse(JSON.parse(data));
             set({ pendingConfirm: parsed });
           } catch (e) { warnParseFail(set, 'step_confirm', data, e); }
+        },
+
+        onStepDecisionTimeout: (data) => {
+          try {
+            StepDecisionTimeoutSchema.parse(JSON.parse(data));
+            set({ pendingConfirm: null, error: 'Step confirmation timed out. The step was automatically rejected.' });
+          } catch (e) { warnParseFail(set, 'step_decision_timeout', data, e); }
         },
 
         onComplete: (data) => {
@@ -400,6 +407,13 @@ export function buildStreamingCallbacks(set: SetFn, get: GetFn): SSECallbacks {
         const parsed = PendingConfirmSchema.parse(JSON.parse(data));
         set({ pendingConfirm: parsed });
       } catch (e) { warnParseFail(set, 'step_confirm', data, e); }
+    },
+
+    onStepDecisionTimeout: (data) => {
+      try {
+        StepDecisionTimeoutSchema.parse(JSON.parse(data));
+        set({ pendingConfirm: null, error: 'Step confirmation timed out. The step was automatically rejected.' });
+      } catch (e) { warnParseFail(set, 'step_decision_timeout', data, e); }
     },
 
     onDiagnosis: () => {

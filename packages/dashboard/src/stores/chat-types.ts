@@ -23,6 +23,8 @@ export interface PendingConfirm {
   command: string;
   description: string;
   riskLevel: string;
+  /** Server-provided timeout duration in ms (for countdown display). */
+  timeoutMs?: number;
 }
 
 export interface ToolCallEntry {
@@ -50,6 +52,12 @@ export const PendingConfirmSchema = z.object({
   command: z.string(),
   description: z.string(),
   riskLevel: z.string(),
+  timeoutMs: z.number().optional(),
+});
+
+export const StepDecisionTimeoutSchema = z.object({
+  stepId: z.string().min(1),
+  timeoutMs: z.number(),
 });
 
 const ToolCallStatusSchema = z.enum(['running', 'completed', 'failed', 'blocked', 'rejected']);

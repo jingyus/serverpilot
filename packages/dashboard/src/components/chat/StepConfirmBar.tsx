@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { useState } from 'react';
-import { ShieldAlert, Check, CheckCheck, X } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { ShieldAlert, Check, CheckCheck, X, Clock } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -15,10 +15,36 @@ interface StepConfirmBarProps {
   onReject: () => void;
 }
 
+/** Format remaining milliseconds as "M:SS" */
+function formatCountdown(ms: number): string {
+  const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+}
+
 export function StepConfirmBar({ step, onAllow, onAllowAll, onReject }: StepConfirmBarProps) {
   const [confirmingAllowAll, setConfirmingAllowAll] = useState(false);
+  const [remainingMs, setRemainingMs] = useState(step.timeoutMs ?? 0);
+  const mountedAt = useRef(Date.now());
   const risk = RISK_CONFIG[step.riskLevel as keyof typeof RISK_CONFIG] ?? RISK_CONFIG.yellow;
   const isCritical = step.riskLevel === 'critical';
+  const hasTimeout = (step.timeoutMs ?? 0) > 0;
+
+  useEffect(() => {
+    if (!hasTimeout) return;
+    mountedAt.current = Date.now();
+    setRemainingMs(step.timeoutMs!);
+
+    const interval = setInterval(() => {
+      const elapsed = Date.now() - mountedAt.current;
+      const left = Math.max(0, step.timeoutMs! - elapsed);
+      setRemainingMs(left);
+      if (left <= 0) clearInterval(interval);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [step.stepId, step.timeoutMs, hasTimeout]);
 
   return (
     <div
@@ -39,6 +65,18 @@ export function StepConfirmBar({ step, onAllow, onAllowAll, onReject }: StepConf
             <span className="text-xs text-muted-foreground">
               {step.description}
             </span>
+            {hasTimeout && (
+              <span
+                className={cn(
+                  'ml-auto flex items-center gap-1 text-xs font-medium tabular-nums',
+                  remainingMs <= 30_000 ? 'text-destructive' : 'text-muted-foreground',
+                )}
+                data-testid="step-countdown"
+              >
+                <Clock className="h-3 w-3" />
+                {formatCountdown(remainingMs)}
+              </span>
+            )}
           </div>
 
           <div className="mt-1.5 rounded bg-gray-900 px-2.5 py-1.5 sm:px-3 sm:py-2">
