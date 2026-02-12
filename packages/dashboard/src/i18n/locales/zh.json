@@ -501,7 +501,18 @@
     "selectServer": "选择服务器",
     "noServers": "无可用服务器",
     "executing": "执行中...",
-    "executionStarted": "执行已启动"
+    "executionStarted": "执行已启动",
+    "reExecute": "重新执行",
+    "aiOutput": "AI 输出",
+    "toolCalls": "工具调用",
+    "errors": "错误",
+    "steps": "步",
+    "execStatus": {
+      "success": "成功",
+      "failed": "失败",
+      "running": "运行中",
+      "timeout": "超时"
+    }
   },
   "theme": {
     "toggle": "切换主题",

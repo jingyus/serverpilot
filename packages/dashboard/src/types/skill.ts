@@ -59,6 +59,22 @@ export interface InstalledSkill {
 // Skill Execution (mirrors server SkillExecution)
 // ============================================================================
 
+/** Record of a single tool call during execution. */
+export interface ToolCallRecord {
+  toolName: string;
+  input: Record<string, unknown>;
+  result: string;
+  success: boolean;
+  duration: number;
+}
+
+/** Structured execution result stored in DB. */
+export interface ExecutionResultData {
+  output?: string;
+  toolResults?: ToolCallRecord[];
+  errors?: string[];
+}
+
 export interface SkillExecution {
   id: string;
   skillId: string;
@@ -68,7 +84,7 @@ export interface SkillExecution {
   status: SkillExecutionStatus;
   startedAt: string;
   completedAt: string | null;
-  result: Record<string, unknown> | null;
+  result: ExecutionResultData | Record<string, unknown> | null;
   stepsExecuted: number;
   duration: number | null;
 }
@@ -128,6 +144,10 @@ export interface ExecutionResponse {
 
 export interface ExecutionsResponse {
   executions: SkillExecution[];
+}
+
+export interface ExecutionDetailResponse {
+  execution: SkillExecution;
 }
 
 // ============================================================================

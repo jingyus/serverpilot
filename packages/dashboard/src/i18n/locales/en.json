@@ -501,7 +501,18 @@
     "selectServer": "Select a server",
     "noServers": "No servers available",
     "executing": "Executing...",
-    "executionStarted": "Execution started"
+    "executionStarted": "Execution started",
+    "reExecute": "Re-execute",
+    "aiOutput": "AI Output",
+    "toolCalls": "Tool Calls",
+    "errors": "Errors",
+    "steps": "steps",
+    "execStatus": {
+      "success": "Success",
+      "failed": "Failed",
+      "running": "Running",
+      "timeout": "Timeout"
+    }
   },
   "theme": {
     "toggle": "Toggle theme",

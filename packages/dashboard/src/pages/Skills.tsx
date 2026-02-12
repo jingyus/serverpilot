@@ -57,6 +57,7 @@ export function Skills() {
     updateStatus,
     executeSkill,
     fetchExecutions,
+    clearSelectedExecution,
     clearError,
   } = useSkillsStore();
 
@@ -204,7 +205,7 @@ export function Skills() {
 
       {/* Execution History */}
       {historyTarget && (
-        <Dialog open={true} onOpenChange={() => setHistoryTarget(null)}>
+        <Dialog open={true} onOpenChange={() => { clearSelectedExecution(); setHistoryTarget(null); }}>
           <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{t('skills.executionHistory')}</DialogTitle>
@@ -212,7 +213,19 @@ export function Skills() {
                 {historyTarget.displayName ?? historyTarget.name}
               </DialogDescription>
             </DialogHeader>
-            <ExecutionHistory executions={executions} />
+            <ExecutionHistory
+              executions={executions}
+              onReExecute={(skillId, serverId) => {
+                clearSelectedExecution();
+                setHistoryTarget(null);
+                // Find the skill and open execute dialog
+                const skill = skills.find((s) => s.id === skillId);
+                if (skill) {
+                  setExecuteTarget(skill);
+                  setSelectedServerId(serverId);
+                }
+              }}
+            />
           </DialogContent>
         </Dialog>
       )}

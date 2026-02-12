@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, ChevronRight, Clock, Loader2 } from 'lucide-react';
+import { Clock, Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { useSkillsStore } from '@/stores/skills';
+import { ExecutionDetail } from './ExecutionDetail';
 import type { SkillExecution, SkillExecutionStatus } from '@/types/skill';
 
 // ============================================================================
@@ -17,20 +18,39 @@ const EXEC_STATUS_VARIANT: Record<SkillExecutionStatus, 'default' | 'secondary' 
   timeout: 'outline',
 };
 
-const EXEC_STATUS_LABELS: Record<SkillExecutionStatus, string> = {
-  success: 'Success',
-  failed: 'Failed',
-  running: 'Running',
-  timeout: 'Timeout',
-};
-
 // ============================================================================
 // ExecutionHistory Component
 // ============================================================================
 
-export function ExecutionHistory({ executions }: { executions: SkillExecution[] }) {
+interface ExecutionHistoryProps {
+  executions: SkillExecution[];
+  onReExecute: (skillId: string, serverId: string) => void;
+}
+
+export function ExecutionHistory({ executions, onReExecute }: ExecutionHistoryProps) {
   const { t } = useTranslation();
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const {
+    selectedExecution,
+    isLoadingDetail,
+    fetchExecutionDetail,
+    clearSelectedExecution,
+  } = useSkillsStore();
+
+  const handleSelectExecution = (exec: SkillExecution) => {
+    fetchExecutionDetail(exec.skillId, exec.id);
+  };
+
+  // Show detail view when an execution is selected
+  if (selectedExecution) {
+    return (
+      <ExecutionDetail
+        execution={selectedExecution}
+        isLoading={isLoadingDetail}
+        onBack={clearSelectedExecution}
+        onReExecute={onReExecute}
+      />
+    );
+  }
 
   if (executions.length === 0) {
     return (
@@ -46,8 +66,7 @@ export function ExecutionHistory({ executions }: { executions: SkillExecution[] 
         <ExecutionRow
           key={exec.id}
           execution={exec}
-          expanded={expandedId === exec.id}
-          onToggle={() => setExpandedId(expandedId === exec.id ? null : exec.id)}
+          onSelect={() => handleSelectExecution(exec)}
         />
       ))}
     </div>
@@ -60,64 +79,48 @@ export function ExecutionHistory({ executions }: { executions: SkillExecution[] 
 
 function ExecutionRow({
   execution,
-  expanded,
-  onToggle,
+  onSelect,
 }: {
   execution: SkillExecution;
-  expanded: boolean;
-  onToggle: () => void;
+  onSelect: () => void;
 }) {
+  const { t } = useTranslation();
   const isRunning = execution.status === 'running';
 
   return (
-    <div className="rounded-md border border-border">
-      <button
-        type="button"
-        className="flex w-full items-center gap-3 p-3 text-left text-sm hover:bg-muted/50"
-        onClick={onToggle}
+    <button
+      type="button"
+      className="flex w-full items-center gap-3 rounded-md border border-border p-3 text-left text-sm hover:bg-muted/50"
+      onClick={onSelect}
+      data-testid={`execution-row-${execution.id}`}
+    >
+      <span className="flex-1 truncate text-muted-foreground">
+        {formatDate(execution.startedAt)}
+      </span>
+
+      <Badge variant="outline" className="text-xs shrink-0">
+        {execution.triggerType}
+      </Badge>
+
+      <Badge
+        variant={EXEC_STATUS_VARIANT[execution.status]}
+        className="text-xs shrink-0"
       >
-        {expanded ? (
-          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-        ) : (
-          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-        )}
+        {isRunning && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
+        {t(`skills.execStatus.${execution.status}`)}
+      </Badge>
 
-        <span className="flex-1 truncate text-muted-foreground">
-          {formatDate(execution.startedAt)}
+      {execution.duration !== null && (
+        <span className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
+          <Clock className="h-3 w-3" />
+          {formatDuration(execution.duration)}
         </span>
-
-        <Badge variant="outline" className="text-xs shrink-0">
-          {execution.triggerType}
-        </Badge>
-
-        <Badge
-          variant={EXEC_STATUS_VARIANT[execution.status]}
-          className="text-xs shrink-0"
-        >
-          {isRunning && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}
-          {EXEC_STATUS_LABELS[execution.status]}
-        </Badge>
-
-        {execution.duration !== null && (
-          <span className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
-            <Clock className="h-3 w-3" />
-            {formatDuration(execution.duration)}
-          </span>
-        )}
-
-        <span className="text-xs text-muted-foreground shrink-0">
-          {execution.stepsExecuted} steps
-        </span>
-      </button>
-
-      {expanded && execution.result && (
-        <div className="border-t border-border bg-muted/30 p-3">
-          <pre className="overflow-x-auto whitespace-pre-wrap text-xs text-muted-foreground">
-            {JSON.stringify(execution.result, null, 2)}
-          </pre>
-        </div>
       )}
-    </div>
+
+      <span className="text-xs text-muted-foreground shrink-0">
+        {execution.stepsExecuted} {t('skills.steps')}
+      </span>
+    </button>
   );
 }
 

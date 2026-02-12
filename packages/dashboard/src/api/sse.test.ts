@@ -5,9 +5,14 @@ import {
   isRetriableError,
   computeReconnectDelay,
   createSSEConnection,
+  createGetSSE,
   parseSSEStream,
 } from './sse';
-import type { SSECallbacks, SSEConnectionHandle, SSEDispatchFn } from './sse';
+import type { SSECallbacks, SSEConnectionHandle, SSEDispatchFn, GetSSEConfig } from './sse';
+
+vi.mock('./auth', () => ({
+  refreshAccessToken: vi.fn().mockResolvedValue(null),
+}));
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -596,6 +601,263 @@ describe('createSSEConnection', () => {
     expect(reconnectBody.sessionId).toBe('sess-2');
 
     expect(onComplete).toHaveBeenCalled();
+    handle.abort();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// createGetSSE (generic GET-based SSE wrapper)
+// ---------------------------------------------------------------------------
+describe('createGetSSE', () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+  const originalFetch = globalThis.fetch;
+
+  beforeEach(async () => {
+    vi.useFakeTimers();
+    localStorage.setItem('auth_token', 'test-token');
+    fetchMock = vi.fn();
+    globalThis.fetch = fetchMock;
+    // Reset the refreshAccessToken mock
+    const { refreshAccessToken } = await import('./auth');
+    vi.mocked(refreshAccessToken).mockReset().mockResolvedValue(null);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    globalThis.fetch = originalFetch;
+    localStorage.clear();
+  });
+
+  it('dispatches events to the dispatch function', async () => {
+    const dispatch = vi.fn();
+    fetchMock.mockResolvedValueOnce(
+      okSSEResponse(['event: metric\ndata: {"cpu":50}\n\n']),
+    );
+
+    // Use reconnect: false to avoid infinite loop after stream ends
+    const handle = createGetSSE({ path: '/metrics/stream', dispatch, reconnect: false });
+    await vi.runAllTimersAsync();
+
+    expect(dispatch).toHaveBeenCalledWith('metric', '{"cpu":50}');
+    handle.abort();
+  });
+
+  it('sends Authorization header from localStorage', async () => {
+    const dispatch = vi.fn();
+    fetchMock.mockResolvedValueOnce(
+      okSSEResponse(['event: connected\ndata: ok\n\n']),
+    );
+
+    const handle = createGetSSE({ path: '/test', dispatch, reconnect: false });
+    await vi.runAllTimersAsync();
+
+    const headers = fetchMock.mock.calls[0][1].headers as Record<string, string>;
+    expect(headers['Authorization']).toBe('Bearer test-token');
+    expect(headers['Accept']).toBe('text/event-stream');
+    handle.abort();
+  });
+
+  it('reconnects on stream end when reconnect is enabled (default)', async () => {
+    const dispatch = vi.fn();
+    // First stream ends normally
+    fetchMock.mockResolvedValueOnce(
+      okSSEResponse(['event: status\ndata: online\n\n']),
+    );
+    // Second stream also ends
+    fetchMock.mockResolvedValueOnce(
+      okSSEResponse(['event: status\ndata: offline\n\n']),
+    );
+
+    const handle = createGetSSE({ path: '/status', dispatch });
+
+    // Let first stream finish — it schedules a reconnect timer
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    // Advance past reconnect backoff (1s for attempt 0)
+    await vi.advanceTimersByTimeAsync(1000);
+    // Let second stream complete then abort before further reconnect
+    await vi.advanceTimersByTimeAsync(0);
+    handle.abort();
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(dispatch).toHaveBeenCalledWith('status', 'online');
+    expect(dispatch).toHaveBeenCalledWith('status', 'offline');
+  });
+
+  it('does not reconnect when reconnect is false', async () => {
+    const dispatch = vi.fn();
+    fetchMock.mockResolvedValueOnce(
+      okSSEResponse(['event: completed\ndata: done\n\n']),
+    );
+
+    const handle = createGetSSE({ path: '/exec/1', dispatch, reconnect: false });
+    await vi.runAllTimersAsync();
+
+    // Wait past any potential reconnect
+    await vi.advanceTimersByTimeAsync(5000);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    handle.abort();
+  });
+
+  it('closes stream when dispatch returns true', async () => {
+    const dispatch = vi.fn().mockReturnValueOnce(true);
+    fetchMock.mockResolvedValueOnce(
+      okSSEResponse([
+        'event: completed\ndata: done\n\nevent: extra\ndata: ignored\n\n',
+      ]),
+    );
+
+    const handle = createGetSSE({ path: '/exec/1', dispatch, reconnect: false });
+    await vi.runAllTimersAsync();
+
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(dispatch).toHaveBeenCalledWith('completed', 'done');
+    handle.abort();
+  });
+
+  it('calls onError on HTTP error', async () => {
+    const dispatch = vi.fn();
+    const onError = vi.fn();
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: 'Not Found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+
+    const handle = createGetSSE({
+      path: '/missing',
+      dispatch,
+      onError,
+      reconnect: false,
+    });
+    await vi.runAllTimersAsync();
+
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError.mock.calls[0][0].message).toBe('Not Found');
+    handle.abort();
+  });
+
+  it('reconnects on error when reconnect is true', async () => {
+    const dispatch = vi.fn();
+    const onError = vi.fn();
+
+    // First: network error
+    fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    // Second: success
+    fetchMock.mockResolvedValueOnce(
+      okSSEResponse(['event: metric\ndata: ok\n\n']),
+    );
+
+    const handle = createGetSSE({ path: '/metrics', dispatch, onError });
+
+    // Let first attempt fail
+    await vi.advanceTimersByTimeAsync(0);
+    expect(onError).toHaveBeenCalledTimes(1);
+
+    // Advance past backoff (1s), let second stream complete, then abort
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(0);
+    handle.abort();
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(dispatch).toHaveBeenCalledWith('metric', 'ok');
+  });
+
+  it('resets reconnect counter after successful connection', async () => {
+    const dispatch = vi.fn();
+    const onError = vi.fn();
+
+    // First: network error → reconnect attempt 0 (delay 1s)
+    fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    // Second: success, stream ends → reconnect attempt should be reset to 0 (delay 1s again)
+    fetchMock.mockResolvedValueOnce(
+      okSSEResponse(['event: ping\ndata: 1\n\n']),
+    );
+    // Third: reconnect after stream end
+    fetchMock.mockResolvedValueOnce(
+      okSSEResponse(['event: ping\ndata: 2\n\n']),
+    );
+
+    const handle = createGetSSE({ path: '/stream', dispatch, onError });
+
+    // First attempt fails
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Backoff 1s (attempt 0) for reconnect, let second stream complete
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    // After success, reconnectAttempt resets. Next backoff should be 1s (not 2s)
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(0);
+    handle.abort();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not reconnect or dispatch after abort', async () => {
+    const dispatch = vi.fn();
+
+    fetchMock.mockResolvedValueOnce(
+      okSSEResponse(['event: data\ndata: first\n\n']),
+    );
+
+    const handle = createGetSSE({ path: '/stream', dispatch });
+
+    // Let first stream complete
+    await vi.advanceTimersByTimeAsync(0);
+    handle.abort();
+
+    // Advance well past any backoff
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    // Only one fetch call (no reconnect after abort)
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('attempts 401 token refresh', async () => {
+    const { refreshAccessToken } = await import('./auth');
+    const refreshMock = vi.mocked(refreshAccessToken);
+    refreshMock.mockResolvedValueOnce('new-token');
+
+    const dispatch = vi.fn();
+    // First response: 401
+    fetchMock.mockResolvedValueOnce(
+      new Response('', { status: 401 }),
+    );
+    // After refresh, retry succeeds
+    fetchMock.mockResolvedValueOnce(
+      okSSEResponse(['event: connected\ndata: ok\n\n']),
+    );
+
+    const handle = createGetSSE({ path: '/stream', dispatch, reconnect: false });
+    await vi.runAllTimersAsync();
+
+    expect(refreshMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // Second call should use the new token
+    const retryHeaders = fetchMock.mock.calls[1][1].headers as Record<string, string>;
+    expect(retryHeaders['Authorization']).toBe('Bearer new-token');
+    expect(dispatch).toHaveBeenCalledWith('connected', 'ok');
+    handle.abort();
+  });
+
+  it('works without auth token', async () => {
+    localStorage.clear();
+    const dispatch = vi.fn();
+    fetchMock.mockResolvedValueOnce(
+      okSSEResponse(['event: test\ndata: no-auth\n\n']),
+    );
+
+    const handle = createGetSSE({ path: '/public', dispatch, reconnect: false });
+    await vi.runAllTimersAsync();
+
+    const headers = fetchMock.mock.calls[0][1].headers as Record<string, string>;
+    expect(headers['Authorization']).toBeUndefined();
+    expect(dispatch).toHaveBeenCalledWith('test', 'no-auth');
     handle.abort();
   });
 });

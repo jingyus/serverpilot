@@ -228,29 +228,21 @@ class SSEHttpError extends Error {
   }
 }
 
-// ============================================================================
-// GET-based SSE for metrics streaming
-// ============================================================================
-
-export interface MetricsSSECallbacks {
-  onMetric?: (data: string) => void;
-  onConnected?: (data: string) => void;
+/** Configuration for a GET-based SSE connection */
+export interface GetSSEConfig {
+  /** Full URL path (appended to API_BASE_URL) */
+  path: string;
+  /** Dispatch incoming SSE events; return true to close the stream */
+  dispatch: SSEDispatchFn;
+  /** Error callback */
   onError?: (error: Error) => void;
+  /** Whether to auto-reconnect on stream end or error (default: true) */
+  reconnect?: boolean;
 }
 
-/**
- * Create a GET-based SSE connection for real-time metrics streaming.
- *
- * Unlike createSSEConnection (which uses POST for chat), this uses GET
- * with query params and supports automatic reconnection with exponential
- * backoff.
- *
- * @returns Object with abort() to close connection
- */
-export function createMetricsSSE(
-  path: string,
-  callbacks: MetricsSSECallbacks,
-): { abort: () => void } {
+/** Create a GET-based SSE connection with auth, 401 retry, and optional reconnect. */
+export function createGetSSE(config: GetSSEConfig): { abort: () => void } {
+  const { path, dispatch, onError, reconnect: shouldReconnect = true } = config;
   const controller = new AbortController();
   let reconnectAttempt = 0;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -263,6 +255,16 @@ export function createMetricsSSE(
       reconnectTimer = null;
     }
     controller.abort();
+  }
+
+  function scheduleReconnect() {
+    if (stopped || !shouldReconnect) return;
+    const delay = computeReconnectDelay(reconnectAttempt);
+    reconnectAttempt++;
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      connect();
+    }, delay);
   }
 
   async function connect() {
@@ -298,7 +300,8 @@ export function createMetricsSSE(
 
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));
-        const msg = (errorBody as Record<string, string>).error ?? `Stream failed: ${response.status}`;
+        const msg = (errorBody as Record<string, string>).error
+          ?? `Stream failed: ${response.status}`;
         throw new Error(msg);
       }
 
@@ -309,32 +312,21 @@ export function createMetricsSSE(
       if (!reader) throw new Error('No response body');
 
       await parseSSEStream(reader, (event, data) => {
-        if (event === 'metric') {
-          callbacks.onMetric?.(data);
-        } else if (event === 'connected') {
-          callbacks.onConnected?.(data);
+        const shouldClose = dispatch(event, data);
+        if (shouldClose) {
+          cleanup();
+          return true;
         }
       });
 
-      // Stream ended normally — reconnect if not aborted
+      // Stream ended normally — reconnect if configured
       if (!stopped) scheduleReconnect();
     } catch (err: unknown) {
       if (stopped || controller.signal.aborted) return;
       const error = err instanceof Error ? err : new Error('SSE connection failed');
-      callbacks.onError?.(error);
+      onError?.(error);
       scheduleReconnect();
     }
-  }
-
-  function scheduleReconnect() {
-    if (stopped) return;
-    // Exponential backoff: 1s, 2s, 4s, 8s, max 30s
-    const delay = Math.min(1000 * Math.pow(2, reconnectAttempt), 30_000);
-    reconnectAttempt++;
-    reconnectTimer = setTimeout(() => {
-      reconnectTimer = null;
-      connect();
-    }, delay);
   }
 
   connect();
@@ -342,9 +334,28 @@ export function createMetricsSSE(
   return { abort: cleanup };
 }
 
-// ============================================================================
-// GET-based SSE for server status streaming
-// ============================================================================
+export interface MetricsSSECallbacks {
+  onMetric?: (data: string) => void;
+  onConnected?: (data: string) => void;
+  onError?: (error: Error) => void;
+}
+
+export function createMetricsSSE(
+  path: string,
+  callbacks: MetricsSSECallbacks,
+): { abort: () => void } {
+  return createGetSSE({
+    path,
+    onError: callbacks.onError,
+    dispatch(event, data) {
+      if (event === 'metric') {
+        callbacks.onMetric?.(data);
+      } else if (event === 'connected') {
+        callbacks.onConnected?.(data);
+      }
+    },
+  });
+}
 
 export interface ServerStatusSSECallbacks {
   onStatus?: (data: string) => void;
@@ -352,106 +363,21 @@ export interface ServerStatusSSECallbacks {
   onError?: (error: Error) => void;
 }
 
-/**
- * Create a GET-based SSE connection for real-time server status updates.
- *
- * Subscribes to /servers/status/stream to receive online/offline events
- * for all servers. Supports automatic reconnection with exponential backoff.
- *
- * @returns Object with abort() to close connection
- */
 export function createServerStatusSSE(
   callbacks: ServerStatusSSECallbacks,
 ): { abort: () => void } {
-  const controller = new AbortController();
-  let reconnectAttempt = 0;
-  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  let stopped = false;
-
-  function cleanup() {
-    stopped = true;
-    if (reconnectTimer !== null) {
-      clearTimeout(reconnectTimer);
-      reconnectTimer = null;
-    }
-    controller.abort();
-  }
-
-  async function connect() {
-    if (stopped) return;
-
-    const token = localStorage.getItem('auth_token');
-    const headers: Record<string, string> = {
-      Accept: 'text/event-stream',
-    };
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    try {
-      let response = await fetch(`${API_BASE_URL}/servers/status/stream`, {
-        method: 'GET',
-        headers,
-        signal: controller.signal,
-      });
-
-      // On 401, attempt token refresh and retry once
-      if (response.status === 401) {
-        const newToken = await refreshAccessToken();
-        if (newToken) {
-          headers['Authorization'] = `Bearer ${newToken}`;
-          response = await fetch(`${API_BASE_URL}/servers/status/stream`, {
-            method: 'GET',
-            headers,
-            signal: controller.signal,
-          });
-        }
+  return createGetSSE({
+    path: '/servers/status/stream',
+    onError: callbacks.onError,
+    dispatch(event, data) {
+      if (event === 'status') {
+        callbacks.onStatus?.(data);
+      } else if (event === 'connected') {
+        callbacks.onConnected?.(data);
       }
-
-      if (!response.ok) {
-        throw new Error(`Status stream failed: ${response.status}`);
-      }
-
-      reconnectAttempt = 0;
-
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('No response body');
-
-      await parseSSEStream(reader, (event, data) => {
-        if (event === 'status') {
-          callbacks.onStatus?.(data);
-        } else if (event === 'connected') {
-          callbacks.onConnected?.(data);
-        }
-      });
-
-      if (!stopped) scheduleReconnect();
-    } catch (err: unknown) {
-      if (stopped || controller.signal.aborted) return;
-      const error = err instanceof Error ? err : new Error('SSE connection failed');
-      callbacks.onError?.(error);
-      scheduleReconnect();
-    }
-  }
-
-  function scheduleReconnect() {
-    if (stopped) return;
-    const delay = Math.min(1000 * Math.pow(2, reconnectAttempt), 30_000);
-    reconnectAttempt++;
-    reconnectTimer = setTimeout(() => {
-      reconnectTimer = null;
-      connect();
-    }, delay);
-  }
-
-  connect();
-
-  return { abort: cleanup };
+    },
+  });
 }
-
-// ============================================================================
-// GET-based SSE for skill execution progress streaming
-// ============================================================================
 
 export interface SkillExecutionSSECallbacks {
   onConnected?: (data: string) => void;
@@ -461,102 +387,36 @@ export interface SkillExecutionSSECallbacks {
   onError?: (error: Error) => void;
 }
 
-/**
- * Create a GET-based SSE connection for real-time skill execution progress.
- *
- * Subscribes to /skills/executions/:eid/stream to receive step, log,
- * and completion events. Auto-closes when execution completes.
- *
- * @returns Object with abort() to close connection
- */
 export function createSkillExecutionSSE(
   executionId: string,
   callbacks: SkillExecutionSSECallbacks,
 ): { abort: () => void } {
-  const controller = new AbortController();
-  let stopped = false;
-
-  function cleanup() {
-    stopped = true;
-    controller.abort();
-  }
-
-  async function connect() {
-    if (stopped) return;
-
-    const token = localStorage.getItem('auth_token');
-    const headers: Record<string, string> = {
-      Accept: 'text/event-stream',
-    };
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    try {
-      let response = await fetch(
-        `${API_BASE_URL}/skills/executions/${executionId}/stream`,
-        { method: 'GET', headers, signal: controller.signal },
-      );
-
-      // On 401, attempt token refresh and retry once
-      if (response.status === 401) {
-        const newToken = await refreshAccessToken();
-        if (newToken) {
-          headers['Authorization'] = `Bearer ${newToken}`;
-          response = await fetch(
-            `${API_BASE_URL}/skills/executions/${executionId}/stream`,
-            { method: 'GET', headers, signal: controller.signal },
-          );
+  return createGetSSE({
+    path: `/skills/executions/${executionId}/stream`,
+    reconnect: false,
+    onError: callbacks.onError,
+    dispatch(event, data) {
+      if (event === 'step') {
+        callbacks.onStep?.(data);
+      } else if (event === 'log') {
+        callbacks.onLog?.(data);
+      } else if (event === 'completed') {
+        callbacks.onCompleted?.(data);
+        return true; // close stream
+      } else if (event === 'connected') {
+        callbacks.onConnected?.(data);
+      } else if (event === 'error') {
+        try {
+          const parsed = JSON.parse(data) as { message?: string };
+          callbacks.onError?.(new Error(parsed.message ?? 'Execution error'));
+        } catch {
+          callbacks.onError?.(new Error(data));
         }
+        return true; // close stream
       }
-
-      if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({}));
-        const msg = (errorBody as Record<string, string>).error
-          ?? `Stream failed: ${response.status}`;
-        throw new Error(msg);
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('No response body');
-
-      await parseSSEStream(reader, (event, data) => {
-        if (event === 'step') {
-          callbacks.onStep?.(data);
-        } else if (event === 'log') {
-          callbacks.onLog?.(data);
-        } else if (event === 'completed') {
-          callbacks.onCompleted?.(data);
-          cleanup();
-          return true;
-        } else if (event === 'connected') {
-          callbacks.onConnected?.(data);
-        } else if (event === 'error') {
-          try {
-            const parsed = JSON.parse(data) as { message?: string };
-            callbacks.onError?.(new Error(parsed.message ?? 'Execution error'));
-          } catch {
-            callbacks.onError?.(new Error(data));
-          }
-          cleanup();
-          return true;
-        }
-      });
-    } catch (err: unknown) {
-      if (stopped || controller.signal.aborted) return;
-      const error = err instanceof Error ? err : new Error('SSE connection failed');
-      callbacks.onError?.(error);
-    }
-  }
-
-  connect();
-
-  return { abort: cleanup };
+    },
+  });
 }
-
-// ============================================================================
-// SSE Stream Parser (shared across all SSE connection types)
-// ============================================================================
 
 /**
  * SSE event dispatch callback.
@@ -566,14 +426,7 @@ export function createSkillExecutionSSE(
  */
 export type SSEDispatchFn = (event: string, data: string) => boolean | void;
 
-/**
- * Parse an SSE stream according to the W3C EventSource spec.
- *
- * - Accumulates `event:` and `data:` fields across lines
- * - Dispatches accumulated event on blank line (end-of-event marker)
- * - Supports multi-line `data:` (multiple data: lines joined with '\n')
- * - Default event type is 'message' per SSE spec
- */
+/** Parse an SSE stream per W3C EventSource spec: accumulate event/data fields, dispatch on blank line. */
 export async function parseSSEStream(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   dispatch: SSEDispatchFn,
@@ -616,66 +469,32 @@ export async function parseSSEStream(
   }
 }
 
-// ============================================================================
-// SSE Event Dispatch
-// ============================================================================
+/** Map SSE event names to SSECallbacks keys */
+const SSE_EVENT_MAP: Record<string, keyof SSECallbacks> = {
+  message: 'onMessage',
+  plan: 'onPlan',
+  retry: 'onRetry',
+  auto_execute: 'onAutoExecute',
+  step_confirm: 'onStepConfirm',
+  step_start: 'onStepStart',
+  output: 'onOutput',
+  step_complete: 'onStepComplete',
+  diagnosis: 'onDiagnosis',
+  complete: 'onComplete',
+  tool_call: 'onToolCall',
+  tool_executing: 'onToolExecuting',
+  tool_output: 'onToolOutput',
+  tool_result: 'onToolResult',
+  confirm_required: 'onConfirmRequired',
+  confirm_id: 'onConfirmId',
+};
 
 function dispatchSSEEvent(
   event: string,
   data: string,
   callbacks: SSECallbacks
 ): void {
-  switch (event) {
-    case 'message':
-      callbacks.onMessage?.(data);
-      break;
-    case 'plan':
-      callbacks.onPlan?.(data);
-      break;
-    case 'retry':
-      callbacks.onRetry?.(data);
-      break;
-    case 'auto_execute':
-      callbacks.onAutoExecute?.(data);
-      break;
-    case 'step_confirm':
-      callbacks.onStepConfirm?.(data);
-      break;
-    case 'step_start':
-      callbacks.onStepStart?.(data);
-      break;
-    case 'output':
-      callbacks.onOutput?.(data);
-      break;
-    case 'step_complete':
-      callbacks.onStepComplete?.(data);
-      break;
-    case 'diagnosis':
-      callbacks.onDiagnosis?.(data);
-      break;
-    case 'complete':
-      callbacks.onComplete?.(data);
-      break;
-    // Agentic mode events
-    case 'tool_call':
-      callbacks.onToolCall?.(data);
-      break;
-    case 'tool_executing':
-      callbacks.onToolExecuting?.(data);
-      break;
-    case 'tool_output':
-      callbacks.onToolOutput?.(data);
-      break;
-    case 'tool_result':
-      callbacks.onToolResult?.(data);
-      break;
-    case 'confirm_required':
-      callbacks.onConfirmRequired?.(data);
-      break;
-    case 'confirm_id':
-      callbacks.onConfirmId?.(data);
-      break;
-    default:
-      callbacks.onMessage?.(data);
-  }
+  const key = SSE_EVENT_MAP[event] ?? 'onMessage';
+  const handler = callbacks[key] as ((d: string) => void) | undefined;
+  handler?.(data);
 }

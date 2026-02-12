@@ -1,37 +1,35 @@
-### [pending] Skill manifest_inputs 持久化 — 安装时保存输入定义到 DB
+### [pending] Skill 执行历史增强 — 执行详情页 + 重新执行
 
-**ID**: skill-021
+**ID**: skill-022
 **优先级**: P3
-**模块路径**: packages/server/src/db/schema.ts + packages/server/src/core/skill/engine.ts
-**当前状态**: 功能缺失 — `installed_skills` 表没有存储 manifest 中的 `inputs[]` 定义。每次需要 inputs 信息时必须从磁盘加载 `skill.yaml` 并解析。如果 Skill 目录被删除或损坏，inputs 信息丢失。Dashboard 配置 Modal 无法获取正确的输入类型定义 (依赖 skill-019)
+**模块路径**: packages/dashboard/src/components/skill/
+**当前状态**: 功能缺失 — `ExecutionHistory.tsx` 只显示执行列表 (时间、状态、步数、耗时)，无法展开查看单条执行的详细结果 (AI 输出、工具调用记录、错误信息)。API 已有 `GET /skills/:id/executions/:eid` 返回执行详情，但 Dashboard 未调用。也无法从历史中重新执行 Skill
 **实现方案**:
 
-1. **DB Schema** — `installed_skills` 表新增列:
-   - `manifest_inputs TEXT` — JSON 序列化的 `SkillManifest.inputs[]`
-   - 或重用 `config` 列的 `_manifest` 子键 (不推荐，混淆用户配置和元数据)
-2. **Migration** — `0011_skill_manifest_inputs.sql`:
-   - `ALTER TABLE installed_skills ADD COLUMN manifest_inputs TEXT`
-3. **engine.ts** — `install()` 方法:
-   - 解析 manifest 后，将 `manifest.inputs` JSON 序列化保存到 `manifest_inputs` 列
-4. **SkillRepository** — 更新 `install()` 输入类型:
-   - `InstallSkillInput` 新增 `manifestInputs?: unknown[]`
-5. **API 返回** — GET /skills 的响应中包含 `manifestInputs` 字段
+1. **ExecutionDetail.tsx** (~150 行):
+   - 执行详情展示: AI 输出文本、工具调用列表 (名称、输入、结果、耗时)、错误列表
+   - 工具调用折叠/展开
+   - "重新执行" 按钮 → 使用相同的 skillId + serverId 触发新执行
+2. **ExecutionHistory.tsx** — 修改:
+   - 点击执行记录行 → 展开/切换到 ExecutionDetail 视图
+   - 或使用 Dialog 展示详情
+3. **stores/skills.ts** — 新增:
+   - `fetchExecutionDetail(skillId, executionId)` → `GET /skills/:id/executions/:eid`
+   - `selectedExecution: SkillExecution | null` state
+4. **i18n** — 新增 keys: executionDetail, reExecute, toolCalls, aiOutput, errors
+5. **测试**: ≥ 4 个 (详情加载、重新执行、错误处理)
 
 **验收标准**:
-- 安装 Skill 后 DB 持久化了 inputs 定义
-- API 返回 InstalledSkill 包含 manifestInputs
-- 即使磁盘 skill.yaml 损坏，仍可从 DB 获取 inputs 定义
-- Migration 平滑执行 (nullable 列)
+- 点击历史记录可查看执行详情 (AI 输出 + 工具调用记录)
+- 详情页有"重新执行"按钮
+- 测试 ≥ 4 个
 
 **影响范围**:
-- `packages/server/src/db/schema.ts` (修改)
-- `packages/server/src/db/migrations/0011_skill_manifest_inputs.sql` (新建)
-- `packages/server/src/db/connection.ts` (修改 — createTables)
-- `packages/server/src/db/repositories/skill-repository.ts` (修改)
-- `packages/server/src/core/skill/engine.ts` (修改)
-- `packages/server/src/core/skill/types.ts` (修改 — InstalledSkill 新增字段)
+- `packages/dashboard/src/components/skill/ExecutionDetail.tsx` (新建)
+- `packages/dashboard/src/components/skill/ExecutionHistory.tsx` (修改)
+- `packages/dashboard/src/stores/skills.ts` (修改)
+- `packages/dashboard/src/i18n/locales/en.json` (修改)
+- `packages/dashboard/src/i18n/locales/zh.json` (修改)
 
 **创建时间**: (自动填充)
 **完成时间**: -
-
----

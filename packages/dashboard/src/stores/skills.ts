@@ -15,6 +15,7 @@ import type {
   SkillResponse,
   ExecutionResponse,
   ExecutionsResponse,
+  ExecutionDetailResponse,
   SkillExecutionEvent,
 } from '@/types/skill';
 
@@ -22,6 +23,8 @@ interface SkillsState {
   skills: InstalledSkill[];
   available: AvailableSkill[];
   executions: SkillExecution[];
+  selectedExecution: SkillExecution | null;
+  isLoadingDetail: boolean;
   executionEvents: SkillExecutionEvent[];
   isStreaming: boolean;
   isLoading: boolean;
@@ -35,6 +38,8 @@ interface SkillsState {
   updateStatus: (id: string, status: SkillStatus) => Promise<void>;
   executeSkill: (id: string, serverId: string, config?: Record<string, unknown>) => Promise<SkillExecutionResult>;
   fetchExecutions: (id: string) => Promise<void>;
+  fetchExecutionDetail: (skillId: string, executionId: string) => Promise<void>;
+  clearSelectedExecution: () => void;
   startExecutionStream: (executionId: string) => void;
   stopExecutionStream: () => void;
   clearError: () => void;
@@ -46,6 +51,8 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
   skills: [],
   available: [],
   executions: [],
+  selectedExecution: null,
+  isLoadingDetail: false,
   executionEvents: [],
   isStreaming: false,
   isLoading: false,
@@ -166,6 +173,21 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
       set({ error: message, isLoading: false });
     }
   },
+
+  fetchExecutionDetail: async (skillId, executionId) => {
+    set({ isLoadingDetail: true, error: null });
+    try {
+      const data = await apiRequest<ExecutionDetailResponse>(
+        `/skills/${skillId}/executions/${executionId}`,
+      );
+      set({ selectedExecution: data.execution, isLoadingDetail: false });
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to load execution detail';
+      set({ error: message, isLoadingDetail: false });
+    }
+  },
+
+  clearSelectedExecution: () => set({ selectedExecution: null }),
 
   startExecutionStream: (executionId: string) => {
     // Stop any existing stream
