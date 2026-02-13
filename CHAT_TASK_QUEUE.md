@@ -3,14 +3,14 @@
 > 此队列专注于 Chat 和 AI 对话系统的质量改进
 > AI 自动发现问题 → 生成任务 → 实现 → 验证
 
-**最后更新**: 2026-02-13 07:58:54
+**最后更新**: 2026-02-13 08:05:32
 
 ## 📊 统计
 
 - **总任务数**: 65
 - **待完成** (pending): 3
-- **进行中** (in_progress): 2
-- **已完成** (completed): 60
+- **进行中** (in_progress): 1
+- **已完成** (completed): 61
 - **失败** (failed): 0
 
 ## 📋 任务列表
@@ -170,7 +170,7 @@
 
 ---
 
-### [in_progress] Chat.tsx 超过 500 行软限制 — 631 行应提取子组件
+### [completed] Chat.tsx 超过 500 行软限制 — 631 行应提取子组件 ✅
 
 **ID**: chat-061
 **优先级**: P2
@@ -180,7 +180,7 @@
 **验收标准**: (1) Chat.tsx 降至 400 行以内; (2) 各子组件文件不超过 150 行; (3) 所有现有测试通过; (4) UI 行为和渲染不变
 **影响范围**: packages/dashboard/src/pages/Chat.tsx, 新文件 ChatHeader.tsx, ChatEmptyState.tsx, ServerSelector.tsx, SessionSidebar.tsx
 **创建时间**: (自动填充)
-**完成时间**: -
+**完成时间**: 2026-02-13 08:05:32
 
 ---
 
