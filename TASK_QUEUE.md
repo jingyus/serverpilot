@@ -7,8 +7,8 @@
 ## 📊 统计信息
 
 - **总任务数**: 96
-- **待完成** (pending): 7
-- **进行中** (in_progress): 0
+- **待完成** (pending): 6
+- **进行中** (in_progress): 1
 - **已完成** (completed): 89
 - **失败** (failed): 0
 
@@ -68,7 +68,7 @@
 
 ---
 
-### [pending] Dashboard 首次使用引导 — 状态管理与 Dashboard 集成
+### [in_progress] Dashboard 首次使用引导 — 状态管理与 Dashboard 集成
 
 **ID**: task-094
 **优先级**: P0
@@ -2040,4 +2040,4 @@ ID: task-001
 
 ---
 
-**最后更新**: 2026-02-13 10:01:03
+**最后更新**: 2026-02-13 10:01:36
