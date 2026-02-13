@@ -7,8 +7,8 @@
 ## 📊 统计信息
 
 - **总任务数**: 96
-- **待完成** (pending): 6
-- **进行中** (in_progress): 0
+- **待完成** (pending): 5
+- **进行中** (in_progress): 1
 - **已完成** (completed): 90
 - **失败** (failed): 0
 
@@ -85,7 +85,7 @@
 
 ---
 
-### [pending] Server 健康状态聚合 API — AI Provider + DB + Agent 连接检查
+### [in_progress] Server 健康状态聚合 API — AI Provider + DB + Agent 连接检查
 
 **ID**: task-095
 **优先级**: P0
@@ -2040,4 +2040,4 @@ ID: task-001
 
 ---
 
-**最后更新**: 2026-02-13 10:15:24
+**最后更新**: 2026-02-13 10:15:56
