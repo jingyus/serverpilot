@@ -140,6 +140,57 @@ describe('loadSkillFromDir', () => {
     expect(manifest.requires?.os).toContain('darwin');
   });
 
+  it('should load community disk-space-monitor skill from disk', async () => {
+    const communityDir = join(process.cwd(), 'skills/community/disk-space-monitor');
+    const manifest = await loadSkillFromDir(communityDir);
+
+    expect(manifest.metadata.name).toBe('disk-space-monitor');
+    expect(manifest.metadata.displayName).toBe('磁盘空间监控');
+    expect(manifest.metadata.version).toBe('1.0.0');
+    expect(manifest.metadata.tags).toContain('monitoring');
+    expect(manifest.metadata.tags).toContain('disk');
+    expect(manifest.triggers).toHaveLength(3);
+    expect(manifest.triggers.map(t => t.type)).toEqual(['threshold', 'cron', 'manual']);
+    expect(manifest.tools).toContain('shell');
+    expect(manifest.tools).toContain('notify');
+    expect(manifest.tools).toContain('store');
+    expect(manifest.constraints.risk_level_max).toBe('green');
+    expect(manifest.constraints.timeout).toBe('3m');
+    expect(manifest.requires?.os).toContain('linux');
+    expect(manifest.requires?.os).toContain('darwin');
+    expect(manifest.inputs).toBeDefined();
+    expect(manifest.inputs!.length).toBe(5);
+    expect(manifest.outputs).toBeDefined();
+    expect(manifest.outputs!.length).toBe(3);
+    expect(manifest.prompt.length).toBeGreaterThan(500);
+  });
+
+  it('should load community ssl-cert-checker skill from disk', async () => {
+    const communityDir = join(process.cwd(), 'skills/community/ssl-cert-checker');
+    const manifest = await loadSkillFromDir(communityDir);
+
+    expect(manifest.metadata.name).toBe('ssl-cert-checker');
+    expect(manifest.metadata.displayName).toBe('SSL 证书到期检查');
+    expect(manifest.metadata.version).toBe('1.0.0');
+    expect(manifest.metadata.tags).toContain('security');
+    expect(manifest.metadata.tags).toContain('ssl');
+    expect(manifest.triggers).toHaveLength(2);
+    expect(manifest.triggers.map(t => t.type)).toEqual(['cron', 'manual']);
+    expect(manifest.tools).toContain('shell');
+    expect(manifest.tools).toContain('notify');
+    expect(manifest.tools).toContain('store');
+    expect(manifest.constraints.risk_level_max).toBe('green');
+    expect(manifest.constraints.timeout).toBe('5m');
+    expect(manifest.requires?.os).toContain('linux');
+    expect(manifest.requires?.os).toContain('darwin');
+    expect(manifest.requires?.commands).toContain('openssl');
+    expect(manifest.inputs).toBeDefined();
+    expect(manifest.inputs!.length).toBe(5);
+    expect(manifest.outputs).toBeDefined();
+    expect(manifest.outputs!.length).toBe(3);
+    expect(manifest.prompt.length).toBeGreaterThan(500);
+  });
+
   it('should throw if directory has no skill.yaml', async () => {
     const dir = await createTempDir();
 
@@ -552,6 +603,38 @@ describe('scanSkillDirectories', () => {
     expect(names).toContain('intrusion-detector');
     expect(names).toContain('auto-backup');
     results.forEach(r => expect(r.source).toBe('official'));
+  });
+
+  it('should scan community skill directories', async () => {
+    const communityPath = join(process.cwd(), 'skills/community');
+    const results = await scanSkillDirectories([communityPath]);
+
+    expect(results.length).toBeGreaterThanOrEqual(2);
+    const names = results.map(r => r.manifest.metadata.name);
+    expect(names).toContain('disk-space-monitor');
+    expect(names).toContain('ssl-cert-checker');
+    results.forEach(r => expect(r.source).toBe('community'));
+  });
+
+  it('should scan both official and community directories together', async () => {
+    const officialPath = join(process.cwd(), 'skills/official');
+    const communityPath = join(process.cwd(), 'skills/community');
+    const results = await scanSkillDirectories([officialPath, communityPath]);
+
+    expect(results.length).toBeGreaterThanOrEqual(5);
+    const names = results.map(r => r.manifest.metadata.name);
+    // 3 official
+    expect(names).toContain('log-auditor');
+    expect(names).toContain('intrusion-detector');
+    expect(names).toContain('auto-backup');
+    // 2 community
+    expect(names).toContain('disk-space-monitor');
+    expect(names).toContain('ssl-cert-checker');
+    // verify source classification
+    const officialSkills = results.filter(r => r.source === 'official');
+    const communitySkills = results.filter(r => r.source === 'community');
+    expect(officialSkills.length).toBeGreaterThanOrEqual(3);
+    expect(communitySkills.length).toBeGreaterThanOrEqual(2);
   });
 
   it('should return empty array for empty directory', async () => {

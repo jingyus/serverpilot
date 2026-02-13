@@ -2,6 +2,7 @@
 // Copyright (c) 2024-2026 ServerPilot Contributors
 /** System prompt builders for the Agentic Chat Engine. */
 
+import type { FullServerProfile } from '../core/profile/manager.js';
 import { getRagPipeline } from '../knowledge/rag-pipeline.js';
 import { logger } from '../utils/logger.js';
 import { buildProfileContext, buildProfileCaveats } from './profile-context.js';
@@ -161,7 +162,7 @@ Approach:
  */
 export async function buildFullSystemPrompt(
   userMessage: string,
-  serverProfile?: unknown,
+  serverProfile?: FullServerProfile | null,
   serverName?: string,
 ): Promise<string> {
   // Profile context
@@ -170,13 +171,11 @@ export async function buildFullSystemPrompt(
 
   if (serverProfile) {
     const profileResult = buildProfileContext(
-      serverProfile as Parameters<typeof buildProfileContext>[0],
+      serverProfile,
       serverName ?? 'server',
     );
     profileContext = profileResult.text;
-    caveats = buildProfileCaveats(
-      serverProfile as Parameters<typeof buildProfileCaveats>[0],
-    );
+    caveats = buildProfileCaveats(serverProfile);
   }
 
   // Knowledge context via RAG

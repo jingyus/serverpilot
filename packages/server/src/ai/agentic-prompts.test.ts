@@ -8,6 +8,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { FullServerProfile } from '../core/profile/manager.js';
 import { buildAgenticSystemPrompt, buildFullSystemPrompt } from './agentic-prompts.js';
 
 // Mock dependencies for buildFullSystemPrompt
@@ -161,7 +162,7 @@ describe('buildFullSystemPrompt', () => {
   });
 
   it('includes profile context when serverProfile is provided', async () => {
-    const fakeProfile = { osInfo: { platform: 'Ubuntu' } };
+    const fakeProfile = { osInfo: { platform: 'Ubuntu' } } as unknown as FullServerProfile;
     const result = await buildFullSystemPrompt('hello', fakeProfile, 'web-01');
     expect(result).toContain('Server Profile');
     expect(result).toContain('Ubuntu 22.04');

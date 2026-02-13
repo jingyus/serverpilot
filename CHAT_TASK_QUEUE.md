@@ -3,13 +3,13 @@
 > 此队列专注于 Chat 和 AI 对话系统的质量改进
 > AI 自动发现问题 → 生成任务 → 实现 → 验证
 
-**最后更新**: 2026-02-13 14:53:36
+**最后更新**: 2026-02-13 14:54:08
 
 ## 📊 统计
 
 - **总任务数**: 100
-- **待完成** (pending): 5
-- **进行中** (in_progress): 0
+- **待完成** (pending): 4
+- **进行中** (in_progress): 1
 - **已完成** (completed): 95
 - **失败** (failed): 0
 
@@ -226,7 +226,7 @@
 
 ---
 
-### [pending] Agentic 模式 serverProfile 类型为 unknown — 3 处 `as` 断言无运行时验证
+### [in_progress] Agentic 模式 serverProfile 类型为 unknown — 3 处 `as` 断言无运行时验证
 
 **ID**: chat-096
 **优先级**: P2

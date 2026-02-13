@@ -1,0 +1,167 @@
+kind: skill
+version: "1.0"
+
+metadata:
+  name: ssl-cert-checker
+  displayName: "SSL 证书到期检查"
+  description: "每日检查 SSL/TLS 证书有效期，到期前自动告警，支持多域名批量监控"
+  version: "1.0.0"
+  author: "community"
+  tags: [security, ssl, certificate, monitoring]
+
+triggers:
+  - type: cron
+    schedule: "0 9 * * *"       # 每天上午 9:00 检查
+  - type: manual
+
+tools:
+  - shell
+  - notify
+  - store
+
+inputs:
+  - name: domains
+    type: string[]
+    required: false
+    default: []
+    description: "要检查的域名列表（留空则自动从 Nginx/Apache 配置中检测）"
+
+  - name: warning_days
+    type: number
+    required: false
+    default: 30
+    description: "证书到期前多少天发送 warning 告警"
+
+  - name: critical_days
+    type: number
+    required: false
+    default: 7
+    description: "证书到期前多少天发送 critical 告警"
+
+  - name: check_local_certs
+    type: boolean
+    required: false
+    default: true
+    description: "是否检查本地证书文件（/etc/ssl/、/etc/letsencrypt/）"
+
+  - name: port
+    type: number
+    required: false
+    default: 443
+    description: "SSL 连接端口号"
+
+constraints:
+  risk_level_max: green          # 只读操作，不修改任何配置
+  timeout: "5m"
+  max_steps: 20
+  requires_confirmation: false
+  server_scope: single
+
+requires:
+  os: [linux, darwin]
+  commands: [openssl]
+
+prompt: |
+  ## 角色
+  你是一个 SSL/TLS 证书管理专家，负责确保服务器上所有证书在到期前得到及时续签。
+
+  ## 目标
+  检查服务器 {{server.name}} ({{server.os}}) 上所有 SSL 证书的有效期，对即将到期的证书发出告警。
+
+  ## 环境信息
+  - 服务器: {{server.name}} ({{server.os}})
+  - IP: {{server.ip}}
+  - 检查端口: {{input.port}}
+  - 警告天数: {{input.warning_days}} 天
+  - 严重天数: {{input.critical_days}} 天
+  - 指定域名: {{input.domains}}
+  - 检查本地证书: {{input.check_local_certs}}
+  - 上次检查: {{skill.last_run}}
+  - 上次结果: {{skill.last_result}}
+
+  ## 执行指南
+
+  ### 1. 收集要检查的域名
+  - 如果用户指定了 {{input.domains}}，使用指定列表
+  - 否则自动检测:
+    - 检查 Nginx 配置: `grep -r 'server_name' /etc/nginx/sites-enabled/ 2>/dev/null`
+    - 检查 Apache 配置: `grep -r 'ServerName\|ServerAlias' /etc/apache2/sites-enabled/ 2>/dev/null`
+    - 检查本机监听的 443 端口: `ss -tlnp | grep :{{input.port}}`
+  - 去重并过滤掉 localhost、IP 地址、通配符域名中的 `*`
+
+  ### 2. 检查远程证书（通过 SNI 连接）
+  对每个域名执行:
+  ```
+  echo | openssl s_client -servername <domain> -connect <domain>:{{input.port}} 2>/dev/null | openssl x509 -noout -dates -subject -issuer
+  ```
+  - 解析 notBefore、notAfter 日期
+  - 计算距离到期的天数
+  - 记录颁发者 (issuer) 和主题 (subject)
+
+  ### 3. 检查本地证书文件（如 {{input.check_local_certs}} 为 true）
+  - 搜索常见证书路径:
+    - `/etc/ssl/certs/` 下的 .pem/.crt 文件
+    - `/etc/letsencrypt/live/` 下的 fullchain.pem
+    - Nginx/Apache 配置中 ssl_certificate 指向的路径
+  - 对每个证书文件: `openssl x509 -in <file> -noout -dates -subject`
+  - 计算到期天数
+
+  ### 4. 判断告警级别
+  对每个证书:
+  - 已过期 → severity: critical（标注 "EXPIRED"）
+  - 剩余天数 <= {{input.critical_days}} → severity: critical
+  - 剩余天数 <= {{input.warning_days}} → severity: warning
+  - 剩余天数 > {{input.warning_days}} → severity: info
+  - 整体 severity 取最高级别
+
+  ### 5. 对比上次结果
+  - 如果有 {{skill.last_result}}，标注状态变化（新增告警、已续签等）
+  - 检查之前为 warning 的证书是否已续签
+
+  ### 6. 通知与存储
+  - 如果 severity >= warning，使用 notify 发送告警，包含即将到期的域名列表
+  - 使用 store 保存本次检查结果，供下次对比
+
+  ## 注意事项
+  - 只使用只读命令，不要修改任何证书或配置文件
+  - openssl s_client 连接设置超时（使用 timeout 命令包装），避免卡住
+  - 如果某个域名无法连接，记录 warning 并继续检查其他域名
+  - 自签名证书也要检查到期时间，但在报告中标注 "self-signed"
+  - macOS 上 openssl 路径可能不同（/usr/bin/openssl 或 brew 安装），自适应检测
+
+  ## 输出要求
+  以 JSON 格式输出:
+  ```json
+  {
+    "severity": "info | warning | critical",
+    "summary": "一句话总结证书检查结果",
+    "certificates": [
+      {
+        "domain": "example.com",
+        "source": "remote | local_file",
+        "file_path": "/etc/letsencrypt/live/example.com/fullchain.pem",
+        "issuer": "Let's Encrypt",
+        "not_before": "2025-06-01T00:00:00Z",
+        "not_after": "2025-08-30T00:00:00Z",
+        "days_remaining": 45,
+        "status": "ok | warning | critical | expired",
+        "self_signed": false
+      }
+    ],
+    "expired_count": 0,
+    "warning_count": 0,
+    "ok_count": 5,
+    "recommendations": ["续签 example.com 的证书（剩余 7 天）"]
+  }
+  ```
+
+outputs:
+  - name: severity
+    type: string
+    description: "最高告警级别: info | warning | critical"
+  - name: report
+    type: object
+    description: "完整的证书检查报告"
+  - name: expired_count
+    type: number
+    description: "已过期的证书数量"

@@ -5,6 +5,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { SSEStreamingApi } from 'hono/streaming';
 import { RiskLevel } from '@aiinstaller/shared';
+import type { FullServerProfile } from '../core/profile/manager.js';
 import { getTaskExecutor } from '../core/task/executor.js';
 import { findConnectedAgent } from '../core/agent/agent-connector.js';
 import { validateCommand } from '../core/security/command-validator.js';
@@ -71,7 +72,7 @@ export interface AgenticRunOptions {
   /** Previous conversation messages for context */
   conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>;
   /** Server profile for context injection */
-  serverProfile?: unknown;
+  serverProfile?: FullServerProfile | null;
   /** Server display name */
   serverName?: string;
   /** Callback when a risky command needs user confirmation.

@@ -1,12 +1,12 @@
-### [pending] ExecutionLog AnsiOutput 对超长输出无虚拟化 — 500K 字符 ANSI 解析可能冻结 UI
+### [pending] Agentic 模式 serverProfile 类型为 unknown — 3 处 `as` 断言无运行时验证
 
-**ID**: chat-095
+**ID**: chat-096
 **优先级**: P2
-**模块路径**: packages/dashboard/src/components/chat/
-**发现的问题**: `ExecutionLog.tsx` 中 `AnsiOutput` 组件（行 41-54）对步骤输出调用 `parseAnsi(text)` 并用 `useMemo` 缓存。`chat-execution.ts:35-43` 中 `appendOutput` 限制了单步输出上限为 500,000 字符（`MAX_OUTPUT_CHARS`）。对 500K 字符的文本进行 ANSI 解析和 DOM 渲染会：(1) `parseAnsi()` 正则解析 500K 文本可能耗时 100ms+ (2) 生成的 DOM 节点数可能达数万个 (3) 滚动性能极差。虽然大多数命令输出远小于此上限，但如 `find /` 或 `journalctl` 等命令确实可能产生大量输出。
-**改进方案**: 对超过阈值（如 50K 字符）的输出只渲染尾部 N 行，顶部显示"输出已截断，共 X 行"的提示。或使用虚拟化文本渲染（如按行虚拟滚动）。
-**验收标准**: (1) 500K 字符输出不冻结 UI (2) 用户可看到最新输出 (3) 显示截断提示
-**影响范围**: `packages/dashboard/src/components/chat/ExecutionLog.tsx`
+**模块路径**: packages/server/src/ai/
+**发现的问题**: `AgenticRunOptions.serverProfile` (agentic-chat.ts:74) 类型为 `unknown`。在 `agentic-prompts.ts:53` 和 `58` 中通过 `as Parameters<typeof buildProfileContext>[0]` 断言使用，没有运行时类型检查。如果 `profileMgr.getProfile()` 返回了意外结构（例如 profile 版本升级后字段变化），`buildProfileContext` 可能在深层属性访问时抛出 TypeError，而此时已在 `buildFullSystemPrompt` 内部，错误消息不明确。profile 相关的 `as` 断言还出现在 `chat.ts:320` 的 legacy 模式中。
+**改进方案**: 将 `serverProfile` 参数类型改为 `ServerProfile | null`（从 profile manager 导入具体类型），消除 `unknown` 和 `as` 断言。在 `agentic-prompts.ts` 入口做 null check 即可。
+**验收标准**: (1) serverProfile 使用具体类型 (2) 消除 `as` 类型断言 (3) 类型安全无 `any` 逃逸 (4) 编译通过
+**影响范围**: `packages/server/src/ai/agentic-chat.ts`, `packages/server/src/ai/agentic-prompts.ts`
 **创建时间**: 2026-02-13
 **完成时间**: -
 

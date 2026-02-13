@@ -125,14 +125,19 @@ describe('useNotificationHistoryStore', () => {
     });
 
     it('sets isLoading while fetching', async () => {
-      let resolvePromise: (v: unknown) => void;
-      mockApiRequest.mockImplementation(() => new Promise((r) => { resolvePromise = r; }));
+      let resolveAlerts: (v: unknown) => void;
+      let resolveDeliveries: (v: unknown) => void;
+      mockApiRequest
+        .mockImplementationOnce(() => new Promise((r) => { resolveAlerts = r; }))
+        .mockImplementationOnce(() => new Promise((r) => { resolveDeliveries = r; }));
 
       const promise = useNotificationHistoryStore.getState().fetchNotifications();
       expect(useNotificationHistoryStore.getState().isLoading).toBe(true);
 
-      resolvePromise!({ alerts: [], total: 0 });
+      resolveAlerts!({ alerts: [], total: 0 });
+      resolveDeliveries!({ deliveries: [], total: 0 });
       await promise;
+      expect(useNotificationHistoryStore.getState().isLoading).toBe(false);
     });
   });
 
