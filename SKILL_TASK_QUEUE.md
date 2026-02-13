@@ -3,19 +3,90 @@
 > 此队列专注于 Skill 插件系统的设计与实现
 > AI 自动扫描 → 发现缺失 → 设计实现 → 验证
 
-**最后更新**: 2026-02-13 14:30:29
+**最后更新**: 2026-02-13 14:41:22
 
 ## 📊 统计
 
-- **总任务数**: 80
-- **待完成** (pending): 0
-- **进行中** (in_progress): 0
+- **总任务数**: 84
+- **待完成** (pending): 3
+- **进行中** (in_progress): 1
 - **已完成** (completed): 80
 - **失败** (failed): 0
 
 ## 📋 任务列表
 
 ### [completed] DB Schema + Migration + SkillRepository 数据层 ✅
+### [in_progress] Skill 开发者文档 — 创建 skills/DEVELOPMENT.md 指南
+
+**ID**: skill-081
+**优先级**: P3
+**模块路径**: skills/
+**当前状态**: 文件不存在 — 仅有 SKILL_SPEC.md (内部规范)，缺少面向用户的开发指南
+**实现方案**: 创建 `skills/DEVELOPMENT.md`，内容包括:
+1. "构建你的第一个 Skill" 教程 (从 skill.yaml 到测试执行)
+2. 可用工具 API 参考 (shell, read_file, write_file, notify, http, store)
+3. 触发类型详解 (manual/cron/event/threshold) + 配置示例
+4. 模板变量指南 ({{server.name}}, {{input.*}}, {{skill.last_run}})
+5. 安全模型 & 风险等级说明 (green/yellow/red/critical + risk_level_max)
+6. Prompt 工程最佳实践
+**验收标准**: 新用户阅读后能独立创建并测试自定义 Skill
+**影响范围**: skills/DEVELOPMENT.md (1 个新文件)
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] 官方 Skill 目录 README — skills/official/README.md
+
+**ID**: skill-082
+**优先级**: P3
+**模块路径**: skills/official/
+**当前状态**: 目录有 3 个官方 Skill (auto-backup, intrusion-detector, log-auditor) 但无 README
+**实现方案**: 创建 `skills/official/README.md`，内容包括:
+1. 官方 Skill 一览表 (名称、描述、触发类型、所需输入)
+2. 每个 Skill 的快速安装命令
+3. 配置示例 (inputs 参数说明)
+4. 使用场景说明
+**验收标准**: 用户浏览 skills/official/ 目录时能快速了解可用 Skill 及安装方法
+**影响范围**: skills/official/README.md (1 个新文件)
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] 社区 Skill 示例 — 添加 2 个示范性社区 Skill
+
+**ID**: skill-083
+**优先级**: P3
+**模块路径**: skills/community/
+**当前状态**: skills/community/ 目录为空，GET /skills/available 端点已支持扫描但无内容可展示
+**实现方案**: 创建 2 个社区示范 Skill:
+1. `skills/community/disk-space-monitor/skill.yaml` — 磁盘空间监控，threshold 触发，超过阈值通知
+2. `skills/community/ssl-cert-checker/skill.yaml` — SSL 证书到期检查，cron 触发 (每日)，到期前 N 天告警
+每个 Skill 仅需 skill.yaml 文件 (prompt-centric 设计，无代码)
+**验收标准**: Dashboard Available 标签页能展示 5 个可安装 Skill (3 official + 2 community)
+**影响范围**: skills/community/disk-space-monitor/skill.yaml, skills/community/ssl-cert-checker/skill.yaml (2 个新文件)
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] TriggerManager 文件拆分 — 预防超过 500 行限制
+
+**ID**: skill-084
+**优先级**: P3
+**模块路径**: packages/server/src/core/skill/
+**当前状态**: trigger-manager.ts 当前 498 行，距离 500 行限制仅差 2 行，任何未来修改都会超限
+**实现方案**: 将 trigger-manager.ts 中的独立逻辑提取到子模块:
+1. 将 debounce 逻辑 + 连续失败跟踪提取到 `trigger-manager-debounce.ts` (~60 行)
+2. 将 cron 调度注册/注销逻辑提取到 `trigger-manager-cron.ts` (~80 行)
+3. trigger-manager.ts 保留核心协调逻辑 (~360 行)
+4. 更新对应测试文件的 import 路径
+**验收标准**: trigger-manager.ts ≤ 400 行，所有现有测试继续通过，功能不变
+**影响范围**: packages/server/src/core/skill/trigger-manager.ts, trigger-manager-debounce.ts (新), trigger-manager-cron.ts (新)
+**创建时间**: 2026-02-13
+**完成时间**: -
+
 (无待开发任务 — Skill 模块已全部完成)
 
 扫描时间: 2026-02-13

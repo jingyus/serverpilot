@@ -7,8 +7,8 @@
 ## 📊 统计信息
 
 - **总任务数**: 116
-- **待完成** (pending): 4
-- **进行中** (in_progress): 0
+- **待完成** (pending): 3
+- **进行中** (in_progress): 1
 - **已完成** (completed): 112
 - **失败** (failed): 0
 
@@ -95,7 +95,7 @@
 
 ---
 
-### [pending] Shared 包 — 密码校验规则与 PasswordPolicy Schema
+### [in_progress] Shared 包 — 密码校验规则与 PasswordPolicy Schema
 
 **ID**: task-066
 **优先级**: P0
@@ -2354,4 +2354,4 @@ ID: task-001
 
 ---
 
-**最后更新**: 2026-02-13 14:41:07
+**最后更新**: 2026-02-13 14:41:40
