@@ -37,6 +37,36 @@ const registerSchema = loginSchema.extend({
 
 type FieldErrors = Partial<Record<string, string>>;
 
+/** Validate a single field and return its error key (or undefined). */
+function validateField(field: string, value: string, extra?: { password?: string; isRegister?: boolean }): string | undefined {
+  switch (field) {
+    case 'email': {
+      const r = z.string().email('login.invalidEmail').safeParse(value);
+      return r.success ? undefined : r.error.issues[0].message;
+    }
+    case 'password': {
+      const r = z.string().min(6, 'login.passwordTooShort').safeParse(value);
+      return r.success ? undefined : r.error.issues[0].message;
+    }
+    case 'name': {
+      if (!extra?.isRegister) return undefined;
+      const r = z.string().min(1, 'login.nameRequired').safeParse(value);
+      return r.success ? undefined : r.error.issues[0].message;
+    }
+    case 'confirmPassword': {
+      if (!extra?.isRegister) return undefined;
+      if (value !== extra?.password) return 'login.passwordMismatch';
+      return undefined;
+    }
+    default:
+      return undefined;
+  }
+}
+
+function RequiredMark() {
+  return <span className="text-destructive ml-0.5" aria-hidden="true">*</span>;
+}
+
 /** Parse OAuth callback data from URL hash fragment. */
 function parseOAuthHash(): { accessToken: string; refreshToken: string; user: { id: string; email: string; name?: string } } | null {
   const hash = window.location.hash;
@@ -105,6 +135,27 @@ export function Login() {
     setFieldErrors({});
     setOauthError(null);
     clearError();
+  }
+
+  function handleBlur(field: string, value: string) {
+    const error = validateField(field, value, { password, isRegister: isRegisterMode });
+    setFieldErrors((prev) => {
+      if (error) return { ...prev, [field]: error };
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  }
+
+  function handleFieldChange(field: string, value: string, setter: (v: string) => void) {
+    setter(value);
+    if (fieldErrors[field]) {
+      setFieldErrors((prev) => {
+        const next = { ...prev };
+        delete next[field];
+        return next;
+      });
+    }
   }
 
   function validate(): boolean {

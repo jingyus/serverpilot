@@ -58,6 +58,18 @@ const pendingConfirmations = new Map<string, {
 /** Confirmation timeout for agentic mode (5 minutes). */
 const CONFIRM_TIMEOUT_MS = 5 * 60 * 1000;
 
+/**
+ * Tracks confirmIds that were recently expired by timeout.
+ * When the timeout fires, the confirmId is moved here so the confirm endpoint
+ * can distinguish "just expired" from "never existed" — avoiding a confusing
+ * 404 when the user clicks approve right at the timeout boundary.
+ * Entries auto-clean after RECENTLY_EXPIRED_TTL_MS.
+ */
+const recentlyExpired = new Set<string>();
+
+/** How long to keep expired confirmIds in the recently-expired set (10 seconds). */
+const RECENTLY_EXPIRED_TTL_MS = 10_000;
+
 /** Lock timeout — prevents deadlocks if a request hangs (30 seconds). */
 const SESSION_LOCK_TIMEOUT_MS = 30_000;
 
@@ -248,6 +260,8 @@ chat.post('/:serverId', requirePermission('chat:use'), validateBody(ChatMessageB
               const approved = new Promise<boolean>((resolve) => {
                 const timer = setTimeout(() => {
                   pendingConfirmations.delete(confirmId);
+                  recentlyExpired.add(confirmId);
+                  setTimeout(() => { recentlyExpired.delete(confirmId); }, RECENTLY_EXPIRED_TTL_MS);
                   resolve(false);
                 }, CONFIRM_TIMEOUT_MS);
                 pendingConfirmations.set(confirmId, { resolve, timer });
@@ -446,6 +460,9 @@ chat.post('/:serverId/confirm', requirePermission('chat:use'), validateBody(Conf
 
   const pending = pendingConfirmations.get(body.confirmId);
   if (!pending) {
+    if (recentlyExpired.has(body.confirmId)) {
+      return c.json({ success: false, expired: true, message: 'Confirmation expired' }, 410);
+    }
     return c.json({ success: false, message: 'No pending confirmation found' }, 404);
   }
 
@@ -669,17 +686,28 @@ export function _setPendingConfirmation(
   pendingConfirmations.set(confirmId, { resolve, timer });
 }
 
-/** @internal Test helper — clear all pending confirmations. */
+/** @internal Test helper — clear all pending confirmations and recently-expired entries. */
 export function _resetPendingConfirmations(): void {
   for (const pending of pendingConfirmations.values()) {
     clearTimeout(pending.timer);
   }
   pendingConfirmations.clear();
+  recentlyExpired.clear();
 }
 
 /** @internal Test helper — check if a confirmation is pending. */
 export function _hasPendingConfirmation(confirmId: string): boolean {
   return pendingConfirmations.has(confirmId);
+}
+
+/** @internal Test helper — add a confirmId to the recently-expired set. */
+export function _addRecentlyExpired(confirmId: string): void {
+  recentlyExpired.add(confirmId);
+}
+
+/** @internal Test helper — check if a confirmId is in the recently-expired set. */
+export function _hasRecentlyExpired(confirmId: string): boolean {
+  return recentlyExpired.has(confirmId);
 }
 
 /** @internal Test helper — clear all session locks. */
@@ -694,7 +722,7 @@ export function _hasSessionLock(sessionId: string): boolean {
 
 /** @internal Exported for testing. */
 export {
-  CONFIRM_TIMEOUT_MS, SESSION_LOCK_TIMEOUT_MS,
+  CONFIRM_TIMEOUT_MS, SESSION_LOCK_TIMEOUT_MS, RECENTLY_EXPIRED_TTL_MS,
   cleanupSessionConfirmations, safeWriteSSE,
   acquireSessionLock,
 };
