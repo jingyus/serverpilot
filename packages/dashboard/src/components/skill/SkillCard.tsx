@@ -7,8 +7,8 @@ import {
   Settings,
   Trash2,
   Zap,
-  ToggleLeft,
-  ToggleRight,
+  ArrowUpCircle,
+  Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -52,17 +52,22 @@ export function SkillCard({
   onConfigure,
   onExecute,
   onUninstall,
+  onUpgrade,
+  isUpgrading,
 }: {
   skill: InstalledSkill;
   onToggle: () => void;
   onConfigure: () => void;
   onExecute: () => void;
   onUninstall: () => void;
+  onUpgrade?: () => void;
+  isUpgrading?: boolean;
 }) {
   const { t } = useTranslation();
   const isEnabled = skill.status === 'enabled';
   const canExecute = isEnabled;
   const canToggle = skill.status === 'enabled' || skill.status === 'paused' || skill.status === 'configured';
+  const canUpgrade = skill.source === 'community' && onUpgrade;
 
   return (
     <Card>
@@ -107,6 +112,21 @@ export function SkillCard({
                 <Pause className="h-4 w-4" />
               ) : (
                 <Play className="h-4 w-4" />
+              )}
+            </Button>
+          )}
+          {canUpgrade && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onUpgrade}
+              disabled={isUpgrading}
+              title={t('skills.upgrade')}
+            >
+              {isUpgrading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <ArrowUpCircle className="h-4 w-4" />
               )}
             </Button>
           )}

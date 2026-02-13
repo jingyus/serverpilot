@@ -3,14 +3,14 @@
 > 此队列专注于 Skill 插件系统的设计与实现
 > AI 自动扫描 → 发现缺失 → 设计实现 → 验证
 
-**最后更新**: 2026-02-13 08:29:41
+**最后更新**: 2026-02-13 08:37:16
 
 ## 📊 统计
 
 - **总任务数**: 56
-- **待完成** (pending): 3
+- **待完成** (pending): 2
 - **进行中** (in_progress): 0
-- **已完成** (completed): 53
+- **已完成** (completed): 54
 - **失败** (failed): 0
 
 ## 📋 任务列表
@@ -168,7 +168,7 @@
 
 ---
 
-### [pending] Dashboard Skill 升级按钮 + 取消按钮 UI
+### [completed] Dashboard Skill 升级按钮 + 取消按钮 UI ✅
 
 **ID**: skill-078
 **优先级**: P1
@@ -189,7 +189,7 @@
 - 测试覆盖: ≥6 个测试用例
 **影响范围**: packages/dashboard/src/stores/skills.ts, packages/dashboard/src/components/skill/SkillCard.tsx, packages/dashboard/src/components/skill/ExecutionStream.tsx, packages/dashboard/src/types/skill.ts
 **创建时间**: 2026-02-13
-**完成时间**: -
+**完成时间**: 2026-02-13 08:37:16
 
 ---
 

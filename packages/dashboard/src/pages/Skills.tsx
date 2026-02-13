@@ -48,6 +48,7 @@ export function Skills() {
     available,
     executions,
     isLoading,
+    isUpgrading,
     error,
     pendingConfirmations,
     fetchSkills,
@@ -57,6 +58,7 @@ export function Skills() {
     configureSkill,
     updateStatus,
     executeSkill,
+    upgradeSkill,
     fetchExecutions,
     fetchPendingConfirmations,
     confirmExecution,
@@ -140,6 +142,12 @@ export function Skills() {
     } catch { /* handled by store */ }
   }, [rejectExecution]);
 
+  const handleUpgrade = useCallback(async (skill: InstalledSkill) => {
+    try {
+      await upgradeSkill(skill.id);
+    } catch { /* handled by store */ }
+  }, [upgradeSkill]);
+
   const handleExecuteClose = useCallback(() => {
     setExecuteTarget(null);
     setSelectedServerId('');
@@ -213,6 +221,8 @@ export function Skills() {
           onExecute={setExecuteTarget}
           onUninstall={setDeleteTarget}
           onHistory={setHistoryTarget}
+          onUpgrade={handleUpgrade}
+          isUpgrading={isUpgrading}
         />
       ) : activeTab === 'available' ? (
         <AvailableTab
@@ -328,6 +338,8 @@ function InstalledTab({
   onExecute,
   onUninstall,
   onHistory,
+  onUpgrade,
+  isUpgrading,
 }: {
   skills: InstalledSkill[];
   onToggle: (skill: InstalledSkill) => void;
@@ -335,6 +347,8 @@ function InstalledTab({
   onExecute: (skill: InstalledSkill) => void;
   onUninstall: (skill: InstalledSkill) => void;
   onHistory: (skill: InstalledSkill) => void;
+  onUpgrade: (skill: InstalledSkill) => void;
+  isUpgrading: string | null;
 }) {
   const { t } = useTranslation();
 
@@ -358,6 +372,8 @@ function InstalledTab({
             onConfigure={() => onConfigure(skill)}
             onExecute={() => onExecute(skill)}
             onUninstall={() => onUninstall(skill)}
+            onUpgrade={() => onUpgrade(skill)}
+            isUpgrading={isUpgrading === skill.id}
           />
           <Button
             variant="ghost"

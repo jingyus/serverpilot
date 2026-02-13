@@ -538,7 +538,9 @@
     "noStats": "No execution data yet.",
     "noStatsDesc": "Execute some skills to see analytics here.",
     "executions": "executions",
-    "successCount": "{{count}} succeeded"
+    "successCount": "{{count}} succeeded",
+    "upgrade": "Upgrade",
+    "cancelExecution": "Cancel"
   },
   "theme": {
     "toggle": "Toggle theme",

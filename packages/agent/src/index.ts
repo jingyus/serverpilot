@@ -18,6 +18,7 @@ import type { Message, InstallPlan, InstallStep, EnvironmentInfo, StepResult, Er
 import { createMessageLite as createMessage } from './protocol-lite.js';
 
 import { AuthenticatedClient } from './authenticated-client.js';
+import { MessageQueue } from './message-queue.js';
 import { detectEnvironment } from './detect/index.js';
 import { Sandbox } from './execute/sandbox.js';
 import { CommandExecutor } from './execute/executor.js';
@@ -858,6 +859,12 @@ export async function runDaemon(options: CLIOptions): Promise<number> {
 
   console.log(theme.info(`[daemon] Connecting to ${options.serverUrl} ...`));
 
+  const messageQueue = new MessageQueue({
+    onOverflow: () => {
+      console.warn(theme.muted('[daemon] Message queue full — oldest message discarded'));
+    },
+  });
+
   const client = new AuthenticatedClient({
     serverUrl: options.serverUrl,
     autoReconnect: true,
@@ -865,6 +872,7 @@ export async function runDaemon(options: CLIOptions): Promise<number> {
     authTimeoutMs: 15000,
     serverId,
     agentToken,
+    messageQueue,
   });
 
   // Graceful shutdown
@@ -902,21 +910,17 @@ export async function runDaemon(options: CLIOptions): Promise<number> {
         return acc + (1 - cpu.times.idle / total);
       }, 0) / cpus.length;
 
-      try {
-        const metricsMsg = createMessage('metrics.report', {
-          serverId,
-          cpuUsage: Math.round(cpuUsage * 100),
-          memoryUsage: totalMem - freeMem,
-          memoryTotal: totalMem,
-          diskUsage: 0,
-          diskTotal: 1,
-          networkIn: 0,
-          networkOut: 0,
-        });
-        client.send(metricsMsg);
-      } catch {
-        // Connection may be temporarily lost — will retry on next interval
-      }
+      const metricsMsg = createMessage('metrics.report', {
+        serverId,
+        cpuUsage: Math.round(cpuUsage * 100),
+        memoryUsage: totalMem - freeMem,
+        memoryTotal: totalMem,
+        diskUsage: 0,
+        diskTotal: 1,
+        networkIn: 0,
+        networkOut: 0,
+      });
+      client.trySend(metricsMsg);
     }, 15_000);
 
     if (metricsInterval.unref) metricsInterval.unref();
@@ -951,17 +955,13 @@ export async function runDaemon(options: CLIOptions): Promise<number> {
       child.stdout?.on('data', (chunk: Buffer) => {
         const text = chunk.toString();
         stdout += text;
-        try {
-          client.send(createMessage('step.output', { stepId: step.id, output: text }));
-        } catch { /* connection may be lost */ }
+        client.trySend(createMessage('step.output', { stepId: step.id, output: text }));
       });
 
       child.stderr?.on('data', (chunk: Buffer) => {
         const text = chunk.toString();
         stderr += text;
-        try {
-          client.send(createMessage('step.output', { stepId: step.id, output: text }));
-        } catch { /* connection may be lost */ }
+        client.trySend(createMessage('step.output', { stepId: step.id, output: text }));
       });
 
       child.on('close', (code: number | null) => {
@@ -975,9 +975,7 @@ export async function runDaemon(options: CLIOptions): Promise<number> {
           stderr,
           duration: Date.now() - stepStart,
         };
-        try {
-          client.send(createMessage('step.complete', stepResult));
-        } catch { /* connection may be lost */ }
+        client.trySend(createMessage('step.complete', stepResult));
         console.log(theme.muted(`[daemon] Step ${step.id} completed (exit ${exitCode})`));
       });
 
@@ -991,9 +989,7 @@ export async function runDaemon(options: CLIOptions): Promise<number> {
           stderr: stderr + err.message,
           duration: Date.now() - stepStart,
         };
-        try {
-          client.send(createMessage('step.complete', stepResult));
-        } catch { /* connection may be lost */ }
+        client.trySend(createMessage('step.complete', stepResult));
         console.error(theme.error(`[daemon] Step ${step.id} error: ${err.message}`));
       });
     });

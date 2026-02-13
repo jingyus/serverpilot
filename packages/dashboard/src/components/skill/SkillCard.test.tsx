@@ -116,4 +116,86 @@ describe('SkillCard', () => {
     await user.click(screen.getByTitle('Uninstall'));
     expect(onUninstall).toHaveBeenCalledOnce();
   });
+
+  // --------------------------------------------------------------------------
+  // Upgrade Button
+  // --------------------------------------------------------------------------
+
+  it('shows upgrade button for community (git) source skills', () => {
+    const onUpgrade = vi.fn();
+    render(
+      <SkillCard
+        {...defaultProps}
+        skill={makeSkill({ source: 'community' })}
+        onUpgrade={onUpgrade}
+      />,
+    );
+
+    expect(screen.getByTitle('Upgrade')).toBeInTheDocument();
+  });
+
+  it('hides upgrade button for official source skills', () => {
+    const onUpgrade = vi.fn();
+    render(
+      <SkillCard
+        {...defaultProps}
+        skill={makeSkill({ source: 'official' })}
+        onUpgrade={onUpgrade}
+      />,
+    );
+
+    expect(screen.queryByTitle('Upgrade')).not.toBeInTheDocument();
+  });
+
+  it('hides upgrade button for local source skills', () => {
+    const onUpgrade = vi.fn();
+    render(
+      <SkillCard
+        {...defaultProps}
+        skill={makeSkill({ source: 'local' })}
+        onUpgrade={onUpgrade}
+      />,
+    );
+
+    expect(screen.queryByTitle('Upgrade')).not.toBeInTheDocument();
+  });
+
+  it('calls onUpgrade when upgrade button is clicked', async () => {
+    const user = userEvent.setup();
+    const onUpgrade = vi.fn();
+    render(
+      <SkillCard
+        {...defaultProps}
+        skill={makeSkill({ source: 'community' })}
+        onUpgrade={onUpgrade}
+      />,
+    );
+
+    await user.click(screen.getByTitle('Upgrade'));
+    expect(onUpgrade).toHaveBeenCalledOnce();
+  });
+
+  it('disables upgrade button when isUpgrading is true', () => {
+    render(
+      <SkillCard
+        {...defaultProps}
+        skill={makeSkill({ source: 'community' })}
+        onUpgrade={vi.fn()}
+        isUpgrading={true}
+      />,
+    );
+
+    expect(screen.getByTitle('Upgrade')).toBeDisabled();
+  });
+
+  it('hides upgrade button when onUpgrade is not provided', () => {
+    render(
+      <SkillCard
+        {...defaultProps}
+        skill={makeSkill({ source: 'community' })}
+      />,
+    );
+
+    expect(screen.queryByTitle('Upgrade')).not.toBeInTheDocument();
+  });
 });

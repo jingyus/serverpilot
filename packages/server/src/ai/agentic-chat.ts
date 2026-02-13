@@ -30,7 +30,30 @@ const MAX_MESSAGES_TOKENS = 150_000;
 const DEFAULT_MODEL = 'claude-sonnet-4-20250514';
 
 /** Shared abort flag — set by onAbort / writeSSE failure, read at every async boundary. */
-interface AbortState { aborted: boolean }
+class AbortState {
+  private _aborted = false;
+  private readonly listeners: Array<() => void> = [];
+
+  get aborted(): boolean { return this._aborted; }
+  set aborted(value: boolean) {
+    if (value && !this._aborted) {
+      this._aborted = true;
+      for (const cb of this.listeners) cb();
+      this.listeners.length = 0;
+    }
+  }
+
+  /** Register a one-shot callback that fires when aborted becomes true.
+   *  If already aborted, fires synchronously. Returns an unsubscribe function. */
+  onAbort(cb: () => void): () => void {
+    if (this._aborted) { cb(); return () => {}; }
+    this.listeners.push(cb);
+    return () => {
+      const idx = this.listeners.indexOf(cb);
+      if (idx !== -1) this.listeners.splice(idx, 1);
+    };
+  }
+}
 
 // Types
 
@@ -103,7 +126,7 @@ export class AgenticChatEngine {
       return { success: false, turns: 0, toolCallCount: 0, finalText: '' };
     }
 
-    const abort: AbortState = { aborted: false };
+    const abort = new AbortState();
     stream.onAbort(() => {
       abort.aborted = true;
       logger.info({ operation: 'agentic_loop', serverId }, 'Client disconnected, aborting agentic loop');

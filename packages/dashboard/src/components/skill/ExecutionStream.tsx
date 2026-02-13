@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
 import { useEffect, useRef } from 'react';
-import { CheckCircle, XCircle, Loader2, Terminal, MessageSquare, Clock } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { CheckCircle, XCircle, Loader2, Terminal, MessageSquare, Clock, StopCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { useSkillsStore } from '@/stores/skills';
 import type { SkillExecutionEvent, SkillStepEvent, SkillLogEvent, SkillCompletedEvent } from '@/types/skill';
 
@@ -11,7 +13,8 @@ import type { SkillExecutionEvent, SkillStepEvent, SkillLogEvent, SkillCompleted
 // ============================================================================
 
 export function ExecutionStream({ executionId }: { executionId: string }) {
-  const { executionEvents, isStreaming, startExecutionStream, stopExecutionStream } = useSkillsStore();
+  const { t } = useTranslation();
+  const { executionEvents, isStreaming, isCancelling, cancelExecution, startExecutionStream, stopExecutionStream } = useSkillsStore();
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -37,12 +40,30 @@ export function ExecutionStream({ executionId }: { executionId: string }) {
     <div className="rounded-md border border-border">
       <div className="flex items-center justify-between border-b border-border px-3 py-2">
         <span className="text-sm font-medium">Execution Progress</span>
-        {isStreaming && (
-          <Badge variant="secondary" className="text-xs">
-            <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-            Live
-          </Badge>
-        )}
+        <div className="flex items-center gap-2">
+          {isStreaming && (
+            <>
+              <Badge variant="secondary" className="text-xs">
+                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                Live
+              </Badge>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => cancelExecution(executionId)}
+                disabled={isCancelling === executionId}
+                title={t('skills.cancelExecution')}
+              >
+                {isCancelling === executionId ? (
+                  <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                ) : (
+                  <StopCircle className="mr-1 h-3 w-3" />
+                )}
+                {t('skills.cancelExecution')}
+              </Button>
+            </>
+          )}
+        </div>
       </div>
       <div ref={scrollRef} className="max-h-96 overflow-y-auto p-2 space-y-1">
         {executionEvents.map((event, i) => (

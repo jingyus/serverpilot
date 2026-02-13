@@ -31,6 +31,8 @@ interface SkillsState {
   executionEvents: SkillExecutionEvent[];
   isStreaming: boolean;
   isLoading: boolean;
+  isUpgrading: string | null;
+  isCancelling: string | null;
   error: string | null;
   pendingConfirmations: SkillExecution[];
   stats: SkillStats | null;
@@ -44,6 +46,8 @@ interface SkillsState {
   configureSkill: (id: string, config: Record<string, unknown>) => Promise<void>;
   updateStatus: (id: string, status: SkillStatus) => Promise<void>;
   executeSkill: (id: string, serverId: string, config?: Record<string, unknown>) => Promise<SkillExecutionResult>;
+  upgradeSkill: (id: string) => Promise<void>;
+  cancelExecution: (eid: string) => Promise<void>;
   fetchExecutions: (id: string) => Promise<void>;
   fetchExecutionDetail: (skillId: string, executionId: string) => Promise<void>;
   fetchPendingConfirmations: () => Promise<void>;
@@ -66,6 +70,8 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
   executionEvents: [],
   isStreaming: false,
   isLoading: false,
+  isUpgrading: null,
+  isCancelling: null,
   error: null,
   pendingConfirmations: [],
   stats: null,
@@ -183,6 +189,43 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
     } catch (err) {
       const message = err instanceof ApiError ? err.message : 'Failed to execute skill';
       set({ error: message });
+      throw err;
+    }
+  },
+
+  upgradeSkill: async (id) => {
+    set({ isUpgrading: id, error: null });
+    try {
+      const data = await apiRequest<SkillResponse>(`/skills/${id}/upgrade`, {
+        method: 'PUT',
+      });
+      set({
+        skills: get().skills.map((s) => (s.id === id ? data.skill : s)),
+        isUpgrading: null,
+      });
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to upgrade skill';
+      set({ error: message, isUpgrading: null });
+      throw err;
+    }
+  },
+
+  cancelExecution: async (eid) => {
+    set({ isCancelling: eid, error: null });
+    try {
+      await apiRequest(`/skills/executions/${eid}/cancel`, {
+        method: 'POST',
+      });
+      set({
+        isCancelling: null,
+        isStreaming: false,
+        executions: get().executions.map((e) =>
+          e.id === eid ? { ...e, status: 'cancelled' as const } : e,
+        ),
+      });
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to cancel execution';
+      set({ error: message, isCancelling: null });
       throw err;
     }
   },

@@ -652,6 +652,128 @@ describe('useSkillsStore', () => {
   });
 
   // --------------------------------------------------------------------------
+  // upgradeSkill
+  // --------------------------------------------------------------------------
+
+  describe('upgradeSkill', () => {
+    it('should upgrade a skill and replace it in the list', async () => {
+      const original = makeSkill({ id: 'sk-1', version: '1.0.0', source: 'community' });
+      useSkillsStore.setState({ skills: [original] });
+
+      const upgraded = makeSkill({ id: 'sk-1', version: '2.0.0', source: 'community' });
+      mockApiRequest.mockResolvedValueOnce({ skill: upgraded });
+
+      await useSkillsStore.getState().upgradeSkill('sk-1');
+
+      const state = useSkillsStore.getState();
+      expect(state.skills[0].version).toBe('2.0.0');
+      expect(state.isUpgrading).toBeNull();
+      expect(state.error).toBeNull();
+      expect(mockApiRequest).toHaveBeenCalledWith('/skills/sk-1/upgrade', {
+        method: 'PUT',
+      });
+    });
+
+    it('should set isUpgrading to the skill id while upgrading', async () => {
+      useSkillsStore.setState({ skills: [makeSkill()] });
+      let resolvePromise: (v: unknown) => void;
+      const pending = new Promise((resolve) => { resolvePromise = resolve; });
+      mockApiRequest.mockReturnValueOnce(pending);
+
+      const upgradePromise = useSkillsStore.getState().upgradeSkill('sk-1');
+      expect(useSkillsStore.getState().isUpgrading).toBe('sk-1');
+
+      resolvePromise!({ skill: makeSkill({ version: '2.0.0' }) });
+      await upgradePromise;
+
+      expect(useSkillsStore.getState().isUpgrading).toBeNull();
+    });
+
+    it('should handle ApiError on upgrade and re-throw', async () => {
+      useSkillsStore.setState({ skills: [makeSkill()] });
+      const { ApiError } = await import('@/api/client');
+      mockApiRequest.mockRejectedValueOnce(
+        new ApiError(404, 'NOT_FOUND', 'Skill not found'),
+      );
+
+      await expect(useSkillsStore.getState().upgradeSkill('sk-1')).rejects.toThrow();
+
+      const state = useSkillsStore.getState();
+      expect(state.error).toBe('Skill not found');
+      expect(state.isUpgrading).toBeNull();
+    });
+
+    it('should use fallback message for non-ApiError on upgrade', async () => {
+      useSkillsStore.setState({ skills: [makeSkill()] });
+      mockApiRequest.mockRejectedValueOnce(new Error('network'));
+
+      await expect(useSkillsStore.getState().upgradeSkill('sk-1')).rejects.toThrow();
+
+      expect(useSkillsStore.getState().error).toBe('Failed to upgrade skill');
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // cancelExecution
+  // --------------------------------------------------------------------------
+
+  describe('cancelExecution', () => {
+    it('should cancel execution and update status in list', async () => {
+      useSkillsStore.setState({
+        executions: [makeExecution({ id: 'exec-1', status: 'running' })],
+        isStreaming: true,
+      });
+      mockApiRequest.mockResolvedValueOnce({ success: true });
+
+      await useSkillsStore.getState().cancelExecution('exec-1');
+
+      const state = useSkillsStore.getState();
+      expect(state.executions[0].status).toBe('cancelled');
+      expect(state.isCancelling).toBeNull();
+      expect(state.isStreaming).toBe(false);
+      expect(mockApiRequest).toHaveBeenCalledWith('/skills/executions/exec-1/cancel', {
+        method: 'POST',
+      });
+    });
+
+    it('should set isCancelling to the execution id while cancelling', async () => {
+      useSkillsStore.setState({ executions: [makeExecution({ id: 'exec-1', status: 'running' })] });
+      let resolvePromise: (v: unknown) => void;
+      const pending = new Promise((resolve) => { resolvePromise = resolve; });
+      mockApiRequest.mockReturnValueOnce(pending);
+
+      const cancelPromise = useSkillsStore.getState().cancelExecution('exec-1');
+      expect(useSkillsStore.getState().isCancelling).toBe('exec-1');
+
+      resolvePromise!({ success: true });
+      await cancelPromise;
+
+      expect(useSkillsStore.getState().isCancelling).toBeNull();
+    });
+
+    it('should handle ApiError on cancel and re-throw', async () => {
+      const { ApiError } = await import('@/api/client');
+      mockApiRequest.mockRejectedValueOnce(
+        new ApiError(400, 'BAD_REQUEST', 'Execution not found or not running'),
+      );
+
+      await expect(useSkillsStore.getState().cancelExecution('exec-bad')).rejects.toThrow();
+
+      const state = useSkillsStore.getState();
+      expect(state.error).toBe('Execution not found or not running');
+      expect(state.isCancelling).toBeNull();
+    });
+
+    it('should use fallback message for non-ApiError on cancel', async () => {
+      mockApiRequest.mockRejectedValueOnce(new Error('timeout'));
+
+      await expect(useSkillsStore.getState().cancelExecution('exec-1')).rejects.toThrow();
+
+      expect(useSkillsStore.getState().error).toBe('Failed to cancel execution');
+    });
+  });
+
+  // --------------------------------------------------------------------------
   // clearError
   // --------------------------------------------------------------------------
 

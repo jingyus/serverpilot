@@ -3,19 +3,391 @@
 > 此队列专注于 Chat 和 AI 对话系统的质量改进
 > AI 自动发现问题 → 生成任务 → 实现 → 验证
 
-**最后更新**: 2026-02-13 08:19:33
+**最后更新**: 2026-02-13 08:35:49
 
 ## 📊 统计
 
-- **总任务数**: 65
-- **待完成** (pending): 0
-- **进行中** (in_progress): 0
+- **总任务数**: 80
+- **待完成** (pending): 14
+- **进行中** (in_progress): 1
 - **已完成** (completed): 65
 - **失败** (failed): 0
 
 ## 📋 任务列表
 
 ### [completed] 聊天会话持久化到 SQLite — 消除服务器重启丢失对话的致命问题 ✅
+### [in_progress] awaitAbort 轮询模式浪费 CPU — 200ms setInterval 未在 Promise.race 解决后清理
+
+**ID**: chat-066
+**优先级**: P0
+**模块路径**: packages/server/src/ai/
+**发现的问题**: `agentic-chat.ts:587-601` 的 `awaitAbort()` 方法使用 `setInterval(200ms)` 轮询 `abort.aborted` 状态。当 `Promise.race([confirmation.approved, awaitAbort()])` 中 `confirmation.approved` 先解决时（用户批准命令），`awaitAbort` 的 interval 仍然继续运行直到 `abort.aborted` 最终变为 true 或进程退出。每个确认请求最多泄漏一个 200ms interval 长达 5 分钟。在高频使用场景下（agentic 模式频繁触发 YELLOW/RED 命令确认），可累积数十个空转 interval。虽然 `.unref()` 避免了进程挂起，但 CPU 仍被无意义唤醒。
+**改进方案**:
+1. 将 `awaitAbort` 改为基于回调/事件的模式，而非轮询：
+   - 给 `AbortState` 增加 `onAbort(callback)` 方法和内部 listener 列表
+   - `awaitAbort` 返回的 Promise 注册 listener，abort 时触发 resolve
+2. 或者更简单：让 `awaitAbort` 返回 `{ promise, cancel }` 元组，在 `Promise.race` 解决后调用 `cancel()` 清理 interval
+3. 在 `toolExecuteCommand`（行 450-453）的 `Promise.race` 之后添加清理逻辑
+**验收标准**:
+- `awaitAbort` 不再使用 `setInterval` 轮询
+- `Promise.race` 解决后所有 timer/listener 被立即清理
+- 现有 agentic-chat 测试全部通过
+- 新增单元测试验证：confirmation 解决后 abort interval 不再运行
+**影响范围**:
+- `packages/server/src/ai/agentic-chat.ts` — `awaitAbort` 方法重构 + `toolExecuteCommand` 调用处
+- `packages/server/tests/ai/agentic-chat.test.ts` — 新增测试
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] trimMessagesIfNeeded 在仅剩 3 条消息时不保证 token 预算 — 可能超出 maxTokens
+
+**ID**: chat-067
+**优先级**: P0
+**模块路径**: packages/server/src/ai/
+**发现的问题**: `agentic-message-utils.ts:63-66` 的 while 循环在 `messages.length > 3` 时才继续裁剪。当裁剪到仅剩 3 条消息后，即使 `estimateMessagesTokens(messages) > maxTokens`，循环也会退出。例如：如果第一条 user 消息包含 50K tokens 的文件内容，加上最近一轮 assistant+user 共 110K tokens，总计 160K > 150K maxTokens，函数返回时消息仍超预算。这会导致后续 Anthropic API 调用因 token 超限而失败。
+**改进方案**:
+1. 在 while 循环退出后增加二次检查：如果剩余 3 条消息仍超预算，对最早的消息内容进行截断（保留末尾部分）
+2. 截断策略：估算需要移除的 token 数，按字符比例截断第一条消息的 content，保留 `[Content truncated: ~{N}K tokens removed]` 标记
+3. 如果第一条消息是 array content（tool results），移除最早的 content blocks 直到预算内
+**验收标准**:
+- 无论消息数量多少，函数返回时 `estimateMessagesTokens(messages) <= maxTokens` 始终成立
+- 截断后注入通知让 AI 知道上下文被截断
+- 现有 trim 测试通过 + 新增边界场景测试（3 条超大消息）
+**影响范围**:
+- `packages/server/src/ai/agentic-message-utils.ts` — 添加二次截断逻辑
+- `packages/server/tests/ai/agentic-message-utils.test.ts` — 新增边界测试
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] chat 路由 profileMgr.getProfile 在 SSE 流创建前调用 — 异常导致 HTTP 500 而非 SSE 错误事件
+
+**ID**: chat-068
+**优先级**: P0
+**模块路径**: packages/server/src/api/routes/
+**发现的问题**: `chat.ts:162-163` 在 `streamSSE(c, ...)` 之前调用 `profileMgr.getProfile(serverId, userId)`。如果 getProfile 抛出异常（数据库错误、profile 损坏等），异常发生在 SSE 流创建之前，Hono 框架会返回 HTTP 500 响应。前端 SSE 客户端收到的是标准 HTTP 错误响应而非 SSE 事件，无法触发 `onError` 回调——用户看到静默失败或浏览器控制台报错。注意：execute 路由（行 441-455）已经在 SSE 流内部正确处理了 getProfile 异常，说明这是一个遗漏，而非设计选择。
+**改进方案**:
+1. 将 `profileMgr.getProfile` 调用移到 `streamSSE` 回调内部（行 165 之后）
+2. 用 try/catch 包裹，失败时通过 `safeWriteSSE` 发送错误事件给前端
+3. profile 加载失败后仍可选择无 profile 模式继续对话（降级而非终止）
+**验收标准**:
+- `getProfile` 异常时前端收到 SSE error 事件（非 HTTP 500）
+- 用户看到友好错误消息而非空白/断连
+- 现有 chat route 测试通过
+- 新增测试：mock getProfile 抛异常，验证 SSE 流仍正确关闭
+**影响范围**:
+- `packages/server/src/api/routes/chat.ts` — POST `/:serverId` 路由重构
+- `packages/server/tests/api/routes/chat.test.ts` — 新增测试
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] 前端 ChatMessage 组件无消息复制和重新生成操作 — 对话交互体验远低于同类产品
+
+**ID**: chat-069
+**优先级**: P1
+**模块路径**: packages/dashboard/src/components/chat/
+**发现的问题**: `ChatMessage.tsx:35-93` 是纯展示组件，无任何交互功能。对比 ChatGPT/Claude.ai：(1) 无"复制消息"按钮——用户只能手动选择文本复制，assistant 消息含 Markdown 时选择困难；(2) 无"重新生成"按钮——AI 回复不满意时无法重试，必须重新输入相同问题；(3) 无消息 hover 操作栏——现代 AI Chat 产品都有消息 hover 时显示的操作按钮组。MarkdownRenderer（行 14-58）仅支持代码块复制，不支持整条消息复制。
+**改进方案**:
+1. 添加消息 hover 操作栏组件 `MessageActions`：
+   - 复制按钮（assistant 消息：复制原始 markdown；user 消息：复制纯文本）
+   - 重新生成按钮（仅 assistant 消息最后一条）
+2. 操作栏样式：absolute 定位在消息右上角，hover 时显示
+3. 复制使用 `navigator.clipboard.writeText()`，成功后显示 Toast 通知
+4. 重新生成：调用 `chatStore.regenerateLastResponse()` → 删除最后一条 assistant 消息 → 重新发送最后一条 user 消息
+**验收标准**:
+- 消息 hover 时显示操作栏（包含复制和重新生成按钮）
+- 点击复制后 Toast 提示"已复制"
+- 重新生成删除旧回复并触发新的 AI 请求
+- 移动端长按触发操作栏
+- 添加 data-testid + 单元测试
+**影响范围**:
+- `packages/dashboard/src/components/chat/ChatMessage.tsx` — 添加操作栏
+- `packages/dashboard/src/components/chat/ChatMessage.test.tsx` — 新增测试
+- `packages/dashboard/src/stores/chat.ts` — 添加 `regenerateLastResponse` action
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] SessionSidebar 在移动端完全隐藏且无替代入口 — 手机用户无法管理会话
+
+**ID**: chat-070
+**优先级**: P1
+**模块路径**: packages/dashboard/src/components/chat/
+**发现的问题**: `SessionSidebar.tsx:68` 使用 `hidden lg:block` 类名，在 `<1024px` 屏幕宽度下完全隐藏。移动端和平板用户完全无法：(1) 查看历史会话列表；(2) 切换到旧会话；(3) 删除会话。Chat.tsx 中也无任何替代入口（汉堡菜单、底部 sheet、侧滑手势）。这意味着移动端用户每次进入 Chat 页面只能使用新会话，无法访问任何历史对话。
+**改进方案**:
+1. 在 Chat header（`ChatHeader.tsx`）添加移动端"会话列表"按钮（仅在 `lg:` 以下显示）
+2. 点击后展示 Drawer/Sheet 组件包裹 `SessionSidebar`
+3. Drawer 从左侧滑入，背景半透明遮罩
+4. 选择会话或点击遮罩后自动关闭 Drawer
+5. 使用 `@headlessui/react` Dialog 或自定义 Drawer 组件
+**验收标准**:
+- 移动端显示"会话列表"图标按钮
+- 点击后左侧 Drawer 展示完整 SessionSidebar
+- 选择会话后 Drawer 自动关闭
+- 遮罩点击关闭 Drawer
+- 响应式：`lg:` 以上仍使用原有内联 sidebar
+- 添加 data-testid + 测试
+**影响范围**:
+- `packages/dashboard/src/pages/Chat.tsx` — 添加 Drawer 逻辑
+- `packages/dashboard/src/components/chat/ChatHeader.tsx` — 添加移动端按钮
+- `packages/dashboard/src/pages/Chat.test.tsx` — 新增测试
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] 前端执行输出 outputs 字符串拼接无上限 — 大量输出可能冻结浏览器
+
+**ID**: chat-071
+**优先级**: P1
+**模块路径**: packages/dashboard/src/stores/
+**发现的问题**: `chat-execution.ts:83` 和 `chat-execution.ts:368` 中 `onOutput` 回调将新内容拼接到 `execution.outputs[stepId]`：`(s.execution.outputs[parsed.stepId] ?? '') + parsed.content`。此字符串无任何长度限制。如果 agent 执行的命令产生大量输出（如 `find /` 或日志 tail），outputs 字符串可增长到数 MB 甚至更多。问题链：(1) 字符串拼接 O(n) 复杂度，每次 onOutput 都复制整个字符串；(2) `ExecutionLog.tsx:175` 将完整字符串传入 `parseAnsi()` 重新解析；(3) React 因 state 变化频繁 re-render 整个输出 DOM。100K+ 行输出时浏览器将明显卡顿或冻结。
+**改进方案**:
+1. 添加输出上限常量 `MAX_OUTPUT_CHARS = 500_000`（约 500KB）
+2. 当 `outputs[stepId].length > MAX_OUTPUT_CHARS` 时，截断头部保留尾部
+3. 截断时在输出开头插入 `[... 早期输出已截断，共 {N} 字符 ...]\n`
+4. 优化 `parseAnsi` 调用：缓存已解析的部分，只解析新增内容（增量解析）
+**验收标准**:
+- 输出字符串不超过 MAX_OUTPUT_CHARS
+- 截断时有用户可见提示
+- 高频 onOutput（100次/秒）不导致 UI 卡顿
+- 现有 execution 测试通过 + 新增截断测试
+**影响范围**:
+- `packages/dashboard/src/stores/chat-execution.ts` — onOutput 回调添加截断逻辑
+- `packages/dashboard/src/stores/chat-execution.test.ts` — 新增测试
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] buildHistoryWithLimit 截断无通知 — AI 不知道早期上下文被移除导致幻觉
+
+**ID**: chat-072
+**优先级**: P1
+**模块路径**: packages/server/src/core/session/
+**发现的问题**: `manager.ts:389-434` 的 `buildHistoryWithLimit` 在 token 超预算时从最旧消息开始丢弃（行 421-431），但与 `buildContextWithLimit`（行 364-374，添加了 `[Earlier conversation summarized]` 标记）和 `trimMessagesIfNeeded`（行 75-89，注入了 context-loss notice）不同，此方法**不注入任何截断通知**。Agentic 引擎使用此方法构建对话历史（`chat.ts:178`），AI 模型收到的历史看起来像是完整的——但实际上丢失了早期的工具调用结果和文件内容。这会导致 AI 重复执行已完成的命令或引用不存在的上下文。
+**改进方案**:
+1. 当历史被截断时（`selected.length < eligible.length`），在返回数组的第一条消息前插入一条 system-like user 消息
+2. 通知内容：`[System: Earlier conversation context was truncated. {N} messages removed. If you need information from earlier steps, re-read the relevant files.]`
+3. 保持与 `trimMessagesIfNeeded` 的通知格式一致
+**验收标准**:
+- 历史截断时 AI 收到的消息数组首条包含截断通知
+- 未截断时不插入任何通知
+- 现有 session manager 测试通过 + 新增截断通知测试
+**影响范围**:
+- `packages/server/src/core/session/manager.ts` — `buildHistoryWithLimit` 方法
+- `packages/server/tests/core/session/manager.test.ts` — 新增测试
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] chat 路由并发请求同 session 无互斥 — 消息顺序错乱和重复 AI 处理
+
+**ID**: chat-073
+**优先级**: P1
+**模块路径**: packages/server/src/api/routes/
+**发现的问题**: `chat.ts:112-364` POST `/:serverId` 路由无任何并发控制。当两个请求携带相同 `sessionId` 同时到达时：(1) 两者都调用 `getOrCreate`（行 153）获得同一 session；(2) 两者都调用 `addMessage`（行 156）添加 user 消息——消息顺序取决于 event loop 调度；(3) 两者都启动 AI 处理（行 180 或 290）——AI 收到两个不同用户消息的上下文；(4) 两者都写回 assistant 消息（行 203 或 309）——对话历史变为 user-user-assistant-assistant 交错。前端虽有重入保护（chat-010 已修复），但网络延迟或浏览器多 tab 场景仍可能触发。
+**改进方案**:
+1. 添加 per-session 锁机制：`sessionLocks: Map<sessionId, Promise<void>>`
+2. 每个 chat 请求先 await 当前 session 的锁 Promise，然后设置新锁
+3. 锁在 SSE 流完成（finally 块）后释放
+4. 实现为简单的串行队列：后到的请求等前一个完成后再处理
+5. 添加超时保护（30s），避免死锁
+**验收标准**:
+- 同一 session 的 chat 请求串行处理
+- 不同 session 的请求不受影响（并行）
+- 锁超时后自动释放（不死锁）
+- 现有 chat route 测试通过 + 新增并发测试
+**影响范围**:
+- `packages/server/src/api/routes/chat.ts` — 添加 session 锁
+- `packages/server/tests/api/routes/chat.test.ts` — 新增并发测试
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] SessionSidebar 无会话重命名功能 — 只能依赖 lastMessage 预览识别会话
+
+**ID**: chat-074
+**优先级**: P2
+**模块路径**: packages/dashboard/src/components/chat/
+**发现的问题**: `SessionSidebar.tsx:112-113` 显示 `session.lastMessage ?? t('chat.newSession')` 作为会话标题。用户无法重命名会话，只能通过最后一条消息的截断预览区分不同会话。当多个会话讨论类似主题时（如"安装 nginx"和"配置 nginx"），预览文本几乎相同，难以区分。对比 ChatGPT/Claude.ai 都支持会话重命名（双击标题或编辑图标）。`SessionItem` 接口（行 9-14）也无 `title` 字段。
+**改进方案**:
+1. 给 `SessionItem` 接口添加 `title?: string` 字段
+2. 在 session 项添加"编辑"图标按钮（与删除按钮并列，hover 时显示）
+3. 点击后切换为内联编辑模式（input 替换 p 标签）
+4. Enter 确认，Escape 取消
+5. 调用 `PATCH /chat/:serverId/sessions/:sessionId` API 更新标题
+**验收标准**:
+- 会话项 hover 显示编辑图标
+- 点击进入内联编辑模式
+- Enter 保存，Escape 取消
+- 保存后标题持久化（刷新后仍显示）
+- data-testid + 测试覆盖
+**影响范围**:
+- `packages/dashboard/src/components/chat/SessionSidebar.tsx` — 编辑 UI
+- `packages/dashboard/src/stores/chat-sessions.ts` — renameSession action
+- `packages/dashboard/src/components/chat/SessionSidebar.test.tsx` — 新增测试
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] 后端 session API 无重命名端点 — 缺少 PATCH /sessions/:id 支持前端会话重命名
+
+**ID**: chat-075
+**优先级**: P2
+**模块路径**: packages/server/src/api/routes/
+**发现的问题**: `chat.ts:511-560` 定义了 sessions 的 GET（列表）、GET（详情）、DELETE 端点，但缺少 PATCH/PUT 端点用于更新会话元数据（标题/名称）。`SessionManager` 和底层 `SessionRepository` 也无 `updateSession` 或 `renameSession` 方法。sessions 数据库表（`chat_sessions`）是否有 `title` 列需确认。此为前端会话重命名功能（chat-074）的后端依赖。
+**改进方案**:
+1. 数据库层：确认 `chat_sessions` 表有 `title` 列，如无则添加 migration
+2. `SessionRepository` 添加 `updateTitle(sessionId, userId, title)` 方法
+3. `SessionManager` 添加 `renameSession(sessionId, userId, title)` 方法
+4. 添加 `PATCH /chat/:serverId/sessions/:sessionId` 路由，body: `{ title: string }`
+5. Zod schema 验证 title 长度（1-100 字符）
+**验收标准**:
+- PATCH 端点正常工作，返回 `{ success: true }`
+- 标题持久化到数据库
+- 权限检查：只能重命名自己的会话
+- listSessions 返回值包含 title 字段
+- 路由测试覆盖
+**影响范围**:
+- `packages/server/src/api/routes/chat.ts` — 新增 PATCH 路由
+- `packages/server/src/core/session/manager.ts` — 新增 renameSession
+- `packages/server/tests/api/routes/chat.test.ts` — 新增测试
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] 前端长消息列表无虚拟滚动 — 500+ 条消息时滚动性能严重下降
+
+**ID**: chat-076
+**优先级**: P2
+**模块路径**: packages/dashboard/src/pages/
+**发现的问题**: `Chat.tsx` 消息列表使用简单的 `messages.map()` 渲染所有消息到 DOM。每条消息包含 `ChatMessage` 组件，assistant 消息还会触发 `MarkdownRenderer`（react-markdown + syntax highlighter）。当会话有 200+ 条消息时：(1) 初始渲染时间线性增长；(2) 每次新消息触发整个列表 re-render；(3) 所有代码块的 syntax highlighting 同时计算。`chat-sessions.ts:42-44` 的 `loadSession` 也一次性加载全部消息无分页。参考 ChatGPT：使用虚拟滚动只渲染可视区域 + 上下缓冲区的消息。
+**改进方案**:
+1. 引入 `react-virtuoso` 库实现虚拟滚动（专为 chat UI 设计，支持反向滚动和动态高度）
+2. 替换 `messages.map()` 为 `<Virtuoso data={messages} itemContent={renderMessage} />`
+3. 保留现有自动滚动逻辑（Virtuoso 内置 `followOutput` prop）
+4. ChatMessage 组件添加 `React.memo` 避免不必要的 re-render
+**验收标准**:
+- 500 条消息的会话加载和滚动流畅（FPS > 30）
+- 自动滚动到底部行为不变
+- 流式消息输出时滚动平滑
+- 现有 Chat.test.tsx 测试通过
+**影响范围**:
+- `packages/dashboard/src/pages/Chat.tsx` — 消息列表虚拟化
+- `packages/dashboard/src/components/chat/ChatMessage.tsx` — 添加 React.memo
+- `packages/dashboard/package.json` — 添加 react-virtuoso 依赖
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] MessageInput 无 Escape 取消流式和 Ctrl+K 搜索快捷键 — 键盘操作效率低
+
+**ID**: chat-077
+**优先级**: P2
+**模块路径**: packages/dashboard/src/components/chat/
+**发现的问题**: `MessageInput.tsx:40-48` 仅处理 `Enter`/`Shift+Enter` 键盘事件。缺少：(1) `Escape` 键取消流式输出——当前必须用鼠标点击"停止"按钮（行 95-107），频繁使用 Chat 时效率低下；(2) 无任何全局快捷键支持。对比 Claude.ai：Escape 取消生成，`/` 聚焦输入框。当前 `onCancel` prop 已存在（行 13），只需在 keydown 事件中调用即可。
+**改进方案**:
+1. 在 `handleKeyDown` 中添加 `Escape` 处理：当 `isStreaming` 时调用 `onCancel()`
+2. 添加全局 keydown listener（在 Chat.tsx 中）：
+   - `Escape`：取消流式 / 关闭确认对话框
+   - `/`：聚焦输入框（当前无焦点在输入框时）
+3. 添加 `aria-keyshortcuts` 属性提升可访问性
+**验收标准**:
+- 按 Escape 可取消正在进行的流式输出
+- 快捷键不与系统/浏览器快捷键冲突
+- 添加 testid + 键盘事件测试
+**影响范围**:
+- `packages/dashboard/src/components/chat/MessageInput.tsx` — Escape 键处理
+- `packages/dashboard/src/pages/Chat.tsx` — 全局快捷键 listener
+- `packages/dashboard/src/components/chat/MessageInput.test.tsx` — 新增测试
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] chat-execution.ts 超过 500 行软限制（652 行）— SSE 回调构建器可提取
+
+**ID**: chat-078
+**优先级**: P3
+**模块路径**: packages/dashboard/src/stores/
+**发现的问题**: `chat-execution.ts` 当前 652 行，超过项目 500 行软限制。主要体积来自 `buildStreamingCallbacks` 函数（约 300 行），其中包含 14+ 个 SSE 事件处理器。每个处理器逻辑独立（JSON.parse → Zod validate → set state），适合提取到独立模块。此外 `createConfirmPlan` 和 `createEmergencyStop` 也各约 80 行，与 streaming 回调逻辑无关。
+**改进方案**:
+1. 提取 `buildStreamingCallbacks` 到新文件 `chat-sse-handlers.ts`
+2. 每个 SSE 事件处理器作为独立的命名函数导出
+3. `chat-execution.ts` 只保留 `createConfirmPlan`、`createRespondToStep`、`createEmergencyStop` 等高层流程
+4. 保持 `get()`/`set()` 通过参数注入（避免循环依赖）
+**验收标准**:
+- `chat-execution.ts` 降到 400 行以下
+- `chat-sse-handlers.ts` < 350 行
+- 所有现有 chat-execution 测试通过
+- 无循环依赖
+**影响范围**:
+- `packages/dashboard/src/stores/chat-execution.ts` — 拆分
+- `packages/dashboard/src/stores/chat-sse-handlers.ts` — 新文件
+- `packages/dashboard/src/stores/chat-execution.test.ts` — 调整 import
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] SessionSidebar 无历史会话搜索 — 会话多时无法快速定位目标对话
+
+**ID**: chat-079
+**优先级**: P3
+**模块路径**: packages/dashboard/src/components/chat/
+**发现的问题**: `SessionSidebar.tsx` 整个组件无搜索/过滤功能。会话列表按日期分组（today/yesterday/thisWeek/older），但当用户积累 50+ 会话后，只能逐个展开分组查找。每个 session 仅显示 `lastMessage` 截断预览（行 112-113），无法按消息内容、命令、服务器等维度搜索。对比 ChatGPT 和 Claude.ai 的侧边栏都有搜索框支持全文搜索。
+**改进方案**:
+1. 在 SessionSidebar 顶部（行 71 后）添加搜索输入框
+2. 搜索逻辑：客户端过滤 `sessions` 数组，匹配 `lastMessage` 和 `title`（如果有）
+3. 搜索使用 debounce（300ms）避免频繁过滤
+4. 匹配结果高亮显示关键词
+5. 无匹配时显示空状态提示
+**验收标准**:
+- 搜索框输入后实时过滤会话列表
+- 支持中英文搜索
+- 清空搜索恢复完整列表
+- data-testid + 测试覆盖
+**影响范围**:
+- `packages/dashboard/src/components/chat/SessionSidebar.tsx` — 添加搜索 UI + 过滤逻辑
+- `packages/dashboard/src/components/chat/SessionSidebar.test.tsx` — 新增测试
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Agentic 确认超时 resolve(false) 与用户 confirm 请求的 TOCTOU 竞态 — 用户批准被忽略
+
+**ID**: chat-080
+**优先级**: P3
+**模块路径**: packages/server/src/api/routes/
+**发现的问题**: `chat.ts:192-198` 的确认超时回调和 `chat.ts:387-394` 的用户确认端点之间存在 TOCTOU（Time-of-Check-Time-of-Use）竞态：(1) 超时定时器触发（行 193），执行 `pendingConfirmations.delete(confirmId)` + `resolve(false)`；(2) 几乎同时，用户点击"批准"，confirm 端点检查 `pendingConfirmations.get(body.confirmId)`（行 387）；(3) 如果 delete 在 get 之前执行，用户收到 404 "No pending confirmation found"——但超时已 resolve(false) 导致命令被拒绝。由于 Promise 只 resolve 一次，如果 get 在 delete 之前执行（取到了 entry），clearTimeout 和 resolve(true) 都正常。但第一种时序下用户体验很差——刚好在超时边界点击批准被拒绝且收到错误。
+**改进方案**:
+1. 在 confirm 端点增加一个短暂的宽限期检查：如果 confirmId 不在 Map 中，检查是否在 1 秒内刚被超时清除（用一个 `recentlyExpired: Set<confirmId>` 追踪）
+2. 如果是刚过期的确认，返回 `{ success: false, message: 'Confirmation expired', expired: true }` 而非 404
+3. 前端根据 `expired: true` 显示"确认已超时"而非"未找到确认"
+**验收标准**:
+- 超时边界点击确认返回友好的过期提示（非 404）
+- recentlyExpired 条目 10 秒后自动清理
+- 正常流程不受影响
+- 新增测试覆盖竞态场景
+**影响范围**:
+- `packages/server/src/api/routes/chat.ts` — confirm 端点 + recentlyExpired 追踪
+- `packages/server/tests/api/routes/chat.test.ts` — 新增测试
+**创建时间**: 2026-02-13
+**完成时间**: -
+
 ### [completed] pendingConfirmations 在 SSE 断连时未清理 — 定时器和 Promise 泄漏 ✅
 
 **ID**: chat-050

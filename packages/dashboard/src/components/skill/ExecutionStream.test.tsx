@@ -2,6 +2,7 @@
 // Copyright (c) 2024-2026 ServerPilot Contributors
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { ExecutionStream } from './ExecutionStream';
 import { useSkillsStore } from '@/stores/skills';
 import type {
@@ -201,5 +202,47 @@ describe('ExecutionStream', () => {
     expect(screen.getByText('Execution Progress')).toBeInTheDocument();
     expect(screen.getByText('Analysis complete')).toBeInTheDocument();
     expect(screen.getByText('success')).toBeInTheDocument();
+  });
+
+  // --------------------------------------------------------------------------
+  // Cancel Button
+  // --------------------------------------------------------------------------
+
+  it('shows cancel button when streaming', () => {
+    setupStore([makeStepStart()], true);
+
+    render(<ExecutionStream executionId="exec-1" />);
+
+    expect(screen.getByTitle('Cancel')).toBeInTheDocument();
+  });
+
+  it('hides cancel button when not streaming', () => {
+    setupStore([makeCompleted()], false);
+
+    render(<ExecutionStream executionId="exec-1" />);
+
+    expect(screen.queryByTitle('Cancel')).not.toBeInTheDocument();
+  });
+
+  it('calls cancelExecution when cancel button is clicked', async () => {
+    const user = userEvent.setup();
+    const cancelExecution = vi.fn();
+    setupStore([makeStepStart()], true, { cancelExecution, isCancelling: null });
+
+    render(<ExecutionStream executionId="exec-1" />);
+
+    await user.click(screen.getByTitle('Cancel'));
+    expect(cancelExecution).toHaveBeenCalledWith('exec-1');
+  });
+
+  it('disables cancel button when isCancelling matches executionId', () => {
+    setupStore([makeStepStart()], true, {
+      cancelExecution: vi.fn(),
+      isCancelling: 'exec-1',
+    });
+
+    render(<ExecutionStream executionId="exec-1" />);
+
+    expect(screen.getByTitle('Cancel')).toBeDisabled();
   });
 });

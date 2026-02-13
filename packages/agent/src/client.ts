@@ -13,6 +13,7 @@ import WebSocket from 'ws';
 
 import type { Message } from './protocol-lite.js';
 import { safeParseMessageLite } from './protocol-lite.js';
+import { MessageQueue } from './message-queue.js';
 
 // ============================================================================
 // Types
@@ -32,6 +33,8 @@ export interface InstallClientOptions {
   reconnectMaxDelayMs?: number;
   /** Connection timeout in ms (default: 10000) */
   connectionTimeoutMs?: number;
+  /** Optional message queue for offline buffering (enables trySend). */
+  messageQueue?: MessageQueue;
 }
 
 /** Connection state of the client */
@@ -98,6 +101,7 @@ export class InstallClient {
   private readonly reconnectBaseDelayMs: number;
   private readonly reconnectMaxDelayMs: number;
   private readonly connectionTimeoutMs: number;
+  private readonly _messageQueue: MessageQueue | null;
 
   constructor(options: InstallClientOptions) {
     this.serverUrl = options.serverUrl;
@@ -106,6 +110,14 @@ export class InstallClient {
     this.reconnectBaseDelayMs = options.reconnectBaseDelayMs ?? 1000;
     this.reconnectMaxDelayMs = options.reconnectMaxDelayMs ?? 30000;
     this.connectionTimeoutMs = options.connectionTimeoutMs ?? 10000;
+    this._messageQueue = options.messageQueue ?? null;
+
+    // Auto-flush queued messages on reconnection
+    if (this._messageQueue) {
+      this.on('reconnected', () => {
+        this.flushQueue();
+      });
+    }
   }
 
   // --------------------------------------------------------------------------
@@ -179,6 +191,36 @@ export class InstallClient {
       throw new Error('Client is not connected');
     }
     this.ws.send(JSON.stringify(message));
+  }
+
+  /**
+   * Send a message, buffering it in the queue if the connection is down.
+   *
+   * Non-queueable messages (e.g. step.output) are silently dropped when
+   * disconnected — they are real-time streams with no value after a delay.
+   *
+   * @returns `'sent'` if delivered immediately, `'queued'` if buffered,
+   *          or `'dropped'` if the message type is non-queueable and the
+   *          connection is down.
+   */
+  trySend(message: Message): 'sent' | 'queued' | 'dropped' {
+    try {
+      this.send(message);
+      return 'sent';
+    } catch {
+      if (!this._messageQueue) {
+        return 'dropped';
+      }
+      const enqueued = this._messageQueue.enqueue(message);
+      return enqueued ? 'queued' : 'dropped';
+    }
+  }
+
+  /**
+   * Get the message queue (if one was configured).
+   */
+  getQueue(): MessageQueue | null {
+    return this._messageQueue;
   }
 
   /**
@@ -470,6 +512,11 @@ export class InstallClient {
       clearTimeout(this.connectionTimer);
       this.connectionTimer = null;
     }
+  }
+
+  private flushQueue(): void {
+    if (!this._messageQueue || this._messageQueue.isEmpty) return;
+    this._messageQueue.flush((msg) => this.send(msg));
   }
 
   private emit<K extends keyof InstallClientEvents>(

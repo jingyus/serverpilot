@@ -538,7 +538,9 @@
     "noStats": "暂无执行数据。",
     "noStatsDesc": "执行一些技能后即可查看分析数据。",
     "executions": "次执行",
-    "successCount": "{{count}} 次成功"
+    "successCount": "{{count}} 次成功",
+    "upgrade": "升级",
+    "cancelExecution": "取消"
   },
   "theme": {
     "toggle": "切换主题",

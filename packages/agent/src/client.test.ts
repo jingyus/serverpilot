@@ -8,6 +8,7 @@ import { createMessage, MessageType } from '@aiinstaller/shared';
 import type { Message } from '@aiinstaller/shared';
 
 import { InstallClient, ConnectionState } from './client.js';
+import { MessageQueue } from './message-queue.js';
 
 // ============================================================================
 // Helpers
@@ -671,5 +672,132 @@ describe('multiple messages', () => {
     expect(messages).toHaveLength(2);
     expect(messages[0].type).toBe(MessageType.STEP_EXECUTE);
     expect(messages[1].type).toBe(MessageType.STEP_EXECUTE);
+  });
+});
+
+// ============================================================================
+// trySend with MessageQueue integration
+// ============================================================================
+
+describe('InstallClient trySend', () => {
+  let wss: WebSocketServer;
+  let port: number;
+  let client: InstallClient;
+
+  beforeEach(async () => {
+    ({ wss, port } = await createTestServer());
+  });
+
+  afterEach(async () => {
+    client?.disconnect();
+    await closeTestServer(wss);
+  });
+
+  it('returns "sent" when connected', async () => {
+    const queue = new MessageQueue();
+    client = new InstallClient({ serverUrl: `ws://localhost:${port}`, messageQueue: queue });
+    await client.connect();
+
+    const msg = createMessage(MessageType.STEP_COMPLETE, {
+      stepId: 's1', success: true, exitCode: 0, stdout: '', stderr: '', duration: 10,
+    });
+    const result = client.trySend(msg);
+    expect(result).toBe('sent');
+    expect(queue.size).toBe(0);
+  });
+
+  it('returns "queued" for queueable message when disconnected', () => {
+    const queue = new MessageQueue();
+    client = new InstallClient({ serverUrl: `ws://localhost:${port}`, messageQueue: queue });
+    // Not connected
+
+    const msg = createMessage(MessageType.STEP_COMPLETE, {
+      stepId: 's1', success: true, exitCode: 0, stdout: '', stderr: '', duration: 10,
+    });
+    const result = client.trySend(msg);
+    expect(result).toBe('queued');
+    expect(queue.size).toBe(1);
+  });
+
+  it('returns "dropped" for non-queueable message when disconnected', () => {
+    const queue = new MessageQueue();
+    client = new InstallClient({ serverUrl: `ws://localhost:${port}`, messageQueue: queue });
+
+    const msg = createMessage(MessageType.STEP_OUTPUT, {
+      stepId: 's1', output: 'hello',
+    });
+    const result = client.trySend(msg);
+    expect(result).toBe('dropped');
+    expect(queue.size).toBe(0);
+  });
+
+  it('returns "dropped" when disconnected without a queue', () => {
+    client = new InstallClient({ serverUrl: `ws://localhost:${port}` });
+    const msg = createMessage(MessageType.STEP_COMPLETE, {
+      stepId: 's1', success: true, exitCode: 0, stdout: '', stderr: '', duration: 10,
+    });
+    const result = client.trySend(msg);
+    expect(result).toBe('dropped');
+  });
+
+  it('getQueue returns the configured queue', () => {
+    const queue = new MessageQueue();
+    client = new InstallClient({ serverUrl: `ws://localhost:${port}`, messageQueue: queue });
+    expect(client.getQueue()).toBe(queue);
+  });
+
+  it('getQueue returns null when no queue configured', () => {
+    client = new InstallClient({ serverUrl: `ws://localhost:${port}` });
+    expect(client.getQueue()).toBeNull();
+  });
+
+  it('flushes queued messages on reconnect', async () => {
+    const queue = new MessageQueue();
+    client = new InstallClient({
+      serverUrl: `ws://localhost:${port}`,
+      messageQueue: queue,
+      autoReconnect: true,
+      maxReconnectAttempts: 3,
+      reconnectBaseDelayMs: 50,
+    });
+
+    const received: string[] = [];
+    wss.on('connection', (ws) => {
+      ws.on('message', (data) => {
+        const parsed = JSON.parse(data.toString()) as Message;
+        received.push(parsed.type);
+      });
+    });
+
+    await client.connect();
+    await wait(50);
+
+    // Queue messages while disconnected
+    // Force close from server side
+    for (const ws of wss.clients) {
+      ws.close(1001, 'test disconnect');
+    }
+    await wait(100);
+
+    // Now queue messages while disconnected
+    const m1 = createMessage(MessageType.STEP_COMPLETE, {
+      stepId: 's1', success: true, exitCode: 0, stdout: '', stderr: '', duration: 10,
+    });
+    const m2 = createMessage(MessageType.METRICS_REPORT, {
+      serverId: 'srv', cpuUsage: 50, memoryUsage: 100, memoryTotal: 200,
+      diskUsage: 0, diskTotal: 1, networkIn: 0, networkOut: 0,
+    });
+    client.trySend(m1);
+    client.trySend(m2);
+    expect(queue.size).toBe(2);
+
+    // Wait for reconnect + flush
+    await wait(500);
+
+    // Queue should be empty after flush
+    expect(queue.size).toBe(0);
+    // The flushed messages should have been received by the server
+    expect(received).toContain('step.complete');
+    expect(received).toContain('metrics.report');
   });
 });
