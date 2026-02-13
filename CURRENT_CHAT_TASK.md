@@ -1,12 +1,12 @@
-### [pending] Agentic 模式 serverProfile 类型为 unknown — 3 处 `as` 断言无运行时验证
+### [pending] apiRequest 无请求超时 — 挂起的网络请求永远阻塞 UI
 
-**ID**: chat-096
+**ID**: chat-097
 **优先级**: P2
-**模块路径**: packages/server/src/ai/
-**发现的问题**: `AgenticRunOptions.serverProfile` (agentic-chat.ts:74) 类型为 `unknown`。在 `agentic-prompts.ts:53` 和 `58` 中通过 `as Parameters<typeof buildProfileContext>[0]` 断言使用，没有运行时类型检查。如果 `profileMgr.getProfile()` 返回了意外结构（例如 profile 版本升级后字段变化），`buildProfileContext` 可能在深层属性访问时抛出 TypeError，而此时已在 `buildFullSystemPrompt` 内部，错误消息不明确。profile 相关的 `as` 断言还出现在 `chat.ts:320` 的 legacy 模式中。
-**改进方案**: 将 `serverProfile` 参数类型改为 `ServerProfile | null`（从 profile manager 导入具体类型），消除 `unknown` 和 `as` 断言。在 `agentic-prompts.ts` 入口做 null check 即可。
-**验收标准**: (1) serverProfile 使用具体类型 (2) 消除 `as` 类型断言 (3) 类型安全无 `any` 逃逸 (4) 编译通过
-**影响范围**: `packages/server/src/ai/agentic-chat.ts`, `packages/server/src/ai/agentic-prompts.ts`
+**模块路径**: packages/dashboard/src/api/
+**发现的问题**: `apiRequest<T>()` (client.ts) 使用原生 `fetch()` 无 `AbortController` 超时设置。当网络异常（如 DNS 解析挂起、服务器不响应）时，请求永远等待。特别影响 Chat 功能中的非 SSE 请求：`respondToStep` (POST /step-decision)、`respondToAgenticConfirm` (POST /confirm)、`deleteSession` (DELETE)、`renameSession` (PATCH) 等操作会因挂起请求导致按钮永远 loading。SSE 连接不受影响（有自己的 AbortController）。
+**改进方案**: 在 `apiRequest` 中添加可选的 `timeout` 参数（默认 30s），使用 `AbortController` + `setTimeout` 实现。超时后抛出特定错误 `ApiTimeoutError`。
+**验收标准**: (1) 请求 30s 超时自动取消 (2) 超时错误消息友好 (3) 支持自定义超时时间 (4) SSE 不受影响
+**影响范围**: `packages/dashboard/src/api/client.ts`
 **创建时间**: 2026-02-13
 **完成时间**: -
 

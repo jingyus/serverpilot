@@ -1,1 +1,24 @@
-npm test
+pnpm exec lint-staged
+
+# TypeScript type check — only for packages with staged .ts/.tsx files
+staged_files=$(git diff --cached --name-only --diff-filter=ACMR)
+
+if echo "$staged_files" | grep -q '^packages/server/'; then
+  echo "Typechecking packages/server..."
+  pnpm --filter @aiinstaller/server exec tsc --noEmit
+fi
+
+if echo "$staged_files" | grep -q '^packages/agent/'; then
+  echo "Typechecking packages/agent..."
+  pnpm --filter @aiinstaller/agent exec tsc --noEmit
+fi
+
+if echo "$staged_files" | grep -q '^packages/shared/'; then
+  echo "Typechecking packages/shared..."
+  pnpm --filter @aiinstaller/shared exec tsc --noEmit
+fi
+
+if echo "$staged_files" | grep -q '^packages/dashboard/'; then
+  echo "Typechecking packages/dashboard..."
+  pnpm --filter @aiinstaller/dashboard exec tsc --noEmit
+fi
