@@ -813,6 +813,119 @@ describe('useSkillsStore', () => {
   });
 
   // --------------------------------------------------------------------------
+  // dryRunSkill
+  // --------------------------------------------------------------------------
+
+  describe('dryRunSkill', () => {
+    it('should call execute API with dryRun=true and store result', async () => {
+      const executionResult = {
+        executionId: 'exec-dry-1',
+        status: 'success' as const,
+        stepsExecuted: 0,
+        duration: 800,
+        result: { output: 'Step 1: run_command — apt update' },
+        errors: [],
+      };
+      mockApiRequest.mockResolvedValueOnce({ execution: executionResult });
+
+      const result = await useSkillsStore.getState().dryRunSkill('sk-1', 'srv-1');
+
+      expect(result).toEqual(executionResult);
+      const state = useSkillsStore.getState();
+      expect(state.dryRunResult).toEqual(executionResult);
+      expect(state.isDryRunning).toBe(false);
+      expect(mockApiRequest).toHaveBeenCalledWith('/skills/sk-1/execute', {
+        method: 'POST',
+        body: JSON.stringify({ serverId: 'srv-1', dryRun: true }),
+      });
+    });
+
+    it('should pass inputs as config to the API', async () => {
+      const executionResult = {
+        executionId: 'exec-dry-2',
+        status: 'success' as const,
+        stepsExecuted: 0,
+        duration: 500,
+        result: null,
+        errors: [],
+      };
+      mockApiRequest.mockResolvedValueOnce({ execution: executionResult });
+
+      await useSkillsStore.getState().dryRunSkill('sk-1', 'srv-1', { port: 3000 });
+
+      expect(mockApiRequest).toHaveBeenCalledWith('/skills/sk-1/execute', {
+        method: 'POST',
+        body: JSON.stringify({ serverId: 'srv-1', config: { port: 3000 }, dryRun: true }),
+      });
+    });
+
+    it('should set isDryRunning while request is in-flight', async () => {
+      let resolvePromise: (v: unknown) => void;
+      const pending = new Promise((resolve) => { resolvePromise = resolve; });
+      mockApiRequest.mockReturnValueOnce(pending);
+
+      const dryRunPromise = useSkillsStore.getState().dryRunSkill('sk-1', 'srv-1');
+
+      expect(useSkillsStore.getState().isDryRunning).toBe(true);
+      expect(useSkillsStore.getState().dryRunResult).toBeNull();
+
+      resolvePromise!({ execution: { executionId: 'e', status: 'success', stepsExecuted: 0, duration: 0, result: null, errors: [] } });
+      await dryRunPromise;
+
+      expect(useSkillsStore.getState().isDryRunning).toBe(false);
+    });
+
+    it('should handle error on dryRunSkill and re-throw', async () => {
+      const { ApiError } = await import('@/api/client');
+      mockApiRequest.mockRejectedValueOnce(
+        new ApiError(500, 'INTERNAL_ERROR', 'AI provider unavailable'),
+      );
+
+      await expect(
+        useSkillsStore.getState().dryRunSkill('sk-1', 'srv-1'),
+      ).rejects.toThrow();
+
+      const state = useSkillsStore.getState();
+      expect(state.error).toBe('AI provider unavailable');
+      expect(state.isDryRunning).toBe(false);
+      expect(state.dryRunResult).toBeNull();
+    });
+
+    it('should use fallback message for non-ApiError on dryRunSkill', async () => {
+      mockApiRequest.mockRejectedValueOnce(new Error('network'));
+
+      await expect(
+        useSkillsStore.getState().dryRunSkill('sk-1', 'srv-1'),
+      ).rejects.toThrow();
+
+      expect(useSkillsStore.getState().error).toBe('Failed to preview skill');
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // clearDryRunResult
+  // --------------------------------------------------------------------------
+
+  describe('clearDryRunResult', () => {
+    it('should clear the dryRunResult state', () => {
+      useSkillsStore.setState({
+        dryRunResult: {
+          executionId: 'exec-dry-1',
+          status: 'success',
+          stepsExecuted: 0,
+          duration: 500,
+          result: { output: 'plan' },
+          errors: [],
+        },
+      });
+
+      useSkillsStore.getState().clearDryRunResult();
+
+      expect(useSkillsStore.getState().dryRunResult).toBeNull();
+    });
+  });
+
+  // --------------------------------------------------------------------------
   // clearError
   // --------------------------------------------------------------------------
 

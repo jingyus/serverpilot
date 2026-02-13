@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ExecuteDialog } from './ExecuteDialog';
+import type { SkillExecutionResult } from '@/types/skill';
 
 // Mock ExecutionStream to avoid SSE/streaming complexity
 vi.mock('@/components/skill/ExecutionStream', () => ({
@@ -182,5 +183,136 @@ describe('ExecuteDialog', () => {
     const dryRunBtn = buttons.find((b) => b.textContent === 'Dry Run');
     expect(dryRunBtn).toBeDefined();
     expect(dryRunBtn).not.toBeDisabled();
+  });
+
+  // ==========================================================================
+  // Preview button tests
+  // ==========================================================================
+
+  it('renders Preview button when onPreview is provided', () => {
+    render(
+      <ExecuteDialog
+        {...defaultProps}
+        selectedServerId="srv-1"
+        onPreview={vi.fn()}
+      />,
+    );
+
+    const previewBtn = screen.getByTestId('preview-btn');
+    expect(previewBtn).toBeInTheDocument();
+    expect(previewBtn).toHaveTextContent('Preview');
+    expect(previewBtn).not.toBeDisabled();
+  });
+
+  it('does not render Preview button when onPreview is absent', () => {
+    render(<ExecuteDialog {...defaultProps} selectedServerId="srv-1" />);
+
+    expect(screen.queryByTestId('preview-btn')).not.toBeInTheDocument();
+  });
+
+  it('calls onPreview when Preview button is clicked', async () => {
+    const user = userEvent.setup();
+    const onPreview = vi.fn();
+    render(
+      <ExecuteDialog
+        {...defaultProps}
+        selectedServerId="srv-1"
+        onPreview={onPreview}
+      />,
+    );
+
+    await user.click(screen.getByTestId('preview-btn'));
+    expect(onPreview).toHaveBeenCalledOnce();
+  });
+
+  it('disables Preview button when no server is selected', () => {
+    render(
+      <ExecuteDialog
+        {...defaultProps}
+        onPreview={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('preview-btn')).toBeDisabled();
+  });
+
+  it('shows loading state on Preview button when isPreviewing is true', () => {
+    render(
+      <ExecuteDialog
+        {...defaultProps}
+        selectedServerId="srv-1"
+        onPreview={vi.fn()}
+        isPreviewing={true}
+      />,
+    );
+
+    const previewBtn = screen.getByTestId('preview-btn');
+    expect(previewBtn).toBeDisabled();
+    expect(previewBtn).toHaveTextContent('Previewing...');
+  });
+
+  // ==========================================================================
+  // Dry-run result display tests
+  // ==========================================================================
+
+  it('displays dry-run result with DRY RUN badge when dryRunResult is provided', () => {
+    const dryRunResult: SkillExecutionResult = {
+      executionId: 'exec-dry-1',
+      status: 'success',
+      stepsExecuted: 0,
+      duration: 1200,
+      result: { output: 'Step 1: run_command — apt update\nStep 2: run_command — apt upgrade' },
+      errors: [],
+    };
+
+    render(
+      <ExecuteDialog
+        {...defaultProps}
+        selectedServerId="srv-1"
+        onPreview={vi.fn()}
+        dryRunResult={dryRunResult}
+      />,
+    );
+
+    expect(screen.getByTestId('dry-run-result')).toBeInTheDocument();
+    expect(screen.getByTestId('dry-run-badge')).toHaveTextContent('DRY RUN');
+    expect(screen.getByTestId('dry-run-output')).toHaveTextContent('Step 1: run_command');
+  });
+
+  it('does not display dry-run result panel when dryRunResult is null', () => {
+    render(
+      <ExecuteDialog
+        {...defaultProps}
+        selectedServerId="srv-1"
+        onPreview={vi.fn()}
+        dryRunResult={null}
+      />,
+    );
+
+    expect(screen.queryByTestId('dry-run-result')).not.toBeInTheDocument();
+  });
+
+  it('displays dry-run errors when result has errors', () => {
+    const dryRunResult: SkillExecutionResult = {
+      executionId: 'exec-dry-2',
+      status: 'failed',
+      stepsExecuted: 0,
+      duration: 500,
+      result: null,
+      errors: ['Permission denied', 'Server unreachable'],
+    };
+
+    render(
+      <ExecuteDialog
+        {...defaultProps}
+        selectedServerId="srv-1"
+        onPreview={vi.fn()}
+        dryRunResult={dryRunResult}
+      />,
+    );
+
+    expect(screen.getByTestId('dry-run-result')).toBeInTheDocument();
+    expect(screen.getByText('Permission denied')).toBeInTheDocument();
+    expect(screen.getByText('Server unreachable')).toBeInTheDocument();
   });
 });

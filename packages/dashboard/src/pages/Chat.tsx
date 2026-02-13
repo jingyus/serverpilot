@@ -63,6 +63,7 @@ export function Chat() {
     fetchSessions,
     loadSession,
     deleteSession,
+    renameSession,
     newSession,
     cancelStream,
     cleanup,
@@ -252,6 +253,7 @@ export function Chat() {
             setMobileSidebarOpen(false);
           }}
           onDelete={(sid) => deleteSession(serverId, sid)}
+          onRename={(sid, name) => renameSession(serverId, sid, name)}
           isLoading={isLoading}
           mobileOpen={mobileSidebarOpen}
           onMobileClose={() => setMobileSidebarOpen(false)}

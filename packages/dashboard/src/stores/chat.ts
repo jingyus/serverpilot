@@ -33,6 +33,7 @@ import {
   createFetchSessions,
   createLoadSession,
   createDeleteSession,
+  createRenameSession,
 } from './chat-sessions.js';
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -162,6 +163,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   fetchSessions: createFetchSessions(set, get),
   loadSession: createLoadSession(set, get),
   deleteSession: createDeleteSession(set, get),
+  renameSession: createRenameSession(set, get),
 
   newSession: () => {
     getActiveHandle()?.abort();

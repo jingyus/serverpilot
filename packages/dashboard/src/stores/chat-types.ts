@@ -156,6 +156,7 @@ export interface ChatState {
   fetchSessions: (serverId: string) => Promise<void>;
   loadSession: (serverId: string, sessionId: string) => Promise<void>;
   deleteSession: (serverId: string, sessionId: string) => Promise<void>;
+  renameSession: (serverId: string, sessionId: string, name: string) => Promise<void>;
   newSession: () => void;
   cancelStream: () => void;
   cleanup: () => void;

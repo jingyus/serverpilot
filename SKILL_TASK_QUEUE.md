@@ -3,14 +3,14 @@
 > 此队列专注于 Skill 插件系统的设计与实现
 > AI 自动扫描 → 发现缺失 → 设计实现 → 验证
 
-**最后更新**: 2026-02-13 10:26:53
+**最后更新**: 2026-02-13 10:32:32
 
 ## 📊 统计
 
 - **总任务数**: 67
 - **待完成** (pending): 5
-- **进行中** (in_progress): 1
-- **已完成** (completed): 61
+- **进行中** (in_progress): 0
+- **已完成** (completed): 62
 - **失败** (failed): 0
 
 ## 📋 任务列表
@@ -133,7 +133,7 @@
 
 ---
 
-### [in_progress] Dashboard Dry-Run UI — ExecuteDialog 添加预览按钮
+### [completed] Dashboard Dry-Run UI — ExecuteDialog 添加预览按钮 ✅
 
 **ID**: skill-095
 **优先级**: P1
@@ -151,7 +151,7 @@
 - 测试覆盖: ≥4 个组件测试
 **影响范围**: packages/dashboard/src/stores/skills.ts, components/skill/ExecuteDialog.tsx (各改 <30 行)
 **创建时间**: 2026-02-13
-**完成时间**: -
+**完成时间**: 2026-02-13 10:32:32
 
 ---
 

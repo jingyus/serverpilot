@@ -58,16 +58,20 @@ export function Skills() {
     configureSkill,
     updateStatus,
     executeSkill,
+    dryRunSkill,
     upgradeSkill,
     fetchExecutions,
     fetchPendingConfirmations,
     confirmExecution,
     rejectExecution,
     clearSelectedExecution,
+    clearDryRunResult,
     clearError,
     stats,
     isLoadingStats,
     fetchStats,
+    dryRunResult,
+    isDryRunning,
   } = useSkillsStore();
 
   const { servers, fetchServers } = useServersStore();
@@ -121,6 +125,13 @@ export function Skills() {
     await configureSkill(id, config);
   }, [configureSkill]);
 
+  const handlePreview = useCallback(async () => {
+    if (!executeTarget || !selectedServerId) return;
+    try {
+      await dryRunSkill(executeTarget.id, selectedServerId);
+    } catch { /* handled by store */ }
+  }, [executeTarget, selectedServerId, dryRunSkill]);
+
   const handleExecuteConfirm = useCallback(async () => {
     if (!executeTarget || !selectedServerId) return;
     setIsExecuting(true);
@@ -155,7 +166,8 @@ export function Skills() {
     setExecutionId(null);
     setIsExecuting(false);
     setIsDryRun(false);
-  }, []);
+    clearDryRunResult();
+  }, [clearDryRunResult]);
 
   return (
     <div className="space-y-6">
@@ -291,6 +303,9 @@ export function Skills() {
         isExecuting={isExecuting}
         dryRun={isDryRun}
         onDryRunChange={setIsDryRun}
+        onPreview={handlePreview}
+        isPreviewing={isDryRunning}
+        dryRunResult={dryRunResult}
         onExecute={handleExecuteConfirm}
         onClose={handleExecuteClose}
       />

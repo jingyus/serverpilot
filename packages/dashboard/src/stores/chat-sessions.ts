@@ -66,6 +66,26 @@ export function createLoadSession(set: SetFn, _get: GetFn) {
   };
 }
 
+export function createRenameSession(set: SetFn, _get: GetFn) {
+  return async (serverId: string, sessionId: string, name: string): Promise<void> => {
+    try {
+      await apiRequest(`/chat/${serverId}/sessions/${sessionId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ name }),
+      });
+      set((state) => ({
+        sessions: state.sessions.map((s) =>
+          s.id === sessionId ? { ...s, name } : s,
+        ),
+      }));
+    } catch (err) {
+      const message =
+        err instanceof ApiError ? err.message : 'Failed to rename session';
+      set({ error: message });
+    }
+  };
+}
+
 export function createDeleteSession(set: SetFn, _get: GetFn) {
   return async (serverId: string, sessionId: string): Promise<void> => {
     try {

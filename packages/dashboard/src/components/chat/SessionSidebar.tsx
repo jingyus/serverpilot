@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2, Trash2, ChevronDown, ChevronRight, X } from 'lucide-react';
+import { Loader2, Trash2, Pencil, ChevronDown, ChevronRight, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDate } from '@/utils/format';
 
@@ -11,6 +11,7 @@ export interface SessionItem {
   createdAt: string;
   lastMessage?: string;
   messageCount: number;
+  title?: string | null;
 }
 
 export interface SessionSidebarProps {
@@ -19,6 +20,7 @@ export interface SessionSidebarProps {
   serverId: string;
   onSelect: (id: string) => void;
   onDelete: (id: string) => void;
+  onRename: (id: string, name: string) => void;
   isLoading: boolean;
   mobileOpen?: boolean;
   onMobileClose?: () => void;
@@ -39,11 +41,124 @@ export function getSessionDateGroup(dateStr: string): string {
   return 'older';
 }
 
+function SessionItemRow({
+  session,
+  isActive,
+  onSelect,
+  onDelete,
+  onRename,
+  editingId,
+  setEditingId,
+  t,
+}: {
+  session: SessionItem;
+  isActive: boolean;
+  onSelect: (id: string) => void;
+  onDelete: (id: string) => void;
+  onRename: (id: string, name: string) => void;
+  editingId: string | null;
+  setEditingId: (id: string | null) => void;
+  t: (key: string) => string;
+}) {
+  const isEditing = editingId === session.id;
+  const displayTitle = session.title || session.lastMessage || t('chat.newSession');
+  const [editValue, setEditValue] = useState(displayTitle);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isEditing]);
+
+  const handleSave = () => {
+    const trimmed = editValue.trim();
+    if (trimmed && trimmed !== displayTitle) {
+      onRename(session.id, trimmed);
+    }
+    setEditingId(null);
+  };
+
+  const handleCancel = () => {
+    setEditValue(displayTitle);
+    setEditingId(null);
+  };
+
+  const handleStartEdit = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditValue(displayTitle);
+    setEditingId(session.id);
+  };
+
+  return (
+    <div
+      className={cn(
+        'group flex items-center justify-between rounded-md px-2 py-1.5 text-sm',
+        'cursor-pointer hover:bg-muted',
+        isActive && 'bg-muted',
+      )}
+      onClick={() => !isEditing && onSelect(session.id)}
+      data-testid={`session-item-${session.id}`}
+    >
+      <div className="min-w-0 flex-1">
+        {isEditing ? (
+          <input
+            ref={inputRef}
+            type="text"
+            className="w-full rounded border bg-background px-1 text-xs font-medium outline-none focus:border-primary"
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleSave();
+              if (e.key === 'Escape') handleCancel();
+            }}
+            onBlur={handleSave}
+            onClick={(e) => e.stopPropagation()}
+            data-testid={`rename-input-${session.id}`}
+          />
+        ) : (
+          <p className="truncate text-xs font-medium">{displayTitle}</p>
+        )}
+        <p className="text-[10px] text-muted-foreground">
+          {formatDate(session.createdAt)} &middot; {session.messageCount} msgs
+        </p>
+      </div>
+      {!isEditing && (
+        <div className="ml-1 hidden shrink-0 items-center gap-0.5 group-hover:flex">
+          <button
+            type="button"
+            className="rounded p-0.5 hover:bg-muted-foreground/10"
+            onClick={handleStartEdit}
+            aria-label="Rename session"
+            data-testid={`rename-session-${session.id}`}
+          >
+            <Pencil className="h-3 w-3 text-muted-foreground" />
+          </button>
+          <button
+            type="button"
+            className="rounded p-0.5 hover:bg-destructive/10"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(session.id);
+            }}
+            aria-label="Delete session"
+            data-testid={`delete-session-${session.id}`}
+          >
+            <Trash2 className="h-3 w-3 text-destructive" />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SidebarContent({
   sessions,
   activeSessionId,
   onSelect,
   onDelete,
+  onRename,
   isLoading,
   collapsedGroups,
   toggleGroup,
@@ -53,11 +168,14 @@ function SidebarContent({
   activeSessionId: string | null;
   onSelect: (id: string) => void;
   onDelete: (id: string) => void;
+  onRename: (id: string, name: string) => void;
   isLoading: boolean;
   collapsedGroups: Record<string, boolean>;
   toggleGroup: (group: string) => void;
   t: (key: string) => string;
 }) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+
   const grouped: Record<string, SessionItem[]> = {};
   for (const session of sessions) {
     const group = getSessionDateGroup(session.createdAt);
@@ -94,38 +212,17 @@ function SidebarContent({
           {!collapsedGroups[group] && (
             <div className="space-y-0.5">
               {grouped[group].map((session) => (
-                <div
+                <SessionItemRow
                   key={session.id}
-                  className={cn(
-                    'group flex items-center justify-between rounded-md px-2 py-1.5 text-sm',
-                    'cursor-pointer hover:bg-muted',
-                    session.id === activeSessionId && 'bg-muted'
-                  )}
-                  onClick={() => onSelect(session.id)}
-                  data-testid={`session-item-${session.id}`}
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs font-medium">
-                      {session.lastMessage ?? t('chat.newSession')}
-                    </p>
-                    <p className="text-[10px] text-muted-foreground">
-                      {formatDate(session.createdAt)} &middot;{' '}
-                      {session.messageCount} msgs
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    className="ml-1 hidden shrink-0 rounded p-0.5 hover:bg-destructive/10 group-hover:block"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDelete(session.id);
-                    }}
-                    aria-label="Delete session"
-                    data-testid={`delete-session-${session.id}`}
-                  >
-                    <Trash2 className="h-3 w-3 text-destructive" />
-                  </button>
-                </div>
+                  session={session}
+                  isActive={session.id === activeSessionId}
+                  onSelect={onSelect}
+                  onDelete={onDelete}
+                  onRename={onRename}
+                  editingId={editingId}
+                  setEditingId={setEditingId}
+                  t={t}
+                />
               ))}
             </div>
           )}
@@ -141,6 +238,7 @@ export function SessionSidebar({
   serverId,
   onSelect,
   onDelete,
+  onRename,
   isLoading,
   mobileOpen = false,
   onMobileClose,
@@ -159,6 +257,7 @@ export function SessionSidebar({
     activeSessionId,
     onSelect,
     onDelete,
+    onRename,
     isLoading,
     collapsedGroups,
     toggleGroup,

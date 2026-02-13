@@ -82,6 +82,7 @@ export type ExecutionComplete = z.infer<typeof ExecutionCompleteSchema>;
 export const SessionSummarySchema = z.object({
   id: z.string(),
   serverId: z.string(),
+  name: z.string().nullable().optional(),
   messageCount: z.number(),
   createdAt: z.string(),
   updatedAt: z.string(),
