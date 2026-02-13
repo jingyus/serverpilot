@@ -1,57 +1,57 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { render, screen, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { Servers, getTagColor } from './Servers';
-import { useServersStore } from '@/stores/servers';
-import type { Server } from '@/types/server';
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { Servers, getTagColor } from "./Servers";
+import { useServersStore } from "@/stores/servers";
+import type { Server } from "@/types/server";
 
 const mockNavigate = vi.fn();
-vi.mock('react-router-dom', async () => {
-  const actual = await vi.importActual('react-router-dom');
+vi.mock("react-router-dom", async () => {
+  const actual = await vi.importActual("react-router-dom");
   return { ...actual, useNavigate: () => mockNavigate };
 });
 
 const mockServers: Server[] = [
   {
-    id: 'srv-1',
-    name: 'web-prod-01',
-    status: 'online',
-    tags: ['production', 'web'],
-    group: 'prod',
-    createdAt: '2026-01-01T00:00:00Z',
-    updatedAt: '2026-01-15T00:00:00Z',
+    id: "srv-1",
+    name: "web-prod-01",
+    status: "online",
+    tags: ["production", "web"],
+    group: "prod",
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: "2026-01-15T00:00:00Z",
     osInfo: {
-      platform: 'linux',
-      arch: 'x64',
-      version: 'Ubuntu 22.04',
-      kernel: '5.15',
-      hostname: 'web-prod-01',
+      platform: "linux",
+      arch: "x64",
+      version: "Ubuntu 22.04",
+      kernel: "5.15",
+      hostname: "web-prod-01",
       uptime: 86400,
     },
-    lastSeen: '2026-02-09T12:00:00Z',
+    lastSeen: "2026-02-09T12:00:00Z",
   },
   {
-    id: 'srv-2',
-    name: 'db-prod-01',
-    status: 'offline',
-    tags: ['production', 'database'],
-    group: 'prod',
-    createdAt: '2026-01-02T00:00:00Z',
-    updatedAt: '2026-01-16T00:00:00Z',
+    id: "srv-2",
+    name: "db-prod-01",
+    status: "offline",
+    tags: ["production", "database"],
+    group: "prod",
+    createdAt: "2026-01-02T00:00:00Z",
+    updatedAt: "2026-01-16T00:00:00Z",
     osInfo: null,
     lastSeen: null,
   },
   {
-    id: 'srv-3',
-    name: 'staging-app',
-    status: 'error',
-    tags: ['staging'],
-    group: 'staging',
-    createdAt: '2026-01-03T00:00:00Z',
-    updatedAt: '2026-01-17T00:00:00Z',
+    id: "srv-3",
+    name: "staging-app",
+    status: "error",
+    tags: ["staging"],
+    group: "staging",
+    createdAt: "2026-01-03T00:00:00Z",
+    updatedAt: "2026-01-17T00:00:00Z",
     osInfo: null,
     lastSeen: null,
   },
@@ -61,11 +61,11 @@ function renderServers() {
   return render(
     <MemoryRouter>
       <Servers />
-    </MemoryRouter>
+    </MemoryRouter>,
   );
 }
 
-describe('Servers Page', () => {
+describe("Servers Page", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useServersStore.setState({
@@ -73,11 +73,11 @@ describe('Servers Page', () => {
       availableGroups: [],
       isLoading: false,
       error: null,
-      statusFilter: 'all',
-      searchQuery: '',
-      groupFilter: 'all',
-      tagFilter: 'all',
-      viewMode: 'list',
+      statusFilter: "all",
+      searchQuery: "",
+      groupFilter: "all",
+      tagFilter: "all",
+      viewMode: "list",
       fetchServers: vi.fn().mockResolvedValue(undefined),
       fetchGroups: vi.fn().mockResolvedValue(undefined),
       addServer: vi.fn(),
@@ -94,7 +94,7 @@ describe('Servers Page', () => {
       setTagFilter: vi.fn((tag: string) => {
         useServersStore.setState({ tagFilter: tag });
       }),
-      setViewMode: vi.fn((mode: 'list' | 'grouped') => {
+      setViewMode: vi.fn((mode: "list" | "grouped") => {
         useServersStore.setState({ viewMode: mode });
       }),
       clearError: vi.fn(() => {
@@ -103,312 +103,320 @@ describe('Servers Page', () => {
     });
   });
 
-  describe('rendering', () => {
-    it('renders page title and description', () => {
+  describe("rendering", () => {
+    it("renders page title and description", () => {
       renderServers();
-      expect(screen.getByText('Servers')).toBeInTheDocument();
+      expect(screen.getByText("Servers")).toBeInTheDocument();
       expect(
-        screen.getByText('Manage your servers and view their status.')
+        screen.getByText("Manage your servers and view their status."),
       ).toBeInTheDocument();
     });
 
-    it('renders Add Server button', () => {
+    it("renders Add Server button", () => {
       renderServers();
       expect(
-        screen.getByRole('button', { name: /Add Server/i })
+        screen.getByRole("button", { name: /Add Server/i }),
       ).toBeInTheDocument();
     });
 
-    it('renders server stats', () => {
+    it("renders server stats", () => {
       renderServers();
-      const stats = screen.getByTestId('server-stats');
-      expect(within(stats).getByText('3')).toBeInTheDocument(); // total
-      expect(within(stats).getByText('Total Servers')).toBeInTheDocument();
+      const stats = screen.getByTestId("server-stats");
+      expect(within(stats).getByText("3")).toBeInTheDocument(); // total
+      expect(within(stats).getByText("Total Servers")).toBeInTheDocument();
       // online/offline/error each have count 1 so use getAllByText
-      const ones = within(stats).getAllByText('1');
+      const ones = within(stats).getAllByText("1");
       expect(ones).toHaveLength(3);
     });
 
-    it('renders server cards', () => {
+    it("renders server cards", () => {
       renderServers();
-      expect(screen.getByTestId('server-card-srv-1')).toBeInTheDocument();
-      expect(screen.getByTestId('server-card-srv-2')).toBeInTheDocument();
-      expect(screen.getByTestId('server-card-srv-3')).toBeInTheDocument();
+      expect(screen.getByTestId("server-card-srv-1")).toBeInTheDocument();
+      expect(screen.getByTestId("server-card-srv-2")).toBeInTheDocument();
+      expect(screen.getByTestId("server-card-srv-3")).toBeInTheDocument();
     });
 
-    it('renders server name and OS info', () => {
+    it("renders server name and OS info", () => {
       renderServers();
-      expect(screen.getByText('web-prod-01')).toBeInTheDocument();
-      expect(screen.getByText('linux Ubuntu 22.04')).toBeInTheDocument();
+      expect(screen.getByText("web-prod-01")).toBeInTheDocument();
+      expect(screen.getByText("linux Ubuntu 22.04")).toBeInTheDocument();
     });
 
-    it('renders status badges on server cards', () => {
+    it("renders status badges on server cards", () => {
       renderServers();
-      const card1 = screen.getByTestId('server-card-srv-1');
-      expect(within(card1).getByText('Online')).toBeInTheDocument();
-      const card2 = screen.getByTestId('server-card-srv-2');
-      expect(within(card2).getByText('Offline')).toBeInTheDocument();
-      const card3 = screen.getByTestId('server-card-srv-3');
-      expect(within(card3).getByText('Error')).toBeInTheDocument();
+      const card1 = screen.getByTestId("server-card-srv-1");
+      expect(within(card1).getByText("Online")).toBeInTheDocument();
+      const card2 = screen.getByTestId("server-card-srv-2");
+      expect(within(card2).getByText("Offline")).toBeInTheDocument();
+      const card3 = screen.getByTestId("server-card-srv-3");
+      expect(within(card3).getByText("Error")).toBeInTheDocument();
     });
 
-    it('renders server tags', () => {
+    it("renders server tags", () => {
       renderServers();
       // "production" tag appears on srv-1, srv-2 cards, and in tag filter dropdown
-      const card1 = screen.getByTestId('server-card-srv-1');
-      expect(within(card1).getByText('production')).toBeInTheDocument();
-      expect(within(card1).getByText('web')).toBeInTheDocument();
-      const card2 = screen.getByTestId('server-card-srv-2');
-      expect(within(card2).getByText('production')).toBeInTheDocument();
+      const card1 = screen.getByTestId("server-card-srv-1");
+      expect(within(card1).getByText("production")).toBeInTheDocument();
+      expect(within(card1).getByText("web")).toBeInTheDocument();
+      const card2 = screen.getByTestId("server-card-srv-2");
+      expect(within(card2).getByText("production")).toBeInTheDocument();
     });
 
-    it('renders search input', () => {
+    it("renders search input", () => {
       renderServers();
-      expect(screen.getByLabelText('Search servers')).toBeInTheDocument();
+      expect(screen.getByLabelText("Search servers")).toBeInTheDocument();
     });
 
-    it('renders status filter buttons', () => {
+    it("renders status filter buttons", () => {
       renderServers();
-      expect(screen.getByRole('group', { name: 'Filter by status' })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'All' })).toBeInTheDocument();
+      expect(
+        screen.getByRole("group", { name: "Filter by status" }),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "All" })).toBeInTheDocument();
     });
   });
 
-  describe('loading state', () => {
-    it('shows loading spinner when loading', () => {
+  describe("loading state", () => {
+    it("shows loading spinner when loading", () => {
       useServersStore.setState({ isLoading: true, servers: [] });
       renderServers();
-      expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
+      expect(screen.getByTestId("loading-spinner")).toBeInTheDocument();
     });
 
-    it('does not show server grid when loading', () => {
+    it("does not show server grid when loading", () => {
       useServersStore.setState({ isLoading: true, servers: [] });
       renderServers();
-      expect(screen.queryByTestId('server-grid')).not.toBeInTheDocument();
+      expect(screen.queryByTestId("server-grid")).not.toBeInTheDocument();
     });
   });
 
-  describe('empty state', () => {
-    it('shows empty state when no servers', () => {
+  describe("empty state", () => {
+    it("shows empty state when no servers", () => {
       useServersStore.setState({ servers: [] });
       renderServers();
-      expect(screen.getByTestId('empty-state')).toBeInTheDocument();
-      expect(screen.getByText('No servers yet')).toBeInTheDocument();
+      expect(screen.getByTestId("empty-state")).toBeInTheDocument();
+      expect(screen.getByText("No servers yet")).toBeInTheDocument();
       expect(
-        screen.getByText('Add your first server to get started.')
+        screen.getByText("Add your first server to get started."),
       ).toBeInTheDocument();
     });
 
-    it('shows add server button in empty state', () => {
+    it("shows add server button in empty state", () => {
       useServersStore.setState({ servers: [] });
       renderServers();
-      const emptyState = screen.getByTestId('empty-state');
+      const emptyState = screen.getByTestId("empty-state");
       expect(
-        within(emptyState).getByRole('button', { name: /Add Server/i })
+        within(emptyState).getByRole("button", { name: /Add Server/i }),
       ).toBeInTheDocument();
     });
 
     it('shows "no match" when filters exclude all servers', () => {
-      useServersStore.setState({ statusFilter: 'error', servers: [mockServers[0]] });
+      useServersStore.setState({
+        statusFilter: "error",
+        servers: [mockServers[0]],
+      });
       renderServers();
-      expect(screen.getByText('No servers match')).toBeInTheDocument();
+      expect(screen.getByText("No servers match")).toBeInTheDocument();
       expect(
-        screen.getByText('Try adjusting your search or filter.')
+        screen.getByText("Try adjusting your search or filter."),
       ).toBeInTheDocument();
     });
   });
 
-  describe('error state', () => {
-    it('shows error alert', () => {
-      useServersStore.setState({ error: 'Failed to load servers' });
+  describe("error state", () => {
+    it("shows error alert", () => {
+      useServersStore.setState({ error: "Failed to load servers" });
       renderServers();
-      expect(screen.getByRole('alert')).toBeInTheDocument();
-      expect(screen.getByText('Failed to load servers')).toBeInTheDocument();
+      expect(screen.getByRole("alert")).toBeInTheDocument();
+      expect(screen.getByText("Failed to load servers")).toBeInTheDocument();
     });
 
-    it('dismisses error on click', async () => {
+    it("dismisses error on click", async () => {
       const user = userEvent.setup();
-      useServersStore.setState({ error: 'Some error' });
+      useServersStore.setState({ error: "Some error" });
       renderServers();
 
-      await user.click(screen.getByRole('button', { name: 'Dismiss' }));
+      await user.click(screen.getByRole("button", { name: "Dismiss" }));
       expect(useServersStore.getState().error).toBeNull();
     });
   });
 
-  describe('filtering', () => {
-    it('filters by status when clicking filter button', async () => {
+  describe("filtering", () => {
+    it("filters by status when clicking filter button", async () => {
       const user = userEvent.setup();
       renderServers();
 
-      await user.click(screen.getByRole('button', { name: 'Online' }));
+      await user.click(screen.getByRole("button", { name: "Online" }));
 
       // After filter, only online server should show
-      expect(screen.getByTestId('server-card-srv-1')).toBeInTheDocument();
-      expect(screen.queryByTestId('server-card-srv-2')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('server-card-srv-3')).not.toBeInTheDocument();
+      expect(screen.getByTestId("server-card-srv-1")).toBeInTheDocument();
+      expect(screen.queryByTestId("server-card-srv-2")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("server-card-srv-3")).not.toBeInTheDocument();
     });
 
-    it('searches by server name', async () => {
+    it("searches by server name", async () => {
       const user = userEvent.setup();
       renderServers();
 
-      await user.type(screen.getByLabelText('Search servers'), 'web');
+      await user.type(screen.getByLabelText("Search servers"), "web");
 
-      expect(screen.getByTestId('server-card-srv-1')).toBeInTheDocument();
-      expect(screen.queryByTestId('server-card-srv-2')).not.toBeInTheDocument();
+      expect(screen.getByTestId("server-card-srv-1")).toBeInTheDocument();
+      expect(screen.queryByTestId("server-card-srv-2")).not.toBeInTheDocument();
     });
 
-    it('searches by tag', async () => {
+    it("searches by tag", async () => {
       const user = userEvent.setup();
       renderServers();
 
-      await user.type(screen.getByLabelText('Search servers'), 'database');
+      await user.type(screen.getByLabelText("Search servers"), "database");
 
-      expect(screen.queryByTestId('server-card-srv-1')).not.toBeInTheDocument();
-      expect(screen.getByTestId('server-card-srv-2')).toBeInTheDocument();
-    });
-  });
-
-  describe('navigation', () => {
-    it('navigates to server detail on card click', async () => {
-      const user = userEvent.setup();
-      renderServers();
-
-      await user.click(screen.getByTestId('server-card-srv-1'));
-      expect(mockNavigate).toHaveBeenCalledWith('/servers/srv-1');
-    });
-
-    it('navigates to chat on chat button click', async () => {
-      const user = userEvent.setup();
-      renderServers();
-
-      await user.click(screen.getByLabelText('Chat with web-prod-01'));
-      expect(mockNavigate).toHaveBeenCalledWith('/chat/srv-1');
+      expect(screen.queryByTestId("server-card-srv-1")).not.toBeInTheDocument();
+      expect(screen.getByTestId("server-card-srv-2")).toBeInTheDocument();
     });
   });
 
-  describe('delete server', () => {
-    it('shows delete confirmation dialog', async () => {
+  describe("navigation", () => {
+    it("navigates to server detail on card click", async () => {
       const user = userEvent.setup();
       renderServers();
 
-      await user.click(screen.getByLabelText('Delete web-prod-01'));
+      await user.click(screen.getByTestId("server-card-srv-1"));
+      expect(mockNavigate).toHaveBeenCalledWith("/servers/srv-1");
+    });
 
-      expect(screen.getByText('Delete Server')).toBeInTheDocument();
+    it("navigates to chat on chat button click", async () => {
+      const user = userEvent.setup();
+      renderServers();
+
+      await user.click(screen.getByLabelText("Chat with web-prod-01"));
+      expect(mockNavigate).toHaveBeenCalledWith("/chat/srv-1");
+    });
+  });
+
+  describe("delete server", () => {
+    it("shows delete confirmation dialog", async () => {
+      const user = userEvent.setup();
+      renderServers();
+
+      await user.click(screen.getByLabelText("Delete web-prod-01"));
+
+      expect(screen.getByText("Delete Server")).toBeInTheDocument();
       // "web-prod-01" appears in both card and dialog, check dialog text
       expect(
-        screen.getByText(/This action cannot be undone/)
+        screen.getByText(/This action cannot be undone/),
       ).toBeInTheDocument();
     });
 
-    it('calls deleteServer on confirm', async () => {
+    it("calls deleteServer on confirm", async () => {
       const user = userEvent.setup();
       const deleteMock = vi.fn().mockResolvedValue(undefined);
       useServersStore.setState({ deleteServer: deleteMock });
       renderServers();
 
-      await user.click(screen.getByLabelText('Delete web-prod-01'));
-      await user.click(screen.getByRole('button', { name: 'Delete' }));
+      await user.click(screen.getByLabelText("Delete web-prod-01"));
+      await user.click(screen.getByRole("button", { name: "Delete" }));
 
-      expect(deleteMock).toHaveBeenCalledWith('srv-1');
+      expect(deleteMock).toHaveBeenCalledWith("srv-1");
     });
 
-    it('closes dialog on cancel', async () => {
+    it("closes dialog on cancel", async () => {
       const user = userEvent.setup();
       renderServers();
 
-      await user.click(screen.getByLabelText('Delete web-prod-01'));
-      expect(screen.getByText('Delete Server')).toBeInTheDocument();
+      await user.click(screen.getByLabelText("Delete web-prod-01"));
+      expect(screen.getByText("Delete Server")).toBeInTheDocument();
 
-      await user.click(screen.getByRole('button', { name: 'Cancel' }));
+      await user.click(screen.getByRole("button", { name: "Cancel" }));
       // Delete Server dialog title should be gone
-      expect(screen.queryByText('Delete Server')).not.toBeInTheDocument();
+      expect(screen.queryByText("Delete Server")).not.toBeInTheDocument();
     });
   });
 
-  describe('add server dialog', () => {
-    it('opens add server dialog on button click', async () => {
+  describe("add server dialog", () => {
+    it("opens add server dialog on button click", async () => {
       const user = userEvent.setup();
       renderServers();
 
       // Click the header "Add Server" button
-      const addButtons = screen.getAllByRole('button', { name: /Add Server/i });
+      const addButtons = screen.getAllByRole("button", { name: /Add Server/i });
       await user.click(addButtons[0]);
 
       expect(screen.getByLabelText(/^Server Name/)).toBeInTheDocument();
       expect(
-        screen.getByText('Enter a name and optional tags for your new server.')
+        screen.getByText("Enter a name and optional tags for your new server."),
       ).toBeInTheDocument();
     });
 
-    it('validates empty server name', async () => {
+    it("validates empty server name", async () => {
       const user = userEvent.setup();
       renderServers();
 
-      const addButtons = screen.getAllByRole('button', { name: /Add Server/i });
+      const addButtons = screen.getAllByRole("button", { name: /Add Server/i });
       await user.click(addButtons[0]);
 
       // Click Add Server button in dialog without entering a name
       // After opening dialog, there are multiple "Add Server" buttons; get the last one (in dialog)
-      const allAddBtns = screen.getAllByRole('button', { name: /Add Server/i });
+      const allAddBtns = screen.getAllByRole("button", { name: /Add Server/i });
       await user.click(allAddBtns[allAddBtns.length - 1]);
 
-      expect(screen.getByText('Server name is required')).toBeInTheDocument();
+      expect(screen.getByText("Server name is required")).toBeInTheDocument();
     });
 
-    it('shows install command after successful add', async () => {
+    it("shows install command after successful add", async () => {
       const user = userEvent.setup();
       const addMock = vi.fn().mockResolvedValue({
         server: mockServers[0],
-        token: 'tok-abc123',
-        installCommand: 'curl -sSL https://install.serverpilot.dev | bash -s tok-abc123',
+        token: "tok-abc123",
+        installCommand:
+          "curl -sSL https://install.serverpilot.dev | bash -s tok-abc123",
       });
       useServersStore.setState({ addServer: addMock });
       renderServers();
 
-      const addButtons = screen.getAllByRole('button', { name: /Add Server/i });
+      const addButtons = screen.getAllByRole("button", { name: /Add Server/i });
       await user.click(addButtons[0]);
 
-      await user.type(screen.getByLabelText(/^Server Name/), 'my-server');
+      await user.type(screen.getByLabelText(/^Server Name/), "my-server");
       // Click the dialog's Add Server button (last one)
-      const allAddBtns = screen.getAllByRole('button', { name: /Add Server/i });
+      const allAddBtns = screen.getAllByRole("button", { name: /Add Server/i });
       await user.click(allAddBtns[allAddBtns.length - 1]);
 
-      expect(addMock).toHaveBeenCalledWith('my-server', undefined, undefined);
-      expect(screen.getByTestId('install-command')).toBeInTheDocument();
-      expect(
-        screen.getByText(/curl -sSL/)
-      ).toBeInTheDocument();
+      expect(addMock).toHaveBeenCalledWith("my-server", undefined, undefined);
+      expect(screen.getByTestId("install-command")).toBeInTheDocument();
+      expect(screen.getByText(/curl -sSL/)).toBeInTheDocument();
     });
   });
 
-  describe('group and tag display', () => {
-    it('renders group badges on server cards', () => {
+  describe("group and tag display", () => {
+    it("renders group badges on server cards", () => {
       renderServers();
-      const card1 = screen.getByTestId('server-card-srv-1');
-      expect(within(card1).getByTestId('server-group')).toHaveTextContent('prod');
-      const card3 = screen.getByTestId('server-card-srv-3');
-      expect(within(card3).getByTestId('server-group')).toHaveTextContent('staging');
+      const card1 = screen.getByTestId("server-card-srv-1");
+      expect(within(card1).getByTestId("server-group")).toHaveTextContent(
+        "prod",
+      );
+      const card3 = screen.getByTestId("server-card-srv-3");
+      expect(within(card3).getByTestId("server-group")).toHaveTextContent(
+        "staging",
+      );
     });
 
-    it('renders colored tag chips', () => {
+    it("renders colored tag chips", () => {
       renderServers();
-      const card1 = screen.getByTestId('server-card-srv-1');
-      const webTag = within(card1).getByText('web');
+      const card1 = screen.getByTestId("server-card-srv-1");
+      const webTag = within(card1).getByText("web");
       // Tag chips have border and color classes (not just plain text)
-      expect(webTag.className).toContain('rounded-md');
-      expect(webTag.className).toContain('border');
+      expect(webTag.className).toContain("rounded-md");
+      expect(webTag.className).toContain("border");
     });
 
-    it('shows advanced filters when groups/tags exist', () => {
+    it("shows advanced filters when groups/tags exist", () => {
       renderServers();
-      expect(screen.getByTestId('advanced-filters')).toBeInTheDocument();
-      expect(screen.getByLabelText('Filter by group')).toBeInTheDocument();
-      expect(screen.getByLabelText('Filter by tag')).toBeInTheDocument();
+      expect(screen.getByTestId("advanced-filters")).toBeInTheDocument();
+      expect(screen.getByLabelText("Filter by group")).toBeInTheDocument();
+      expect(screen.getByLabelText("Filter by tag")).toBeInTheDocument();
     });
 
-    it('does not show advanced filters when no groups or tags', () => {
+    it("does not show advanced filters when no groups or tags", () => {
       const noTagServers = mockServers.map((s) => ({
         ...s,
         tags: [],
@@ -416,105 +424,105 @@ describe('Servers Page', () => {
       }));
       useServersStore.setState({ servers: noTagServers });
       renderServers();
-      expect(screen.queryByTestId('advanced-filters')).not.toBeInTheDocument();
+      expect(screen.queryByTestId("advanced-filters")).not.toBeInTheDocument();
     });
   });
 
-  describe('group filtering', () => {
-    it('filters servers by group', async () => {
+  describe("group filtering", () => {
+    it("filters servers by group", async () => {
       const user = userEvent.setup();
       renderServers();
 
-      const groupSelect = screen.getByLabelText('Filter by group');
-      await user.selectOptions(groupSelect, 'staging');
+      const groupSelect = screen.getByLabelText("Filter by group");
+      await user.selectOptions(groupSelect, "staging");
 
       // Only staging-app should show
-      expect(screen.queryByTestId('server-card-srv-1')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('server-card-srv-2')).not.toBeInTheDocument();
-      expect(screen.getByTestId('server-card-srv-3')).toBeInTheDocument();
+      expect(screen.queryByTestId("server-card-srv-1")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("server-card-srv-2")).not.toBeInTheDocument();
+      expect(screen.getByTestId("server-card-srv-3")).toBeInTheDocument();
     });
 
-    it('shows ungrouped servers filter option', () => {
+    it("shows ungrouped servers filter option", () => {
       renderServers();
-      const groupSelect = screen.getByLabelText('Filter by group');
-      const options = within(groupSelect).getAllByRole('option');
+      const groupSelect = screen.getByLabelText("Filter by group");
+      const options = within(groupSelect).getAllByRole("option");
       const optionTexts = options.map((o) => o.textContent);
-      expect(optionTexts).toContain('All Groups');
-      expect(optionTexts).toContain('Ungrouped');
+      expect(optionTexts).toContain("All Groups");
+      expect(optionTexts).toContain("Ungrouped");
     });
 
-    it('searches by group name', async () => {
+    it("searches by group name", async () => {
       const user = userEvent.setup();
       renderServers();
 
-      await user.type(screen.getByLabelText('Search servers'), 'staging');
+      await user.type(screen.getByLabelText("Search servers"), "staging");
 
       // staging-app has group "staging" and tag "staging"
-      expect(screen.getByTestId('server-card-srv-3')).toBeInTheDocument();
-      expect(screen.queryByTestId('server-card-srv-1')).not.toBeInTheDocument();
+      expect(screen.getByTestId("server-card-srv-3")).toBeInTheDocument();
+      expect(screen.queryByTestId("server-card-srv-1")).not.toBeInTheDocument();
     });
   });
 
-  describe('tag filtering', () => {
-    it('filters servers by tag', async () => {
+  describe("tag filtering", () => {
+    it("filters servers by tag", async () => {
       const user = userEvent.setup();
       renderServers();
 
-      const tagSelect = screen.getByLabelText('Filter by tag');
-      await user.selectOptions(tagSelect, 'database');
+      const tagSelect = screen.getByLabelText("Filter by tag");
+      await user.selectOptions(tagSelect, "database");
 
       // Only db-prod-01 has the 'database' tag
-      expect(screen.queryByTestId('server-card-srv-1')).not.toBeInTheDocument();
-      expect(screen.getByTestId('server-card-srv-2')).toBeInTheDocument();
-      expect(screen.queryByTestId('server-card-srv-3')).not.toBeInTheDocument();
+      expect(screen.queryByTestId("server-card-srv-1")).not.toBeInTheDocument();
+      expect(screen.getByTestId("server-card-srv-2")).toBeInTheDocument();
+      expect(screen.queryByTestId("server-card-srv-3")).not.toBeInTheDocument();
     });
 
-    it('shows all unique tags in tag filter dropdown', () => {
+    it("shows all unique tags in tag filter dropdown", () => {
       renderServers();
-      const tagSelect = screen.getByLabelText('Filter by tag');
-      const options = within(tagSelect).getAllByRole('option');
+      const tagSelect = screen.getByLabelText("Filter by tag");
+      const options = within(tagSelect).getAllByRole("option");
       const optionTexts = options.map((o) => o.textContent);
-      expect(optionTexts).toContain('All Tags');
-      expect(optionTexts).toContain('database');
-      expect(optionTexts).toContain('production');
-      expect(optionTexts).toContain('staging');
-      expect(optionTexts).toContain('web');
+      expect(optionTexts).toContain("All Tags");
+      expect(optionTexts).toContain("database");
+      expect(optionTexts).toContain("production");
+      expect(optionTexts).toContain("staging");
+      expect(optionTexts).toContain("web");
     });
   });
 
-  describe('getTagColor', () => {
-    it('returns consistent color for the same tag', () => {
-      const color1 = getTagColor('production');
-      const color2 = getTagColor('production');
+  describe("getTagColor", () => {
+    it("returns consistent color for the same tag", () => {
+      const color1 = getTagColor("production");
+      const color2 = getTagColor("production");
       expect(color1).toBe(color2);
     });
 
-    it('returns different colors for different tags', () => {
-      const color1 = getTagColor('production');
-      const color2 = getTagColor('staging');
+    it("returns different colors for different tags", () => {
+      const color1 = getTagColor("production");
+      const color2 = getTagColor("staging");
       // Different strings should produce different hashes (not guaranteed, but very likely)
       // At minimum, the function should return a valid color string
-      expect(color1).toContain('bg-');
-      expect(color2).toContain('bg-');
+      expect(color1).toContain("bg-");
+      expect(color2).toContain("bg-");
     });
 
-    it('returns a valid color class string', () => {
-      const color = getTagColor('test');
-      expect(color).toContain('bg-');
-      expect(color).toContain('text-');
-      expect(color).toContain('border-');
+    it("returns a valid color class string", () => {
+      const color = getTagColor("test");
+      expect(color).toContain("bg-");
+      expect(color).toContain("text-");
+      expect(color).toContain("border-");
     });
   });
 
-  describe('fetchServers on mount', () => {
-    it('calls fetchServers on mount', () => {
+  describe("fetchServers on mount", () => {
+    it("calls fetchServers on mount", () => {
       const fetchMock = vi.fn().mockResolvedValue(undefined);
       useServersStore.setState({ fetchServers: fetchMock });
       renderServers();
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 
-    it('calls fetchGroups on mount', () => {
+    it("calls fetchGroups on mount", () => {
       const fetchGroupsMock = vi.fn().mockResolvedValue(undefined);
       useServersStore.setState({ fetchGroups: fetchGroupsMock });
       renderServers();
@@ -522,46 +530,48 @@ describe('Servers Page', () => {
     });
   });
 
-  describe('grouped view', () => {
-    it('renders view mode toggle buttons when groups exist', () => {
+  describe("grouped view", () => {
+    it("renders view mode toggle buttons when groups exist", () => {
       renderServers();
-      expect(screen.getByLabelText('List view')).toBeInTheDocument();
-      expect(screen.getByLabelText('Grouped view')).toBeInTheDocument();
+      expect(screen.getByLabelText("List view")).toBeInTheDocument();
+      expect(screen.getByLabelText("Grouped view")).toBeInTheDocument();
     });
 
-    it('switches to grouped view on toggle click', async () => {
+    it("switches to grouped view on toggle click", async () => {
       const user = userEvent.setup();
       renderServers();
 
-      await user.click(screen.getByLabelText('Grouped view'));
-      expect(useServersStore.getState().viewMode).toBe('grouped');
+      await user.click(screen.getByLabelText("Grouped view"));
+      expect(useServersStore.getState().viewMode).toBe("grouped");
     });
 
-    it('renders grouped view with group headings', async () => {
+    it("renders grouped view with group headings", async () => {
       const user = userEvent.setup();
       renderServers();
 
-      await user.click(screen.getByLabelText('Grouped view'));
+      await user.click(screen.getByLabelText("Grouped view"));
 
-      const groupedView = screen.getByTestId('grouped-view');
+      const groupedView = screen.getByTestId("grouped-view");
       expect(groupedView).toBeInTheDocument();
       // Group headings include count like "prod (2)" and "staging (1)"
       expect(within(groupedView).getByText(/prod \(2\)/)).toBeInTheDocument();
-      expect(within(groupedView).getByText(/staging \(1\)/)).toBeInTheDocument();
+      expect(
+        within(groupedView).getByText(/staging \(1\)/),
+      ).toBeInTheDocument();
     });
 
-    it('shows server cards within their groups in grouped view', async () => {
+    it("shows server cards within their groups in grouped view", async () => {
       const user = userEvent.setup();
       renderServers();
 
-      await user.click(screen.getByLabelText('Grouped view'));
+      await user.click(screen.getByLabelText("Grouped view"));
 
-      expect(screen.getByTestId('server-card-srv-1')).toBeInTheDocument();
-      expect(screen.getByTestId('server-card-srv-2')).toBeInTheDocument();
-      expect(screen.getByTestId('server-card-srv-3')).toBeInTheDocument();
+      expect(screen.getByTestId("server-card-srv-1")).toBeInTheDocument();
+      expect(screen.getByTestId("server-card-srv-2")).toBeInTheDocument();
+      expect(screen.getByTestId("server-card-srv-3")).toBeInTheDocument();
     });
 
-    it('does not show view mode toggle when no groups exist', () => {
+    it("does not show view mode toggle when no groups exist", () => {
       const noGroupServers = mockServers.map((s) => ({
         ...s,
         tags: [],
@@ -569,41 +579,213 @@ describe('Servers Page', () => {
       }));
       useServersStore.setState({ servers: noGroupServers });
       renderServers();
-      expect(screen.queryByLabelText('List view')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("List view")).not.toBeInTheDocument();
     });
   });
 
-  describe('add server with group', () => {
-    it('shows group input in add server dialog', async () => {
+  describe("add server with group", () => {
+    it("shows group input in add server dialog", async () => {
       const user = userEvent.setup();
       renderServers();
 
-      const addButtons = screen.getAllByRole('button', { name: /Add Server/i });
+      const addButtons = screen.getAllByRole("button", { name: /Add Server/i });
       await user.click(addButtons[0]);
 
-      expect(screen.getByLabelText('Group (optional)')).toBeInTheDocument();
+      expect(screen.getByLabelText("Group (optional)")).toBeInTheDocument();
     });
 
-    it('submits server with group', async () => {
+    it("submits server with group", async () => {
       const user = userEvent.setup();
       const addMock = vi.fn().mockResolvedValue({
         server: mockServers[0],
-        token: 'tok-abc123',
-        installCommand: 'curl -sSL https://install.serverpilot.dev | bash -s tok-abc123',
+        token: "tok-abc123",
+        installCommand:
+          "curl -sSL https://install.serverpilot.dev | bash -s tok-abc123",
       });
       useServersStore.setState({ addServer: addMock });
       renderServers();
 
-      const addButtons = screen.getAllByRole('button', { name: /Add Server/i });
+      const addButtons = screen.getAllByRole("button", { name: /Add Server/i });
       await user.click(addButtons[0]);
 
-      await user.type(screen.getByLabelText(/^Server Name/), 'my-server');
-      await user.type(screen.getByLabelText('Group (optional)'), 'production');
+      await user.type(screen.getByLabelText(/^Server Name/), "my-server");
+      await user.type(screen.getByLabelText("Group (optional)"), "production");
 
-      const allAddBtns = screen.getAllByRole('button', { name: /Add Server/i });
+      const allAddBtns = screen.getAllByRole("button", { name: /Add Server/i });
       await user.click(allAddBtns[allAddBtns.length - 1]);
 
-      expect(addMock).toHaveBeenCalledWith('my-server', undefined, 'production');
+      expect(addMock).toHaveBeenCalledWith(
+        "my-server",
+        undefined,
+        "production",
+      );
+    });
+  });
+
+  describe("batch selection", () => {
+    it("renders select button on each server card", () => {
+      renderServers();
+      expect(screen.getByTestId("select-server-srv-1")).toBeInTheDocument();
+      expect(screen.getByTestId("select-server-srv-2")).toBeInTheDocument();
+      expect(screen.getByTestId("select-server-srv-3")).toBeInTheDocument();
+    });
+
+    it("shows batch toolbar when a server is selected", async () => {
+      const user = userEvent.setup();
+      renderServers();
+
+      expect(screen.queryByTestId("batch-toolbar")).not.toBeInTheDocument();
+
+      await user.click(screen.getByTestId("select-server-srv-1"));
+      expect(screen.getByTestId("batch-toolbar")).toBeInTheDocument();
+      expect(screen.getByText("1 selected")).toBeInTheDocument();
+    });
+
+    it("toggles selection on and off", async () => {
+      const user = userEvent.setup();
+      renderServers();
+
+      await user.click(screen.getByTestId("select-server-srv-1"));
+      expect(screen.getByTestId("batch-toolbar")).toBeInTheDocument();
+
+      await user.click(screen.getByTestId("select-server-srv-1"));
+      expect(screen.queryByTestId("batch-toolbar")).not.toBeInTheDocument();
+    });
+
+    it("selects multiple servers and shows correct count", async () => {
+      const user = userEvent.setup();
+      renderServers();
+
+      await user.click(screen.getByTestId("select-server-srv-1"));
+      await user.click(screen.getByTestId("select-server-srv-2"));
+
+      expect(screen.getByText("2 selected")).toBeInTheDocument();
+    });
+
+    it("highlights selected card with ring", async () => {
+      const user = userEvent.setup();
+      renderServers();
+
+      await user.click(screen.getByTestId("select-server-srv-1"));
+
+      const card = screen.getByTestId("server-card-srv-1");
+      expect(card.className).toContain("ring-2");
+    });
+
+    it("clears selection when clear button is clicked", async () => {
+      const user = userEvent.setup();
+      renderServers();
+
+      await user.click(screen.getByTestId("select-server-srv-1"));
+      expect(screen.getByTestId("batch-toolbar")).toBeInTheDocument();
+
+      await user.click(screen.getByLabelText("Clear selection"));
+      expect(screen.queryByTestId("batch-toolbar")).not.toBeInTheDocument();
+    });
+
+    it("select all button selects all filtered servers", async () => {
+      const user = userEvent.setup();
+      renderServers();
+
+      // Select one first to show toolbar
+      await user.click(screen.getByTestId("select-server-srv-1"));
+
+      // Click "Select all" button
+      await user.click(screen.getByRole("button", { name: /Select all/i }));
+      expect(screen.getByText("3 selected")).toBeInTheDocument();
+    });
+
+    it("deselect all when all are selected", async () => {
+      const user = userEvent.setup();
+      renderServers();
+
+      // Select all one by one
+      await user.click(screen.getByTestId("select-server-srv-1"));
+      await user.click(screen.getByTestId("select-server-srv-2"));
+      await user.click(screen.getByTestId("select-server-srv-3"));
+      expect(screen.getByText("3 selected")).toBeInTheDocument();
+
+      // Click "Deselect all" button
+      await user.click(screen.getByRole("button", { name: /Deselect all/i }));
+      expect(screen.queryByTestId("batch-toolbar")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("batch delete", () => {
+    it("shows batch delete dialog when clicking delete selected", async () => {
+      const user = userEvent.setup();
+      renderServers();
+
+      await user.click(screen.getByTestId("select-server-srv-1"));
+      await user.click(screen.getByTestId("batch-delete-btn"));
+
+      expect(screen.getByText(/Delete 1 Server/)).toBeInTheDocument();
+      expect(
+        screen.getByText(/Are you sure you want to delete 1 server/),
+      ).toBeInTheDocument();
+    });
+
+    it("calls deleteServer for each selected server on confirm", async () => {
+      const user = userEvent.setup();
+      const deleteMock = vi.fn().mockResolvedValue(undefined);
+      useServersStore.setState({ deleteServer: deleteMock });
+      renderServers();
+
+      await user.click(screen.getByTestId("select-server-srv-1"));
+      await user.click(screen.getByTestId("select-server-srv-2"));
+      await user.click(screen.getByTestId("batch-delete-btn"));
+
+      // Click the Delete button in the batch delete dialog
+      const dialogDeleteBtns = screen.getAllByRole("button", {
+        name: /Delete/i,
+      });
+      const confirmBtn = dialogDeleteBtns[dialogDeleteBtns.length - 1];
+      await user.click(confirmBtn);
+
+      expect(deleteMock).toHaveBeenCalledWith("srv-1");
+      expect(deleteMock).toHaveBeenCalledWith("srv-2");
+      expect(deleteMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("closes batch delete dialog on cancel", async () => {
+      const user = userEvent.setup();
+      renderServers();
+
+      await user.click(screen.getByTestId("select-server-srv-1"));
+      await user.click(screen.getByTestId("batch-delete-btn"));
+
+      expect(screen.getByText(/Delete 1 Server/)).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: /Cancel/i }));
+
+      expect(screen.queryByText(/Delete 1 Server/)).not.toBeInTheDocument();
+    });
+  });
+
+  describe("batch chat", () => {
+    it("navigates to chat with single server", async () => {
+      const user = userEvent.setup();
+      renderServers();
+
+      await user.click(screen.getByTestId("select-server-srv-1"));
+      await user.click(screen.getByTestId("batch-chat-btn"));
+
+      expect(mockNavigate).toHaveBeenCalledWith("/chat/srv-1");
+    });
+
+    it("navigates to chat with multiple servers via query param", async () => {
+      const user = userEvent.setup();
+      renderServers();
+
+      await user.click(screen.getByTestId("select-server-srv-1"));
+      await user.click(screen.getByTestId("select-server-srv-2"));
+      await user.click(screen.getByTestId("batch-chat-btn"));
+
+      expect(mockNavigate).toHaveBeenCalledWith(
+        expect.stringContaining("/chat?servers="),
+      );
+      const navArg = mockNavigate.mock.calls[0][0] as string;
+      expect(navArg).toContain("srv-1");
+      expect(navArg).toContain("srv-2");
     });
   });
 });

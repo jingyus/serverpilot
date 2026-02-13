@@ -1,12 +1,12 @@
-### [pending] apiRequest 无请求超时 — 挂起的网络请求永远阻塞 UI
+### [pending] Agentic 循环错误信息不区分类型 — 用户看到泛化的"执行过程中发生错误"
 
-**ID**: chat-097
+**ID**: chat-098
 **优先级**: P2
-**模块路径**: packages/dashboard/src/api/
-**发现的问题**: `apiRequest<T>()` (client.ts) 使用原生 `fetch()` 无 `AbortController` 超时设置。当网络异常（如 DNS 解析挂起、服务器不响应）时，请求永远等待。特别影响 Chat 功能中的非 SSE 请求：`respondToStep` (POST /step-decision)、`respondToAgenticConfirm` (POST /confirm)、`deleteSession` (DELETE)、`renameSession` (PATCH) 等操作会因挂起请求导致按钮永远 loading。SSE 连接不受影响（有自己的 AbortController）。
-**改进方案**: 在 `apiRequest` 中添加可选的 `timeout` 参数（默认 30s），使用 `AbortController` + `setTimeout` 实现。超时后抛出特定错误 `ApiTimeoutError`。
-**验收标准**: (1) 请求 30s 超时自动取消 (2) 超时错误消息友好 (3) 支持自定义超时时间 (4) SSE 不受影响
-**影响范围**: `packages/dashboard/src/api/client.ts`
+**模块路径**: packages/server/src/ai/
+**发现的问题**: `AgenticChatEngine.run()` 的 catch 块（agentic-chat.ts:226-239）将所有错误统一包装为 `执行过程中发生错误: ${errorMsg}` 返回给用户。无论是 API 认证失败 (401)、token 超限 (context_length_exceeded)、速率限制 (429)、网络超时还是工具执行内部错误，用户都看到相同的泛化消息。这导致用户无法自助排查：(1) API key 过期需要在设置中更新 (2) 429 需要等待后重试 (3) 上下文超限可能需要新建会话。
+**改进方案**: 在 catch 块中解析错误类型（复用 `request-retry.ts` 的 `classifyError`），根据 `classification.category` 返回具体建议：认证错误 → "请检查 AI Provider API Key 设置"；速率限制 → "请稍后重试"；上下文超限 → "对话过长，建议新建会话"；网络错误 → "网络连接异常，请检查网络"。
+**验收标准**: (1) 不同类型错误显示不同提示 (2) 提示包含可操作建议 (3) 仍然记录详细错误到日志
+**影响范围**: `packages/server/src/ai/agentic-chat.ts`
 **创建时间**: 2026-02-13
 **完成时间**: -
 

@@ -148,7 +148,17 @@
     "groupOptional": "分组（可选）",
     "groupPlaceholder": "例如 production",
     "addServerBtn": "添加服务器",
-    "done": "完成"
+    "done": "完成",
+    "selectedCount": "已选 {{count}} 台",
+    "batchDelete": "批量删除",
+    "batchChat": "批量对话",
+    "batchDeleteTitle": "删除 {{count}} 台服务器",
+    "batchDeleteConfirm": "确定要删除 {{count}} 台服务器吗？此操作无法撤消。",
+    "batchDeleteProgress": "删除中... ({{done}}/{{total}})",
+    "batchDeleteSuccess": "已删除 {{count}} 台服务器",
+    "batchDeletePartial": "成功 {{success}} 台，失败 {{failed}} 台",
+    "selectAll": "全选",
+    "deselectAll": "取消全选"
   },
   "serverDetail": {
     "chatWithAi": "AI 对话",

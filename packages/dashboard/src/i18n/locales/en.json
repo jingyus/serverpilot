@@ -148,7 +148,17 @@
     "groupOptional": "Group (optional)",
     "groupPlaceholder": "e.g. production",
     "addServerBtn": "Add Server",
-    "done": "Done"
+    "done": "Done",
+    "selectedCount": "{{count}} selected",
+    "batchDelete": "Delete Selected",
+    "batchChat": "Chat with Selected",
+    "batchDeleteTitle": "Delete {{count}} Servers",
+    "batchDeleteConfirm": "Are you sure you want to delete {{count}} server(s)? This action cannot be undone.",
+    "batchDeleteProgress": "Deleting... ({{done}}/{{total}})",
+    "batchDeleteSuccess": "{{count}} server(s) deleted",
+    "batchDeletePartial": "{{success}} deleted, {{failed}} failed",
+    "selectAll": "Select all",
+    "deselectAll": "Deselect all"
   },
   "serverDetail": {
     "chatWithAi": "Chat with AI",

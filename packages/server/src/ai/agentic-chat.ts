@@ -2,22 +2,37 @@
 // Copyright (c) 2024-2026 ServerPilot Contributors
 /** Agentic Chat Engine — autonomous AI loop with tool_use. */
 
-import Anthropic from '@anthropic-ai/sdk';
-import type { SSEStreamingApi } from 'hono/streaming';
-import { RiskLevel } from '@aiinstaller/shared';
-import type { FullServerProfile } from '../core/profile/manager.js';
-import { getTaskExecutor } from '../core/task/executor.js';
-import { findConnectedAgent } from '../core/agent/agent-connector.js';
-import { validateCommand } from '../core/security/command-validator.js';
-import { getAuditLogger } from '../core/security/audit-logger.js';
-import { logger } from '../utils/logger.js';
-import { TOOLS, ExecuteCommandInputSchema, ReadFileInputSchema, ListFilesInputSchema } from './agentic-tools.js';
-import { buildFullSystemPrompt } from './agentic-prompts.js';
-import { trimMessagesIfNeeded } from './agentic-message-utils.js';
+import Anthropic from "@anthropic-ai/sdk";
+import type { SSEStreamingApi } from "hono/streaming";
+import { RiskLevel } from "@aiinstaller/shared";
+import type { FullServerProfile } from "../core/profile/manager.js";
+import { getTaskExecutor } from "../core/task/executor.js";
+import { findConnectedAgent } from "../core/agent/agent-connector.js";
+import { validateCommand } from "../core/security/command-validator.js";
+import { getAuditLogger } from "../core/security/audit-logger.js";
+import { logger } from "../utils/logger.js";
+import {
+  TOOLS,
+  ExecuteCommandInputSchema,
+  ReadFileInputSchema,
+  ListFilesInputSchema,
+} from "./agentic-tools.js";
+import { buildFullSystemPrompt } from "./agentic-prompts.js";
+import { trimMessagesIfNeeded } from "./agentic-message-utils.js";
+import { classifyError } from "./request-retry.js";
+import type { ErrorCategory } from "./request-retry.js";
 
 // Re-export extracted symbols for backward compatibility
-export { ExecuteCommandInputSchema, ReadFileInputSchema, ListFilesInputSchema } from './agentic-tools.js';
-export { estimateMessagesTokens, trimMessagesIfNeeded, type TrimResult } from './agentic-message-utils.js';
+export {
+  ExecuteCommandInputSchema,
+  ReadFileInputSchema,
+  ListFilesInputSchema,
+} from "./agentic-tools.js";
+export {
+  estimateMessagesTokens,
+  trimMessagesIfNeeded,
+  type TrimResult,
+} from "./agentic-message-utils.js";
 
 // Constants
 
@@ -28,14 +43,16 @@ const MAX_TURNS = 25;
 const MAX_MESSAGES_TOKENS = 150_000;
 
 /** Default model */
-const DEFAULT_MODEL = 'claude-sonnet-4-20250514';
+const DEFAULT_MODEL = "claude-sonnet-4-20250514";
 
 /** Shared abort flag — set by onAbort / writeSSE failure, read at every async boundary. */
 class AbortState {
   private _aborted = false;
   private readonly listeners: Array<() => void> = [];
 
-  get aborted(): boolean { return this._aborted; }
+  get aborted(): boolean {
+    return this._aborted;
+  }
   set aborted(value: boolean) {
     if (value && !this._aborted) {
       this._aborted = true;
@@ -47,7 +64,10 @@ class AbortState {
   /** Register a one-shot callback that fires when aborted becomes true.
    *  If already aborted, fires synchronously. Returns an unsubscribe function. */
   onAbort(cb: () => void): () => void {
-    if (this._aborted) { cb(); return () => {}; }
+    if (this._aborted) {
+      cb();
+      return () => {};
+    }
     this.listeners.push(cb);
     return () => {
       const idx = this.listeners.indexOf(cb);
@@ -70,14 +90,18 @@ export interface AgenticRunOptions {
   /** SSE stream to push events to Dashboard */
   stream: SSEStreamingApi;
   /** Previous conversation messages for context */
-  conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>;
+  conversationHistory?: Array<{ role: "user" | "assistant"; content: string }>;
   /** Server profile for context injection */
   serverProfile?: FullServerProfile | null;
   /** Server display name */
   serverName?: string;
   /** Callback when a risky command needs user confirmation.
    *  Returns confirmId (for SSE) and a Promise that resolves when the user responds. */
-  onConfirmRequired?: (command: string, riskLevel: string, description: string) => {
+  onConfirmRequired?: (
+    command: string,
+    riskLevel: string,
+    description: string,
+  ) => {
     confirmId: string;
     approved: Promise<boolean>;
   };
@@ -113,29 +137,44 @@ export class AgenticChatEngine {
    */
   async run(opts: AgenticRunOptions): Promise<AgenticRunResult> {
     const {
-      userMessage, serverId, userId, sessionId, stream,
-      conversationHistory, serverProfile, serverName,
+      userMessage,
+      serverId,
+      userId,
+      sessionId,
+      stream,
+      conversationHistory,
+      serverProfile,
+      serverName,
     } = opts;
 
     // Check agent connectivity
     const clientId = findConnectedAgent(serverId);
     if (!clientId) {
-      await this.writeSSE(stream, 'message', {
-        content: '该服务器当前没有 Agent 在线，无法执行命令。请确认 Agent 已安装并运行。',
+      await this.writeSSE(stream, "message", {
+        content:
+          "该服务器当前没有 Agent 在线，无法执行命令。请确认 Agent 已安装并运行。",
       });
-      await this.writeSSE(stream, 'complete', { success: false, reason: 'agent_offline' });
-      return { success: false, turns: 0, toolCallCount: 0, finalText: '' };
+      await this.writeSSE(stream, "complete", {
+        success: false,
+        reason: "agent_offline",
+      });
+      return { success: false, turns: 0, toolCallCount: 0, finalText: "" };
     }
 
     const abort = new AbortState();
     stream.onAbort(() => {
       abort.aborted = true;
-      logger.info({ operation: 'agentic_loop', serverId }, 'Client disconnected, aborting agentic loop');
+      logger.info(
+        { operation: "agentic_loop", serverId },
+        "Client disconnected, aborting agentic loop",
+      );
     });
 
     // Build system prompt with profile + knowledge context
     const systemPrompt = await buildFullSystemPrompt(
-      userMessage, serverProfile, serverName,
+      userMessage,
+      serverProfile,
+      serverName,
     );
 
     // Build message history
@@ -149,7 +188,7 @@ export class AgenticChatEngine {
     }
 
     // Add current user message
-    messages.push({ role: 'user', content: userMessage });
+    messages.push({ role: "user", content: userMessage });
 
     // Pre-trim: if conversation history already exceeds token budget,
     // trim before the first API call to avoid context window overflow.
@@ -157,7 +196,7 @@ export class AgenticChatEngine {
 
     let turns = 0;
     let toolCallCount = 0;
-    let finalText = '';
+    let finalText = "";
 
     try {
       for (let turn = 0; turn < MAX_TURNS; turn++) {
@@ -165,13 +204,19 @@ export class AgenticChatEngine {
 
         // Abort if client disconnected — avoid wasting API calls
         if (abort.aborted) {
-          logger.info({ operation: 'agentic_loop', serverId, turn }, 'Agentic loop aborted: client disconnected');
+          logger.info(
+            { operation: "agentic_loop", serverId, turn },
+            "Agentic loop aborted: client disconnected",
+          );
           return { success: false, turns, toolCallCount, finalText };
         }
 
         // Call Claude with tools — streaming
         const collected = await this.streamAnthropicCall(
-          systemPrompt, messages, stream, abort,
+          systemPrompt,
+          messages,
+          stream,
+          abort,
         );
 
         // Accumulate text for return value
@@ -186,7 +231,10 @@ export class AgenticChatEngine {
 
         // Process tool calls — skip if client disconnected
         if (abort.aborted) {
-          logger.info({ operation: 'agentic_loop', serverId, turn }, 'Agentic loop aborted after AI call: client disconnected');
+          logger.info(
+            { operation: "agentic_loop", serverId, turn },
+            "Agentic loop aborted after AI call: client disconnected",
+          );
           return { success: false, turns, toolCallCount, finalText };
         }
 
@@ -196,10 +244,17 @@ export class AgenticChatEngine {
           if (abort.aborted) break;
           toolCallCount++;
           const result = await this.executeToolCall(
-            toolCall, serverId, userId, sessionId, clientId, stream, abort, opts.onConfirmRequired,
+            toolCall,
+            serverId,
+            userId,
+            sessionId,
+            clientId,
+            stream,
+            abort,
+            opts.onConfirmRequired,
           );
           toolResults.push({
-            type: 'tool_result',
+            type: "tool_result",
             tool_use_id: toolCall.id,
             content: result,
           });
@@ -207,13 +262,16 @@ export class AgenticChatEngine {
 
         // If aborted during tool execution, don't continue the loop
         if (abort.aborted) {
-          logger.info({ operation: 'agentic_loop', serverId, turn }, 'Agentic loop aborted during tool execution: client disconnected');
+          logger.info(
+            { operation: "agentic_loop", serverId, turn },
+            "Agentic loop aborted during tool execution: client disconnected",
+          );
           return { success: false, turns, toolCallCount, finalText };
         }
 
         // Append assistant response + tool results to conversation
-        messages.push({ role: 'assistant', content: collected.rawContent });
-        messages.push({ role: 'user', content: toolResults });
+        messages.push({ role: "assistant", content: collected.rawContent });
+        messages.push({ role: "user", content: toolResults });
 
         // Trim older messages if the array exceeds the token budget.
         // Keep the first message (original user query) and the most recent pairs.
@@ -224,28 +282,52 @@ export class AgenticChatEngine {
         // Detect if we exited because MAX_TURNS was reached (not a natural stop)
         const maxTurnsReached = turns >= MAX_TURNS;
         if (maxTurnsReached) {
-          await this.writeSSE(stream, 'message', {
-            content: '\n\n已达到最大执行轮次（25 轮）。如需继续，请发送新消息。',
-          }, abort);
+          await this.writeSSE(
+            stream,
+            "message",
+            {
+              content:
+                "\n\n已达到最大执行轮次（25 轮）。如需继续，请发送新消息。",
+            },
+            abort,
+          );
         }
 
-        await this.writeSSE(stream, 'complete', {
-          success: true, turns, toolCallCount,
-          ...(maxTurnsReached ? { reason: 'max_turns_reached' } : {}),
-        }, abort);
+        await this.writeSSE(
+          stream,
+          "complete",
+          {
+            success: true,
+            turns,
+            toolCallCount,
+            ...(maxTurnsReached ? { reason: "max_turns_reached" } : {}),
+          },
+          abort,
+        );
       }
       return { success: true, turns, toolCallCount, finalText };
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       logger.error(
-        { operation: 'agentic_loop', serverId, error: errorMsg },
-        'Agentic loop error',
+        { operation: "agentic_loop", serverId, error: errorMsg },
+        "Agentic loop error",
       );
       if (!abort.aborted) {
-        await this.writeSSE(stream, 'message', {
-          content: `\n\n执行过程中发生错误: ${errorMsg}`,
-        }, abort);
-        await this.writeSSE(stream, 'complete', { success: false, error: errorMsg }, abort);
+        const userMessage = getUserFacingErrorMessage(err);
+        await this.writeSSE(
+          stream,
+          "message",
+          {
+            content: `\n\n${userMessage}`,
+          },
+          abort,
+        );
+        await this.writeSSE(
+          stream,
+          "complete",
+          { success: false, error: errorMsg },
+          abort,
+        );
       }
       return { success: false, turns, toolCallCount, finalText };
     }
@@ -265,7 +347,7 @@ export class AgenticChatEngine {
     rawContent: Anthropic.ContentBlock[];
     stopReason: string | null;
   }> {
-    let text = '';
+    let text = "";
     const toolUseBlocks: Anthropic.ToolUseBlock[] = [];
 
     const response = this.client.messages.stream({
@@ -277,28 +359,33 @@ export class AgenticChatEngine {
     });
 
     // Stream text to Dashboard; abort Anthropic stream early on disconnect
-    response.on('text', (delta: string) => {
+    response.on("text", (delta: string) => {
       text += delta;
       if (abort.aborted) {
         response.abort();
         return;
       }
-      void this.writeSSE(stream, 'message', { content: delta }, abort);
+      void this.writeSSE(stream, "message", { content: delta }, abort);
     });
 
     // Track tool_use content blocks as they start
-    response.on('contentBlock', (block: Anthropic.ContentBlock) => {
-      if (block.type === 'tool_use') {
+    response.on("contentBlock", (block: Anthropic.ContentBlock) => {
+      if (block.type === "tool_use") {
         // Notify frontend that a tool call is starting
-        void this.writeSSE(stream, 'tool_call', {
-          id: block.id,
-          tool: block.name,
-          status: 'running',
-        }, abort);
+        void this.writeSSE(
+          stream,
+          "tool_call",
+          {
+            id: block.id,
+            tool: block.name,
+            status: "running",
+          },
+          abort,
+        );
       }
     });
 
-    response.on('inputJson', (_delta: string) => {
+    response.on("inputJson", (_delta: string) => {
       if (abort.aborted) {
         response.abort();
       }
@@ -308,7 +395,7 @@ export class AgenticChatEngine {
 
     // Extract completed tool_use blocks from the final message
     for (const block of finalMessage.content) {
-      if (block.type === 'tool_use') {
+      if (block.type === "tool_use") {
         toolUseBlocks.push(block);
       }
     }
@@ -332,7 +419,11 @@ export class AgenticChatEngine {
     clientId: string,
     stream: SSEStreamingApi,
     abort: AbortState,
-    onConfirmRequired?: (command: string, riskLevel: string, description: string) => {
+    onConfirmRequired?: (
+      command: string,
+      riskLevel: string,
+      description: string,
+    ) => {
       confirmId: string;
       approved: Promise<boolean>;
     },
@@ -341,42 +432,81 @@ export class AgenticChatEngine {
 
     // Early exit if client already disconnected
     if (abort.aborted) {
-      return 'Error: Client disconnected, skipping tool execution';
+      return "Error: Client disconnected, skipping tool execution";
     }
 
     try {
       switch (name) {
-        case 'execute_command': {
+        case "execute_command": {
           const parsed = ExecuteCommandInputSchema.safeParse(input);
           if (!parsed.success) {
-            return await this.handleValidationError(name, toolCall.id, parsed.error.issues, input, stream, abort);
+            return await this.handleValidationError(
+              name,
+              toolCall.id,
+              parsed.error.issues,
+              input,
+              stream,
+              abort,
+            );
           }
           return await this.toolExecuteCommand(
             parsed.data,
-            serverId, userId, sessionId, clientId, stream, toolCall.id, abort,
+            serverId,
+            userId,
+            sessionId,
+            clientId,
+            stream,
+            toolCall.id,
+            abort,
             onConfirmRequired,
           );
         }
 
-        case 'read_file': {
+        case "read_file": {
           const parsed = ReadFileInputSchema.safeParse(input);
           if (!parsed.success) {
-            return await this.handleValidationError(name, toolCall.id, parsed.error.issues, input, stream, abort);
+            return await this.handleValidationError(
+              name,
+              toolCall.id,
+              parsed.error.issues,
+              input,
+              stream,
+              abort,
+            );
           }
           return await this.toolReadFile(
             parsed.data,
-            serverId, userId, sessionId, clientId, stream, toolCall.id, abort,
+            serverId,
+            userId,
+            sessionId,
+            clientId,
+            stream,
+            toolCall.id,
+            abort,
           );
         }
 
-        case 'list_files': {
+        case "list_files": {
           const parsed = ListFilesInputSchema.safeParse(input);
           if (!parsed.success) {
-            return await this.handleValidationError(name, toolCall.id, parsed.error.issues, input, stream, abort);
+            return await this.handleValidationError(
+              name,
+              toolCall.id,
+              parsed.error.issues,
+              input,
+              stream,
+              abort,
+            );
           }
           return await this.toolListFiles(
             parsed.data,
-            serverId, userId, sessionId, clientId, stream, toolCall.id, abort,
+            serverId,
+            userId,
+            sessionId,
+            clientId,
+            stream,
+            toolCall.id,
+            abort,
           );
         }
 
@@ -385,12 +515,17 @@ export class AgenticChatEngine {
       }
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      await this.writeSSE(stream, 'tool_result', {
-        id: toolCall.id,
-        tool: name,
-        status: 'failed',
-        error: errMsg,
-      }, abort);
+      await this.writeSSE(
+        stream,
+        "tool_result",
+        {
+          id: toolCall.id,
+          tool: name,
+          status: "failed",
+          error: errMsg,
+        },
+        abort,
+      );
       return `Error executing ${name}: ${errMsg}`;
     }
   }
@@ -408,20 +543,25 @@ export class AgenticChatEngine {
     stream: SSEStreamingApi,
     abort: AbortState,
   ): Promise<string> {
-    const errorDetail = issues.map((i) => i.message).join('; ');
+    const errorDetail = issues.map((i) => i.message).join("; ");
     const errorMsg = `Error: Invalid tool input for ${toolName}: ${errorDetail}`;
 
     logger.warn(
-      { operation: 'tool_validation', tool: toolName, issues, rawInput },
+      { operation: "tool_validation", tool: toolName, issues, rawInput },
       `Tool input validation failed for ${toolName}`,
     );
 
-    await this.writeSSE(stream, 'tool_result', {
-      id: toolCallId,
-      tool: toolName,
-      status: 'validation_error',
-      error: errorDetail,
-    }, abort);
+    await this.writeSSE(
+      stream,
+      "tool_result",
+      {
+        id: toolCallId,
+        tool: toolName,
+        status: "validation_error",
+        error: errorDetail,
+      },
+      abort,
+    );
 
     return errorMsg;
   }
@@ -438,7 +578,11 @@ export class AgenticChatEngine {
     stream: SSEStreamingApi,
     toolCallId: string,
     abort: AbortState,
-    onConfirmRequired?: (command: string, riskLevel: string, description: string) => {
+    onConfirmRequired?: (
+      command: string,
+      riskLevel: string,
+      description: string,
+    ) => {
       confirmId: string;
       approved: Promise<boolean>;
     },
@@ -453,19 +597,27 @@ export class AgenticChatEngine {
     // Audit log
     const auditLogger = getAuditLogger();
     const auditEntry = await auditLogger.log({
-      serverId, userId, sessionId,
-      command, validation,
+      serverId,
+      userId,
+      sessionId,
+      command,
+      validation,
     });
 
     // FORBIDDEN → block immediately
-    if (validation.action === 'blocked') {
+    if (validation.action === "blocked") {
       const msg = `命令被安全策略阻止: ${validation.classification.reason}`;
-      await this.writeSSE(stream, 'tool_result', {
-        id: toolCallId,
-        tool: 'execute_command',
-        status: 'blocked',
-        output: msg,
-      }, abort);
+      await this.writeSSE(
+        stream,
+        "tool_result",
+        {
+          id: toolCallId,
+          tool: "execute_command",
+          status: "blocked",
+          output: msg,
+        },
+        abort,
+      );
       return msg;
     }
 
@@ -473,13 +625,18 @@ export class AgenticChatEngine {
     if (riskLevel !== RiskLevel.GREEN && onConfirmRequired) {
       const confirmation = onConfirmRequired(command, riskLevel, description);
 
-      await this.writeSSE(stream, 'confirm_required', {
-        id: toolCallId,
-        command,
-        description,
-        riskLevel,
-        confirmId: confirmation.confirmId,
-      }, abort);
+      await this.writeSSE(
+        stream,
+        "confirm_required",
+        {
+          id: toolCallId,
+          command,
+          description,
+          riskLevel,
+          confirmId: confirmation.confirmId,
+        },
+        abort,
+      );
 
       // Race confirmation against abort to avoid hanging 5min when client disconnects
       const abortHandle = this.awaitAbort(abort);
@@ -495,51 +652,76 @@ export class AgenticChatEngine {
 
       if (!approved) {
         const msg = `用户拒绝执行: ${command}`;
-        await this.writeSSE(stream, 'tool_result', {
-          id: toolCallId,
-          tool: 'execute_command',
-          status: 'rejected',
-          output: msg,
-        }, abort);
-        await auditLogger.updateExecutionResult(auditEntry.id, 'skipped');
+        await this.writeSSE(
+          stream,
+          "tool_result",
+          {
+            id: toolCallId,
+            tool: "execute_command",
+            status: "rejected",
+            output: msg,
+          },
+          abort,
+        );
+        await auditLogger.updateExecutionResult(auditEntry.id, "skipped");
         return msg;
       }
     }
 
     // Check abort before dispatching command to agent
     if (abort.aborted) {
-      return 'Error: Client disconnected, skipping command execution';
+      return "Error: Client disconnected, skipping command execution";
     }
 
     // Execute the command
-    await this.writeSSE(stream, 'tool_executing', {
-      id: toolCallId,
-      tool: 'execute_command',
-      command,
-    }, abort);
+    await this.writeSSE(
+      stream,
+      "tool_executing",
+      {
+        id: toolCallId,
+        tool: "execute_command",
+        command,
+      },
+      abort,
+    );
 
     const executor = getTaskExecutor();
 
     let hasStreamedOutput = false;
-    executor.addProgressListener(toolCallId, (_executionId, _status, output) => {
-      if (output) {
-        hasStreamedOutput = true;
-        void this.writeSSE(stream, 'tool_output', {
-          id: toolCallId,
-          content: output,
-        }, abort);
-      }
-    });
+    executor.addProgressListener(
+      toolCallId,
+      (_executionId, _status, output) => {
+        if (output) {
+          hasStreamedOutput = true;
+          void this.writeSSE(
+            stream,
+            "tool_output",
+            {
+              id: toolCallId,
+              content: output,
+            },
+            abort,
+          );
+        }
+      },
+    );
 
-    const validatedRiskLevel = riskLevel as 'green' | 'yellow' | 'red' | 'critical';
+    const validatedRiskLevel = riskLevel as
+      | "green"
+      | "yellow"
+      | "red"
+      | "critical";
 
     let result;
     try {
       result = await executor.executeCommand({
-        serverId, userId, clientId,
-        command, description,
+        serverId,
+        userId,
+        clientId,
+        command,
+        description,
         riskLevel: validatedRiskLevel,
-        type: 'execute',
+        type: "execute",
         timeoutMs,
       });
     } finally {
@@ -547,24 +729,32 @@ export class AgenticChatEngine {
     }
 
     // Build result string for AI
-    let output = '';
+    let output = "";
     if (result.stdout) output += result.stdout;
-    if (result.stderr) output += (output ? '\n' : '') + result.stderr;
-    if (!output) output = result.success ? '(命令执行成功，无输出)' : '(命令执行失败，无输出)';
+    if (result.stderr) output += (output ? "\n" : "") + result.stderr;
+    if (!output)
+      output = result.success
+        ? "(命令执行成功，无输出)"
+        : "(命令执行失败，无输出)";
 
     // Send tool result to frontend
-    await this.writeSSE(stream, 'tool_result', {
-      id: toolCallId,
-      tool: 'execute_command',
-      status: result.success ? 'completed' : 'failed',
-      exitCode: result.exitCode,
-      output: hasStreamedOutput ? undefined : output,
-      duration: result.duration,
-    }, abort);
+    await this.writeSSE(
+      stream,
+      "tool_result",
+      {
+        id: toolCallId,
+        tool: "execute_command",
+        status: result.success ? "completed" : "failed",
+        exitCode: result.exitCode,
+        output: hasStreamedOutput ? undefined : output,
+        duration: result.duration,
+      },
+      abort,
+    );
 
     await auditLogger.updateExecutionResult(
       auditEntry.id,
-      result.success ? 'success' : 'failed',
+      result.success ? "success" : "failed",
       result.operationId,
     );
 
@@ -594,7 +784,13 @@ export class AgenticChatEngine {
 
     return this.toolExecuteCommand(
       { command, description: `Read file: ${input.path}` },
-      serverId, userId, sessionId, clientId, stream, toolCallId, abort,
+      serverId,
+      userId,
+      sessionId,
+      clientId,
+      stream,
+      toolCallId,
+      abort,
     );
   }
 
@@ -611,12 +807,18 @@ export class AgenticChatEngine {
     toolCallId: string,
     abort: AbortState,
   ): Promise<string> {
-    const flags = input.show_hidden ? '-lah' : '-lh';
+    const flags = input.show_hidden ? "-lah" : "-lh";
     const command = `ls ${flags} ${this.shellEscape(input.path)}`;
 
     return this.toolExecuteCommand(
       { command, description: `List files: ${input.path}` },
-      serverId, userId, sessionId, clientId, stream, toolCallId, abort,
+      serverId,
+      userId,
+      sessionId,
+      clientId,
+      stream,
+      toolCallId,
+      abort,
     );
   }
 
@@ -625,9 +827,15 @@ export class AgenticChatEngine {
    * plus an `unsubscribe` function to clean up the listener when no longer needed.
    * Uses event-based AbortState.onAbort() — no polling, no leaked intervals.
    */
-  private awaitAbort(abort: AbortState): { promise: Promise<false>; unsubscribe: () => void } {
+  private awaitAbort(abort: AbortState): {
+    promise: Promise<false>;
+    unsubscribe: () => void;
+  } {
     if (abort.aborted) {
-      return { promise: Promise.resolve(false as const), unsubscribe: () => {} };
+      return {
+        promise: Promise.resolve(false as const),
+        unsubscribe: () => {},
+      };
     }
     let unsubscribe: () => void = () => {};
     const promise = new Promise<false>((resolve) => {
@@ -656,11 +864,40 @@ export class AgenticChatEngine {
   }
 }
 
+// Error classification → user-facing message
+
+const ERROR_MESSAGES: Record<ErrorCategory, string> = {
+  authentication: "请检查 AI Provider API Key 设置，当前密钥无效或已过期。",
+  rate_limit: "AI 服务请求过于频繁，请稍后重试。",
+  invalid_request: "对话过长，建议新建会话后重试。",
+  timeout: "AI 服务响应超时，请稍后重试。",
+  network: "网络连接异常，请检查服务器网络配置。",
+  overloaded: "AI 服务暂时不可用，请稍后重试。",
+  server_error: "AI 服务内部错误，请稍后重试。",
+  unknown: "执行过程中发生错误",
+};
+
+/**
+ * Map an error to a user-facing message with actionable advice.
+ * Falls back to the raw error message for unknown categories.
+ */
+export function getUserFacingErrorMessage(error: unknown): string {
+  const classification = classifyError(error);
+  const base = ERROR_MESSAGES[classification.category];
+  if (classification.category === "unknown") {
+    return `${base}: ${classification.message}`;
+  }
+  return base;
+}
+
 // Singleton
 
 let _engine: AgenticChatEngine | null = null;
 
-export function initAgenticEngine(client: Anthropic, model?: string): AgenticChatEngine {
+export function initAgenticEngine(
+  client: Anthropic,
+  model?: string,
+): AgenticChatEngine {
   _engine = new AgenticChatEngine(client, model);
   return _engine;
 }
