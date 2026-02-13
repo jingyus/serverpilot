@@ -495,11 +495,74 @@ describe('SkillRunner', () => {
   });
 
   // --------------------------------------------------------------------------
-  // Constructor throws without provider
+  // Graceful degradation: no AI provider
   // --------------------------------------------------------------------------
 
-  it('throws if no AI provider available', () => {
-    expect(() => new SkillRunner()).toThrow('No AI provider available');
+  it('constructs without provider and does not throw', () => {
+    expect(() => new SkillRunner()).not.toThrow();
+  });
+
+  it('returns failed result when no AI provider is available at run time', async () => {
+    const runner = new SkillRunner();
+    const result = await runner.run(createRunnerParams());
+
+    expect(result.success).toBe(false);
+    expect(result.status).toBe('failed');
+    expect(result.stepsExecuted).toBe(0);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toContain('No AI provider available');
+    expect(result.toolResults).toHaveLength(0);
+  });
+
+  it('auto-acquires provider when it becomes available after construction', async () => {
+    const { getActiveProvider } = await import('../../ai/providers/provider-factory.js');
+    const mockGetActiveProvider = getActiveProvider as ReturnType<typeof vi.fn>;
+
+    // First call: no provider available
+    const runner = new SkillRunner();
+
+    // Provider becomes available before run()
+    const provider = createMockProvider([
+      {
+        content: 'Task done.',
+        usage: { inputTokens: 100, outputTokens: 50 },
+        stopReason: 'end_turn',
+      },
+    ]);
+    mockGetActiveProvider.mockReturnValue(provider);
+
+    const result = await runner.run(createRunnerParams());
+
+    expect(result.success).toBe(true);
+    expect(result.status).toBe('success');
+    expect(result.output).toContain('Task done');
+
+    // Reset mock
+    mockGetActiveProvider.mockReturnValue(null);
+  });
+
+  it('reuses cached provider on subsequent run() calls', async () => {
+    const provider = createMockProvider([
+      {
+        content: 'First run done.',
+        usage: { inputTokens: 100, outputTokens: 50 },
+        stopReason: 'end_turn',
+      },
+      {
+        content: 'Second run done.',
+        usage: { inputTokens: 100, outputTokens: 50 },
+        stopReason: 'end_turn',
+      },
+    ]);
+
+    const runner = new SkillRunner(provider);
+    const result1 = await runner.run(createRunnerParams());
+    const result2 = await runner.run(createRunnerParams());
+
+    expect(result1.success).toBe(true);
+    expect(result2.success).toBe(true);
+    // Provider's chat should have been called twice (once per run)
+    expect(provider.chat).toHaveBeenCalledTimes(2);
   });
 
   // --------------------------------------------------------------------------

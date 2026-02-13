@@ -107,15 +107,11 @@ export type { ParsedOutputs } from './output-parser.js';
 // ============================================================================
 
 export class SkillRunner {
-  private provider: AIProviderInterface;
+  private provider: AIProviderInterface | null;
   private toolExecutor: SkillToolExecutor;
 
-  constructor(provider?: AIProviderInterface) {
-    const active = provider ?? getActiveProvider();
-    if (!active) {
-      throw new Error('No AI provider available — configure AI_PROVIDER env var');
-    }
-    this.provider = active;
+  constructor(provider?: AIProviderInterface | null) {
+    this.provider = provider ?? null;
     this.toolExecutor = new SkillToolExecutor();
   }
 
@@ -131,6 +127,23 @@ export class SkillRunner {
     const {
       manifest, resolvedPrompt, skillId, serverId, userId, executionId,
     } = params;
+
+    // Lazy provider acquisition: try to get provider if not set
+    if (!this.provider) {
+      this.provider = getActiveProvider();
+    }
+    if (!this.provider) {
+      return {
+        success: false,
+        status: 'failed',
+        stepsExecuted: 0,
+        duration: 0,
+        output: '',
+        errors: ['No AI provider available — configure AI_PROVIDER env var or wait for provider to become ready'],
+        toolResults: [],
+      };
+    }
+
     const constraints = manifest.constraints;
     const dryRun = params.dryRun ?? false;
     this.toolExecutor.setDryRun(dryRun);
