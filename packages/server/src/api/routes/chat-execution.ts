@@ -96,11 +96,89 @@ export interface ExecutePlanStepsOptions {
 // Shared execution infrastructure
 // ============================================================================
 
+/** Default TTL for active executions: 30 minutes. */
+export const EXECUTION_TTL_MS = 30 * 60 * 1000;
+
+/** Default sweep interval for expired executions: 5 minutes. */
+export const EXECUTION_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
+
+/** Entry in the active executions map, with creation timestamp for TTL. */
+interface ExecutionEntry {
+  executionId: string;
+  createdAt: number;
+}
+
 /**
- * Tracks active plan executions: `planId → executionId`.
+ * Tracks active plan executions: `planId → ExecutionEntry`.
  * Used by the cancel endpoint to find and stop running executions.
+ * Entries expire after EXECUTION_TTL_MS and are swept periodically.
  */
-const activePlanExecutions = new Map<string, string>();
+const activePlanExecutions = new Map<string, ExecutionEntry>();
+
+/** Periodic sweep timer for expired executions. */
+let executionSweepTimer: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Sweep expired execution entries from the active map.
+ * Entries older than EXECUTION_TTL_MS are removed.
+ */
+export function sweepExpiredExecutions(ttlMs = EXECUTION_TTL_MS): number {
+  const now = Date.now();
+  let swept = 0;
+  for (const [planId, entry] of activePlanExecutions) {
+    if (now - entry.createdAt > ttlMs) {
+      activePlanExecutions.delete(planId);
+      swept++;
+    }
+  }
+  if (swept > 0) {
+    logger.info(
+      { operation: 'execution_sweep', swept, remaining: activePlanExecutions.size },
+      `Swept ${swept} expired execution(s)`,
+    );
+  }
+  return swept;
+}
+
+/**
+ * Start the periodic sweep timer for expired executions.
+ * Uses `.unref()` so it doesn't prevent process exit.
+ */
+export function startExecutionSweep(intervalMs = EXECUTION_SWEEP_INTERVAL_MS): void {
+  stopExecutionSweep();
+  executionSweepTimer = setInterval(() => sweepExpiredExecutions(), intervalMs);
+  executionSweepTimer.unref();
+}
+
+/** Stop the periodic sweep timer. */
+export function stopExecutionSweep(): void {
+  if (executionSweepTimer) {
+    clearInterval(executionSweepTimer);
+    executionSweepTimer = null;
+  }
+}
+
+/**
+ * Graceful shutdown: clear all active executions and stop the sweep timer.
+ * Also clears all pending step decisions.
+ */
+export function shutdownExecutionTracking(): void {
+  stopExecutionSweep();
+  const execCount = activePlanExecutions.size;
+  activePlanExecutions.clear();
+  const decisionCount = pendingDecisions.size;
+  for (const pending of pendingDecisions.values()) {
+    clearTimeout(pending.timer);
+    pending.resolve('reject');
+  }
+  pendingDecisions.clear();
+  if (execCount > 0 || decisionCount > 0) {
+    logger.info(
+      { operation: 'execution_shutdown', executions: execCount, decisions: decisionCount },
+      `Shutdown: cleared ${execCount} execution(s) and ${decisionCount} pending decision(s)`,
+    );
+  }
+}
 
 /**
  * Tracks pending step decisions for the step-confirm flow.
@@ -173,9 +251,10 @@ export function rejectAllPendingDecisions(planId: string): void {
 
 /** Get the active execution ID for a plan, or undefined. */
 export function getActiveExecution(planId: string): string | undefined {
-  const id = activePlanExecutions.get(planId);
+  const entry = activePlanExecutions.get(planId);
+  if (!entry) return undefined;
   // Empty string means execution is tracked but executionId not yet assigned
-  return id || undefined;
+  return entry.executionId || undefined;
 }
 
 /** Check if a plan execution is tracked (even if executionId not yet assigned). */
@@ -188,13 +267,24 @@ export function removeActiveExecution(planId: string): boolean {
   return activePlanExecutions.delete(planId);
 }
 
+/** Get the count of active executions (for monitoring/testing). */
+export function getActiveExecutionCount(): number {
+  return activePlanExecutions.size;
+}
+
 /** @internal Test helper — set an active execution entry directly. */
 export function _setActiveExecution(planId: string, executionId: string): void {
-  activePlanExecutions.set(planId, executionId);
+  activePlanExecutions.set(planId, { executionId, createdAt: Date.now() });
+}
+
+/** @internal Test helper — set an active execution with custom timestamp. */
+export function _setActiveExecutionWithTime(planId: string, executionId: string, createdAt: number): void {
+  activePlanExecutions.set(planId, { executionId, createdAt });
 }
 
 /** @internal Test helper — clear all active executions. */
 export function _resetActiveExecutions(): void {
+  stopExecutionSweep();
   activePlanExecutions.clear();
 }
 
@@ -305,7 +395,7 @@ export async function executePlanSteps(opts: ExecutePlanStepsOptions): Promise<E
   const completedSteps: CompletedStep[] = [];
 
   // Track this plan execution for the cancel endpoint
-  activePlanExecutions.set(planId, '');
+  activePlanExecutions.set(planId, { executionId: '', createdAt: Date.now() });
 
   // Detect client disconnect: set flag when SSE stream is aborted
   let streamAborted = stream.aborted ?? false;
@@ -331,7 +421,10 @@ export async function executePlanSteps(opts: ExecutePlanStepsOptions): Promise<E
 
   // Register a progress listener scoped to this plan execution.
   executor.addProgressListener(planId, (executionId, _status, output) => {
-    activePlanExecutions.set(planId, executionId);
+    const entry = activePlanExecutions.get(planId);
+    if (entry) {
+      entry.executionId = executionId;
+    }
     if (output && currentStepId && !streamAborted) {
       hasStreamedOutput = true;
       stream.writeSSE({ event: 'output', data: JSON.stringify({ stepId: currentStepId, content: output }) })

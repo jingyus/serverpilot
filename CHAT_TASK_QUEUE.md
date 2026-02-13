@@ -3,14 +3,14 @@
 > 此队列专注于 Chat 和 AI 对话系统的质量改进
 > AI 自动发现问题 → 生成任务 → 实现 → 验证
 
-**最后更新**: 2026-02-13 08:12:22
+**最后更新**: 2026-02-13 08:17:08
 
 ## 📊 统计
 
 - **总任务数**: 65
-- **待完成** (pending): 1
+- **待完成** (pending): 0
 - **进行中** (in_progress): 1
-- **已完成** (completed): 63
+- **已完成** (completed): 64
 - **失败** (failed): 0
 
 ## 📋 任务列表
@@ -212,7 +212,7 @@
 
 ---
 
-### [in_progress] Agentic 工具输入验证失败时前端无感知 — 只返回错误给 AI 不发 SSE
+### [completed] Agentic 工具输入验证失败时前端无感知 — 只返回错误给 AI 不发 SSE ✅
 
 **ID**: chat-064
 **优先级**: P2
@@ -222,11 +222,11 @@
 **验收标准**: (1) 工具输入验证失败时前端收到 tool_result 事件; (2) 前端可展示验证错误信息; (3) 日志记录验证失败详情
 **影响范围**: packages/server/src/ai/agentic-chat.ts
 **创建时间**: (自动填充)
-**完成时间**: -
+**完成时间**: 2026-02-13 08:17:08
 
 ---
 
-### [pending] Execute 路由 profileMgr.getProfile 异常未被 SSE 流捕获 — 抛出时流未初始化
+### [in_progress] Execute 路由 profileMgr.getProfile 异常未被 SSE 流捕获 — 抛出时流未初始化
 
 **ID**: chat-065
 **优先级**: P2

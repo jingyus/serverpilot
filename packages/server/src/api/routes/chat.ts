@@ -438,8 +438,21 @@ chat.post('/:serverId/execute', requirePermission('chat:use'), validateBody(Exec
       return;
     }
 
-    const profileMgr = getProfileManager();
-    const serverProfile = await profileMgr.getProfile(serverId, userId);
+    let serverProfile;
+    try {
+      const profileMgr = getProfileManager();
+      serverProfile = await profileMgr.getProfile(serverId, userId);
+    } catch (profileErr) {
+      logger.error(
+        { operation: 'profile_load', serverId, error: profileErr instanceof Error ? profileErr.message : String(profileErr) },
+        'Failed to load server profile for plan execution',
+      );
+      await safeWriteSSE(stream, 'complete', JSON.stringify({
+        success: false,
+        error: 'Failed to load server profile',
+      }));
+      return;
+    }
 
     await executePlanSteps({
       plan, serverId, userId,

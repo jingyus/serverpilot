@@ -35,6 +35,7 @@ const mockEngine = {
   confirmExecution: vi.fn(),
   rejectExecution: vi.fn(),
   listPendingConfirmations: vi.fn(),
+  cancel: vi.fn(),
   start: vi.fn(),
   stop: vi.fn(),
 };
@@ -822,6 +823,84 @@ describe('GET /skills/stats', () => {
 
     const res = await app.request('/skills/stats');
     expect(res.status).toBe(200);
+  });
+});
+
+// ============================================================================
+// POST /skills/executions/:eid/cancel — Cancel a running execution
+// ============================================================================
+
+describe('POST /skills/executions/:eid/cancel', () => {
+  it('should cancel a running execution', async () => {
+    mockEngine.cancel.mockResolvedValue(undefined);
+
+    const res = await app.request('/skills/executions/exec-1/cancel', {
+      method: 'POST',
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(mockEngine.cancel).toHaveBeenCalledWith('exec-1');
+  });
+
+  it('should return 400 for non-existent execution', async () => {
+    mockEngine.cancel.mockRejectedValue(
+      new Error('Execution not found or not running: nonexistent'),
+    );
+
+    const res = await app.request('/skills/executions/nonexistent/cancel', {
+      method: 'POST',
+    });
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.message).toContain('not found or not running');
+  });
+
+  it('should return 400 for already completed execution', async () => {
+    mockEngine.cancel.mockRejectedValue(
+      new Error('Execution not found or not running: exec-done'),
+    );
+
+    const res = await app.request('/skills/executions/exec-done/cancel', {
+      method: 'POST',
+    });
+
+    expect(res.status).toBe(400);
+  });
+
+  it('should propagate unexpected errors as 500', async () => {
+    mockEngine.cancel.mockRejectedValue(new Error('Unexpected internal error'));
+
+    const res = await app.request('/skills/executions/exec-1/cancel', {
+      method: 'POST',
+    });
+
+    expect(res.status).toBe(500);
+  });
+
+  it('should be forbidden for member role (skill:execute)', async () => {
+    mockUserRole = 'member';
+
+    const res = await app.request('/skills/executions/exec-1/cancel', {
+      method: 'POST',
+    });
+
+    expect(res.status).toBe(403);
+  });
+
+  it('should be allowed for admin role', async () => {
+    mockUserRole = 'admin';
+    mockEngine.cancel.mockResolvedValue(undefined);
+
+    const res = await app.request('/skills/executions/exec-1/cancel', {
+      method: 'POST',
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
   });
 });
 

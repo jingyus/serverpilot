@@ -7,8 +7,8 @@
 ## 📊 统计信息
 
 - **总任务数**: 86
-- **待完成** (pending): 6
-- **进行中** (in_progress): 1
+- **待完成** (pending): 5
+- **进行中** (in_progress): 2
 - **已完成** (completed): 79
 - **失败** (failed): 0
 
@@ -85,7 +85,7 @@
 
 ---
 
-### [pending] 内存泄漏防护 — activePlanExecutions 清理 + Session TTL
+### [in_progress] 内存泄漏防护 — activePlanExecutions 清理 + Session TTL
 
 **ID**: task-062
 **优先级**: P1
@@ -1873,4 +1873,4 @@ ID: task-001
 
 ---
 
-**最后更新**: 2026-02-12 06:15:53
+**最后更新**: 2026-02-13 08:14:58

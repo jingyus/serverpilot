@@ -650,6 +650,57 @@ describe('POST /api/v1/chat/:serverId/execute', () => {
     expect(res.status).toBe(400);
   });
 
+  it('should send SSE error when profile loading fails', async () => {
+    const server = await createServer('web-01', tokenA);
+    const sessionMgr = getSessionManager();
+    const session = await sessionMgr.getOrCreate(server.id, USER_A);
+
+    sessionMgr.storePlan(session.id, {
+      planId: 'plan-profile-fail',
+      description: 'Test plan',
+      steps: [
+        {
+          id: 'step-1',
+          description: 'Echo test',
+          command: 'echo hello',
+          riskLevel: 'green',
+          timeout: 30000,
+          canRollback: false,
+        },
+      ],
+      totalRisk: 'green',
+      requiresConfirmation: false,
+    });
+
+    // Override profile manager to throw
+    const { getProfileManager } = await import('../../core/profile/manager.js');
+    vi.mocked(getProfileManager).mockReturnValueOnce({
+      getProfile: vi.fn().mockRejectedValue(new Error('DB connection lost')),
+    } as never);
+
+    const res = await jsonPost(
+      `/api/v1/chat/${server.id}/execute`,
+      { planId: 'plan-profile-fail', sessionId: session.id },
+      tokenA,
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/event-stream');
+
+    const events = await parseSSEEvents(res);
+
+    // Should have a complete event with success: false and error message
+    const completeEvent = events.find(e => e.event === 'complete');
+    expect(completeEvent).toBeDefined();
+    const completeData = JSON.parse(completeEvent!.data);
+    expect(completeData.success).toBe(false);
+    expect(completeData.error).toBe('Failed to load server profile');
+
+    // Should NOT have any step_start events (execution never started)
+    const stepStarts = events.filter(e => e.event === 'step_start');
+    expect(stepStarts).toHaveLength(0);
+  });
+
   it('should stream execution events for a stored plan', async () => {
     const server = await createServer('web-01', tokenA);
     const sessionMgr = getSessionManager();

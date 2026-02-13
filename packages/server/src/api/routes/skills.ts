@@ -337,6 +337,25 @@ skillsRoute.post('/executions/:eid/reject', requirePermission('skill:execute'), 
 });
 
 // ============================================================================
+// POST /skills/executions/:eid/cancel — Cancel a running execution
+// ============================================================================
+
+skillsRoute.post('/executions/:eid/cancel', requirePermission('skill:execute'), async (c) => {
+  const executionId = c.req.param('eid');
+  const engine = getSkillEngine();
+  try {
+    await engine.cancel(executionId);
+    return c.json({ success: true });
+  } catch (err) {
+    const msg = (err as Error).message;
+    if (msg.includes('not found or not running')) {
+      throw ApiError.badRequest(msg);
+    }
+    throw err;
+  }
+});
+
+// ============================================================================
 // GET /skills/executions/:eid/stream — SSE execution progress stream
 // ============================================================================
 
