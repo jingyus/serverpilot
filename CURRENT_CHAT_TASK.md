@@ -1,23 +1,23 @@
-### [pending] 前端长消息列表无虚拟滚动 — 500+ 条消息时滚动性能严重下降
+### [pending] MessageInput 无 Escape 取消流式和 Ctrl+K 搜索快捷键 — 键盘操作效率低
 
-**ID**: chat-076
+**ID**: chat-077
 **优先级**: P2
-**模块路径**: packages/dashboard/src/pages/
-**发现的问题**: `Chat.tsx` 消息列表使用简单的 `messages.map()` 渲染所有消息到 DOM。每条消息包含 `ChatMessage` 组件，assistant 消息还会触发 `MarkdownRenderer`（react-markdown + syntax highlighter）。当会话有 200+ 条消息时：(1) 初始渲染时间线性增长；(2) 每次新消息触发整个列表 re-render；(3) 所有代码块的 syntax highlighting 同时计算。`chat-sessions.ts:42-44` 的 `loadSession` 也一次性加载全部消息无分页。参考 ChatGPT：使用虚拟滚动只渲染可视区域 + 上下缓冲区的消息。
+**模块路径**: packages/dashboard/src/components/chat/
+**发现的问题**: `MessageInput.tsx:40-48` 仅处理 `Enter`/`Shift+Enter` 键盘事件。缺少：(1) `Escape` 键取消流式输出——当前必须用鼠标点击"停止"按钮（行 95-107），频繁使用 Chat 时效率低下；(2) 无任何全局快捷键支持。对比 Claude.ai：Escape 取消生成，`/` 聚焦输入框。当前 `onCancel` prop 已存在（行 13），只需在 keydown 事件中调用即可。
 **改进方案**:
-1. 引入 `react-virtuoso` 库实现虚拟滚动（专为 chat UI 设计，支持反向滚动和动态高度）
-2. 替换 `messages.map()` 为 `<Virtuoso data={messages} itemContent={renderMessage} />`
-3. 保留现有自动滚动逻辑（Virtuoso 内置 `followOutput` prop）
-4. ChatMessage 组件添加 `React.memo` 避免不必要的 re-render
+1. 在 `handleKeyDown` 中添加 `Escape` 处理：当 `isStreaming` 时调用 `onCancel()`
+2. 添加全局 keydown listener（在 Chat.tsx 中）：
+   - `Escape`：取消流式 / 关闭确认对话框
+   - `/`：聚焦输入框（当前无焦点在输入框时）
+3. 添加 `aria-keyshortcuts` 属性提升可访问性
 **验收标准**:
-- 500 条消息的会话加载和滚动流畅（FPS > 30）
-- 自动滚动到底部行为不变
-- 流式消息输出时滚动平滑
-- 现有 Chat.test.tsx 测试通过
+- 按 Escape 可取消正在进行的流式输出
+- 快捷键不与系统/浏览器快捷键冲突
+- 添加 testid + 键盘事件测试
 **影响范围**:
-- `packages/dashboard/src/pages/Chat.tsx` — 消息列表虚拟化
-- `packages/dashboard/src/components/chat/ChatMessage.tsx` — 添加 React.memo
-- `packages/dashboard/package.json` — 添加 react-virtuoso 依赖
+- `packages/dashboard/src/components/chat/MessageInput.tsx` — Escape 键处理
+- `packages/dashboard/src/pages/Chat.tsx` — 全局快捷键 listener
+- `packages/dashboard/src/components/chat/MessageInput.test.tsx` — 新增测试
 **创建时间**: 2026-02-13
 **完成时间**: -
 

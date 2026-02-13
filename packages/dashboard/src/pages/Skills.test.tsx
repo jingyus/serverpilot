@@ -119,6 +119,10 @@ function setupStore(
     fetchPendingConfirmations: vi.fn().mockResolvedValue(undefined),
     confirmExecution: vi.fn().mockResolvedValue({ executionId: 'exec-p1', status: 'success', stepsExecuted: 1, duration: 100, result: null, errors: [] }),
     rejectExecution: vi.fn().mockResolvedValue(undefined),
+    dryRunSkill: vi.fn().mockResolvedValue({ executionId: 'exec-dry-1', status: 'success', stepsExecuted: 0, duration: 800, result: { output: 'Step 1: shell — apt update' }, errors: [] }),
+    clearDryRunResult: vi.fn(),
+    dryRunResult: null,
+    isDryRunning: false,
     startExecutionStream: vi.fn(),
     stopExecutionStream: vi.fn(),
     clearError: vi.fn(),
@@ -657,5 +661,122 @@ describe('Skills Page', () => {
     setupStore({ fetchStats });
     renderSkills();
     expect(fetchStats).toHaveBeenCalled();
+  });
+
+  // --------------------------------------------------------------------------
+  // Dry-Run Preview Flow
+  // --------------------------------------------------------------------------
+
+  it('should show preview button in execute dialog and call dryRunSkill on click', async () => {
+    const dryRunSkill = vi.fn().mockResolvedValue({
+      executionId: 'exec-dry-1', status: 'success', stepsExecuted: 0,
+      duration: 800, result: { output: 'Step 1: shell — apt update' }, errors: [],
+    });
+    setupStore({ dryRunSkill });
+    const user = userEvent.setup();
+    renderSkills();
+
+    // Open execute dialog
+    const executeButtons = screen.getAllByTitle('Execute');
+    await user.click(executeButtons[0]);
+
+    // Select a server
+    await user.selectOptions(screen.getByTestId('exec-server-select'), 'srv-1');
+
+    // Click Preview button
+    const previewBtn = screen.getByTestId('preview-btn');
+    expect(previewBtn).toBeInTheDocument();
+    await user.click(previewBtn);
+
+    expect(dryRunSkill).toHaveBeenCalledWith('sk-1', 'srv-1');
+  });
+
+  it('should disable preview button when no server is selected', async () => {
+    setupStore();
+    const user = userEvent.setup();
+    renderSkills();
+
+    const executeButtons = screen.getAllByTitle('Execute');
+    await user.click(executeButtons[0]);
+
+    const previewBtn = screen.getByTestId('preview-btn');
+    expect(previewBtn).toBeDisabled();
+  });
+
+  it('should display dry-run result panel after preview completes', async () => {
+    const dryRunResult = {
+      executionId: 'exec-dry-1', status: 'success' as const, stepsExecuted: 0,
+      duration: 800, result: { output: 'Step 1: shell — apt update\nStep 2: shell — apt upgrade' }, errors: [],
+    };
+    setupStore({ dryRunResult });
+    const user = userEvent.setup();
+    renderSkills();
+
+    // Open execute dialog
+    const executeButtons = screen.getAllByTitle('Execute');
+    await user.click(executeButtons[0]);
+
+    // Dry-run result should be visible
+    expect(screen.getByTestId('dry-run-result')).toBeInTheDocument();
+    expect(screen.getByTestId('dry-run-badge')).toHaveTextContent('DRY RUN');
+    expect(screen.getByTestId('dry-run-output')).toHaveTextContent('Step 1: shell — apt update');
+  });
+
+  it('should allow execution after previewing dry-run result', async () => {
+    const dryRunResult = {
+      executionId: 'exec-dry-1', status: 'success' as const, stepsExecuted: 0,
+      duration: 800, result: { output: 'Step 1: shell — apt update' }, errors: [],
+    };
+    const executeSkill = vi.fn().mockResolvedValue({
+      executionId: 'exec-real-1', status: 'success', stepsExecuted: 2,
+      duration: 1500, result: null, errors: [],
+    });
+    setupStore({ dryRunResult, executeSkill });
+    const user = userEvent.setup();
+    renderSkills();
+
+    // Open execute dialog
+    const executeButtons = screen.getAllByTitle('Execute');
+    await user.click(executeButtons[0]);
+
+    // Dry-run result is displayed — select server and execute
+    await user.selectOptions(screen.getByTestId('exec-server-select'), 'srv-1');
+    await user.click(screen.getByRole('button', { name: 'Execute' }));
+
+    expect(executeSkill).toHaveBeenCalledWith('sk-1', 'srv-1', undefined, undefined);
+  });
+
+  it('should clear dry-run result when closing execute dialog', async () => {
+    const clearDryRunResult = vi.fn();
+    const dryRunResult = {
+      executionId: 'exec-dry-1', status: 'success' as const, stepsExecuted: 0,
+      duration: 800, result: { output: 'Step 1: shell — apt update' }, errors: [],
+    };
+    setupStore({ dryRunResult, clearDryRunResult });
+    const user = userEvent.setup();
+    renderSkills();
+
+    // Open execute dialog
+    const executeButtons = screen.getAllByTitle('Execute');
+    await user.click(executeButtons[0]);
+
+    // Close dialog
+    await user.click(screen.getByText('Cancel'));
+
+    expect(clearDryRunResult).toHaveBeenCalled();
+  });
+
+  it('should show previewing loading state when isDryRunning is true', async () => {
+    setupStore({ isDryRunning: true });
+    const user = userEvent.setup();
+    renderSkills();
+
+    // Open execute dialog
+    const executeButtons = screen.getAllByTitle('Execute');
+    await user.click(executeButtons[0]);
+
+    const previewBtn = screen.getByTestId('preview-btn');
+    expect(previewBtn).toBeDisabled();
+    expect(previewBtn).toHaveTextContent('Previewing...');
   });
 });

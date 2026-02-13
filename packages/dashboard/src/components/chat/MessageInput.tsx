@@ -39,12 +39,17 @@ export function MessageInput({
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key === 'Escape' && isStreaming) {
+        e.preventDefault();
+        onCancel();
+        return;
+      }
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         handleSend();
       }
     },
-    [handleSend]
+    [handleSend, isStreaming, onCancel]
   );
 
   const handleInput = useCallback(
@@ -72,6 +77,7 @@ export function MessageInput({
             placeholder="Type your message..."
             disabled={disabled}
             rows={1}
+            aria-keyshortcuts="Enter Escape"
             className={cn(
               'w-full resize-none rounded-lg border bg-background px-3 py-2.5 pr-14 text-sm sm:px-4 sm:py-3 sm:pr-16',
               'placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring',
