@@ -13,6 +13,7 @@ export const PACKAGE_VERSION = '0.1.0';
 export * from './protocol/messages.js';
 export * from './protocol/types.js';
 export * from './protocol/schemas.js';
+export * from './protocol/version.js';
 
 // Security exports
 export * from './security/index.js';

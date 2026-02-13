@@ -15,7 +15,7 @@
 import { InstallClient } from './client.js';
 import type { InstallClientOptions } from './client.js';
 import type { AuthResponseMessage } from '@aiinstaller/shared';
-import { MessageType, createMessageLite as createMessage } from './protocol-lite.js';
+import { MessageType, createMessageLite as createMessage, PROTOCOL_VERSION } from './protocol-lite.js';
 import { getOrCreateDeviceFingerprint, updateDeviceToken } from './detect/device-fingerprint.js';
 import type { DeviceAuthInfo } from './detect/device-fingerprint.js';
 import os from 'node:os';
@@ -159,6 +159,7 @@ export class AuthenticatedClient extends InstallClient {
         {
           deviceId: this._serverId,
           deviceToken: this._agentToken,
+          protocolVersion: PROTOCOL_VERSION,
           platform: deviceInfo.platform,
           osVersion: os.release(),
           architecture: deviceInfo.arch,
@@ -186,6 +187,7 @@ export class AuthenticatedClient extends InstallClient {
       {
         deviceId: deviceInfo.deviceId,
         deviceToken: deviceInfo.deviceToken,
+        protocolVersion: PROTOCOL_VERSION,
         platform: deviceInfo.platform,
         osVersion: os.release(),
         architecture: deviceInfo.arch,

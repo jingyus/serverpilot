@@ -13,7 +13,7 @@
  */
 
 import type { AuthRequestMessage, AuthResponseMessage } from '@aiinstaller/shared';
-import { MessageType } from '@aiinstaller/shared';
+import { MessageType, PROTOCOL_VERSION, checkVersionCompatibility } from '@aiinstaller/shared';
 import { eq, and } from 'drizzle-orm';
 import { DeviceClient } from './device-client.js';
 import { logger } from '../utils/logger.js';
@@ -232,18 +232,26 @@ export async function authenticateDevice(
 /**
  * Create an authentication response message.
  *
+ * Includes the server's protocol version and optional version check result
+ * so the agent can detect compatibility issues.
+ *
  * @param authResult - Authentication result
  * @param requestId - Optional request ID for matching
+ * @param agentProtocolVersion - Protocol version reported by the agent (may be undefined for legacy agents)
  * @returns Authentication response message
  */
 export function createAuthResponse(
   authResult: AuthResult,
-  requestId?: string
+  requestId?: string,
+  agentProtocolVersion?: string,
 ): AuthResponseMessage {
+  const versionCheck = checkVersionCompatibility(agentProtocolVersion);
+
   return {
     type: MessageType.AUTH_RESPONSE,
     payload: {
       success: authResult.success,
+      protocolVersion: PROTOCOL_VERSION,
       deviceToken: authResult.deviceToken,
       quotaLimit: authResult.quota?.limit,
       quotaUsed: authResult.quota?.used,
@@ -252,6 +260,7 @@ export function createAuthResponse(
       error: authResult.error,
       banned: authResult.banned,
       banReason: authResult.banReason,
+      versionCheck,
     },
     timestamp: Date.now(),
     ...(requestId ? { requestId } : {}),

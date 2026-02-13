@@ -22,7 +22,7 @@ import type {
   Message,
   ErrorContext,
 } from '@aiinstaller/shared';
-import { MessageType, createMessage, SessionStatus } from '@aiinstaller/shared';
+import { MessageType, createMessage, SessionStatus, PROTOCOL_VERSION, checkVersionCompatibility } from '@aiinstaller/shared';
 import type { InstallAIAgent } from '../ai/agent.js';
 import { generateInstallPlan, generateFallbackPlan } from '../ai/planner.js';
 import { diagnoseError } from '../ai/error-analyzer.js';
@@ -76,6 +76,8 @@ export async function handleAuthRequest(
       deviceId: message.payload.deviceId,
     });
 
+    const agentProtocolVersion = message.payload.protocolVersion;
+
     logMessageRoute('auth.request', {
       requestId,
       clientId,
@@ -83,13 +85,52 @@ export async function handleAuthRequest(
       deviceId: message.payload.deviceId,
       hasToken: !!message.payload.deviceToken,
       platform: message.payload.platform,
+      protocolVersion: agentProtocolVersion ?? 'none',
     });
+
+    // Check protocol version compatibility
+    const versionCheck = checkVersionCompatibility(agentProtocolVersion);
+    if (!versionCheck.compatible) {
+      logger.warn({
+        agentVersion: agentProtocolVersion,
+        serverVersion: PROTOCOL_VERSION,
+        severity: versionCheck.severity,
+      }, `Protocol version incompatible: ${versionCheck.message}`);
+
+      // Reject with version mismatch error
+      const rejectResponse = createAuthResponse(
+        {
+          success: false,
+          error: versionCheck.message,
+        },
+        requestId,
+        agentProtocolVersion,
+      );
+      server.send(clientId, rejectResponse);
+
+      // Close connection after sending error
+      setTimeout(() => {
+        const client = server['clients'].get(clientId);
+        if (client) {
+          client.ws.close(4010, 'Protocol version incompatible');
+        }
+      }, 100);
+
+      return { success: true };
+    }
+
+    if (versionCheck.severity === 'warn') {
+      logger.warn({
+        agentVersion: agentProtocolVersion ?? 'none',
+        serverVersion: PROTOCOL_VERSION,
+      }, `Protocol version warning: ${versionCheck.message}`);
+    }
 
     // Authenticate the device
     const authResult = await authenticateDevice(message);
 
-    // Send authentication response
-    const response = createAuthResponse(authResult, requestId);
+    // Send authentication response (includes version check result)
+    const response = createAuthResponse(authResult, requestId, agentProtocolVersion);
     server.send(clientId, response);
 
     // If authentication succeeded, mark client as authenticated

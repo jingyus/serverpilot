@@ -12,6 +12,12 @@
  * checks are performed on incoming data.
  */
 
+/**
+ * Protocol version — must stay in sync with @aiinstaller/shared PROTOCOL_VERSION.
+ * Agent reports this during auth so the server can check compatibility.
+ */
+export const PROTOCOL_VERSION = '1.0.0';
+
 // Re-define MessageType locally to avoid importing from @aiinstaller/shared
 // (which would pull in Zod via barrel exports).
 

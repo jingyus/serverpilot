@@ -12,7 +12,7 @@ import {
   createAuthTimeout,
 } from './auth-handler.js';
 import type { AuthRequestMessage } from '@aiinstaller/shared';
-import { MessageType } from '@aiinstaller/shared';
+import { MessageType, PROTOCOL_VERSION } from '@aiinstaller/shared';
 import { DeviceClient } from './device-client.js';
 
 // Mock DeviceClient
@@ -325,5 +325,68 @@ describe('auth-handler', () => {
       expect(elapsed).toBeGreaterThanOrEqual(200);
       expect(elapsed).toBeLessThan(300);
     }, 1000);
+  });
+
+  describe('createAuthResponse — version negotiation', () => {
+    it('should include server protocolVersion in response', () => {
+      const response = createAuthResponse({ success: true, deviceToken: 'tok' });
+      expect(response.payload.protocolVersion).toBe(PROTOCOL_VERSION);
+    });
+
+    it('should include versionCheck for matching agent version', () => {
+      const response = createAuthResponse(
+        { success: true, deviceToken: 'tok' },
+        'req-1',
+        '1.0.0',
+      );
+      expect(response.payload.versionCheck).toBeDefined();
+      expect(response.payload.versionCheck!.compatible).toBe(true);
+      expect(response.payload.versionCheck!.severity).toBe('ok');
+    });
+
+    it('should include versionCheck warn for legacy agent (no version)', () => {
+      const response = createAuthResponse(
+        { success: true, deviceToken: 'tok' },
+        'req-2',
+        undefined,
+      );
+      expect(response.payload.versionCheck).toBeDefined();
+      expect(response.payload.versionCheck!.compatible).toBe(true);
+      expect(response.payload.versionCheck!.severity).toBe('warn');
+      expect(response.payload.versionCheck!.message).toContain('legacy');
+    });
+
+    it('should include versionCheck error for incompatible major version', () => {
+      const response = createAuthResponse(
+        { success: false, error: 'version mismatch' },
+        'req-3',
+        '2.0.0',
+      );
+      expect(response.payload.versionCheck).toBeDefined();
+      expect(response.payload.versionCheck!.compatible).toBe(false);
+      expect(response.payload.versionCheck!.severity).toBe('error');
+    });
+
+    it('should include versionCheck error when agent minor exceeds server', () => {
+      const response = createAuthResponse(
+        { success: false, error: 'version mismatch' },
+        'req-4',
+        '1.5.0',
+      );
+      expect(response.payload.versionCheck).toBeDefined();
+      expect(response.payload.versionCheck!.compatible).toBe(false);
+      expect(response.payload.versionCheck!.severity).toBe('error');
+    });
+
+    it('should include versionCheck warn for invalid agent version format', () => {
+      const response = createAuthResponse(
+        { success: true, deviceToken: 'tok' },
+        'req-5',
+        'garbage',
+      );
+      expect(response.payload.versionCheck).toBeDefined();
+      expect(response.payload.versionCheck!.compatible).toBe(true);
+      expect(response.payload.versionCheck!.severity).toBe('warn');
+    });
   });
 });

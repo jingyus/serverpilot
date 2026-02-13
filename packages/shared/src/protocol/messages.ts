@@ -224,6 +224,7 @@ export const AuthRequestMessageSchema = z.object({
   payload: z.object({
     deviceId: z.string(),
     deviceToken: z.string().optional(),
+    protocolVersion: z.string().optional(),
     platform: z.string(),
     osVersion: z.string().optional(),
     architecture: z.string().optional(),
@@ -240,6 +241,7 @@ export const AuthResponseMessageSchema = z.object({
   type: z.literal(MessageType.AUTH_RESPONSE),
   payload: z.object({
     success: z.boolean(),
+    protocolVersion: z.string().optional(),
     deviceToken: z.string().optional(),
     quotaLimit: z.number().optional(),
     quotaUsed: z.number().optional(),
@@ -248,6 +250,11 @@ export const AuthResponseMessageSchema = z.object({
     error: z.string().optional(),
     banned: z.boolean().optional(),
     banReason: z.string().optional(),
+    versionCheck: z.object({
+      compatible: z.boolean(),
+      severity: z.enum(['ok', 'warn', 'error']),
+      message: z.string(),
+    }).optional(),
   }),
   timestamp: z.number(),
   requestId: z.string().optional(),
