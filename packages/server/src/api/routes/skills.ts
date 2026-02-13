@@ -18,6 +18,7 @@ import {
   ConfigureSkillBodySchema,
   UpdateSkillStatusBodySchema,
   ExecuteSkillBodySchema,
+  DryRunSkillBodySchema,
   SkillExecutionQuerySchema,
 } from './schemas.js';
 import { validateBody, validateQuery } from '../middleware/validate.js';
@@ -33,6 +34,7 @@ import type {
   ConfigureSkillBody,
   UpdateSkillStatusBody,
   ExecuteSkillBody,
+  DryRunSkillBody,
   SkillExecutionQuery,
 } from './schemas.js';
 import type { ApiEnv } from './types.js';
@@ -243,6 +245,38 @@ skillsRoute.post('/:id/execute', requirePermission('skill:execute'), validateBod
       dryRun: body.dryRun,
     });
     return c.json({ execution: result, ...(body.dryRun ? { dryRun: true } : {}) });
+  } catch (err) {
+    const msg = (err as Error).message;
+    if (msg.includes('not found')) {
+      throw ApiError.notFound('Skill');
+    }
+    if (msg.includes('not enabled')) {
+      throw ApiError.badRequest(msg);
+    }
+    throw err;
+  }
+});
+
+// ============================================================================
+// POST /skills/:id/dry-run — Preview execution plan without side effects
+// ============================================================================
+
+skillsRoute.post('/:id/dry-run', requirePermission('skill:execute'), validateBody(DryRunSkillBodySchema), async (c) => {
+  const skillId = c.req.param('id');
+  const userId = c.get('userId');
+  const body = c.get('validatedBody') as DryRunSkillBody;
+  const engine = getSkillEngine();
+
+  try {
+    const result = await engine.execute({
+      skillId,
+      serverId: body.serverId,
+      userId,
+      triggerType: 'manual',
+      config: body.config,
+      dryRun: true,
+    });
+    return c.json({ execution: result, dryRun: true });
   } catch (err) {
     const msg = (err as Error).message;
     if (msg.includes('not found')) {

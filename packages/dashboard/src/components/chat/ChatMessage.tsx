@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { useState, useCallback } from 'react';
+import { useState, useCallback, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Bot, User, Info, RotateCcw, Copy, Check, RefreshCw } from 'lucide-react';
 
@@ -41,7 +41,7 @@ const ROLE_CONFIG = {
   },
 };
 
-export function ChatMessage({ message, failed, onRetry, isLastAssistant, onRegenerate }: ChatMessageProps) {
+export const ChatMessage = memo(function ChatMessage({ message, failed, onRetry, isLastAssistant, onRegenerate }: ChatMessageProps) {
   const { t } = useTranslation();
   const config = ROLE_CONFIG[message.role];
   const Icon = config.icon;
@@ -123,7 +123,7 @@ export function ChatMessage({ message, failed, onRetry, isLastAssistant, onRegen
       )}
     </div>
   );
-}
+});
 
 function MessageActions({
   content,

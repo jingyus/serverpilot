@@ -17,6 +17,9 @@ i18n.use(initReactI18next).init({
   interpolation: { escapeValue: false },
 });
 
+// Mock scrollIntoView for jsdom (not implemented in jsdom)
+Element.prototype.scrollIntoView = Element.prototype.scrollIntoView || (() => {});
+
 // Mock window.matchMedia for jsdom
 Object.defineProperty(window, 'matchMedia', {
   writable: true,

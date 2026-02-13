@@ -3,6 +3,7 @@
 import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams, useNavigate } from 'react-router-dom';
+import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
 import {
   Bot,
   Loader2,
@@ -31,6 +32,7 @@ export function Chat() {
   const { t } = useTranslation();
   const { serverId } = useParams<{ serverId: string }>();
   const navigate = useNavigate();
+  const virtuosoRef = useRef<VirtuosoHandle>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -92,52 +94,31 @@ export function Chat() {
     return () => cleanup();
   }, [cleanup]);
 
-  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
-    if (typeof messagesEndRef.current?.scrollIntoView === 'function') {
-      messagesEndRef.current.scrollIntoView({ behavior });
-    }
-  }, []);
-
-  // Throttled instant scroll for streaming — avoids animation pile-up
-  const throttledStreamScroll = useMemo(() => {
-    let lastCall = 0;
-    let pending: ReturnType<typeof setTimeout> | null = null;
-    const THROTTLE_MS = 100;
-
-    const fn = (scrollFn: (behavior: ScrollBehavior) => void) => {
-      const now = Date.now();
-      if (now - lastCall >= THROTTLE_MS) {
-        lastCall = now;
-        scrollFn('auto');
-      } else if (!pending) {
-        pending = setTimeout(() => {
-          pending = null;
-          lastCall = Date.now();
-          scrollFn('auto');
-        }, THROTTLE_MS - (now - lastCall));
-      }
-    };
-    fn.cancel = () => {
-      if (pending) {
-        clearTimeout(pending);
-        pending = null;
-      }
-    };
-    return fn;
-  }, []);
-
-  // Smooth scroll on new messages
+  // Scroll to bottom when messages change (smooth for new messages)
   useEffect(() => {
-    scrollToBottom('smooth');
-  }, [messages.length, scrollToBottom]);
+    const el = messagesEndRef.current;
+    if (el?.scrollIntoView) el.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
-  // Throttled instant scroll during streaming
+  // Throttled auto-scroll during streaming content updates
+  const lastScrollTime = useRef(0);
   useEffect(() => {
-    if (streamingContent) {
-      throttledStreamScroll(scrollToBottom);
+    if (!isStreaming || !streamingContent) return;
+    const el = messagesEndRef.current;
+    if (!el?.scrollIntoView) return;
+    const now = Date.now();
+    const elapsed = now - lastScrollTime.current;
+    if (elapsed >= 100) {
+      el.scrollIntoView({ behavior: 'auto' });
+      lastScrollTime.current = now;
+    } else {
+      const timer = setTimeout(() => {
+        el.scrollIntoView({ behavior: 'auto' });
+        lastScrollTime.current = Date.now();
+      }, 100 - elapsed);
+      return () => clearTimeout(timer);
     }
-    return () => throttledStreamScroll.cancel();
-  }, [streamingContent, scrollToBottom, throttledStreamScroll]);
+  }, [isStreaming, streamingContent]);
 
   const prevPlanStatus = useRef(planStatus);
   useEffect(() => {

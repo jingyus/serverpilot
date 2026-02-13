@@ -1,25 +1,23 @@
-### [pending] 后端 session API 无重命名端点 — 缺少 PATCH /sessions/:id 支持前端会话重命名
+### [pending] 前端长消息列表无虚拟滚动 — 500+ 条消息时滚动性能严重下降
 
-**ID**: chat-075
+**ID**: chat-076
 **优先级**: P2
-**模块路径**: packages/server/src/api/routes/
-**发现的问题**: `chat.ts:511-560` 定义了 sessions 的 GET（列表）、GET（详情）、DELETE 端点，但缺少 PATCH/PUT 端点用于更新会话元数据（标题/名称）。`SessionManager` 和底层 `SessionRepository` 也无 `updateSession` 或 `renameSession` 方法。sessions 数据库表（`chat_sessions`）是否有 `title` 列需确认。此为前端会话重命名功能（chat-074）的后端依赖。
+**模块路径**: packages/dashboard/src/pages/
+**发现的问题**: `Chat.tsx` 消息列表使用简单的 `messages.map()` 渲染所有消息到 DOM。每条消息包含 `ChatMessage` 组件，assistant 消息还会触发 `MarkdownRenderer`（react-markdown + syntax highlighter）。当会话有 200+ 条消息时：(1) 初始渲染时间线性增长；(2) 每次新消息触发整个列表 re-render；(3) 所有代码块的 syntax highlighting 同时计算。`chat-sessions.ts:42-44` 的 `loadSession` 也一次性加载全部消息无分页。参考 ChatGPT：使用虚拟滚动只渲染可视区域 + 上下缓冲区的消息。
 **改进方案**:
-1. 数据库层：确认 `chat_sessions` 表有 `title` 列，如无则添加 migration
-2. `SessionRepository` 添加 `updateTitle(sessionId, userId, title)` 方法
-3. `SessionManager` 添加 `renameSession(sessionId, userId, title)` 方法
-4. 添加 `PATCH /chat/:serverId/sessions/:sessionId` 路由，body: `{ title: string }`
-5. Zod schema 验证 title 长度（1-100 字符）
+1. 引入 `react-virtuoso` 库实现虚拟滚动（专为 chat UI 设计，支持反向滚动和动态高度）
+2. 替换 `messages.map()` 为 `<Virtuoso data={messages} itemContent={renderMessage} />`
+3. 保留现有自动滚动逻辑（Virtuoso 内置 `followOutput` prop）
+4. ChatMessage 组件添加 `React.memo` 避免不必要的 re-render
 **验收标准**:
-- PATCH 端点正常工作，返回 `{ success: true }`
-- 标题持久化到数据库
-- 权限检查：只能重命名自己的会话
-- listSessions 返回值包含 title 字段
-- 路由测试覆盖
+- 500 条消息的会话加载和滚动流畅（FPS > 30）
+- 自动滚动到底部行为不变
+- 流式消息输出时滚动平滑
+- 现有 Chat.test.tsx 测试通过
 **影响范围**:
-- `packages/server/src/api/routes/chat.ts` — 新增 PATCH 路由
-- `packages/server/src/core/session/manager.ts` — 新增 renameSession
-- `packages/server/tests/api/routes/chat.test.ts` — 新增测试
+- `packages/dashboard/src/pages/Chat.tsx` — 消息列表虚拟化
+- `packages/dashboard/src/components/chat/ChatMessage.tsx` — 添加 React.memo
+- `packages/dashboard/package.json` — 添加 react-virtuoso 依赖
 **创建时间**: 2026-02-13
 **完成时间**: -
 
