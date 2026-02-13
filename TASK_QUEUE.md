@@ -7,8 +7,8 @@
 ## 📊 统计信息
 
 - **总任务数**: 116
-- **待完成** (pending): 2
-- **进行中** (in_progress): 0
+- **待完成** (pending): 1
+- **进行中** (in_progress): 1
 - **已完成** (completed): 114
 - **失败** (failed): 0
 
@@ -121,7 +121,7 @@
 
 ---
 
-### [pending] Server 端 Husky Pre-commit 钩子配置
+### [in_progress] Server 端 Husky Pre-commit 钩子配置
 
 **ID**: task-068
 **优先级**: P1
@@ -2354,4 +2354,4 @@ ID: task-001
 
 ---
 
-**最后更新**: 2026-02-13 14:56:40
+**最后更新**: 2026-02-13 14:57:13
