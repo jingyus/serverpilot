@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
-import { useChatStore } from './chat';
+import { useChatStore, stripJsonPlan } from './chat';
 
 vi.mock('@/api/client', () => ({
   apiRequest: vi.fn(),
@@ -854,5 +854,28 @@ describe('useChatStore', () => {
 
       expect(apiRequest).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('stripJsonPlan', () => {
+  it('returns empty string for null input', () => {
+    expect(stripJsonPlan(null as unknown as string)).toBe('');
+  });
+
+  it('returns empty string for undefined input', () => {
+    expect(stripJsonPlan(undefined as unknown as string)).toBe('');
+  });
+
+  it('returns empty string for empty string input', () => {
+    expect(stripJsonPlan('')).toBe('');
+  });
+
+  it('strips json-plan blocks from normal text', () => {
+    const input = 'Hello\n```json-plan\n{"steps":[]}\n```\nWorld';
+    expect(stripJsonPlan(input)).toBe('Hello\n\nWorld');
+  });
+
+  it('returns plain text as-is', () => {
+    expect(stripJsonPlan('Just normal text')).toBe('Just normal text');
   });
 });
