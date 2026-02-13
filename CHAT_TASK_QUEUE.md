@@ -3,13 +3,13 @@
 > 此队列专注于 Chat 和 AI 对话系统的质量改进
 > AI 自动发现问题 → 生成任务 → 实现 → 验证
 
-**最后更新**: 2026-02-13 12:04:40
+**最后更新**: 2026-02-13 12:05:12
 
 ## 📊 统计
 
 - **总任务数**: 80
-- **待完成** (pending): 1
-- **进行中** (in_progress): 0
+- **待完成** (pending): 0
+- **进行中** (in_progress): 1
 - **已完成** (completed): 79
 - **失败** (failed): 0
 
@@ -367,7 +367,7 @@
 
 ---
 
-### [pending] Agentic 确认超时 resolve(false) 与用户 confirm 请求的 TOCTOU 竞态 — 用户批准被忽略
+### [in_progress] Agentic 确认超时 resolve(false) 与用户 confirm 请求的 TOCTOU 竞态 — 用户批准被忽略
 
 **ID**: chat-080
 **优先级**: P3

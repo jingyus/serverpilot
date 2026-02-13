@@ -1,24 +1,20 @@
-### [pending] SessionSidebar 无历史会话搜索 — 会话多时无法快速定位目标对话
+### [pending] Agentic 确认超时 resolve(false) 与用户 confirm 请求的 TOCTOU 竞态 — 用户批准被忽略
 
-**ID**: chat-079
+**ID**: chat-080
 **优先级**: P3
-**模块路径**: packages/dashboard/src/components/chat/
-**发现的问题**: `SessionSidebar.tsx` 整个组件无搜索/过滤功能。会话列表按日期分组（today/yesterday/thisWeek/older），但当用户积累 50+ 会话后，只能逐个展开分组查找。每个 session 仅显示 `lastMessage` 截断预览（行 112-113），无法按消息内容、命令、服务器等维度搜索。对比 ChatGPT 和 Claude.ai 的侧边栏都有搜索框支持全文搜索。
+**模块路径**: packages/server/src/api/routes/
+**发现的问题**: `chat.ts:192-198` 的确认超时回调和 `chat.ts:387-394` 的用户确认端点之间存在 TOCTOU（Time-of-Check-Time-of-Use）竞态：(1) 超时定时器触发（行 193），执行 `pendingConfirmations.delete(confirmId)` + `resolve(false)`；(2) 几乎同时，用户点击"批准"，confirm 端点检查 `pendingConfirmations.get(body.confirmId)`（行 387）；(3) 如果 delete 在 get 之前执行，用户收到 404 "No pending confirmation found"——但超时已 resolve(false) 导致命令被拒绝。由于 Promise 只 resolve 一次，如果 get 在 delete 之前执行（取到了 entry），clearTimeout 和 resolve(true) 都正常。但第一种时序下用户体验很差——刚好在超时边界点击批准被拒绝且收到错误。
 **改进方案**:
-1. 在 SessionSidebar 顶部（行 71 后）添加搜索输入框
-2. 搜索逻辑：客户端过滤 `sessions` 数组，匹配 `lastMessage` 和 `title`（如果有）
-3. 搜索使用 debounce（300ms）避免频繁过滤
-4. 匹配结果高亮显示关键词
-5. 无匹配时显示空状态提示
+1. 在 confirm 端点增加一个短暂的宽限期检查：如果 confirmId 不在 Map 中，检查是否在 1 秒内刚被超时清除（用一个 `recentlyExpired: Set<confirmId>` 追踪）
+2. 如果是刚过期的确认，返回 `{ success: false, message: 'Confirmation expired', expired: true }` 而非 404
+3. 前端根据 `expired: true` 显示"确认已超时"而非"未找到确认"
 **验收标准**:
-- 搜索框输入后实时过滤会话列表
-- 支持中英文搜索
-- 清空搜索恢复完整列表
-- data-testid + 测试覆盖
+- 超时边界点击确认返回友好的过期提示（非 404）
+- recentlyExpired 条目 10 秒后自动清理
+- 正常流程不受影响
+- 新增测试覆盖竞态场景
 **影响范围**:
-- `packages/dashboard/src/components/chat/SessionSidebar.tsx` — 添加搜索 UI + 过滤逻辑
-- `packages/dashboard/src/components/chat/SessionSidebar.test.tsx` — 新增测试
+- `packages/server/src/api/routes/chat.ts` — confirm 端点 + recentlyExpired 追踪
+- `packages/server/tests/api/routes/chat.test.ts` — 新增测试
 **创建时间**: 2026-02-13
 **完成时间**: -
-
----
