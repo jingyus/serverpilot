@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, act } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { Chat } from './Chat';
 import { useChatStore } from '@/stores/chat';
@@ -26,6 +26,32 @@ vi.mock('@/api/sse', () => ({
     controller: new AbortController(),
   })),
 }));
+
+// Mock react-virtuoso: Virtuoso doesn't work in jsdom (no layout engine).
+// Render all items directly so tests can query them.
+vi.mock('react-virtuoso', () => {
+  const React = require('react');
+  return {
+    Virtuoso: React.forwardRef(function MockVirtuoso(
+      props: {
+        data?: unknown[];
+        itemContent?: (index: number, item: unknown) => React.ReactNode;
+        components?: { Footer?: () => React.ReactNode };
+        className?: string;
+      },
+      _ref: unknown,
+    ) {
+      const { data = [], itemContent, components } = props;
+      const Footer = components?.Footer;
+      return React.createElement('div', { 'data-testid': 'virtuoso-scroller' },
+        data.map((item: unknown, index: number) =>
+          React.createElement('div', { key: index }, itemContent?.(index, item))
+        ),
+        Footer ? React.createElement(Footer) : null,
+      );
+    }),
+  };
+});
 
 function renderChat(path = '/chat') {
   return render(
@@ -229,6 +255,21 @@ describe('Chat Page', () => {
       renderChat('/chat/srv-1');
       expect(screen.getByText('Hello AI')).toBeInTheDocument();
       expect(screen.getByText('Hi there!')).toBeInTheDocument();
+    });
+
+    it('renders messages via Virtuoso virtual scroller', () => {
+      useChatStore.setState({
+        messages: [
+          {
+            id: 'msg-1',
+            role: 'user',
+            content: 'Hello',
+            timestamp: '2025-01-01T00:00:00Z',
+          },
+        ],
+      });
+      renderChat('/chat/srv-1');
+      expect(screen.getByTestId('virtuoso-scroller')).toBeInTheDocument();
     });
 
     it('shows thinking indicator when streaming with no content', () => {
@@ -758,21 +799,8 @@ describe('Chat Page', () => {
     });
   });
 
-  describe('scroll behavior optimization', () => {
-    let scrollIntoViewMock: ReturnType<typeof vi.fn>;
-
-    beforeEach(() => {
-      vi.useFakeTimers();
-      scrollIntoViewMock = vi.fn();
-      // Mock scrollIntoView on all elements
-      Element.prototype.scrollIntoView = scrollIntoViewMock;
-    });
-
-    afterEach(() => {
-      vi.useRealTimers();
-    });
-
-    it('uses smooth scroll when a new message is added', () => {
+  describe('virtual scrolling', () => {
+    it('uses Virtuoso to render messages', () => {
       useChatStore.setState({
         messages: [
           {
@@ -784,113 +812,50 @@ describe('Chat Page', () => {
         ],
       });
       renderChat('/chat/srv-1');
-
-      // scrollIntoView should be called with smooth behavior
-      const smoothCalls = scrollIntoViewMock.mock.calls.filter(
-        (call: [ScrollIntoViewOptions]) => call[0]?.behavior === 'smooth'
-      );
-      expect(smoothCalls.length).toBeGreaterThan(0);
+      expect(screen.getByTestId('virtuoso-scroller')).toBeInTheDocument();
+      expect(screen.getByText('Hello')).toBeInTheDocument();
     });
 
-    it('uses auto (instant) scroll during streaming content updates', () => {
+    it('does not render Virtuoso when messages are empty (shows empty state)', () => {
+      useChatStore.setState({ messages: [], isStreaming: false });
+      renderChat('/chat/srv-1');
+      expect(screen.queryByTestId('virtuoso-scroller')).not.toBeInTheDocument();
+      expect(screen.getByTestId('empty-state')).toBeInTheDocument();
+    });
+
+    it('renders footer content (streaming) inside Virtuoso', () => {
       useChatStore.setState({
         isStreaming: true,
-        streamingContent: 'partial',
+        streamingContent: 'Loading...',
         messages: [
           {
             id: 'msg-1',
             role: 'user',
-            content: 'Hello',
+            content: 'Help',
             timestamp: '2025-01-01T00:00:00Z',
           },
         ],
       });
       renderChat('/chat/srv-1');
-
-      scrollIntoViewMock.mockClear();
-
-      // Advance time so the throttle window has passed since initial render
-      vi.advanceTimersByTime(200);
-
-      // Simulate streaming content update
-      act(() => {
-        useChatStore.setState({ streamingContent: 'partial response' });
-      });
-
-      // Flush any pending throttled calls
-      act(() => {
-        vi.advanceTimersByTime(200);
-      });
-
-      // The streaming scroll should use 'auto' behavior
-      const autoCalls = scrollIntoViewMock.mock.calls.filter(
-        (call: [ScrollIntoViewOptions]) => call[0]?.behavior === 'auto'
-      );
-      expect(autoCalls.length).toBeGreaterThan(0);
+      // Streaming message should be inside the virtuoso scroller (as footer)
+      const scroller = screen.getByTestId('virtuoso-scroller');
+      expect(scroller).toBeInTheDocument();
+      expect(screen.getByTestId('streaming-message')).toBeInTheDocument();
     });
 
-    it('throttles scroll calls during rapid streaming updates', () => {
-      useChatStore.setState({
-        isStreaming: true,
-        streamingContent: 'chunk1',
-        messages: [
-          {
-            id: 'msg-1',
-            role: 'user',
-            content: 'Hello',
-            timestamp: '2025-01-01T00:00:00Z',
-          },
-        ],
-      });
+    it('renders multiple messages via Virtuoso', () => {
+      const msgs = Array.from({ length: 10 }, (_, i) => ({
+        id: `msg-${i}`,
+        role: i % 2 === 0 ? 'user' as const : 'assistant' as const,
+        content: `Message ${i}`,
+        timestamp: '2025-01-01T00:00:00Z',
+      }));
+      useChatStore.setState({ messages: msgs });
       renderChat('/chat/srv-1');
 
-      scrollIntoViewMock.mockClear();
-
-      // Simulate many rapid streaming updates within the throttle window
-      for (let i = 0; i < 20; i++) {
-        act(() => {
-          useChatStore.setState({ streamingContent: `chunk${i + 2}` });
-        });
+      for (let i = 0; i < 10; i++) {
+        expect(screen.getByText(`Message ${i}`)).toBeInTheDocument();
       }
-
-      // Should be throttled — far fewer calls than 20
-      const callCount = scrollIntoViewMock.mock.calls.filter(
-        (call: [ScrollIntoViewOptions]) => call[0]?.behavior === 'auto'
-      ).length;
-      expect(callCount).toBeLessThan(20);
-
-      // Flush pending throttled calls
-      act(() => {
-        vi.advanceTimersByTime(200);
-      });
-    });
-
-    it('does not scroll on streaming when streamingContent is empty', () => {
-      useChatStore.setState({
-        isStreaming: true,
-        streamingContent: '',
-        messages: [
-          {
-            id: 'msg-1',
-            role: 'user',
-            content: 'Hello',
-            timestamp: '2025-01-01T00:00:00Z',
-          },
-        ],
-      });
-      renderChat('/chat/srv-1');
-
-      scrollIntoViewMock.mockClear();
-
-      act(() => {
-        useChatStore.setState({ streamingContent: '' });
-      });
-
-      // No auto scroll should be triggered for empty content
-      const autoCalls = scrollIntoViewMock.mock.calls.filter(
-        (call: [ScrollIntoViewOptions]) => call[0]?.behavior === 'auto'
-      );
-      expect(autoCalls).toHaveLength(0);
     });
   });
 });

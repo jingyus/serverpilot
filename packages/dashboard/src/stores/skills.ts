@@ -15,6 +15,7 @@ import type {
   AvailableSkillsResponse,
   SkillResponse,
   ExecutionResponse,
+  DryRunResponse,
   ExecutionsResponse,
   ExecutionDetailResponse,
   PendingConfirmationsResponse,
@@ -202,9 +203,9 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
   dryRunSkill: async (id, serverId, inputs) => {
     set({ isDryRunning: true, dryRunResult: null, error: null });
     try {
-      const data = await apiRequest<ExecutionResponse>(`/skills/${id}/execute`, {
+      const data = await apiRequest<DryRunResponse>(`/skills/${id}/dry-run`, {
         method: 'POST',
-        body: JSON.stringify({ serverId, ...(inputs ? { config: inputs } : {}), dryRun: true }),
+        body: JSON.stringify({ serverId, ...(inputs ? { config: inputs } : {}) }),
       });
       set({ dryRunResult: data.execution, isDryRunning: false });
       return data.execution;

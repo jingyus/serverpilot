@@ -89,7 +89,7 @@ skillsRoute.get('/stats', requirePermission('skill:view'), async (c) => {
 // GET /skills/health — Health check for all installed skills
 // ============================================================================
 
-skillsRoute.get('/health', requirePermission('skill:view'), async (c) => {
+skillsRoute.get('/health', requirePermission('skill:manage'), async (c) => {
   const engine = getSkillEngine();
   const report = await engine.healthCheck();
   return c.json({ report });

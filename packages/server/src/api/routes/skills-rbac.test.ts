@@ -15,6 +15,7 @@ import { Hono } from 'hono';
 
 import type { ApiEnv } from './types.js';
 import type { InstalledSkill, SkillExecutionResult } from '../../core/skill/types.js';
+import type { HealthReport } from '../../core/skill/engine-health.js';
 import { onError } from '../middleware/error-handler.js';
 
 // ============================================================================
@@ -37,6 +38,7 @@ const mockEngine = {
   confirmExecution: vi.fn(),
   rejectExecution: vi.fn(),
   listPendingConfirmations: vi.fn(),
+  healthCheck: vi.fn(),
   start: vi.fn(),
   stop: vi.fn(),
 };
@@ -247,5 +249,129 @@ describe('RBAC integration', () => {
       body: JSON.stringify({ serverId: 'server-1' }),
     });
     expect(execRes.status).toBe(200);
+  });
+
+  it('member CANNOT GET /skills/health (skill:manage)', async () => {
+    mockUserRole = 'member';
+
+    const res = await app.request('/skills/health');
+    expect(res.status).toBe(403);
+  });
+});
+
+// ============================================================================
+// GET /skills/health — Health check endpoint
+// ============================================================================
+
+describe('GET /skills/health', () => {
+  function makeHealthReport(overrides: Partial<HealthReport> = {}): HealthReport {
+    return {
+      results: [],
+      healthy: 0,
+      degraded: 0,
+      broken: 0,
+      checkedAt: '2026-02-13T00:00:00.000Z',
+      ...overrides,
+    };
+  }
+
+  it('should return health report for all installed skills', async () => {
+    const report = makeHealthReport({
+      results: [
+        {
+          skillId: 'skill-1',
+          name: 'nginx-hardening',
+          status: 'healthy',
+          issues: [],
+          dbVersion: '1.0.0',
+          diskVersion: '1.0.0',
+          checkedAt: '2026-02-13T00:00:00.000Z',
+        },
+        {
+          skillId: 'skill-2',
+          name: 'ssl-setup',
+          status: 'broken',
+          issues: ['Directory missing: /skills/official/ssl-setup'],
+          dbVersion: '2.0.0',
+          diskVersion: null,
+          checkedAt: '2026-02-13T00:00:00.000Z',
+        },
+      ],
+      healthy: 1,
+      broken: 1,
+    });
+    mockEngine.healthCheck.mockResolvedValue(report);
+
+    const res = await app.request('/skills/health');
+    expect(res.status).toBe(200);
+
+    const body = await res.json();
+    expect(body.report.results).toHaveLength(2);
+    expect(body.report.healthy).toBe(1);
+    expect(body.report.broken).toBe(1);
+    expect(body.report.results[0].status).toBe('healthy');
+    expect(body.report.results[1].status).toBe('broken');
+    expect(body.report.results[1].issues).toContain('Directory missing: /skills/official/ssl-setup');
+  });
+
+  it('should return empty report when no skills installed', async () => {
+    mockEngine.healthCheck.mockResolvedValue(makeHealthReport());
+
+    const res = await app.request('/skills/health');
+    expect(res.status).toBe(200);
+
+    const body = await res.json();
+    expect(body.report.results).toHaveLength(0);
+    expect(body.report.healthy).toBe(0);
+    expect(body.report.degraded).toBe(0);
+    expect(body.report.broken).toBe(0);
+  });
+
+  it('should be accessible by admin role (skill:manage)', async () => {
+    mockUserRole = 'admin';
+    mockEngine.healthCheck.mockResolvedValue(makeHealthReport());
+
+    const res = await app.request('/skills/health');
+    expect(res.status).toBe(200);
+  });
+
+  it('should be forbidden for member role (skill:manage)', async () => {
+    mockUserRole = 'member';
+
+    const res = await app.request('/skills/health');
+    expect(res.status).toBe(403);
+  });
+
+  it('should include degraded skills in report', async () => {
+    const report = makeHealthReport({
+      results: [
+        {
+          skillId: 'skill-1',
+          name: 'nginx-hardening',
+          status: 'degraded',
+          issues: ['Version mismatch: DB=1.0.0, disk=1.1.0'],
+          dbVersion: '1.0.0',
+          diskVersion: '1.1.0',
+          checkedAt: '2026-02-13T00:00:00.000Z',
+        },
+      ],
+      degraded: 1,
+    });
+    mockEngine.healthCheck.mockResolvedValue(report);
+
+    const res = await app.request('/skills/health');
+    expect(res.status).toBe(200);
+
+    const body = await res.json();
+    expect(body.report.degraded).toBe(1);
+    expect(body.report.results[0].status).toBe('degraded');
+    expect(body.report.results[0].diskVersion).toBe('1.1.0');
+  });
+
+  it('should propagate engine errors as 500', async () => {
+    mockEngine.healthCheck.mockRejectedValue(new Error('Database connection failed'));
+
+    const res = await app.request('/skills/health');
+    expect(res.status).toBe(500);
   });
 });

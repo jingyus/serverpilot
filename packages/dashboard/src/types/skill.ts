@@ -142,6 +142,11 @@ export interface ExecutionResponse {
   execution: SkillExecutionResult;
 }
 
+export interface DryRunResponse {
+  execution: SkillExecutionResult;
+  dryRun: boolean;
+}
+
 export interface ExecutionsResponse {
   executions: SkillExecution[];
 }

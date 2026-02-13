@@ -32,6 +32,7 @@ const mockEngine = {
   getExecutions: vi.fn(),
   getExecution: vi.fn(),
   upgrade: vi.fn(),
+  healthCheck: vi.fn(),
   confirmExecution: vi.fn(),
   rejectExecution: vi.fn(),
   listPendingConfirmations: vi.fn(),

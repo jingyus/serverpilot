@@ -7,8 +7,8 @@
 ## 📊 统计信息
 
 - **总任务数**: 96
-- **待完成** (pending): 1
-- **进行中** (in_progress): 0
+- **待完成** (pending): 0
+- **进行中** (in_progress): 1
 - **已完成** (completed): 95
 - **失败** (failed): 0
 
@@ -169,7 +169,7 @@
 
 ---
 
-### [pending] Dashboard Skill 执行对话框添加 Dry-Run 预览按钮
+### [in_progress] Dashboard Skill 执行对话框添加 Dry-Run 预览按钮
 
 **ID**: task-100
 **优先级**: P1
@@ -2040,4 +2040,4 @@ ID: task-001
 
 ---
 
-**最后更新**: 2026-02-13 10:53:44
+**最后更新**: 2026-02-13 10:54:17

@@ -817,7 +817,7 @@ describe('useSkillsStore', () => {
   // --------------------------------------------------------------------------
 
   describe('dryRunSkill', () => {
-    it('should call execute API with dryRun=true and store result', async () => {
+    it('should call dedicated dry-run endpoint and store result', async () => {
       const executionResult = {
         executionId: 'exec-dry-1',
         status: 'success' as const,
@@ -826,7 +826,7 @@ describe('useSkillsStore', () => {
         result: { output: 'Step 1: run_command — apt update' },
         errors: [],
       };
-      mockApiRequest.mockResolvedValueOnce({ execution: executionResult });
+      mockApiRequest.mockResolvedValueOnce({ execution: executionResult, dryRun: true });
 
       const result = await useSkillsStore.getState().dryRunSkill('sk-1', 'srv-1');
 
@@ -834,13 +834,13 @@ describe('useSkillsStore', () => {
       const state = useSkillsStore.getState();
       expect(state.dryRunResult).toEqual(executionResult);
       expect(state.isDryRunning).toBe(false);
-      expect(mockApiRequest).toHaveBeenCalledWith('/skills/sk-1/execute', {
+      expect(mockApiRequest).toHaveBeenCalledWith('/skills/sk-1/dry-run', {
         method: 'POST',
-        body: JSON.stringify({ serverId: 'srv-1', dryRun: true }),
+        body: JSON.stringify({ serverId: 'srv-1' }),
       });
     });
 
-    it('should pass inputs as config to the API', async () => {
+    it('should pass inputs as config to the dry-run endpoint', async () => {
       const executionResult = {
         executionId: 'exec-dry-2',
         status: 'success' as const,
@@ -849,13 +849,13 @@ describe('useSkillsStore', () => {
         result: null,
         errors: [],
       };
-      mockApiRequest.mockResolvedValueOnce({ execution: executionResult });
+      mockApiRequest.mockResolvedValueOnce({ execution: executionResult, dryRun: true });
 
       await useSkillsStore.getState().dryRunSkill('sk-1', 'srv-1', { port: 3000 });
 
-      expect(mockApiRequest).toHaveBeenCalledWith('/skills/sk-1/execute', {
+      expect(mockApiRequest).toHaveBeenCalledWith('/skills/sk-1/dry-run', {
         method: 'POST',
-        body: JSON.stringify({ serverId: 'srv-1', config: { port: 3000 }, dryRun: true }),
+        body: JSON.stringify({ serverId: 'srv-1', config: { port: 3000 } }),
       });
     });
 
