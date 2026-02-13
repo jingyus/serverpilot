@@ -859,7 +859,7 @@ describe('AgenticChatEngine — malformed tool input', () => {
     return { client, getCallCount: () => callIndex };
   }
 
-  it('should return error string for execute_command with numeric command', async () => {
+  it('should return error string and send validation_error SSE for execute_command with numeric command', async () => {
     const { client, getCallCount } = createClientTwoTurns('execute_command', {
       command: 123,
       description: 'bad',
@@ -879,16 +879,24 @@ describe('AgenticChatEngine — malformed tool input', () => {
     expect(getCallCount()).toBe(2);
     expect(result.success).toBe(true);
 
-    // The tool result fed back to AI should contain validation error
     // Check that no tool_executing event was sent (command was never dispatched)
     const executingEvents = sseEvents.filter((e) => e.event === 'tool_executing');
     expect(executingEvents).toHaveLength(0);
+
+    // Should have sent a tool_result SSE event with validation_error status
+    const validationEvents = sseEvents.filter(
+      (e) => e.event === 'tool_result' && (e.data as Record<string, unknown>).status === 'validation_error',
+    );
+    expect(validationEvents).toHaveLength(1);
+    expect((validationEvents[0].data as Record<string, unknown>).tool).toBe('execute_command');
+    expect((validationEvents[0].data as Record<string, unknown>).id).toBe('tool-bad');
+    expect((validationEvents[0].data as Record<string, unknown>).error).toBeDefined();
   });
 
-  it('should return error string for execute_command with missing fields', async () => {
+  it('should send validation_error SSE for execute_command with missing fields', async () => {
     const { client, getCallCount } = createClientTwoTurns('execute_command', {});
     const engine = new AgenticChatEngine(client);
-    const { stream } = createMockStream();
+    const { stream, sseEvents } = createMockStream();
 
     const result = await engine.run({
       userMessage: 'test',
@@ -901,12 +909,18 @@ describe('AgenticChatEngine — malformed tool input', () => {
     expect(getCallCount()).toBe(2);
     expect(result.success).toBe(true);
     expect(result.toolCallCount).toBe(1);
+
+    const validationEvents = sseEvents.filter(
+      (e) => e.event === 'tool_result' && (e.data as Record<string, unknown>).status === 'validation_error',
+    );
+    expect(validationEvents).toHaveLength(1);
+    expect((validationEvents[0].data as Record<string, unknown>).tool).toBe('execute_command');
   });
 
-  it('should return error string for read_file with missing path', async () => {
+  it('should send validation_error SSE for read_file with missing path', async () => {
     const { client, getCallCount } = createClientTwoTurns('read_file', { max_lines: 100 });
     const engine = new AgenticChatEngine(client);
-    const { stream } = createMockStream();
+    const { stream, sseEvents } = createMockStream();
 
     const result = await engine.run({
       userMessage: 'read something',
@@ -919,12 +933,18 @@ describe('AgenticChatEngine — malformed tool input', () => {
     expect(getCallCount()).toBe(2);
     expect(result.success).toBe(true);
     expect(result.toolCallCount).toBe(1);
+
+    const validationEvents = sseEvents.filter(
+      (e) => e.event === 'tool_result' && (e.data as Record<string, unknown>).status === 'validation_error',
+    );
+    expect(validationEvents).toHaveLength(1);
+    expect((validationEvents[0].data as Record<string, unknown>).tool).toBe('read_file');
   });
 
-  it('should return error string for list_files with non-string path', async () => {
+  it('should send validation_error SSE for list_files with non-string path', async () => {
     const { client, getCallCount } = createClientTwoTurns('list_files', { path: 42 });
     const engine = new AgenticChatEngine(client);
-    const { stream } = createMockStream();
+    const { stream, sseEvents } = createMockStream();
 
     const result = await engine.run({
       userMessage: 'list files',
@@ -937,12 +957,18 @@ describe('AgenticChatEngine — malformed tool input', () => {
     expect(getCallCount()).toBe(2);
     expect(result.success).toBe(true);
     expect(result.toolCallCount).toBe(1);
+
+    const validationEvents = sseEvents.filter(
+      (e) => e.event === 'tool_result' && (e.data as Record<string, unknown>).status === 'validation_error',
+    );
+    expect(validationEvents).toHaveLength(1);
+    expect((validationEvents[0].data as Record<string, unknown>).tool).toBe('list_files');
   });
 
-  it('should return error for null tool input without crashing', async () => {
+  it('should send validation_error SSE for null tool input without crashing', async () => {
     const { client, getCallCount } = createClientTwoTurns('execute_command', null);
     const engine = new AgenticChatEngine(client);
-    const { stream } = createMockStream();
+    const { stream, sseEvents } = createMockStream();
 
     const result = await engine.run({
       userMessage: 'test null',
@@ -954,6 +980,11 @@ describe('AgenticChatEngine — malformed tool input', () => {
 
     expect(getCallCount()).toBe(2);
     expect(result.success).toBe(true);
+
+    const validationEvents = sseEvents.filter(
+      (e) => e.event === 'tool_result' && (e.data as Record<string, unknown>).status === 'validation_error',
+    );
+    expect(validationEvents).toHaveLength(1);
   });
 
   it('should execute valid tool input normally after validation', async () => {
@@ -1004,6 +1035,81 @@ describe('AgenticChatEngine — malformed tool input', () => {
     // Should have a tool_executing event (command was dispatched)
     const executingEvents = sseEvents.filter((e) => e.event === 'tool_executing');
     expect(executingEvents).toHaveLength(1);
+  });
+
+  it('should log a warning when tool input validation fails', async () => {
+    const { logger: loggerModule } = await import('../utils/logger.js');
+    const warnSpy = vi.spyOn(loggerModule, 'warn');
+
+    const { client } = createClientTwoTurns('execute_command', { command: 999 });
+    const engine = new AgenticChatEngine(client);
+    const { stream } = createMockStream();
+
+    await engine.run({
+      userMessage: 'test warn log',
+      serverId: 'srv-1',
+      userId: 'usr-1',
+      sessionId: 'sess-1',
+      stream,
+    });
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operation: 'tool_validation',
+        tool: 'execute_command',
+      }),
+      expect.stringContaining('Tool input validation failed'),
+    );
+    warnSpy.mockRestore();
+  });
+
+  it('should not send validation_error SSE for valid tool input', async () => {
+    // Valid execute_command input should only produce tool_executing/tool_result, not validation_error
+    let callIndex = 0;
+    const client = {
+      messages: {
+        stream: vi.fn(() => {
+          callIndex++;
+          if (callIndex === 1) {
+            return {
+              on: vi.fn(),
+              finalMessage: vi.fn(async () => ({
+                content: [
+                  {
+                    type: 'tool_use', id: 'tool-ok-2', name: 'execute_command',
+                    input: { command: 'whoami', description: 'Check user' },
+                  },
+                ],
+                stop_reason: 'tool_use',
+              })),
+            };
+          }
+          return {
+            on: vi.fn(),
+            finalMessage: vi.fn(async () => ({
+              content: [{ type: 'text', text: 'Done.' }],
+              stop_reason: 'end_turn',
+            })),
+          };
+        }),
+      },
+    } as unknown as Anthropic;
+
+    const engine = new AgenticChatEngine(client);
+    const { stream, sseEvents } = createMockStream();
+
+    await engine.run({
+      userMessage: 'whoami',
+      serverId: 'srv-1',
+      userId: 'usr-1',
+      sessionId: 'sess-1',
+      stream,
+    });
+
+    const validationEvents = sseEvents.filter(
+      (e) => e.event === 'tool_result' && (e.data as Record<string, unknown>).status === 'validation_error',
+    );
+    expect(validationEvents).toHaveLength(0);
   });
 });
 

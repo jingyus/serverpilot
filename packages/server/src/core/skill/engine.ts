@@ -41,6 +41,7 @@ import type {
   ChainContext,
 } from './types.js';
 import { SkillRunner } from './runner.js';
+import { getSkillEventBus } from './skill-event-bus.js';
 import { executeBatch } from './batch-executor.js';
 import { TriggerManager, setTriggerManager, _resetTriggerManager } from './trigger-manager.js';
 
@@ -430,6 +431,10 @@ export class SkillEngine {
       trail: [...(chainContext?.trail ?? []), skillId],
     };
 
+    // Create AbortController for external cancellation
+    const abortController = new AbortController();
+    this.runningExecutions.set(execution.id, abortController);
+
     try {
       // Resolve prompt template with available variables
       const mergedConfig = { ...skill.config, ...params.config };
@@ -458,10 +463,12 @@ export class SkillEngine {
         userId,
         executionId: execution.id,
         config: mergedConfig,
+        signal: abortController.signal,
       });
 
       const duration = Date.now() - startTime;
       const status = runResult.status === 'success' ? 'success'
+        : runResult.status === 'cancelled' ? 'cancelled'
         : runResult.status === 'timeout' ? 'timeout'
         : 'failed';
 
@@ -526,6 +533,8 @@ export class SkillEngine {
         executionId: execution.id, status: 'failed', stepsExecuted: 0,
         duration, result: null, errors: [errorMessage],
       };
+    } finally {
+      this.runningExecutions.delete(execution.id);
     }
   }
 
@@ -567,6 +576,44 @@ export class SkillEngine {
 
   async expirePendingConfirmations(): Promise<number> {
     return this.confirmationManager.expirePendingConfirmations();
+  }
+
+  /**
+   * Cancel a running skill execution.
+   *
+   * Aborts the runner's AI loop and tool execution, updates the DB status
+   * to 'cancelled', and publishes an SSE error event for the dashboard.
+   */
+  async cancel(executionId: string): Promise<void> {
+    const controller = this.runningExecutions.get(executionId);
+    if (!controller) {
+      throw new Error(`Execution not found or not running: ${executionId}`);
+    }
+
+    controller.abort();
+    // The runner will set the status to 'cancelled' via the normal
+    // executeSingle flow when it detects the abort signal. However,
+    // we also publish an immediate SSE error event so the dashboard
+    // gets notified right away.
+    const bus = getSkillEventBus();
+    bus.publish(executionId, {
+      type: 'error',
+      executionId,
+      timestamp: new Date().toISOString(),
+      message: 'Execution cancelled by user',
+    });
+
+    logger.info({ executionId }, 'Skill execution cancel requested');
+  }
+
+  /** Check if a specific execution is currently running. */
+  isExecutionRunning(executionId: string): boolean {
+    return this.runningExecutions.has(executionId);
+  }
+
+  /** Get all currently running execution IDs. */
+  getRunningExecutionIds(): string[] {
+    return Array.from(this.runningExecutions.keys());
   }
 
   /**

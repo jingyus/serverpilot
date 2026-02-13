@@ -41,7 +41,7 @@ export interface SkillCompletedEvent {
   type: 'completed';
   executionId: string;
   timestamp: string;
-  status: 'success' | 'failed' | 'timeout';
+  status: 'success' | 'failed' | 'timeout' | 'cancelled';
   stepsExecuted: number;
   duration: number;
   output: string;

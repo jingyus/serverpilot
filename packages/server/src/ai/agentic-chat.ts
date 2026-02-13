@@ -314,7 +314,7 @@ export class AgenticChatEngine {
         case 'execute_command': {
           const parsed = ExecuteCommandInputSchema.safeParse(input);
           if (!parsed.success) {
-            return `Error: Invalid tool input for execute_command: ${parsed.error.issues.map((i) => i.message).join('; ')}`;
+            return await this.handleValidationError(name, toolCall.id, parsed.error.issues, input, stream, abort);
           }
           return await this.toolExecuteCommand(
             parsed.data,
@@ -326,7 +326,7 @@ export class AgenticChatEngine {
         case 'read_file': {
           const parsed = ReadFileInputSchema.safeParse(input);
           if (!parsed.success) {
-            return `Error: Invalid tool input for read_file: ${parsed.error.issues.map((i) => i.message).join('; ')}`;
+            return await this.handleValidationError(name, toolCall.id, parsed.error.issues, input, stream, abort);
           }
           return await this.toolReadFile(
             parsed.data,
@@ -337,7 +337,7 @@ export class AgenticChatEngine {
         case 'list_files': {
           const parsed = ListFilesInputSchema.safeParse(input);
           if (!parsed.success) {
-            return `Error: Invalid tool input for list_file: ${parsed.error.issues.map((i) => i.message).join('; ')}`;
+            return await this.handleValidationError(name, toolCall.id, parsed.error.issues, input, stream, abort);
           }
           return await this.toolListFiles(
             parsed.data,
@@ -358,6 +358,37 @@ export class AgenticChatEngine {
       }, abort);
       return `Error executing ${name}: ${errMsg}`;
     }
+  }
+
+  /**
+   * Handle Zod validation failure for tool input.
+   * Sends a tool_result SSE event so the frontend can display the error,
+   * and logs a warning for debugging.
+   */
+  private async handleValidationError(
+    toolName: string,
+    toolCallId: string,
+    issues: Array<{ message: string; path: Array<string | number> }>,
+    rawInput: unknown,
+    stream: SSEStreamingApi,
+    abort: AbortState,
+  ): Promise<string> {
+    const errorDetail = issues.map((i) => i.message).join('; ');
+    const errorMsg = `Error: Invalid tool input for ${toolName}: ${errorDetail}`;
+
+    logger.warn(
+      { operation: 'tool_validation', tool: toolName, issues, rawInput },
+      `Tool input validation failed for ${toolName}`,
+    );
+
+    await this.writeSSE(stream, 'tool_result', {
+      id: toolCallId,
+      tool: toolName,
+      status: 'validation_error',
+      error: errorDetail,
+    }, abort);
+
+    return errorMsg;
   }
 
   /**
