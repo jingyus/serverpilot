@@ -3,14 +3,14 @@
 > 此队列专注于 Skill 插件系统的设计与实现
 > AI 自动扫描 → 发现缺失 → 设计实现 → 验证
 
-**最后更新**: 2026-02-13 08:05:44
+**最后更新**: 2026-02-13 08:12:38
 
 ## 📊 统计
 
 - **总任务数**: 56
 - **待完成** (pending): 6
-- **进行中** (in_progress): 1
-- **已完成** (completed): 49
+- **进行中** (in_progress): 0
+- **已完成** (completed): 50
 - **失败** (failed): 0
 
 ## 📋 任务列表
@@ -64,7 +64,7 @@
 
 ---
 
-### [in_progress] Skill 执行取消 — 运行中的执行可被用户中止
+### [completed] Skill 执行取消 — 运行中的执行可被用户中止 ✅
 
 **ID**: skill-074
 **优先级**: P0
@@ -90,7 +90,7 @@
 - 测试覆盖: ≥8 个测试用例
 **影响范围**: packages/server/src/core/skill/engine.ts, packages/server/src/core/skill/runner.ts, packages/server/src/core/skill/engine.test.ts (或新建 engine-cancel.test.ts)
 **创建时间**: 2026-02-13
-**完成时间**: -
+**完成时间**: 2026-02-13 08:12:38
 
 ---
 
