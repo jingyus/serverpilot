@@ -47,7 +47,6 @@ vi.mock('../knowledge/rag-pipeline.js', () => ({
 import {
   trimMessagesIfNeeded, estimateMessagesTokens, AgenticChatEngine,
   ExecuteCommandInputSchema, ReadFileInputSchema, ListFilesInputSchema,
-  type TrimResult,
 } from './agentic-chat.js';
 
 function makeMessage(role: 'user' | 'assistant', content: string): Anthropic.MessageParam {
@@ -970,7 +969,7 @@ describe('AgenticChatEngine — malformed tool input', () => {
     vi.clearAllMocks();
   });
 
-  function createClientWithMalformedToolInput(toolName: string, malformedInput: unknown) {
+  function _createClientWithMalformedToolInput(toolName: string, malformedInput: unknown) {
     const client = {
       messages: {
         stream: vi.fn(() => ({

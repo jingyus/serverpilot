@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
+/* eslint-disable @typescript-eslint/no-explicit-any -- mock type coercion in tests */
 /**
  * Tests for packages/server/src/api/handlers.ts
  *
@@ -1791,7 +1792,7 @@ describe('handleEnvReport - Plan Generation', () => {
     const envMsg = createMessage(MessageType.ENV_REPORT, makeEnvInfo()) as EnvReportMessage;
 
     // Collect all messages sent to client
-    const messages: Message[] = [];
+    const _messages: Message[] = [];
     const messagePromises: Promise<Message>[] = [];
     for (let i = 0; i < 10; i++) {
       messagePromises.push(waitForMessage(ws));

@@ -12,11 +12,11 @@
  * @module knowledge/context-enhancer
  */
 
-import type { SimilarityResult, SearchResponse } from './similarity-search.js';
 import {
   estimateTokens,
   getCharsPerToken,
 } from '../ai/profile-context.js';
+import type { SimilarityResult, SearchResponse } from './similarity-search.js';
 
 // ============================================================================
 // Types

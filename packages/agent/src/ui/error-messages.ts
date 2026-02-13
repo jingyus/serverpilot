@@ -146,7 +146,7 @@ const MESSAGE_RULES: ErrorMessageRule[] = [
   {
     pattern: /ECONNREFUSED/i,
     category: 'network',
-    build: (ctx) => ({
+    build: (_ctx) => ({
       title: 'Connection was refused',
       explanation:
         `The package server actively refused the connection. ` +
@@ -168,7 +168,7 @@ const MESSAGE_RULES: ErrorMessageRule[] = [
   {
     pattern: /ECONNRESET/i,
     category: 'network',
-    build: (ctx) => ({
+    build: (_ctx) => ({
       title: 'Connection was interrupted',
       explanation:
         `The connection to the package server was unexpectedly cut off. ` +

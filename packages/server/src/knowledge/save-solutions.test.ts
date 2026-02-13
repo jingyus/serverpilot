@@ -4,10 +4,10 @@
  * Tests for the knowledge base solution document save module.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { existsSync, readFileSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   DEFAULT_SOLUTIONS_DIR,
   REQUIRED_SOLUTIONS,
@@ -16,7 +16,6 @@ import {
   listExistingSolutions,
   checkMissingSolutions,
   saveOpenClawSolutions,
-  type SaveSolutionsOptions,
 } from './save-solutions.js';
 import type { DocPage } from './scraper.js';
 

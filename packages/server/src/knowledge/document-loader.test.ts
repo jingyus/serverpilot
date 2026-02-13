@@ -4,10 +4,10 @@
  * Tests for the document loader module.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { existsSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   DocumentLoader,
   extractTitle,
@@ -19,9 +19,6 @@ import {
   countWords,
   countHeadings,
   countCodeBlocks,
-  type DocumentLoaderOptions,
-  type LoadedDocument,
-  type LoadSummary,
 } from './document-loader.js';
 
 // ============================================================================

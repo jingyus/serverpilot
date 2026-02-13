@@ -13,7 +13,7 @@
 
 import chalk from 'chalk';
 import { renderTable, type TableColumn } from './table.js';
-import type { InstallProgressResult, StepProgressResult } from './progress.js';
+import type { InstallProgressResult } from './progress.js';
 
 // ============================================================================
 // Types

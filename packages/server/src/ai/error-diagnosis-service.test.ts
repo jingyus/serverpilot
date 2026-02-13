@@ -4,15 +4,13 @@
  * Tests for error diagnosis service — auto-diagnosis on command failure.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { EnvironmentInfo } from '@aiinstaller/shared';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { FullServerProfile } from '../core/profile/manager.js';
 import type { ServerProfile } from '../db/repositories/server-repository.js';
 import {
   buildEnvironmentFromProfile,
   autoDiagnoseStepFailure,
   type StepFailureInput,
-  type AutoDiagnosisResult,
 } from './error-diagnosis-service.js';
 
 // ============================================================================
@@ -307,7 +305,7 @@ describe('autoDiagnoseStepFailure', () => {
 
     // Mock the diagnoseError to throw
     const { diagnoseError } = await import('./error-analyzer.js');
-    const originalDiagnoseError = diagnoseError;
+    const _originalDiagnoseError = diagnoseError;
 
     // Even if internal errors occur, the service should return gracefully
     const result = await autoDiagnoseStepFailure(input);

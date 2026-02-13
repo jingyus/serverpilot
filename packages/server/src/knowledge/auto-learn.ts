@@ -16,7 +16,6 @@
 import { logger } from '../utils/logger.js';
 import { getKnowledgeRepository } from '../db/repositories/knowledge-repository.js';
 import { getProfileRepository } from '../db/repositories/profile-repository.js';
-
 import type { OperationRecord } from '../db/repositories/operation-repository.js';
 import type {
   KnowledgeRepository,
@@ -265,7 +264,7 @@ export class AutoLearner {
    * Uses the serverId from the record to look up the server profile's
    * OS info. Falls back to 'unknown' if not available.
    */
-  extractPlatformFromRecord(record: OperationRecord): string {
+  extractPlatformFromRecord(_record: OperationRecord): string {
     // Platform will be resolved asynchronously via resolvePlatform()
     // For sync extraction, we return a default
     return 'unknown';

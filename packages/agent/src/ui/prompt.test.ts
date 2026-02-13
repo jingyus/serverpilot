@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   confirmStep,
   promptText,
@@ -249,7 +248,7 @@ describe('prompt module', () => {
       _setPromptBackend(backend);
 
       // autoConfirm with no options should fall through to backend
-      const result = await promptSelect({
+      const _result = await promptSelect({
         message: 'Choose:',
         options: [],
         autoConfirm: true,

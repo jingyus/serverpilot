@@ -4,10 +4,10 @@
  * Tests for the website documentation scraper module.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   extractHtmlTitle,
   htmlToMarkdown,

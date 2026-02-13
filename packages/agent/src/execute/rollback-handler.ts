@@ -15,7 +15,6 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-
 import type { InstallClient } from '../client.js';
 import { MessageType, createMessageLite as createMessage } from '../protocol-lite.js';
 import type { Message } from '../protocol-lite.js';

@@ -4,16 +4,12 @@
  * Tests for the similarity search module.
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   SimilaritySearch,
   deduplicateByDocument,
   averageEmbeddings,
   type SimilarityResult,
-  type SimilaritySearchOptions,
-  type SearchResponse,
-  type SearchSummary,
-  type SimilaritySearchConfig,
 } from './similarity-search.js';
 import { LocalVectorStore } from './vector-store.js';
 import { QueryEmbedder } from './query-embedder.js';
@@ -31,7 +27,7 @@ function makeEmbedding(values: number[]): number[] {
 }
 
 /** Create a test EmbeddedChunk */
-function makeChunk(overrides: Partial<EmbeddedChunk> = {}): EmbeddedChunk {
+function _makeChunk(overrides: Partial<EmbeddedChunk> = {}): EmbeddedChunk {
   const embedding = overrides.embedding ?? makeEmbedding([1, 0, 0, 0]);
   return {
     chunkId: overrides.chunkId ?? 'doc1#chunk-0',

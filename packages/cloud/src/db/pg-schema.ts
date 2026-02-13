@@ -12,7 +12,6 @@
  *
  * @module db/pg-schema
  */
-
 import {
   pgTable,
   text,
@@ -46,7 +45,6 @@ export type {
   InvitationStatus,
   TenantPlan,
 } from '@aiinstaller/server/schema';
-
 import type {
   UserSettingsAIProvider,
   UserSettingsNotifications,

@@ -25,7 +25,7 @@ import {
   type AICallInfo,
 } from './rate-limiter.js';
 import { DeviceClient } from './device-client.js';
-import { SessionClient, sessionClient } from './session-client.js';
+import { sessionClient } from './session-client.js';
 
 // ============================================================================
 // Mock Setup

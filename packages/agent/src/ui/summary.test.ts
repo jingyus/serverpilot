@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-
+import { describe, it, expect } from 'vitest';
 import {
   generateSummary,
   displaySummary,
@@ -13,10 +12,8 @@ import {
 import type {
   InstallationSummary,
   InstallProblem,
-  GenerateSummaryOptions,
-  StepSummary,
 } from './summary.js';
-import type { InstallProgressResult, StepProgressResult } from './progress.js';
+import type { InstallProgressResult } from './progress.js';
 
 // ============================================================================
 // Helpers

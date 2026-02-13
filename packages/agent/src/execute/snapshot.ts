@@ -12,6 +12,7 @@
  */
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 
@@ -92,7 +93,7 @@ export class SnapshotManager {
    */
   constructor(backupRoot?: string) {
     this.defaultBackupRoot = backupRoot ?? path.join(
-      fs.realpathSync(require('node:os').tmpdir()),
+      fs.realpathSync(os.tmpdir()),
       'aiinstaller-snapshots',
     );
   }

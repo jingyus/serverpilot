@@ -5,11 +5,10 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-
+import { verifyPassword } from '../utils/password.js';
 import { initDatabase, closeDatabase, createTables } from './connection.js';
 import { seedDefaultAdmin } from './seed-admin.js';
 import { getUserRepository, _resetUserRepository } from './repositories/user-repository.js';
-import { verifyPassword } from '../utils/password.js';
 
 describe('seedDefaultAdmin', () => {
   beforeEach(() => {

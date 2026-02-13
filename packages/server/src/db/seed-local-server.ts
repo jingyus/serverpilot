@@ -15,12 +15,11 @@ import { hostname } from 'node:os';
 import { writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { eq } from 'drizzle-orm';
-
+import { logger } from '../utils/logger.js';
 import { getUserRepository } from './repositories/user-repository.js';
 import { getServerRepository } from './repositories/server-repository.js';
 import { getDatabase } from './connection.js';
 import { agents } from './schema.js';
-import { logger } from '../utils/logger.js';
 
 const DEFAULT_ADMIN_EMAIL = 'admin@serverpilot.local';
 const LOCAL_SERVER_TAG = 'local';

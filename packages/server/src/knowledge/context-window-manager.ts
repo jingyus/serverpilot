@@ -17,6 +17,7 @@
  * @module knowledge/context-window-manager
  */
 
+import { getCharsPerToken } from '../ai/profile-context.js';
 import type { SimilarityResult } from './similarity-search.js';
 import {
   formatKnowledgeContext,
@@ -24,7 +25,6 @@ import {
   type ContextEnhancerOptions,
   type FormattedContext,
 } from './context-enhancer.js';
-import { getCharsPerToken } from '../ai/profile-context.js';
 
 // ============================================================================
 // Types

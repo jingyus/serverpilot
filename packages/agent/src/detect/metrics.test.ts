@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+/* eslint-disable @typescript-eslint/no-explicit-any -- mock type coercion in tests */
+import os from 'node:os';
+import { exec } from 'node:child_process';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ============================================================================
 // Mock Setup
@@ -23,15 +26,12 @@ vi.mock('node:child_process', () => ({
 }));
 
 vi.mock('node:util', () => ({
-  promisify: vi.fn((fn: Function) => fn),
+  promisify: vi.fn((fn: (...args: any[]) => any) => fn),
 }));
-
-import os from 'node:os';
-import { exec } from 'node:child_process';
 
 const mockExec = vi.mocked(exec);
 const mockCpus = vi.mocked(os.cpus);
-const mockTotalmem = vi.mocked(os.totalmem);
+const _mockTotalmem = vi.mocked(os.totalmem);
 const mockFreemem = vi.mocked(os.freemem);
 const mockPlatform = vi.mocked(os.platform);
 
@@ -430,13 +430,13 @@ describe('collectMetrics', () => {
         '    lo: 9999999  99999    0    0    0     0          0         0  9999999  99999    0    0    0     0       0          0',
       ].join('\n');
 
-      let callCount = 0;
+      let _callCount = 0;
       mockExec.mockImplementation((cmd: any) => {
         if (typeof cmd === 'string' && cmd.includes('df -k')) {
           return Promise.resolve({ stdout: LINUX_DF_OUTPUT, stderr: '' }) as any;
         }
         if (typeof cmd === 'string' && cmd.includes('/proc/net/dev')) {
-          callCount++;
+          _callCount++;
           return Promise.resolve({ stdout: loopbackOnlyOutput, stderr: '' }) as any;
         }
         return Promise.reject(new Error(`Unexpected command: ${cmd}`)) as any;

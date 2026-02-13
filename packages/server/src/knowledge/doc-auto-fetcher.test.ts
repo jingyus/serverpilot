@@ -4,18 +4,16 @@
  * Tests for the automated documentation fetcher module.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { existsSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type { DocSource as RepoDocSource } from '../db/repositories/doc-source-repository.js';
 import {
   DocAutoFetcher,
   createDocAutoFetcher,
-  type AutoFetcherConfig,
-  type FetchRunSummary,
 } from './doc-auto-fetcher.js';
-import { DocFetcher, type DocSource, type FetchTask } from './doc-fetcher.js';
-import type { DocSource as RepoDocSource } from '../db/repositories/doc-source-repository.js';
+import { DocFetcher, type FetchTask } from './doc-fetcher.js';
 
 // ============================================================================
 // Mocks

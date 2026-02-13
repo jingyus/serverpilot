@@ -12,7 +12,6 @@
  * This is a known limitation documented here for transparency.
  */
 import { describe, it, expect } from 'vitest';
-
 import { RiskLevel } from './risk-levels.js';
 import {
   classifyCommand,

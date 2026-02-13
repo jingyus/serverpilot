@@ -11,7 +11,6 @@
 
 import pg from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
-
 import * as pgSchema from './pg-schema.js';
 
 export type PgDrizzleDB = ReturnType<typeof drizzle<typeof pgSchema>>;

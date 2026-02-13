@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
+/* eslint-disable @typescript-eslint/no-explicit-any -- mock type coercion in tests */
 /**
  * Tests for packages/server/src/ai/streaming.ts
  *
@@ -12,18 +13,12 @@
  * - createStreamAbortController()
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import { describe, it, expect, vi } from 'vitest';
 import {
   streamAIResponse,
   createStreamAbortController,
-} from './streaming.js';
-import type {
-  StreamCallbacks,
-  StreamRequestOptions,
-  StreamResult,
-  StreamUsage,
 } from './streaming.js';
 
 const STREAMING_FILE = path.resolve(__dirname, 'streaming.ts');

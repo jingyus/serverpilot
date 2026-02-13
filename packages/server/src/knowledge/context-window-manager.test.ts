@@ -12,11 +12,9 @@ import {
   ContextWindowManager,
   getModelLimits,
   truncateMessages,
-  MODEL_CONTEXT_LIMITS,
   type ConversationMessage,
   type ContextWindowConfig,
 } from './context-window-manager.js';
-import { estimateTokenCount } from './context-enhancer.js';
 
 // ============================================================================
 // Test Helpers

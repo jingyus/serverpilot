@@ -15,7 +15,6 @@ import {
   getAllFixStrategies,
   getRuleStats,
   ERROR_RULES,
-  type ErrorMatch,
 } from './common-errors.js';
 
 // ============================================================================

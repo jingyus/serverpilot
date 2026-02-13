@@ -16,7 +16,6 @@
  */
 
 import { z } from 'zod';
-
 import type {
   EnvironmentInfo,
   ErrorContext,

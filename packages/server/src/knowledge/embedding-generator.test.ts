@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
 import { describe, expect, it } from 'vitest';
-
 import type { TextChunk } from './text-chunker.js';
 import {
   EmbeddingGenerator,
@@ -11,10 +10,8 @@ import {
   cosineSimilarity,
 } from './embedding-generator.js';
 import type {
-  EmbeddedChunk,
   EmbeddingProvider,
   EmbeddingProviderConfig,
-  EmbeddingSummary,
 } from './embedding-generator.js';
 
 // ============================================================================
@@ -601,7 +598,7 @@ describe('EmbeddingGenerator', () => {
             requiresApiKey: false,
           };
         },
-        async embed(text: string) {
+        async embed(_text: string) {
           return [1, 0, 0];
         },
         async embedBatch(texts: string[]) {

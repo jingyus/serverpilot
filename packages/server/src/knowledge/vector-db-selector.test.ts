@@ -14,8 +14,6 @@ import {
   BACKENDS,
   type VectorDBBackend,
   type EnvironmentCheck,
-  type BackendInfo,
-  type SelectionResult,
 } from './vector-db-selector.js';
 
 // ============================================================================

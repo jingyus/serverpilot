@@ -8,6 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import type { FullServerProfile } from '../core/profile/manager.js';
 import {
   buildProfileContext,
   buildProfileCaveats,
@@ -15,7 +16,6 @@ import {
   countCjkChars,
   getCharsPerToken,
 } from './profile-context.js';
-import type { FullServerProfile } from '../core/profile/manager.js';
 
 // ============================================================================
 // Helpers

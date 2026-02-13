@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
 import { describe, expect, it } from 'vitest';
-
 import type { LoadedDocument } from './document-loader.js';
 import {
   TextChunker,
@@ -10,7 +9,7 @@ import {
   findSentenceBoundary,
   findWordBoundary,
 } from './text-chunker.js';
-import type { TextChunk, TextChunkerOptions } from './text-chunker.js';
+import type { TextChunkerOptions } from './text-chunker.js';
 
 // ============================================================================
 // Helpers

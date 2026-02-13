@@ -9,16 +9,16 @@
  * files exist and have the expected content.
  */
 
-import { describe, it, expect, beforeAll } from 'vitest';
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { describe, it, expect, beforeAll } from 'vitest';
 
 // ============================================================================
 // Helpers
 // ============================================================================
 
 const ROOT_DIR = resolve(__dirname, '..', '..', '..', '..');
-const SERVER_DIR = resolve(ROOT_DIR, 'packages', 'server');
+const _SERVER_DIR = resolve(ROOT_DIR, 'packages', 'server');
 
 function readFile(relativePath: string): string {
   return readFileSync(resolve(ROOT_DIR, relativePath), 'utf-8');
@@ -35,7 +35,7 @@ let dockerignore: string;
 let envExample: string;
 let rootPkg: Record<string, unknown>;
 let serverPkg: Record<string, unknown>;
-let sharedPkg: Record<string, unknown>;
+let _sharedPkg: Record<string, unknown>;
 
 beforeAll(() => {
   dockerfile = readFile('packages/server/Dockerfile');
@@ -45,7 +45,7 @@ beforeAll(() => {
   envExample = readFile('.env.example');
   rootPkg = JSON.parse(readFile('package.json'));
   serverPkg = JSON.parse(readFile('packages/server/package.json'));
-  sharedPkg = JSON.parse(readFile('packages/shared/package.json'));
+  _sharedPkg = JSON.parse(readFile('packages/shared/package.json'));
 });
 
 // ============================================================================

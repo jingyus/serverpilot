@@ -13,9 +13,7 @@
  */
 
 import path from 'node:path';
-
 import type { ExecResult } from '@aiinstaller/shared';
-
 import { CommandExecutor } from './executor.js';
 import type { ExecuteOptions } from './executor.js';
 

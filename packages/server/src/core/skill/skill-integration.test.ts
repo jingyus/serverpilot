@@ -195,6 +195,7 @@ function createMockProvider(responses: ChatResponse[]): AIProviderInterface {
   return {
     name: 'test-provider',
     tier: 1,
+    contextWindowSize: 200_000,
     chat: vi.fn(async (_options: ChatOptions): Promise<ChatResponse> => {
       if (callIndex >= responses.length) {
         return {
@@ -506,6 +507,7 @@ describe('SSE event streaming integration', () => {
     const hangingProvider: AIProviderInterface = {
       name: 'hanging-provider',
       tier: 1,
+      contextWindowSize: 200_000,
       chat: vi.fn(async () => {
         // Simulate long-running AI call that exceeds 1s timeout
         await new Promise((resolve) => setTimeout(resolve, 3000));

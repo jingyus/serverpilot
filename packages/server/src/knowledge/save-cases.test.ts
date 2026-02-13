@@ -4,10 +4,10 @@
  * Tests for the knowledge base case document save module.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { existsSync, readFileSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   DEFAULT_CASES_DIR,
   REQUIRED_CASES,
@@ -16,7 +16,6 @@ import {
   listExistingCases,
   checkMissingCases,
   saveOpenClawCases,
-  type SaveCasesOptions,
 } from './save-cases.js';
 import type { DocPage } from './scraper.js';
 

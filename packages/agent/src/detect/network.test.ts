@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+/* eslint-disable @typescript-eslint/no-explicit-any -- mock type coercion in tests */
 import { spawnSync } from 'node:child_process';
-
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   detectProxy,
   canAccessHost,
@@ -12,7 +12,6 @@ import {
   detectNetworkStatus,
   detectNetworkDetails,
 } from './network.js';
-import type { ProxySettings, NetworkInfo } from './network.js';
 
 // ============================================================================
 // Mock

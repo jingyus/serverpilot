@@ -14,7 +14,6 @@ import { fileURLToPath } from 'node:url';
 import pg from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { migrate as drizzleMigrate } from 'drizzle-orm/node-postgres/migrator';
-
 import { buildPgConfigFromEnv } from './pg-connection.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));

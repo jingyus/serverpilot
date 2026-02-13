@@ -10,7 +10,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { networkInterfaces } from 'node:os';
 import os from 'node:os';
 import { homedir } from 'node:os';
@@ -271,8 +271,7 @@ export function clearDeviceFingerprint(config?: DeviceFingerprintConfig): boolea
   }
 
   try {
-    const fs = require('node:fs');
-    fs.unlinkSync(filePath);
+    unlinkSync(filePath);
     return true;
   } catch {
     return false;

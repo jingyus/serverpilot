@@ -13,11 +13,11 @@
 import type { ErrorContext, EnvironmentInfo, FixStrategy } from '@aiinstaller/shared';
 import type { FullServerProfile } from '../core/profile/manager.js';
 import type { ServerProfile } from '../db/repositories/server-repository.js';
+import { logger } from '../utils/logger.js';
 import { diagnoseError, identifyErrorType, type DiagnosisResult } from './error-analyzer.js';
 import { InstallAIAgent } from './agent.js';
 import type { ErrorDiagnosis } from './agent.js';
 import { getActiveProvider } from './providers/provider-factory.js';
-import { logger } from '../utils/logger.js';
 
 // ============================================================================
 // Types

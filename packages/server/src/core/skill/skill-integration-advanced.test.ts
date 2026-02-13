@@ -185,6 +185,7 @@ function createMockProvider(responses: ChatResponse[]): AIProviderInterface {
   return {
     name: 'test-provider',
     tier: 1,
+    contextWindowSize: 200_000,
     chat: vi.fn(async (_options: ChatOptions): Promise<ChatResponse> => {
       if (callIndex >= responses.length) {
         return {
@@ -431,6 +432,7 @@ describe('Error recovery integration', () => {
     const failingProvider: AIProviderInterface = {
       name: 'failing-provider',
       tier: 1,
+      contextWindowSize: 200_000,
       chat: vi.fn(async () => {
         throw new Error('AI provider unavailable');
       }),
@@ -538,6 +540,7 @@ describe('Multi-step execution integration', () => {
     const infiniteProvider: AIProviderInterface = {
       name: 'infinite-provider',
       tier: 1,
+      contextWindowSize: 200_000,
       chat: vi.fn(async (): Promise<ChatResponse> => ({
         content: 'Running...',
         usage: { inputTokens: 10, outputTokens: 5 },

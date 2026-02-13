@@ -12,13 +12,12 @@
 
 import { randomBytes } from 'node:crypto';
 import { eq } from 'drizzle-orm';
-
 import { hashPassword } from '../utils/password.js';
+import { logger } from '../utils/logger.js';
+import { ensureDefaultTenant } from '../utils/auto-tenant.js';
 import { getUserRepository } from './repositories/user-repository.js';
 import { getDatabase } from './connection.js';
 import { users } from './schema.js';
-import { logger } from '../utils/logger.js';
-import { ensureDefaultTenant } from '../utils/auto-tenant.js';
 
 const DEFAULT_ADMIN_EMAIL = 'admin@serverpilot.local';
 const DEFAULT_ADMIN_NAME = 'Admin';

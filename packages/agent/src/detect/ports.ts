@@ -12,7 +12,6 @@
 
 import { spawnSync } from 'node:child_process';
 import os from 'node:os';
-
 import type { OpenPort } from '@aiinstaller/shared';
 
 /** Default timeout for spawned processes (ms) */

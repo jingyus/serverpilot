@@ -2,9 +2,9 @@
 // Copyright (c) 2024-2026 ServerPilot Contributors
 /** System prompt builders for the Agentic Chat Engine. */
 
-import { buildProfileContext, buildProfileCaveats } from './profile-context.js';
 import { getRagPipeline } from '../knowledge/rag-pipeline.js';
 import { logger } from '../utils/logger.js';
+import { buildProfileContext, buildProfileCaveats } from './profile-context.js';
 
 export function buildAgenticSystemPrompt(): string {
   return `You are ServerPilot, an autonomous AI DevOps agent that manages servers.

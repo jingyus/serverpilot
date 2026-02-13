@@ -11,7 +11,6 @@
 
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
-
 import * as schema from './schema.js';
 
 export type DrizzleDB = ReturnType<typeof drizzle<typeof schema>>;
@@ -87,7 +86,7 @@ export function closeDatabase(): void {
  * Suitable for initial setup and testing.
  * For production, use drizzle-kit migrations instead.
  */
-export function createTables(db?: DrizzleDB): void {
+export function createTables(_db?: DrizzleDB): void {
   const sqlite = _sqlite;
   if (!sqlite) {
     throw new Error('Database not initialized. Call initDatabase() first.');

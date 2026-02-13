@@ -4,12 +4,12 @@
  * Tests for the KnowledgeBase loader and search module.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { KnowledgeBase } from './loader.js';
-import type { KnowledgeDocument, SearchResult, KnowledgeBaseOptions } from './loader.js';
+import type { KnowledgeBaseOptions } from './loader.js';
 
 // ============================================================================
 // Helpers
@@ -626,7 +626,7 @@ describe('KnowledgeBase', () => {
     it('handles empty files', () => {
       writeTestFile('empty.md', '');
       const kb = createKB();
-      const count = kb.loadDocuments();
+      const _count = kb.loadDocuments();
       // Empty file should still load (readFileSync succeeds)
       const doc = kb.getDocumentById('empty.md');
       expect(doc).toBeDefined();

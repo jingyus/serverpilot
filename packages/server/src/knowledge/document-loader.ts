@@ -466,7 +466,7 @@ export function countWords(content: string): number {
   const stripped = content
     .replace(/```[\s\S]*?```/g, '') // remove code blocks
     .replace(/`[^`]*`/g, '')        // remove inline code
-    .replace(/[#>*_\-|~\[\]()]/g, ' '); // remove markdown symbols
+    .replace(/[#>*_\-|~[\]()]/g, ' '); // remove markdown symbols
 
   const words = stripped.split(/\s+/).filter((w) => w.length > 0);
   return words.length;

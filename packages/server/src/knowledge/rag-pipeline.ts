@@ -14,6 +14,7 @@
  * @module knowledge/rag-pipeline
  */
 
+import { logger } from '../utils/logger.js';
 import { IntegratedKnowledgeLoader } from './integrated-loader.js';
 import { TextChunker } from './text-chunker.js';
 import {
@@ -27,7 +28,6 @@ import {
   formatKnowledgeContext,
   type FormattedContext,
 } from './context-enhancer.js';
-import { logger } from '../utils/logger.js';
 
 // ============================================================================
 // Types

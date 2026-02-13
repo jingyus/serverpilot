@@ -9,12 +9,6 @@ import {
   LocalVectorStore,
   createVectorStore,
   storeEmbeddings,
-  type VectorStore,
-  type VectorRecord,
-  type VectorSearchResult,
-  type SearchOptions,
-  type StoreSummary,
-  type StoreStats,
 } from './vector-store.js';
 import type { EmbeddedChunk } from './embedding-generator.js';
 
@@ -484,6 +478,7 @@ describe('createVectorStore', () => {
   });
 
   it('should throw for unknown backend', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- intentional invalid input test
     expect(() => createVectorStore('unknown' as any, false)).toThrow(
       /Unknown vector store backend/,
     );

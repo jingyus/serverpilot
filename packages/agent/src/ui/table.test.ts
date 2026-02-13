@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
 import { describe, it, expect } from 'vitest';
-import { renderTable, displayEnvironmentInfo, displayInstallPlan } from './table.js';
 import type { EnvironmentInfo, InstallPlan } from '@aiinstaller/shared';
+import { renderTable, displayEnvironmentInfo, displayInstallPlan } from './table.js';
 
 // ============================================================================
 // renderTable

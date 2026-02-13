@@ -435,6 +435,7 @@ describe('checkProviderHealth', () => {
     const mockProvider: AIProviderInterface = {
       name: 'ollama',
       tier: 3,
+      contextWindowSize: 8_192,
       chat: vi.fn(),
       stream: vi.fn(),
       isAvailable: vi.fn().mockResolvedValue(true),
@@ -451,6 +452,7 @@ describe('checkProviderHealth', () => {
     const mockProvider: AIProviderInterface = {
       name: 'openai',
       tier: 2,
+      contextWindowSize: 128_000,
       chat: vi.fn(),
       stream: vi.fn(),
       isAvailable: vi.fn().mockResolvedValue(false),
@@ -465,6 +467,7 @@ describe('checkProviderHealth', () => {
     const mockProvider: AIProviderInterface = {
       name: 'claude',
       tier: 1,
+      contextWindowSize: 200_000,
       chat: vi.fn(),
       stream: vi.fn(),
       isAvailable: vi.fn().mockRejectedValue(new Error('Connection refused')),

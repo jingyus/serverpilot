@@ -13,17 +13,14 @@
 import path from 'node:path';
 import { existsSync, readdirSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
-
 import {
   scrapeGitHubDocs,
   type GitHubDocSource,
-  type GitHubFetchOptions,
   type GitHubScrapeSummary,
 } from './github-doc-scraper.js';
 import {
   scrapeWebDocs,
   type WebDocSource,
-  type WebFetchOptions,
   type WebScrapeSummary,
 } from './web-doc-scraper.js';
 

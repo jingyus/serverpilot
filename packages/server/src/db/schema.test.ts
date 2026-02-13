@@ -14,10 +14,9 @@
  * @module db/schema.test
  */
 
+import { randomUUID } from 'node:crypto';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { randomUUID } from 'node:crypto';
-
 import { initDatabase, closeDatabase, createTables, getDatabase } from './connection.js';
 import type { DrizzleDB } from './connection.js';
 import {

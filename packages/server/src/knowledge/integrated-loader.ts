@@ -11,10 +11,10 @@
  * @module knowledge/integrated-loader
  */
 
-import { DocumentLoader, type LoadedDocument } from './document-loader.js';
-import { logger } from '../utils/logger.js';
 import { existsSync, readdirSync } from 'node:fs';
 import path from 'node:path';
+import { logger } from '../utils/logger.js';
+import { DocumentLoader, type LoadedDocument } from './document-loader.js';
 
 // ============================================================================
 // Types

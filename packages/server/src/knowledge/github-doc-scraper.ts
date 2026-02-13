@@ -393,7 +393,7 @@ export async function scrapeGitHubDocs(
       outputDir,
       rateLimitRemaining,
     };
-  } catch (err) {
+  } catch {
     return {
       repository: `${source.owner}/${source.repo}`,
       branch,

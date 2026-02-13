@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-
 import {
   createProgress,
   withProgress,
@@ -18,11 +17,7 @@ import {
   formatPhaseBanner,
 } from './progress.js';
 import type {
-  ProgressOptions,
-  ProgressReporter,
   InstallStepDescriptor,
-  InstallProgressResult,
-  StepProgressResult,
   ProgressEstimate,
   SpinnerStyle,
   SpinnerStyleName,
@@ -256,7 +251,7 @@ describe('withProgress', () => {
   });
 
   it('runs work function and returns its result', async () => {
-    const result = await withProgress({ label: 'Working', enabled: false }, async (p) => {
+    const result = await withProgress({ label: 'Working', enabled: false }, async (_p) => {
       return 42;
     });
     expect(result).toBe(42);

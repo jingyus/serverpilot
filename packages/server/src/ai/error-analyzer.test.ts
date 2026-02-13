@@ -12,10 +12,6 @@ import {
   identifyErrorTypeFromOutput,
   isTransientError,
   diagnoseError,
-  type ErrorType,
-  type ErrorAnalysis,
-  type ExtractedErrorInfo,
-  type DiagnosisResult,
 } from './error-analyzer.js';
 import type { InstallAIAgent } from './agent.js';
 import type { ErrorDiagnosis } from './agent.js';

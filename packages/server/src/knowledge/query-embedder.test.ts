@@ -4,15 +4,11 @@
  * Tests for the query embedding generator module.
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   QueryEmbedder,
   expandWithSynonyms,
   getSynonymMap,
-} from './query-embedder.js';
-import type {
-  QueryEmbeddingResult,
-  QueryEmbedderConfig,
 } from './query-embedder.js';
 import {
   TfIdfEmbeddingProvider,

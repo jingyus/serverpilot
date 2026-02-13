@@ -13,7 +13,6 @@ import {
   enhancePromptWithSearchResponse,
   estimateTokenCount,
   calculateContextBudget,
-  type ContextEnhancerOptions,
 } from './context-enhancer.js';
 
 // ============================================================================

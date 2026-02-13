@@ -15,14 +15,13 @@
  * @module db/migrate.test
  */
 
-import { describe, it, expect, afterEach } from 'vitest';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { randomUUID } from 'node:crypto';
+import { describe, it, expect, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { eq } from 'drizzle-orm';
-import { randomUUID } from 'node:crypto';
-
 import { runMigrations, runMigrationsWithConnection } from './migrate.js';
 import * as schema from './schema.js';
 

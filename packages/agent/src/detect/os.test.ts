@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+/* eslint-disable @typescript-eslint/no-explicit-any -- mock type coercion in tests */
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
-
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { detectOSType, detectArch, detectOSDetails } from './os.js';
-import type { OSInfo } from './os.js';
 
 // ============================================================================
 // Mock

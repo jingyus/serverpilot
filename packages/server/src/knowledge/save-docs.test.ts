@@ -4,10 +4,10 @@
  * Tests for the knowledge base document save module.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { existsSync, readFileSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   DEFAULT_OUTPUT_DIR,
   REQUIRED_DOCS,
@@ -16,9 +16,8 @@ import {
   checkMissingDocs,
   saveOpenClawDocs,
   findProjectRoot,
-  type SaveDocsOptions,
 } from './save-docs.js';
-import { DEFAULT_DOC_PAGES, type DocPage } from './scraper.js';
+import { type DocPage } from './scraper.js';
 
 // ============================================================================
 // Helpers
@@ -223,7 +222,7 @@ describe('save-docs', () => {
     });
 
     it('should find the actual project root from a subdirectory', () => {
-      const projectRoot = path.resolve(
+      const _projectRoot = path.resolve(
         __dirname,
         '..', // src
         '..', // packages/server

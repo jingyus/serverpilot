@@ -10,7 +10,7 @@
  */
 
 import path from 'node:path';
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import {
   scrapeOpenClawDocs,
   DEFAULT_DOC_PAGES,
@@ -83,7 +83,6 @@ export function findProjectRoot(startDir: string): string | null {
     const pkgPath = path.join(dir, 'package.json');
     if (existsSync(pkgPath)) {
       try {
-        const { readFileSync } = require('node:fs');
         const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
         if (pkg.name && pkg.name.includes('aiinstaller')) {
           return dir;

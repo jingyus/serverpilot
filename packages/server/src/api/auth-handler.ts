@@ -15,10 +15,10 @@
 import type { AuthRequestMessage, AuthResponseMessage } from '@aiinstaller/shared';
 import { MessageType, PROTOCOL_VERSION, checkVersionCompatibility } from '@aiinstaller/shared';
 import { eq, and } from 'drizzle-orm';
-import { DeviceClient } from './device-client.js';
 import { logger } from '../utils/logger.js';
 import { getDatabase } from '../db/connection.js';
 import { agents } from '../db/schema.js';
+import { DeviceClient } from './device-client.js';
 
 /**
  * Authentication result for WebSocket connections

@@ -4,7 +4,7 @@
  * Tests for auto-tenant provisioning in single-tenant mode.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { initDatabase, closeDatabase, createTables } from '../db/connection.js';
 import {
   DrizzleUserRepository,
@@ -13,11 +13,10 @@ import {
 import {
   DrizzleTenantRepository,
   setTenantRepository,
-  getTenantRepository,
   _resetTenantRepository,
 } from '../db/repositories/tenant-repository.js';
-import { ensureDefaultTenant, isCloudMode } from './auto-tenant.js';
 import type { DrizzleDB } from '../db/connection.js';
+import { ensureDefaultTenant, isCloudMode } from './auto-tenant.js';
 
 describe('auto-tenant provisioning', () => {
   let db: DrizzleDB;

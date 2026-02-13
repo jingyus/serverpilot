@@ -6,8 +6,7 @@
  * @module utils/logger.test
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import type { Mock } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   initLogger,
   getLogger,

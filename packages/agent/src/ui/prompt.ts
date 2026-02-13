@@ -210,6 +210,7 @@ export async function promptSelect<T extends string = string>(
 
   const result = await _backend.select({
     message: options.message,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- clack select generic mismatch
     options: options.options as any,
   });
 

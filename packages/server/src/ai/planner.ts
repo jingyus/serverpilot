@@ -9,12 +9,12 @@
  * @module ai/planner
  */
 
-import type { EnvironmentInfo, InstallPlan } from '@aiinstaller/shared';
-import type { InstallAIAgent, TokenUsage, StreamCallbacks } from './agent.js';
-import { KnowledgeBase } from '../knowledge/loader.js';
-import { logger } from '../utils/logger.js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { EnvironmentInfo, InstallPlan } from '@aiinstaller/shared';
+import { KnowledgeBase } from '../knowledge/loader.js';
+import { logger } from '../utils/logger.js';
+import type { InstallAIAgent, TokenUsage, StreamCallbacks } from './agent.js';
 
 // Get the project root directory
 const __filename = fileURLToPath(import.meta.url);

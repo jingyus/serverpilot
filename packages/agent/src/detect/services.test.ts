@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+/* eslint-disable @typescript-eslint/no-explicit-any -- mock type coercion in tests */
 import { spawnSync } from 'node:child_process';
 import os from 'node:os';
-
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   detectSystemdServices,
   detectPm2Services,

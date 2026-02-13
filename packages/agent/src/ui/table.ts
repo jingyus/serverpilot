@@ -103,7 +103,7 @@ export function renderTable(opts: RenderTableOptions): string {
   }
 
   // Calculate column widths: max of header and all cell values, respecting minWidth
-  const widths = columns.map((col, i) => {
+  const widths = columns.map((col, _i) => {
     const headerLen = col.header.length;
     const maxCell = Math.max(0, ...rows.map((r) => (r[col.key] ?? '').length));
     const contentWidth = Math.max(headerLen, maxCell);

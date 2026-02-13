@@ -12,7 +12,6 @@
 
 import { spawnSync } from 'node:child_process';
 import process from 'node:process';
-
 import type { EnvironmentInfo } from '@aiinstaller/shared';
 
 /** Parsed semver version. */

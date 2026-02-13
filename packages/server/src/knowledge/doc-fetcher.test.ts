@@ -4,10 +4,10 @@
  * Tests for the unified documentation fetcher module.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { existsSync, rmSync, readdirSync } from 'node:fs';
+import { existsSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   DocFetcher,
   createDocFetcher,
@@ -20,10 +20,10 @@ import {
 // ============================================================================
 
 function createMockFetch(): typeof fetch {
-  let callIndex = 0;
+  let _callIndex = 0;
 
   return vi.fn().mockImplementation((url: string) => {
-    callIndex++;
+    _callIndex++;
 
     // Mock GitHub API responses
     if (url.includes('api.github.com')) {

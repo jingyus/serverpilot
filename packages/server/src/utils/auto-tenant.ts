@@ -37,7 +37,7 @@ export function isCloudMode(): boolean {
  */
 export async function ensureDefaultTenant(
   userId: string,
-  email: string,
+  _email: string,
 ): Promise<string | null> {
   if (isCloudMode()) {
     return null;

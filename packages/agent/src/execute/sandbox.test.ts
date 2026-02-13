@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import path from 'node:path';
-
+import { describe, it, expect, vi } from 'vitest';
 import { Sandbox, DEFAULT_WHITELIST } from './sandbox.js';
-import type { SandboxConfig, ValidationResult } from './sandbox.js';
 
 // ============================================================================
 // DEFAULT_WHITELIST

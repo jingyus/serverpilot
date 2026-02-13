@@ -8,8 +8,6 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { AutoLearner } from './auto-learn.js';
-
 import type { OperationRecord } from '../db/repositories/operation-repository.js';
 import type {
   KnowledgeRepository,
@@ -20,6 +18,7 @@ import type {
 } from '../db/repositories/knowledge-repository.js';
 import type { ProfileRepository, Profile } from '../db/repositories/profile-repository.js';
 import type { KnowledgeEntry } from '../db/schema.js';
+import { AutoLearner } from './auto-learn.js';
 
 // ============================================================================
 // Helpers

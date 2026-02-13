@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { SnapshotManager, backupConfigs } from './snapshot.js';
-import type { Snapshot } from './snapshot.js';
 
 // ============================================================================
 // Test helpers
@@ -258,8 +256,8 @@ describe('SnapshotManager', () => {
     it('returns all snapshots sorted by creation time (newest first)', async () => {
       const manager = new SnapshotManager(path.join(testDir, 'backups'));
       const file = createTestFile(testDir, 'data.txt', 'content');
-      const s1 = await manager.createSnapshot([file], { label: 'first' });
-      const s2 = await manager.createSnapshot([file], { label: 'second' });
+      const _s1 = await manager.createSnapshot([file], { label: 'first' });
+      const _s2 = await manager.createSnapshot([file], { label: 'second' });
       const list = manager.listSnapshots();
       expect(list).toHaveLength(2);
       expect(list[0].createdAt).toBeGreaterThanOrEqual(list[1].createdAt);

@@ -19,15 +19,11 @@ import {
   MessageType,
   createMessage,
   safeParseMessage,
-  SessionStatus,
 } from '@aiinstaller/shared';
 import type {
   Message,
-  AuthResponseMessage,
 } from '@aiinstaller/shared';
-
 import { InstallServer } from './server.js';
-import type { InstallServerOptions } from './server.js';
 
 // ============================================================================
 // Helpers
@@ -348,8 +344,8 @@ describe('Server ↔ Agent Protocol Compatibility', () => {
     await waitFor(() => server.getClientCount() === 1);
 
     // Get client ID
-    let clientId = '';
-    server.on('connection', (cid) => { clientId = cid; });
+    let _clientId = '';
+    server.on('connection', (cid) => { _clientId = cid; });
     // The connection event already fired, so get clientId differently
     // Use the message event to find out the clientId
     const messagePromise = waitForMessage(ws);

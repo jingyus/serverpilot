@@ -26,9 +26,11 @@ import { getSessionManager } from '../../core/session/manager.js';
 import { getServerRepository } from '../../db/repositories/server-repository.js';
 import { getProfileManager } from '../../core/profile/manager.js';
 import { buildProfileContext, buildProfileCaveats } from '../../ai/profile-context.js';
-import { getChatAIAgent, ChatRetryExhaustedError } from './chat-ai.js';
+import { getChatAIAgent, ChatRetryExhaustedError, buildSystemPrompt } from './chat-ai.js';
 import type { ChatRetryEvent } from './chat-ai.js';
 import { getRagPipeline } from '../../knowledge/rag-pipeline.js';
+import { getActiveProvider } from '../../ai/providers/provider-factory.js';
+import { calculateConversationBudget } from '../../ai/context-budget.js';
 import { logger } from '../../utils/logger.js';
 import { findConnectedAgent } from '../../core/agent/agent-connector.js';
 import { getAgenticEngine } from '../../ai/agentic-chat.js';
@@ -359,7 +361,6 @@ chat.post('/:serverId', requirePermission('chat:use'), validateBody(ChatMessageB
       try {
         const profileCtx = buildProfileContext(fullProfile, server.name);
         const caveats = buildProfileCaveats(fullProfile);
-        const conversationContext = sessionMgr.buildContextWithLimit(session.id, 8000);
         const serverLabel = `Server: ${server.name}`;
 
         // Search knowledge base (graceful degradation — never blocks chat)
@@ -378,6 +379,25 @@ chat.post('/:serverId', requirePermission('chat:use'), validateBody(ChatMessageB
             'RAG search failed, continuing without knowledge context',
           );
         }
+
+        // Dynamic conversation history budget based on model context window
+        const provider = getActiveProvider();
+        const contextWindowSize = provider?.contextWindowSize ?? 200_000;
+        const systemPrompt = buildSystemPrompt(profileCtx.text, caveats, knowledgeContext);
+        const budget = calculateConversationBudget({
+          contextWindowSize,
+          systemPrompt,
+          userMessage: body.message!,
+          serverLabel,
+        });
+        const conversationContext = sessionMgr.buildContextWithLimit(
+          session.id,
+          budget.maxConversationTokens,
+        );
+        logger.debug(
+          { operation: 'context_budget', ...budget.breakdown, sessionId: session.id },
+          `Context budget: ${budget.maxConversationTokens} tokens for conversation history`,
+        );
 
         let fullResponse = '';
         const chatCallbacks = {

@@ -16,9 +16,9 @@
  * @module api/rate-limiter
  */
 
+import { logger } from '../utils/logger.js';
 import { DeviceClient } from './device-client.js';
 import { sessionClient } from './session-client.js';
-import { logger } from '../utils/logger.js';
 
 // ============================================================================
 // Constants

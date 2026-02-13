@@ -510,10 +510,43 @@ describe('Acceptance: 安装失败时能获得 AI 诊断和修复建议', () => 
       ws.send(JSON.stringify(createMsg));
       await waitForMessage(ws); // plan.receive ack
 
-      // Send env report
+      // Send env report — without AI agent, handler sends ai.stream.error + plan.receive
       const envMsg = createMessage(MessageType.ENV_REPORT, makeEnv());
+
+      // Set up a message queue to capture all responses reliably
+      const messages: string[] = [];
+      let resolveNext: ((value: string) => void) | null = null;
+      const onMsg = (data: unknown) => {
+        const str = String(data);
+        if (resolveNext) {
+          const r = resolveNext;
+          resolveNext = null;
+          r(str);
+        } else {
+          messages.push(str);
+        }
+      };
+      ws.on('message', onMsg);
+
+      const nextMessage = (timeoutMs = 3000): Promise<string> =>
+        new Promise((resolve, reject) => {
+          if (messages.length > 0) {
+            resolve(messages.shift()!);
+            return;
+          }
+          const timer = setTimeout(() => {
+            resolveNext = null;
+            reject(new Error('nextMessage timed out'));
+          }, timeoutMs);
+          resolveNext = (v) => {
+            clearTimeout(timer);
+            resolve(v);
+          };
+        });
+
       ws.send(JSON.stringify(envMsg));
-      await waitForMessage(ws); // plan.receive
+      await nextMessage(); // ai.stream.error
+      await nextMessage(); // plan.receive (fallback plan)
 
       // Report permission denied error
       const errorPayload = {
@@ -528,7 +561,8 @@ describe('Acceptance: 安装失败时能获得 AI 诊断和修复建议', () => 
       const errorMsg = createMessage(MessageType.ERROR_OCCURRED, errorPayload);
       ws.send(JSON.stringify(errorMsg));
 
-      const fixStr = await waitForMessage(ws);
+      const fixStr = await nextMessage();
+      ws.off('message', onMsg);
       const fixResponse = JSON.parse(fixStr);
 
       expect(fixResponse.type).toBe(MessageType.FIX_SUGGEST);

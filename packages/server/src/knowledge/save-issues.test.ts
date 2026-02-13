@@ -4,10 +4,10 @@
  * Tests for the knowledge base issue document save module.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { existsSync, readFileSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   DEFAULT_ISSUES_DIR,
   REQUIRED_ISSUES,
@@ -16,7 +16,6 @@ import {
   listExistingIssues,
   checkMissingIssues,
   saveOpenClawIssues,
-  type SaveIssuesOptions,
 } from './save-issues.js';
 import type { DocPage } from './scraper.js';
 

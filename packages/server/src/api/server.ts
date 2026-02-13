@@ -11,10 +11,8 @@
 
 import { randomUUID } from 'node:crypto';
 import type { Server as HttpServer } from 'node:http';
-
 import { WebSocketServer } from 'ws';
 import type { WebSocket as WsWebSocket } from 'ws';
-
 import type { Message, SessionCreateMessage } from '@aiinstaller/shared';
 import { safeParseMessage } from '@aiinstaller/shared';
 import { SessionStatus } from '@aiinstaller/shared';

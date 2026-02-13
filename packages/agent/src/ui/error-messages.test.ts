@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-
 import chalk from 'chalk';
-
+import type { ErrorContext } from '@aiinstaller/shared';
 import {
   formatPlainError,
   formatPlainErrorFromOutput,
@@ -18,11 +17,9 @@ import {
 } from './error-messages.js';
 import type {
   PlainErrorMessage,
-  HelpLink,
   ErrorCategory,
   ErrorSeverity,
 } from './error-messages.js';
-import type { ErrorContext } from '@aiinstaller/shared';
 
 // ============================================================================
 // Helper: create a minimal ErrorContext

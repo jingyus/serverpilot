@@ -11,7 +11,6 @@
 
 import { spawnSync } from 'node:child_process';
 import os from 'node:os';
-
 import type { EnvironmentInfo } from '@aiinstaller/shared';
 
 /** Detailed OS information beyond the basic EnvironmentInfo['os'] fields. */

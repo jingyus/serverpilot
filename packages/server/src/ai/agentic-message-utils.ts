@@ -3,8 +3,8 @@
 /** Message trimming and token estimation utilities for the Agentic Chat Engine. */
 
 import type Anthropic from '@anthropic-ai/sdk';
-import { estimateTokens, getCharsPerToken } from './profile-context.js';
 import { logger } from '../utils/logger.js';
+import { estimateTokens, getCharsPerToken } from './profile-context.js';
 
 /** Extract text from a content block for token estimation. */
 function extractBlockText(block: Record<string, unknown>): string {

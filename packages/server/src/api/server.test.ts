@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
+/* eslint-disable @typescript-eslint/no-explicit-any -- mock type coercion in tests */
 /**
  * Tests for packages/server/src/api/server.ts
  *
@@ -14,13 +15,11 @@
  * - Edge cases (rapid connect/disconnect, multiple messages, etc.)
  */
 
-import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import WebSocket from 'ws';
 import type { Message } from '@aiinstaller/shared';
 import { MessageType, SessionStatus } from '@aiinstaller/shared';
-
 import { InstallServer } from './server.js';
-import type { InstallServerOptions, InstallServerEvents } from './server.js';
 
 // ============================================================================
 // Test Helpers
@@ -208,11 +207,11 @@ describe('src/api/server.ts', () => {
 
       expect(server.getClientCount()).toBe(0);
 
-      const ws1 = trackClient(await connectClient(port));
+      const _ws1 = trackClient(await connectClient(port));
       await waitFor(() => server.getClientCount() === 1);
       expect(server.getClientCount()).toBe(1);
 
-      const ws2 = trackClient(await connectClient(port));
+      const _ws2 = trackClient(await connectClient(port));
       await waitFor(() => server.getClientCount() === 2);
       expect(server.getClientCount()).toBe(2);
     });
@@ -239,7 +238,7 @@ describe('src/api/server.ts', () => {
       });
 
       await server.start();
-      const ws = trackClient(await connectClient(port));
+      const _ws = trackClient(await connectClient(port));
       await waitFor(() => connectionIds.length === 1);
 
       expect(connectionIds).toHaveLength(1);
@@ -790,7 +789,7 @@ describe('src/api/server.ts', () => {
       expect(server.isRunning()).toBe(true);
 
       // Verify the server is reachable on the specified port
-      const ws = trackClient(await connectClient(port));
+      const _ws = trackClient(await connectClient(port));
       await waitFor(() => server.getClientCount() === 1);
       expect(server.getClientCount()).toBe(1);
     });
@@ -802,7 +801,7 @@ describe('src/api/server.ts', () => {
       expect(server.isRunning()).toBe(true);
 
       // Verify it is reachable (default host 0.0.0.0)
-      const ws = trackClient(await connectClient(port));
+      const _ws = trackClient(await connectClient(port));
       await waitFor(() => server.getClientCount() === 1);
       expect(server.getClientCount()).toBe(1);
     });
@@ -813,7 +812,7 @@ describe('src/api/server.ts', () => {
       await server.start();
 
       // Connect on the specified port
-      const ws = trackClient(await connectClient(port));
+      const _ws = trackClient(await connectClient(port));
       await waitFor(() => server.getClientCount() === 1);
       expect(server.getClientCount()).toBe(1);
     });

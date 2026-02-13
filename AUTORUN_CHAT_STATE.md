@@ -870,3 +870,12 @@
 
 ---
 
+
+### [2026-02-13 14:35:46] 第 59 轮
+
+**任务**: Legacy 模式 conversationContext 不扣除 knowledge/profile token — 总 prompt 可能超出上下文窗口
+
+**状态**: ✅ 完成
+
+---
+

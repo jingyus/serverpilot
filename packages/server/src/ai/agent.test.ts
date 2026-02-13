@@ -23,9 +23,6 @@ import {
   DetectedCapabilitiesSchema,
 } from './agent.js';
 import type {
-  AIAgentOptions,
-  AIAnalysisResult,
-  EnvironmentAnalysis,
   ErrorDiagnosis,
 } from './agent.js';
 import type {
@@ -45,6 +42,7 @@ function createMockProvider(overrides?: Partial<AIProviderInterface>): AIProvide
   return {
     name: 'mock',
     tier: 1 as const,
+    contextWindowSize: 200_000,
     chat: vi.fn<[ChatOptions], Promise<ChatResponse>>().mockResolvedValue({
       content: '{}',
       usage: { inputTokens: 10, outputTokens: 20 },

@@ -3,14 +3,14 @@
 > 此队列专注于 Chat 和 AI 对话系统的质量改进
 > AI 自动发现问题 → 生成任务 → 实现 → 验证
 
-**最后更新**: 2026-02-13 14:16:30
+**最后更新**: 2026-02-13 14:35:46
 
 ## 📊 统计
 
 - **总任务数**: 100
 - **待完成** (pending): 9
-- **进行中** (in_progress): 1
-- **已完成** (completed): 90
+- **进行中** (in_progress): 0
+- **已完成** (completed): 91
 - **失败** (failed): 0
 
 ## 📋 任务列表
@@ -156,7 +156,7 @@
 
 ---
 
-### [in_progress] Legacy 模式 conversationContext 不扣除 knowledge/profile token — 总 prompt 可能超出上下文窗口
+### [completed] Legacy 模式 conversationContext 不扣除 knowledge/profile token — 总 prompt 可能超出上下文窗口 ✅
 
 **ID**: chat-091
 **优先级**: P1
@@ -166,7 +166,7 @@
 **验收标准**: (1) conversation history 预算动态计算 (2) 不超过模型上下文窗口 (3) 对 ollama 等小上下文模型安全 (4) 默认行为向后兼容
 **影响范围**: `packages/server/src/api/routes/chat.ts`, `packages/server/src/core/session/manager.ts`
 **创建时间**: 2026-02-13
-**完成时间**: -
+**完成时间**: 2026-02-13 14:35:46
 
 ---
 

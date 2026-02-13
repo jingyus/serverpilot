@@ -9,7 +9,6 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { VectorDB } from './vectordb.js';
-import type { VectorDocument, VectorDBOptions, VectorSearchResult } from './vectordb.js';
 
 // ============================================================================
 // Test Helpers

@@ -12,12 +12,11 @@
  * - Error handling (invalid keys, corrupted data, etc.)
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   generateKeyPair,
   signData,
@@ -156,8 +155,8 @@ describe('signature-verifier', () => {
       const signature = signData(data, keyPair.privateKey);
 
       // Temporarily override trusted keys for testing
-      const originalKeys = getAllTrustedKeys();
-      const testKeys = [{
+      const _originalKeys = getAllTrustedKeys();
+      const _testKeys = [{
         id: 'test-key',
         publicKey: keyPair.publicKey,
         addedInVersion: '0.1.0',

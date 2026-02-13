@@ -321,7 +321,7 @@ export function signData(data: Buffer, privateKeyBase64: string): string {
  */
 function createEd25519PublicKey(keyData: Buffer): crypto.KeyObject {
   // SPKI header for Ed25519: 30 2a 30 05 06 03 2b 65 70 03 21 00
-  const SPKI_HEADER = Buffer.from('302a300506032b657003210', 'hex');
+  const _SPKI_HEADER = Buffer.from('302a300506032b657003210', 'hex');
 
   let derBuffer: Buffer;
   if (keyData.length === 32) {

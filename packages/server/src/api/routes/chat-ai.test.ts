@@ -52,6 +52,7 @@ function createMockProvider(overrides?: Partial<AIProviderInterface>): AIProvide
   return {
     name: 'mock-provider',
     tier: 1 as const,
+    contextWindowSize: 200_000,
     chat: vi.fn().mockResolvedValue({
       content: 'hello',
       usage: { inputTokens: 10, outputTokens: 20 },

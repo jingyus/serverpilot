@@ -7,11 +7,11 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { generateInstallPlan, generateFallbackPlan, loadKnowledgeBase, getKnowledgeContextForPlan } from './planner.js';
 import type { EnvironmentInfo, InstallPlan } from '@aiinstaller/shared';
-import type { InstallAIAgent } from './agent.js';
 import { KnowledgeBase } from '../knowledge/loader.js';
 import { logger } from '../utils/logger.js';
+import type { InstallAIAgent } from './agent.js';
+import { generateInstallPlan, generateFallbackPlan, loadKnowledgeBase, getKnowledgeContextForPlan } from './planner.js';
 
 vi.mock('../utils/logger.js', () => ({
   logger: {

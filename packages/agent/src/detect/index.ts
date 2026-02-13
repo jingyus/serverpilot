@@ -10,13 +10,11 @@
  * @module detect
  */
 
-import { execSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { accessSync, constants } from 'node:fs';
 import os from 'node:os';
 import process from 'node:process';
-
 import type { EnvironmentInfo } from '@aiinstaller/shared';
-
 import { detectOpenPorts } from './ports.js';
 import { detectServices } from './services.js';
 

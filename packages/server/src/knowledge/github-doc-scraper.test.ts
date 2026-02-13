@@ -4,10 +4,10 @@
  * Tests for the GitHub documentation scraper module.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { existsSync, readFileSync, rmSync, mkdirSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   buildGitHubHeaders,
   fetchRepoTree,
@@ -468,7 +468,7 @@ describe('github-doc-scraper', () => {
       const encoded = Buffer.from('# Doc Content').toString('base64');
       let callIndex = 0;
 
-      const mockFetch = vi.fn().mockImplementation((url: string) => {
+      const mockFetch = vi.fn().mockImplementation((_url: string) => {
         callIndex++;
         if (callIndex === 1) {
           // Tree request

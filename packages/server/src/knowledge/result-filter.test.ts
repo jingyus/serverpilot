@@ -11,10 +11,6 @@ import {
   sortResults,
   boostResults,
   groupResults,
-  type FilterConfig,
-  type SortCriterion,
-  type BoostConfig,
-  type ResultFilterConfig,
 } from './result-filter.js';
 import type { SimilarityResult } from './similarity-search.js';
 

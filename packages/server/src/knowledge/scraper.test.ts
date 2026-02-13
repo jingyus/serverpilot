@@ -4,10 +4,10 @@
  * Tests for the OpenClaw documentation scraper module.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { existsSync, readFileSync, rmSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   fetchDocPage,
   formatDocContent,
@@ -17,7 +17,6 @@ import {
   DEFAULT_DOC_PAGES,
   type DocPage,
   type ScrapeResult,
-  type FetchOptions,
 } from './scraper.js';
 
 // ============================================================================

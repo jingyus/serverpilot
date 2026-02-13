@@ -4,11 +4,10 @@
  * Tests for enhanced command classification rules (task-007).
  * Covers new rules added for command-rules.ts enhancements.
  */
-import { describe, it, expect, afterEach } from 'vitest';
 import { writeFileSync, unlinkSync, mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-
+import { describe, it, expect, afterEach } from 'vitest';
 import {
   classifyCommand,
   RiskLevel,
@@ -31,8 +30,6 @@ import {
   DANGEROUS_FLAGS,
   PROTECTED_PATHS,
   PROTECTED_PATH_LIST,
-  hasDangerousParams,
-  hasProtectedPaths,
 } from './param-auditor.js';
 
 // ============================================================================

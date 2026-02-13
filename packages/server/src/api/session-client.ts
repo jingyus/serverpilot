@@ -28,8 +28,8 @@ export interface SessionCreateRequest {
   software: string;           // Software being installed
   platform: string;           // darwin/linux/win32
   stepsTotal?: number;        // Total steps in the plan
-  envInfo?: any;              // Environment information (JSON)
-  installPlan?: any;          // Install plan (JSON)
+  envInfo?: Record<string, unknown>;   // Environment information (JSON)
+  installPlan?: Record<string, unknown>; // Install plan (JSON)
 }
 
 /**

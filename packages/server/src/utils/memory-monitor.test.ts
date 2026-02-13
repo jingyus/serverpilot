@@ -7,7 +7,7 @@
  * and the 500MB server memory budget requirement.
  */
 
-import { describe, it, expect, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import {
   MemoryMonitor,
   getMemoryMonitor,

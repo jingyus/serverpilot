@@ -13,9 +13,9 @@
  * - .dockerignore coverage
  */
 
-import { describe, it, expect, beforeAll } from 'vitest';
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { describe, it, expect, beforeAll } from 'vitest';
 
 // ============================================================================
 // Helpers

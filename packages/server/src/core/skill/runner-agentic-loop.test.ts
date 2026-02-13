@@ -150,6 +150,7 @@ function createMockProvider(responses: ChatResponse[]): AIProviderInterface {
   return {
     name: 'test-provider',
     tier: 1,
+    contextWindowSize: 200_000,
     chat: vi.fn(async (_options: ChatOptions): Promise<ChatResponse> => {
       if (callIndex >= responses.length) {
         return { content: 'Done', usage: { inputTokens: 0, outputTokens: 0 }, stopReason: 'end_turn' };
@@ -316,6 +317,7 @@ describe('SkillRunner agentic loop', () => {
     const provider: AIProviderInterface = {
       name: 'slow-provider',
       tier: 1,
+      contextWindowSize: 200_000,
       chat: vi.fn(async () => {
         await new Promise((resolve) => setTimeout(resolve, 1500));
         return {
@@ -493,6 +495,7 @@ describe('SkillRunner agentic loop', () => {
     const provider: AIProviderInterface = {
       name: 'slow-provider',
       tier: 1,
+      contextWindowSize: 200_000,
       chat: vi.fn(async () => {
         await new Promise((resolve) => setTimeout(resolve, 1500));
         return {

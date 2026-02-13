@@ -10,7 +10,6 @@ import {
   AIQualityChecker,
   RiskLevel,
   type CommandClassifierFn,
-  type ClassificationResult,
   QualityIssueSchema,
   QualityCheckResultSchema,
 } from './quality-checker.js';

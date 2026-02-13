@@ -16,7 +16,6 @@ import {
   enforceCategoryDiversity,
   trimToTokenBudget,
   INTENT_CATEGORY_PRIORITIES,
-  type RetrievalOptimizerConfig,
   type RetrievalIntent,
 } from './retrieval-optimizer.js';
 

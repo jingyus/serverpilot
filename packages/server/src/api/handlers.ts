@@ -9,7 +9,7 @@
  * @module api/handlers
  */
 
-import type { InstallServer } from './server.js';
+import { randomUUID } from 'node:crypto';
 import type {
   SessionCreateMessage,
   SessionCompleteMessage,
@@ -27,13 +27,13 @@ import type { InstallAIAgent } from '../ai/agent.js';
 import { generateInstallPlan, generateFallbackPlan } from '../ai/planner.js';
 import { diagnoseError } from '../ai/error-analyzer.js';
 import { createContextLogger, logMessageRoute, logAIOperation, logError } from '../utils/logger.js';
-import { randomUUID } from 'node:crypto';
-import { authenticateDevice, createAuthResponse } from './auth-handler.js';
-import { checkRateLimit, incrementAICall, logAICall, createQuotaExceededMessage, type AIOperationType } from './rate-limiter.js';
 import { getResponseTimeTracker } from '../utils/response-time-tracker.js';
 import { getSnapshotService } from '../core/snapshot/snapshot-service.js';
 import { getRollbackService } from '../core/rollback/rollback-service.js';
 import { getTaskExecutor } from '../core/task/executor.js';
+import { checkRateLimit, incrementAICall, logAICall } from './rate-limiter.js';
+import { authenticateDevice, createAuthResponse } from './auth-handler.js';
+import type { InstallServer } from './server.js';
 
 // ============================================================================
 // Types
@@ -308,7 +308,7 @@ export async function handleEnvReport(
     const environment = message.payload;
     const version = session.version;
 
-    let environmentReady = true; // Assume ready by default
+    let _environmentReady = true; // Assume ready by default
 
     // Check rate limit before AI operations
     const clientAuth = server.getClientAuth(clientId);
@@ -399,7 +399,7 @@ export async function handleEnvReport(
         }, requestId));
 
         // Update environment readiness
-        environmentReady = analysis.ready;
+        _environmentReady = analysis.ready;
 
         // Update session status based on readiness
         if (!analysis.ready) {

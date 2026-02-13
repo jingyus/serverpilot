@@ -1,15 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
 import { describe, it, expect, beforeEach } from 'vitest';
-
 import type { EnvironmentInfo, ExecResult, StepResult } from '@aiinstaller/shared';
-
 import {
   ErrorCollector,
   collectErrorContext,
   lastLines,
 } from './error-collector.js';
-import type { CollectErrorOptions } from './error-collector.js';
 
 // ============================================================================
 // Fixtures

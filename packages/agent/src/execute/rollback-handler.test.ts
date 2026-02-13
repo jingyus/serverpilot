@@ -7,15 +7,14 @@
  * and message handler registration.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-
-import { RollbackHandler, registerRollbackHandler } from './rollback-handler.js';
-import type { RollbackFileEntry, RollbackRequestPayload } from './rollback-handler.js';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { InstallClient } from '../client.js';
 import { MessageType } from '../protocol-lite.js';
+import type { RollbackFileEntry, RollbackRequestPayload } from './rollback-handler.js';
+import { RollbackHandler, registerRollbackHandler } from './rollback-handler.js';
 
 // ============================================================================
 // Test helpers
