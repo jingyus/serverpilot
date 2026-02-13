@@ -53,13 +53,8 @@ const DEFAULT_SKILL_PATHS = ['skills/official', 'skills/community'];
 
 const MAX_CHAIN_DEPTH = 5;
 
-/** Interval for cleaning up expired pending confirmations (10 minutes). */
-const CONFIRMATION_CLEANUP_INTERVAL_MS = 10 * 60 * 1000;
-
-/** Interval for cleaning up old execution history (24 hours). */
-const EXECUTION_CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
-
-/** Default retention period for execution history (90 days). */
+const CONFIRMATION_CLEANUP_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
+const EXECUTION_CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const EXECUTION_RETENTION_DAYS = 90;
 
 const STATUS_TRANSITIONS: Record<SkillStatus, SkillStatus[]> = {
@@ -108,19 +103,24 @@ export class SkillEngine {
     setTriggerManager(this.triggerManager);
     await this.triggerManager.start();
 
-    // Start periodic cleanup of expired pending confirmations
+    // Periodic cleanup of expired pending confirmations
     this.confirmationCleanupTimer = setInterval(() => {
-      this.expirePendingConfirmations()
-        .then((count) => {
-          if (count > 0) {
-            logger.info({ expiredCount: count }, 'Expired pending confirmations cleaned up');
-          }
-        })
-        .catch((err) => {
-          logger.error({ error: (err as Error).message }, 'Failed to expire pending confirmations');
-        });
+      this.expirePendingConfirmations().then((c) => {
+        if (c > 0) logger.info({ expiredCount: c }, 'Expired pending confirmations cleaned up');
+      }).catch((err) => {
+        logger.error({ error: (err as Error).message }, 'Failed to expire pending confirmations');
+      });
     }, CONFIRMATION_CLEANUP_INTERVAL_MS);
     this.confirmationCleanupTimer.unref();
+
+    // Periodic cleanup of old execution history (24h interval, 90-day retention)
+    this.executionCleanupTimer = setInterval(() => {
+      this.cleanupOldExecutions().catch((err) => {
+        logger.error({ error: (err as Error).message }, 'Failed to clean up old executions');
+      });
+    }, EXECUTION_CLEANUP_INTERVAL_MS);
+    this.executionCleanupTimer.unref();
+    this.cleanupOldExecutions().catch(() => {}); // initial cleanup
 
     logger.info('SkillEngine started');
   }
@@ -130,10 +130,11 @@ export class SkillEngine {
     if (!this.running) return;
     this.running = false;
 
-    if (this.confirmationCleanupTimer) {
-      clearInterval(this.confirmationCleanupTimer);
-      this.confirmationCleanupTimer = null;
+    for (const timer of [this.confirmationCleanupTimer, this.executionCleanupTimer]) {
+      if (timer) clearInterval(timer);
     }
+    this.confirmationCleanupTimer = null;
+    this.executionCleanupTimer = null;
 
     if (this.triggerManager) {
       this.triggerManager.stop();
@@ -569,28 +570,28 @@ export class SkillEngine {
     }
   }
 
+  /** Delete execution records older than the retention period (90 days). */
+  async cleanupOldExecutions(): Promise<number> {
+    const cutoff = new Date(Date.now() - EXECUTION_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+    const deleted = await this.repo.deleteExecutionsBefore(cutoff);
+    if (deleted > 0) logger.info({ deletedCount: deleted, retentionDays: EXECUTION_RETENTION_DAYS }, 'Old executions cleaned up');
+    return deleted;
+  }
+
   async confirmExecution(executionId: string, userId: string): Promise<SkillExecutionResult> {
     return this.confirmationManager.confirmExecution(executionId, userId);
   }
-
   async rejectExecution(executionId: string, userId: string): Promise<void> {
     return this.confirmationManager.rejectExecution(executionId, userId);
   }
-
   async listPendingConfirmations(userId: string): Promise<SkillExecution[]> {
     return this.confirmationManager.listPendingConfirmations(userId);
   }
-
   async expirePendingConfirmations(): Promise<number> {
     return this.confirmationManager.expirePendingConfirmations();
   }
 
-  /**
-   * Cancel a running skill execution.
-   *
-   * Aborts the runner's AI loop and tool execution, updates the DB status
-   * to 'cancelled', and publishes an SSE error event for the dashboard.
-   */
+  /** Cancel a running skill execution. */
   async cancel(executionId: string): Promise<void> {
     const controller = this.runningExecutions.get(executionId);
     if (!controller) {
@@ -598,10 +599,7 @@ export class SkillEngine {
     }
 
     controller.abort();
-    // The runner will set the status to 'cancelled' via the normal
-    // executeSingle flow when it detects the abort signal. However,
-    // we also publish an immediate SSE error event so the dashboard
-    // gets notified right away.
+    // Publish immediate SSE event so the dashboard gets notified right away
     const bus = getSkillEventBus();
     bus.publish(executionId, {
       type: 'error',

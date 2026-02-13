@@ -4,7 +4,7 @@
  * Tests for SkillRepository — findAllEnabled() for both Drizzle and InMemory.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 import { initDatabase, closeDatabase, createTables } from '../connection.js';
 import {
