@@ -13,6 +13,10 @@
  */
 
 import type { SimilarityResult, SearchResponse } from './similarity-search.js';
+import {
+  estimateTokens,
+  getCharsPerToken,
+} from '../ai/profile-context.js';
 
 // ============================================================================
 // Types
@@ -255,25 +259,24 @@ export function enhancePromptWithSearchResponse(
 }
 
 /**
- * Estimate the token count of a text string.
+ * CJK-aware token estimation (re-exported from profile-context).
  *
- * Uses a simple heuristic: ~4 characters per token for English text.
- * This is a rough estimate and should not be relied upon for precise
- * token budget management.
+ * Uses language-aware heuristics:
+ * - English/ASCII text: ~4 chars per token
+ * - CJK text (Chinese/Japanese/Korean): ~1.5 chars per token
+ * - Mixed text: weighted average based on CJK proportion
  *
  * @param text - The text to estimate tokens for
  * @returns Estimated token count
  */
-export function estimateTokenCount(text: string): number {
-  // Rough heuristic: ~4 chars per token for English text
-  return Math.ceil(text.length / 4);
-}
+export const estimateTokenCount = estimateTokens;
 
 /**
  * Calculate the maximum context length based on a total token budget.
  *
  * Given a prompt and a total token budget, calculates how many characters
- * can be allocated to the knowledge context block.
+ * can be allocated to the knowledge context block. Uses the prompt's own
+ * CJK proportion to estimate the chars-per-token ratio for the budget.
  *
  * @param prompt - The base prompt (before context injection)
  * @param totalTokenBudget - Total token budget for prompt + context
@@ -292,6 +295,7 @@ export function calculateContextBudget(
     return 0;
   }
 
-  // Convert tokens back to approximate character count
-  return availableTokens * 4;
+  // Convert tokens back to approximate character count using CJK-aware ratio
+  const charsPerToken = getCharsPerToken(prompt);
+  return Math.floor(availableTokens * charsPerToken);
 }

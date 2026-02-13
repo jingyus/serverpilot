@@ -603,6 +603,23 @@ describe('ContextWindowManager', () => {
       expect(budget.maxTokens).toBeLessThan(2000);
       expect(budget.maxTokens).toBeGreaterThan(1500);
     });
+
+    it('should use CJK-aware chars-per-token for Chinese system prompt', () => {
+      const manager = makeManager({
+        maxTotalTokens: 10000,
+        reservedOutputTokens: 2000,
+        maxKnowledgeRatio: 0.5,
+      });
+
+      const asciiBudget = manager.getKnowledgeBudget('System prompt.');
+      const cjkBudget = manager.getKnowledgeBudget('你是一个有用的AI助手。');
+
+      // Both should have similar maxTokens (same token budget logic)
+      // but CJK should have fewer maxChars due to lower chars-per-token ratio
+      expect(cjkBudget.maxChars).toBeLessThan(asciiBudget.maxChars);
+      // CJK ratio ~1.5 vs ASCII ~4, so roughly 2.7× fewer chars
+      expect(cjkBudget.maxChars).toBeLessThan(asciiBudget.maxChars * 0.5);
+    });
   });
 });
 
@@ -734,5 +751,27 @@ describe('Integration: compose with realistic inputs', () => {
         alloc.knowledgeContextTokens - alloc.reservedOutputTokens,
     );
     expect(alloc.remainingTokens).toBeGreaterThan(0);
+  });
+
+  it('should estimate more tokens for CJK system prompt than ASCII of same char length', () => {
+    const manager = makeManager({
+      maxTotalTokens: 10000,
+      reservedOutputTokens: 2000,
+    });
+
+    // ASCII and CJK prompts of same character length
+    const asciiComposed = manager.compose({
+      systemPrompt: 'a'.repeat(60),
+      messages: [makeMessage('user', 'Hello')],
+    });
+    const cjkComposed = manager.compose({
+      systemPrompt: '你'.repeat(60),
+      messages: [makeMessage('user', 'Hello')],
+    });
+
+    // CJK should consume more tokens from the budget
+    expect(cjkComposed.allocation.systemPromptTokens).toBeGreaterThan(
+      asciiComposed.allocation.systemPromptTokens,
+    );
   });
 });

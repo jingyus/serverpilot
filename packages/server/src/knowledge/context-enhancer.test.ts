@@ -400,13 +400,13 @@ describe('estimateTokenCount', () => {
     expect(estimateTokenCount('')).toBe(0);
   });
 
-  it('should estimate approximately 1 token per 4 chars', () => {
-    // 20 chars → ~5 tokens
+  it('should estimate approximately 1 token per 4 chars for ASCII', () => {
+    // 20 ASCII chars → ~5 tokens (4 chars/token)
     expect(estimateTokenCount('12345678901234567890')).toBe(5);
   });
 
   it('should round up partial tokens', () => {
-    // 5 chars → ceil(5/4) = 2
+    // 5 ASCII chars → ceil(5/4) = 2
     expect(estimateTokenCount('Hello')).toBe(2);
   });
 
@@ -414,9 +414,31 @@ describe('estimateTokenCount', () => {
     expect(estimateTokenCount('A')).toBe(1);
   });
 
-  it('should handle long text', () => {
+  it('should handle long ASCII text', () => {
     const text = 'a'.repeat(1000);
     expect(estimateTokenCount(text)).toBe(250);
+  });
+
+  it('should estimate more tokens for CJK text (1.5 chars/token)', () => {
+    // 6 CJK chars → ceil(6/1.5) = 4 tokens
+    const cjk = '你好世界测试';
+    expect(estimateTokenCount(cjk)).toBe(4);
+  });
+
+  it('should estimate more tokens for pure Chinese text than ASCII', () => {
+    // Same character count but different token estimates
+    const ascii = 'abcdef'; // 6 chars → ceil(6/4) = 2 tokens
+    const cjk = '你好世界测试'; // 6 chars → ceil(6/1.5) = 4 tokens
+    expect(estimateTokenCount(cjk)).toBeGreaterThan(estimateTokenCount(ascii));
+  });
+
+  it('should use weighted average for mixed CJK/ASCII text', () => {
+    // Mixed: "你好abc" — 2 CJK + 3 ASCII = 5 chars
+    // cjkRatio = 2/5 = 0.4, asciiRatio = 0.6
+    // charsPerToken = 1.5*0.4 + 4*0.6 = 0.6 + 2.4 = 3.0
+    // tokens = ceil(5/3.0) = 2
+    const mixed = '你好abc';
+    expect(estimateTokenCount(mixed)).toBe(2);
   });
 });
 
@@ -464,6 +486,27 @@ describe('calculateContextBudget', () => {
     const prompt = 'a'.repeat(400); // 100 tokens
     const budget = calculateContextBudget(prompt, 50, 10);
     expect(budget).toBe(0);
+  });
+
+  it('should use CJK-aware ratio for Chinese prompts', () => {
+    // 6 CJK chars → charsPerToken=1.5, tokens=ceil(6/1.5)=4
+    // Available = 100 - 4 - 10 = 86 tokens
+    // Budget chars = floor(86 * 1.5) = 129
+    const prompt = '你好世界测试';
+    const budget = calculateContextBudget(prompt, 100, 10);
+    expect(budget).toBe(129);
+  });
+
+  it('should return fewer chars for CJK prompt than ASCII with same token budget', () => {
+    // CJK chars take fewer chars-per-token, so the same token budget
+    // translates to fewer characters for CJK content
+    const asciiPrompt = 'abcd'; // 4 chars, 1 token, ratio=4
+    const cjkPrompt = '你好世界'; // 4 chars, ceil(4/1.5)=3 tokens, ratio=1.5
+    const ascBudget = calculateContextBudget(asciiPrompt, 1000, 100);
+    const cjkBudget = calculateContextBudget(cjkPrompt, 1000, 100);
+    // ASCII: avail = 1000-1-100 = 899 → floor(899*4) = 3596
+    // CJK: avail = 1000-3-100 = 897 → floor(897*1.5) = 1345
+    expect(cjkBudget).toBeLessThan(ascBudget);
   });
 });
 

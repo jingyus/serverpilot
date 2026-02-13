@@ -224,10 +224,13 @@ describe('E2E: Complete Installation Flow', () => {
 
     // Step 5: Server responds with AI error notification + fallback install plan
     const envMsgs = await envResponses;
-    const errorNotification = JSON.parse(envMsgs[0]);
+    const parsed = envMsgs.map((m) => JSON.parse(m));
+    const errorNotification = parsed.find((m: { type: string }) => m.type === MessageType.AI_STREAM_ERROR);
+    expect(errorNotification).toBeDefined();
     expect(errorNotification.type).toBe(MessageType.AI_STREAM_ERROR);
 
-    const planResponse = JSON.parse(envMsgs[1]);
+    const planResponse = parsed.find((m: { type: string }) => m.type === MessageType.PLAN_RECEIVE);
+    expect(planResponse).toBeDefined();
     expect(planResponse.type).toBe(MessageType.PLAN_RECEIVE);
     expect(planResponse.payload.steps.length).toBeGreaterThanOrEqual(2);
 
@@ -371,11 +374,11 @@ describe('E2E: Complete Installation Flow', () => {
     await ackPromise;
 
     // Env report → status: detecting → planning (via handleEnvReport)
+    // Without AI agent, handler sends AI_STREAM_ERROR + PLAN_RECEIVE (2 messages)
     const envMsg = createMessage(MessageType.ENV_REPORT, makeEnvInfo());
-    // handleEnvReport sends back a plan.receive message
-    const planPromise = waitForMessage(ws);
+    const envResponses = collectMessages(ws, 2);
     ws.send(JSON.stringify(envMsg));
-    await planPromise;
+    await envResponses;
 
     // Step complete (success) → status: executing
     const stepOk = createMessage(MessageType.STEP_COMPLETE, {
@@ -436,11 +439,11 @@ describe('E2E: Complete Installation Flow', () => {
     ws.send(JSON.stringify(createMsg));
     await ackPromise;
 
-    // Send env report and wait for plan response
+    // Send env report and wait for responses (AI_STREAM_ERROR + PLAN_RECEIVE)
     const envMsg = createMessage(MessageType.ENV_REPORT, makeEnvInfo());
-    const planPromise = waitForMessage(ws);
+    const envResponses = collectMessages(ws, 2);
     ws.send(JSON.stringify(envMsg));
-    await planPromise;
+    await envResponses;
 
     // Simulate executing 3 steps with output streaming
     const plan = makeInstallPlan();

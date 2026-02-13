@@ -24,6 +24,7 @@ import {
   type ContextEnhancerOptions,
   type FormattedContext,
 } from './context-enhancer.js';
+import { getCharsPerToken } from '../ai/profile-context.js';
 
 // ============================================================================
 // Types
@@ -242,7 +243,8 @@ export class ContextWindowManager {
 
     // Step 3: Allocate budget for knowledge context
     const maxKnowledgeTokens = Math.floor(remainingBudget * this.maxKnowledgeRatio);
-    const maxKnowledgeChars = maxKnowledgeTokens * 4; // ~4 chars per token
+    // Use CJK-aware ratio based on system prompt language mix
+    const maxKnowledgeChars = Math.floor(maxKnowledgeTokens * getCharsPerToken(systemPrompt));
 
     // Step 4: Format knowledge context within budget
     let knowledgeContext = '';
@@ -355,7 +357,7 @@ export class ContextWindowManager {
       remaining,
     );
 
-    return { maxTokens, maxChars: maxTokens * 4 };
+    return { maxTokens, maxChars: Math.floor(maxTokens * getCharsPerToken(systemPrompt)) };
   }
 }
 
