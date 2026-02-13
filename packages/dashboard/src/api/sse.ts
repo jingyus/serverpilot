@@ -3,6 +3,95 @@
 import { API_BASE_URL } from '@/utils/constants';
 import { refreshAccessToken } from './auth';
 
+// ---------------------------------------------------------------------------
+// SSE Connection Pool — limits concurrent connections per category
+// ---------------------------------------------------------------------------
+
+/** Default maximum concurrent POST SSE connections (chat streams) */
+const DEFAULT_MAX_POST_SSE = 3;
+/** Default maximum concurrent GET SSE connections (metrics/status streams) */
+const DEFAULT_MAX_GET_SSE = 3;
+
+interface PoolEntry {
+  id: number;
+  abort: () => void;
+}
+
+let nextPoolId = 1;
+
+class SSEConnectionPool {
+  private postConnections: PoolEntry[] = [];
+  private getConnections: PoolEntry[] = [];
+  maxPost: number;
+  maxGet: number;
+
+  constructor(maxPost = DEFAULT_MAX_POST_SSE, maxGet = DEFAULT_MAX_GET_SSE) {
+    this.maxPost = maxPost;
+    this.maxGet = maxGet;
+  }
+
+  /** Register a POST SSE connection. Evicts oldest if over limit. Returns pool entry id. */
+  registerPost(abortFn: () => void): number {
+    while (this.postConnections.length >= this.maxPost) {
+      const oldest = this.postConnections.shift();
+      oldest?.abort();
+    }
+    const id = nextPoolId++;
+    this.postConnections.push({ id, abort: abortFn });
+    return id;
+  }
+
+  /** Register a GET SSE connection. Evicts oldest if over limit. Returns pool entry id. */
+  registerGet(abortFn: () => void): number {
+    while (this.getConnections.length >= this.maxGet) {
+      const oldest = this.getConnections.shift();
+      oldest?.abort();
+    }
+    const id = nextPoolId++;
+    this.getConnections.push({ id, abort: abortFn });
+    return id;
+  }
+
+  /** Remove a connection from the pool by id (called on abort/completion) */
+  unregister(id: number): void {
+    this.postConnections = this.postConnections.filter((e) => e.id !== id);
+    this.getConnections = this.getConnections.filter((e) => e.id !== id);
+  }
+
+  /** Number of active POST SSE connections */
+  get postCount(): number {
+    return this.postConnections.length;
+  }
+
+  /** Number of active GET SSE connections */
+  get getCount(): number {
+    return this.getConnections.length;
+  }
+
+  /** Total active connections */
+  get totalCount(): number {
+    return this.postConnections.length + this.getConnections.length;
+  }
+}
+
+/** Module-level singleton pool */
+let pool = new SSEConnectionPool();
+
+/** Get the connection pool (for testing) */
+export function getSSEConnectionPool(): SSEConnectionPool {
+  return pool;
+}
+
+/** Reset the pool (for testing) */
+export function _resetSSEConnectionPool(maxPost?: number, maxGet?: number): void {
+  // Abort all active connections before resetting
+  for (const entry of [...pool['postConnections'], ...pool['getConnections']]) {
+    entry.abort();
+  }
+  pool = new SSEConnectionPool(maxPost, maxGet);
+  nextPoolId = 1;
+}
+
 export interface SSECallbacks {
   onMessage?: (data: string) => void;
   onPlan?: (data: string) => void;
@@ -109,6 +198,7 @@ export function createSSEConnection(
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let stopped = false;
   let completed = false;
+  let poolEntryId = -1;
 
   function cleanup() {
     stopped = true;
@@ -118,6 +208,10 @@ export function createSSEConnection(
     }
     if (!controller.signal.aborted) {
       controller.abort();
+    }
+    if (poolEntryId !== -1) {
+      pool.unregister(poolEntryId);
+      poolEntryId = -1;
     }
   }
 
@@ -197,6 +291,11 @@ export function createSSEConnection(
       if (!completed && !stopped) {
         scheduleReconnect();
       }
+      // If completed, unregister from pool (connection is done)
+      if (completed && poolEntryId !== -1) {
+        pool.unregister(poolEntryId);
+        poolEntryId = -1;
+      }
     } catch (err: unknown) {
       if (stopped || controller.signal.aborted) return;
 
@@ -209,11 +308,17 @@ export function createSSEConnection(
         return;
       }
 
-      // Non-retriable error (auth, not found, etc.)
+      // Non-retriable error (auth, not found, etc.) — unregister from pool
+      if (poolEntryId !== -1) {
+        pool.unregister(poolEntryId);
+        poolEntryId = -1;
+      }
       callbacks.onError?.(error);
     }
   }
 
+  // Register with pool (evicts oldest if over limit)
+  poolEntryId = pool.registerPost(cleanup);
   connect(false);
 
   return { abort: cleanup, controller };
@@ -248,6 +353,7 @@ export function createGetSSE(config: GetSSEConfig): { abort: () => void } {
   let reconnectAttempt = 0;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let stopped = false;
+  let poolEntryId = -1;
 
   function cleanup() {
     stopped = true;
@@ -256,6 +362,10 @@ export function createGetSSE(config: GetSSEConfig): { abort: () => void } {
       reconnectTimer = null;
     }
     controller.abort();
+    if (poolEntryId !== -1) {
+      pool.unregister(poolEntryId);
+      poolEntryId = -1;
+    }
   }
 
   function scheduleReconnect() {
@@ -330,6 +440,8 @@ export function createGetSSE(config: GetSSEConfig): { abort: () => void } {
     }
   }
 
+  // Register with pool (evicts oldest GET SSE if over limit)
+  poolEntryId = pool.registerGet(cleanup);
   connect();
 
   return { abort: cleanup };

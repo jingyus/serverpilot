@@ -3,20 +3,20 @@
 > 此队列专注于 Skill 插件系统的设计与实现
 > AI 自动扫描 → 发现缺失 → 设计实现 → 验证
 
-**最后更新**: 2026-02-13 07:50:19
+**最后更新**: 2026-02-13 08:00:59
 
 ## 📊 统计
 
 - **总任务数**: 56
 - **待完成** (pending): 8
-- **进行中** (in_progress): 1
-- **已完成** (completed): 47
+- **进行中** (in_progress): 0
+- **已完成** (completed): 48
 - **失败** (failed): 0
 
 ## 📋 任务列表
 
 ### [completed] DB Schema + Migration + SkillRepository 数据层 ✅
-### [in_progress] Skill 版本升级 — engine.ts 添加 upgrade() 方法保留配置和执行历史
+### [completed] Skill 版本升级 — engine.ts 添加 upgrade() 方法保留配置和执行历史 ✅
 
 **ID**: skill-072
 **优先级**: P0
@@ -38,7 +38,7 @@
 - 测试覆盖: ≥12 个测试用例
 **影响范围**: packages/server/src/core/skill/engine.ts, packages/server/src/core/skill/git-installer.ts, packages/server/src/core/skill/engine.test.ts (或新建 engine-upgrade.test.ts)
 **创建时间**: 2026-02-13
-**完成时间**: -
+**完成时间**: 2026-02-13 08:00:59
 
 ---
 
