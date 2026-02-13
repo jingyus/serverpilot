@@ -623,6 +623,139 @@ describe('Chat Page', () => {
       await user.click(screen.getByTestId('session-group-toggle-today'));
       expect(screen.getByText('Collapsible session')).toBeInTheDocument();
     });
+
+    it('shows mobile sidebar toggle button when sessions exist', () => {
+      useChatStore.setState({
+        sessions: [
+          {
+            id: 'sess-mobile',
+            serverId: 'srv-1',
+            messageCount: 1,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            lastMessage: 'Mobile session',
+          },
+        ],
+        fetchSessions: vi.fn() as unknown as (serverId: string) => Promise<void>,
+      });
+      renderChat('/chat/srv-1');
+      expect(screen.getByTestId('mobile-sidebar-toggle')).toBeInTheDocument();
+    });
+
+    it('does not show mobile sidebar toggle when no sessions', () => {
+      useChatStore.setState({
+        sessions: [],
+        fetchSessions: vi.fn() as unknown as (serverId: string) => Promise<void>,
+      });
+      renderChat('/chat/srv-1');
+      expect(screen.queryByTestId('mobile-sidebar-toggle')).not.toBeInTheDocument();
+    });
+
+    it('opens mobile sidebar overlay when toggle is clicked', async () => {
+      const user = (await import('@testing-library/user-event')).default.setup();
+      useChatStore.setState({
+        sessions: [
+          {
+            id: 'sess-drawer',
+            serverId: 'srv-1',
+            messageCount: 2,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            lastMessage: 'Drawer session',
+          },
+        ],
+        fetchSessions: vi.fn() as unknown as (serverId: string) => Promise<void>,
+      });
+      renderChat('/chat/srv-1');
+
+      expect(screen.queryByTestId('mobile-session-sidebar')).not.toBeInTheDocument();
+
+      await user.click(screen.getByTestId('mobile-sidebar-toggle'));
+
+      expect(screen.getByTestId('mobile-session-sidebar')).toBeInTheDocument();
+      expect(screen.getByTestId('mobile-sidebar-backdrop')).toBeInTheDocument();
+      expect(screen.getByTestId('mobile-sidebar-close')).toBeInTheDocument();
+    });
+
+    it('closes mobile sidebar when backdrop is clicked', async () => {
+      const user = (await import('@testing-library/user-event')).default.setup();
+      useChatStore.setState({
+        sessions: [
+          {
+            id: 'sess-backdrop',
+            serverId: 'srv-1',
+            messageCount: 1,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            lastMessage: 'Backdrop test',
+          },
+        ],
+        fetchSessions: vi.fn() as unknown as (serverId: string) => Promise<void>,
+      });
+      renderChat('/chat/srv-1');
+
+      await user.click(screen.getByTestId('mobile-sidebar-toggle'));
+      expect(screen.getByTestId('mobile-session-sidebar')).toBeInTheDocument();
+
+      await user.click(screen.getByTestId('mobile-sidebar-backdrop'));
+      expect(screen.queryByTestId('mobile-session-sidebar')).not.toBeInTheDocument();
+    });
+
+    it('closes mobile sidebar when close button is clicked', async () => {
+      const user = (await import('@testing-library/user-event')).default.setup();
+      useChatStore.setState({
+        sessions: [
+          {
+            id: 'sess-close-btn',
+            serverId: 'srv-1',
+            messageCount: 1,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            lastMessage: 'Close button test',
+          },
+        ],
+        fetchSessions: vi.fn() as unknown as (serverId: string) => Promise<void>,
+      });
+      renderChat('/chat/srv-1');
+
+      await user.click(screen.getByTestId('mobile-sidebar-toggle'));
+      expect(screen.getByTestId('mobile-session-sidebar')).toBeInTheDocument();
+
+      await user.click(screen.getByTestId('mobile-sidebar-close'));
+      expect(screen.queryByTestId('mobile-session-sidebar')).not.toBeInTheDocument();
+    });
+
+    it('closes mobile sidebar when a session is selected', async () => {
+      const user = (await import('@testing-library/user-event')).default.setup();
+      const loadSession = vi.fn();
+      useChatStore.setState({
+        sessions: [
+          {
+            id: 'sess-select',
+            serverId: 'srv-1',
+            messageCount: 3,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            lastMessage: 'Select to close',
+          },
+        ],
+        loadSession: loadSession as unknown as (serverId: string, sessionId: string) => Promise<void>,
+        fetchSessions: vi.fn() as unknown as (serverId: string) => Promise<void>,
+      });
+      renderChat('/chat/srv-1');
+
+      await user.click(screen.getByTestId('mobile-sidebar-toggle'));
+      expect(screen.getByTestId('mobile-session-sidebar')).toBeInTheDocument();
+
+      // Click the session item inside the mobile overlay
+      const sessionItems = screen.getAllByTestId('session-item-sess-select');
+      // The mobile overlay renders a second instance of the session list
+      const mobileItem = sessionItems[sessionItems.length - 1];
+      await user.click(mobileItem);
+
+      expect(loadSession).toHaveBeenCalledWith('srv-1', 'sess-select');
+      expect(screen.queryByTestId('mobile-session-sidebar')).not.toBeInTheDocument();
+    });
   });
 
   describe('scroll behavior optimization', () => {
