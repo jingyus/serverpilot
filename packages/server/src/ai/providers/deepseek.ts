@@ -18,6 +18,8 @@ import type {
   ChatResponse,
   ProviderStreamCallbacks,
   StreamResponse,
+  ToolDefinition,
+  ToolUseBlock,
   TokenUsage,
 } from './base.js';
 
@@ -59,8 +61,24 @@ export const DeepSeekConfigSchema = z.object({
 
 /** Message format for DeepSeek /v1/chat/completions */
 interface DeepSeekMessage {
-  role: 'user' | 'assistant' | 'system';
-  content: string;
+  role: 'user' | 'assistant' | 'system' | 'tool';
+  content: string | null;
+  tool_calls?: Array<{
+    id: string;
+    type: 'function';
+    function: { name: string; arguments: string };
+  }>;
+  tool_call_id?: string;
+}
+
+/** OpenAI-compatible tool definition for function calling */
+interface DeepSeekToolDefinition {
+  type: 'function';
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  };
 }
 
 /** Request body for DeepSeek /v1/chat/completions */
@@ -69,7 +87,18 @@ interface DeepSeekChatRequest {
   messages: DeepSeekMessage[];
   max_tokens?: number;
   stream: boolean;
+  stream_options?: { include_usage: boolean };
+  tools?: DeepSeekToolDefinition[];
 }
+
+const DeepSeekToolCallSchema = z.object({
+  id: z.string(),
+  type: z.literal('function'),
+  function: z.object({
+    name: z.string(),
+    arguments: z.string(),
+  }),
+});
 
 /** Non-streaming response from DeepSeek /v1/chat/completions */
 const DeepSeekChatResponseSchema = z.object({
@@ -78,7 +107,8 @@ const DeepSeekChatResponseSchema = z.object({
     index: z.number(),
     message: z.object({
       role: z.string(),
-      content: z.string(),
+      content: z.string().nullable(),
+      tool_calls: z.array(DeepSeekToolCallSchema).optional(),
     }),
     finish_reason: z.string().nullable(),
   })).min(1),
@@ -89,6 +119,16 @@ const DeepSeekChatResponseSchema = z.object({
   }),
 });
 
+const DeepSeekStreamToolCallDeltaSchema = z.object({
+  index: z.number(),
+  id: z.string().optional(),
+  type: z.literal('function').optional(),
+  function: z.object({
+    name: z.string().optional(),
+    arguments: z.string().optional(),
+  }).optional(),
+});
+
 /** SSE streaming chunk from DeepSeek */
 const DeepSeekStreamChunkSchema = z.object({
   id: z.string(),
@@ -96,7 +136,8 @@ const DeepSeekStreamChunkSchema = z.object({
     index: z.number(),
     delta: z.object({
       role: z.string().optional(),
-      content: z.string().optional(),
+      content: z.string().nullable().optional(),
+      tool_calls: z.array(DeepSeekStreamToolCallDeltaSchema).optional(),
     }),
     finish_reason: z.string().nullable(),
   })),
@@ -179,6 +220,10 @@ export class DeepSeekProvider implements AIProviderInterface {
       stream: false,
     };
 
+    if (options.tools?.length) {
+      body.tools = this.convertTools(options.tools);
+    }
+
     const response = await this.fetchWithTimeout(
       `${this.baseUrl}/v1/chat/completions`,
       {
@@ -199,14 +244,20 @@ export class DeepSeekProvider implements AIProviderInterface {
     const raw: unknown = await response.json();
     const data = DeepSeekChatResponseSchema.parse(raw);
 
+    const choice = data.choices[0];
+    const toolCalls = this.extractToolCalls(choice.message.tool_calls);
+    const stopReason = this.mapStopReason(choice.finish_reason);
+
     return {
-      content: data.choices[0].message.content,
+      content: choice.message.content ?? '',
       usage: {
         inputTokens: data.usage.prompt_tokens,
         outputTokens: data.usage.completion_tokens,
         cacheCreationInputTokens: 0,
         cacheReadInputTokens: 0,
       },
+      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+      stopReason,
     };
   }
 
@@ -230,10 +281,17 @@ export class DeepSeekProvider implements AIProviderInterface {
       messages,
       max_tokens: options.maxTokens ?? DEFAULTS.maxTokens,
       stream: true,
+      stream_options: { include_usage: true },
     };
+
+    if (options.tools?.length) {
+      body.tools = this.convertTools(options.tools);
+    }
 
     let accumulated = '';
     let usage: TokenUsage = { inputTokens: 0, outputTokens: 0, cacheCreationInputTokens: 0, cacheReadInputTokens: 0 };
+    const toolCallAccumulators = new Map<number, { id: string; name: string; arguments: string }>();
+    let finishReason: string | null = null;
 
     try {
       const response = await this.fetchWithTimeout(
@@ -269,27 +327,34 @@ export class DeepSeekProvider implements AIProviderInterface {
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
-        // Keep the last potentially incomplete line in the buffer
         buffer = lines.pop() ?? '';
 
         for (const line of lines) {
           const trimmed = line.trim();
           if (!trimmed || trimmed === 'data: [DONE]') continue;
-
-          // SSE format: "data: {...json...}"
           if (!trimmed.startsWith('data: ')) continue;
 
           const jsonStr = trimmed.slice(6);
           const chunk = this.parseStreamChunk(jsonStr);
           if (!chunk) continue;
 
-          const delta = chunk.choices[0]?.delta;
+          const choice = chunk.choices[0];
+          if (!choice) continue;
+
+          const delta = choice.delta;
           if (delta?.content) {
             accumulated += delta.content;
             callbacks?.onToken?.(delta.content, accumulated);
           }
 
-          // Extract usage from the final chunk if provided
+          if (delta?.tool_calls) {
+            this.accumulateToolCallDeltas(delta.tool_calls, toolCallAccumulators);
+          }
+
+          if (choice.finish_reason) {
+            finishReason = choice.finish_reason;
+          }
+
           if (chunk.usage) {
             usage = {
               inputTokens: chunk.usage.prompt_tokens,
@@ -308,10 +373,18 @@ export class DeepSeekProvider implements AIProviderInterface {
           const jsonStr = trimmed.slice(6);
           const chunk = this.parseStreamChunk(jsonStr);
           if (chunk) {
-            const delta = chunk.choices[0]?.delta;
-            if (delta?.content) {
-              accumulated += delta.content;
-              callbacks?.onToken?.(delta.content, accumulated);
+            const choice = chunk.choices[0];
+            if (choice) {
+              if (choice.delta?.content) {
+                accumulated += choice.delta.content;
+                callbacks?.onToken?.(choice.delta.content, accumulated);
+              }
+              if (choice.delta?.tool_calls) {
+                this.accumulateToolCallDeltas(choice.delta.tool_calls, toolCallAccumulators);
+              }
+              if (choice.finish_reason) {
+                finishReason = choice.finish_reason;
+              }
             }
             if (chunk.usage) {
               usage = {
@@ -325,7 +398,16 @@ export class DeepSeekProvider implements AIProviderInterface {
 
       callbacks?.onComplete?.(accumulated, usage);
 
-      return { content: accumulated, usage, success: true };
+      const toolCalls = this.buildToolCallsFromAccumulators(toolCallAccumulators);
+      const stopReason = this.mapStopReason(finishReason);
+
+      return {
+        content: accumulated,
+        usage,
+        success: true,
+        toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+        stopReason,
+      };
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
       callbacks?.onError?.(error);
@@ -367,6 +449,79 @@ export class DeepSeekProvider implements AIProviderInterface {
   // --------------------------------------------------------------------------
   // Helpers
   // --------------------------------------------------------------------------
+
+  /** Convert ToolDefinition[] to OpenAI-compatible function calling format. */
+  private convertTools(tools: ToolDefinition[]): DeepSeekToolDefinition[] {
+    return tools.map((t) => ({
+      type: 'function' as const,
+      function: {
+        name: t.name,
+        description: t.description,
+        parameters: t.input_schema,
+      },
+    }));
+  }
+
+  /** Extract tool calls from a non-streaming response. */
+  private extractToolCalls(
+    toolCalls?: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }>,
+  ): ToolUseBlock[] {
+    if (!toolCalls?.length) return [];
+
+    return toolCalls.map((tc) => ({
+      type: 'tool_use' as const,
+      id: tc.id,
+      name: tc.function.name,
+      input: JSON.parse(tc.function.arguments) as Record<string, unknown>,
+    }));
+  }
+
+  /** Accumulate incremental tool call deltas from streaming chunks. */
+  private accumulateToolCallDeltas(
+    deltas: Array<{ index: number; id?: string; function?: { name?: string; arguments?: string } }>,
+    accumulators: Map<number, { id: string; name: string; arguments: string }>,
+  ): void {
+    for (const delta of deltas) {
+      const existing = accumulators.get(delta.index);
+      if (existing) {
+        if (delta.function?.arguments) {
+          existing.arguments += delta.function.arguments;
+        }
+      } else {
+        accumulators.set(delta.index, {
+          id: delta.id ?? '',
+          name: delta.function?.name ?? '',
+          arguments: delta.function?.arguments ?? '',
+        });
+      }
+    }
+  }
+
+  /** Build final ToolUseBlock[] from accumulated streaming deltas. */
+  private buildToolCallsFromAccumulators(
+    accumulators: Map<number, { id: string; name: string; arguments: string }>,
+  ): ToolUseBlock[] {
+    if (accumulators.size === 0) return [];
+
+    const sorted = [...accumulators.entries()].sort((a, b) => a[0] - b[0]);
+    return sorted.map(([, acc]) => ({
+      type: 'tool_use' as const,
+      id: acc.id,
+      name: acc.name,
+      input: JSON.parse(acc.arguments) as Record<string, unknown>,
+    }));
+  }
+
+  /** Map DeepSeek finish_reason → unified stop reason. */
+  private mapStopReason(finishReason: string | null | undefined): string | undefined {
+    if (!finishReason) return undefined;
+    switch (finishReason) {
+      case 'stop': return 'end_turn';
+      case 'tool_calls': return 'tool_use';
+      case 'length': return 'max_tokens';
+      default: return finishReason;
+    }
+  }
 
   /**
    * Build the DeepSeek message array from ChatOptions.

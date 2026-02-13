@@ -854,4 +854,369 @@ describe('DeepSeekProvider', () => {
       expect(result.content).toBe('Hello');
     });
   });
+
+  // ==========================================================================
+  // Tests: Tool Use / Function Calling
+  // ==========================================================================
+
+  describe('tool_use (function calling)', () => {
+    const toolDefinitions = [
+      {
+        name: 'execute_command',
+        description: 'Execute a shell command on the target server',
+        input_schema: {
+          type: 'object',
+          properties: {
+            command: { type: 'string', description: 'The command to run' },
+            description: { type: 'string', description: 'What this command does' },
+          },
+          required: ['command', 'description'],
+        },
+      },
+      {
+        name: 'read_file',
+        description: 'Read contents of a file',
+        input_schema: {
+          type: 'object',
+          properties: {
+            path: { type: 'string', description: 'File path to read' },
+          },
+          required: ['path'],
+        },
+      },
+    ];
+
+    function createToolCallResponse(
+      calls: Array<{ id: string; name: string; arguments: Record<string, unknown> }>,
+    ) {
+      return {
+        id: 'chatcmpl-tool-123',
+        choices: [{
+          index: 0,
+          message: {
+            role: 'assistant',
+            content: null,
+            tool_calls: calls.map((tc) => ({
+              id: tc.id,
+              type: 'function',
+              function: {
+                name: tc.name,
+                arguments: JSON.stringify(tc.arguments),
+              },
+            })),
+          },
+          finish_reason: 'tool_calls',
+        }],
+        usage: { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 },
+      };
+    }
+
+    it('should pass tools in OpenAI function calling format in chat()', async () => {
+      const provider = createProvider();
+      mockFetch.mockResolvedValueOnce(
+        createMockResponse(createMockChatResponse('ok')),
+      );
+
+      await provider.chat(createChatOptions({ tools: toolDefinitions }));
+
+      const fetchCall = mockFetch.mock.calls[0];
+      const body = JSON.parse(fetchCall[1].body as string);
+
+      expect(body.tools).toHaveLength(2);
+      expect(body.tools[0]).toEqual({
+        type: 'function',
+        function: {
+          name: 'execute_command',
+          description: 'Execute a shell command on the target server',
+          parameters: toolDefinitions[0].input_schema,
+        },
+      });
+    });
+
+    it('should extract tool calls from chat() response', async () => {
+      const provider = createProvider();
+      const responseBody = createToolCallResponse([{
+        id: 'call_abc123',
+        name: 'execute_command',
+        arguments: { command: 'ls -la', description: 'List files' },
+      }]);
+
+      mockFetch.mockResolvedValueOnce(createMockResponse(responseBody));
+
+      const result = await provider.chat(createChatOptions({ tools: toolDefinitions }));
+
+      expect(result.toolCalls).toHaveLength(1);
+      expect(result.toolCalls![0]).toEqual({
+        type: 'tool_use',
+        id: 'call_abc123',
+        name: 'execute_command',
+        input: { command: 'ls -la', description: 'List files' },
+      });
+      expect(result.stopReason).toBe('tool_use');
+      expect(result.content).toBe('');
+    });
+
+    it('should handle multiple tool calls in a single chat() response', async () => {
+      const provider = createProvider();
+      const responseBody = createToolCallResponse([
+        { id: 'call_1', name: 'execute_command', arguments: { command: 'ls', description: 'List' } },
+        { id: 'call_2', name: 'read_file', arguments: { path: '/etc/hosts' } },
+      ]);
+
+      mockFetch.mockResolvedValueOnce(createMockResponse(responseBody));
+
+      const result = await provider.chat(createChatOptions({ tools: toolDefinitions }));
+
+      expect(result.toolCalls).toHaveLength(2);
+      expect(result.toolCalls![0].name).toBe('execute_command');
+      expect(result.toolCalls![1].name).toBe('read_file');
+      expect(result.toolCalls![1].input).toEqual({ path: '/etc/hosts' });
+    });
+
+    it('should return stopReason "end_turn" when finish_reason is "stop"', async () => {
+      const provider = createProvider();
+      mockFetch.mockResolvedValueOnce(
+        createMockResponse(createMockChatResponse('done')),
+      );
+
+      const result = await provider.chat(createChatOptions());
+      expect(result.stopReason).toBe('end_turn');
+    });
+
+    it('should return stopReason "max_tokens" when finish_reason is "length"', async () => {
+      const provider = createProvider();
+      mockFetch.mockResolvedValueOnce(
+        createMockResponse({
+          id: 'chatcmpl-test',
+          choices: [{
+            index: 0,
+            message: { role: 'assistant', content: 'partial output' },
+            finish_reason: 'length',
+          }],
+          usage: { prompt_tokens: 50, completion_tokens: 4096, total_tokens: 4146 },
+        }),
+      );
+
+      const result = await provider.chat(createChatOptions());
+      expect(result.stopReason).toBe('max_tokens');
+    });
+
+    it('should not include tools in request body when tools is empty', async () => {
+      const provider = createProvider();
+      mockFetch.mockResolvedValueOnce(
+        createMockResponse(createMockChatResponse('ok')),
+      );
+
+      await provider.chat(createChatOptions({ tools: [] }));
+
+      const fetchCall = mockFetch.mock.calls[0];
+      const body = JSON.parse(fetchCall[1].body as string);
+      expect(body.tools).toBeUndefined();
+    });
+
+    it('should accumulate streaming tool calls across chunks', async () => {
+      const provider = createProvider();
+      const lines = [
+        // First chunk: tool call header with id and name
+        `data: ${JSON.stringify({
+          id: 'chatcmpl-stream-tool',
+          choices: [{
+            index: 0,
+            delta: {
+              tool_calls: [{
+                index: 0,
+                id: 'call_stream_1',
+                type: 'function',
+                function: { name: 'execute_command', arguments: '{"com' },
+              }],
+            },
+            finish_reason: null,
+          }],
+        })}`,
+        // Second chunk: argument fragment
+        `data: ${JSON.stringify({
+          id: 'chatcmpl-stream-tool',
+          choices: [{
+            index: 0,
+            delta: {
+              tool_calls: [{
+                index: 0,
+                function: { arguments: 'mand":"uname' },
+              }],
+            },
+            finish_reason: null,
+          }],
+        })}`,
+        // Third chunk: closing argument + finish
+        `data: ${JSON.stringify({
+          id: 'chatcmpl-stream-tool',
+          choices: [{
+            index: 0,
+            delta: {
+              tool_calls: [{
+                index: 0,
+                function: { arguments: ' -a","description":"Get system info"}' },
+              }],
+            },
+            finish_reason: null,
+          }],
+        })}`,
+        // Final chunk: finish_reason + usage
+        `data: ${JSON.stringify({
+          id: 'chatcmpl-stream-tool',
+          choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }],
+          usage: { prompt_tokens: 80, completion_tokens: 20, total_tokens: 100 },
+        })}`,
+        'data: [DONE]',
+        '',
+      ].join('\n');
+
+      mockFetch.mockResolvedValueOnce(createMockStreamResponse(lines));
+
+      const result = await provider.stream(createChatOptions({ tools: toolDefinitions }));
+
+      expect(result.success).toBe(true);
+      expect(result.toolCalls).toHaveLength(1);
+      expect(result.toolCalls![0]).toEqual({
+        type: 'tool_use',
+        id: 'call_stream_1',
+        name: 'execute_command',
+        input: { command: 'uname -a', description: 'Get system info' },
+      });
+      expect(result.stopReason).toBe('tool_use');
+    });
+
+    it('should handle stream with mixed text and tool calls', async () => {
+      const provider = createProvider();
+      const lines = [
+        // Text content first
+        `data: ${JSON.stringify({
+          id: 'chatcmpl-mix',
+          choices: [{
+            index: 0,
+            delta: { content: 'Let me check' },
+            finish_reason: null,
+          }],
+        })}`,
+        // Then tool call
+        `data: ${JSON.stringify({
+          id: 'chatcmpl-mix',
+          choices: [{
+            index: 0,
+            delta: {
+              tool_calls: [{
+                index: 0,
+                id: 'call_mix',
+                type: 'function',
+                function: { name: 'execute_command', arguments: '{"command":"df -h","description":"Check disk"}' },
+              }],
+            },
+            finish_reason: null,
+          }],
+        })}`,
+        `data: ${JSON.stringify({
+          id: 'chatcmpl-mix',
+          choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }],
+          usage: { prompt_tokens: 60, completion_tokens: 30, total_tokens: 90 },
+        })}`,
+        'data: [DONE]',
+        '',
+      ].join('\n');
+
+      mockFetch.mockResolvedValueOnce(createMockStreamResponse(lines));
+
+      const result = await provider.stream(createChatOptions({ tools: toolDefinitions }));
+
+      expect(result.success).toBe(true);
+      expect(result.content).toBe('Let me check');
+      expect(result.toolCalls).toHaveLength(1);
+      expect(result.toolCalls![0].name).toBe('execute_command');
+      expect(result.stopReason).toBe('tool_use');
+    });
+
+    it('should handle multiple streaming tool calls with different indices', async () => {
+      const provider = createProvider();
+      const lines = [
+        // First tool call
+        `data: ${JSON.stringify({
+          id: 'chatcmpl-multi',
+          choices: [{
+            index: 0,
+            delta: {
+              tool_calls: [{
+                index: 0,
+                id: 'call_a',
+                type: 'function',
+                function: { name: 'execute_command', arguments: '{"command":"ls","description":"List"}' },
+              }],
+            },
+            finish_reason: null,
+          }],
+        })}`,
+        // Second tool call (different index)
+        `data: ${JSON.stringify({
+          id: 'chatcmpl-multi',
+          choices: [{
+            index: 0,
+            delta: {
+              tool_calls: [{
+                index: 1,
+                id: 'call_b',
+                type: 'function',
+                function: { name: 'read_file', arguments: '{"path":"/etc/hostname"}' },
+              }],
+            },
+            finish_reason: null,
+          }],
+        })}`,
+        `data: ${JSON.stringify({
+          id: 'chatcmpl-multi',
+          choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }],
+          usage: { prompt_tokens: 90, completion_tokens: 40, total_tokens: 130 },
+        })}`,
+        'data: [DONE]',
+        '',
+      ].join('\n');
+
+      mockFetch.mockResolvedValueOnce(createMockStreamResponse(lines));
+
+      const result = await provider.stream(createChatOptions({ tools: toolDefinitions }));
+
+      expect(result.success).toBe(true);
+      expect(result.toolCalls).toHaveLength(2);
+      expect(result.toolCalls![0].id).toBe('call_a');
+      expect(result.toolCalls![0].name).toBe('execute_command');
+      expect(result.toolCalls![1].id).toBe('call_b');
+      expect(result.toolCalls![1].name).toBe('read_file');
+      expect(result.toolCalls![1].input).toEqual({ path: '/etc/hostname' });
+    });
+
+    it('should pass tools in stream request body', async () => {
+      const provider = createProvider();
+      const streamText = createMockStreamChunks(['ok']);
+      mockFetch.mockResolvedValueOnce(createMockStreamResponse(streamText));
+
+      await provider.stream(createChatOptions({ tools: toolDefinitions }));
+
+      const fetchCall = mockFetch.mock.calls[0];
+      const body = JSON.parse(fetchCall[1].body as string);
+
+      expect(body.tools).toHaveLength(2);
+      expect(body.tools[0].type).toBe('function');
+      expect(body.tools[0].function.name).toBe('execute_command');
+    });
+
+    it('should return no toolCalls when response has no tool_calls', async () => {
+      const provider = createProvider();
+      mockFetch.mockResolvedValueOnce(
+        createMockResponse(createMockChatResponse('plain response')),
+      );
+
+      const result = await provider.chat(createChatOptions({ tools: toolDefinitions }));
+
+      expect(result.toolCalls).toBeUndefined();
+      expect(result.stopReason).toBe('end_turn');
+      expect(result.content).toBe('plain response');
+    });
+  });
 });

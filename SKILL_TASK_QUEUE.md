@@ -3,19 +3,247 @@
 > 此队列专注于 Skill 插件系统的设计与实现
 > AI 自动扫描 → 发现缺失 → 设计实现 → 验证
 
-**最后更新**: 2026-02-13 12:14:34
+**最后更新**: 2026-02-13 12:25:42
 
 ## 📊 统计
 
-- **总任务数**: 67
-- **待完成** (pending): 0
-- **进行中** (in_progress): 0
+- **总任务数**: 77
+- **待完成** (pending): 9
+- **进行中** (in_progress): 1
 - **已完成** (completed): 67
 - **失败** (failed): 0
 
 ## 📋 任务列表
 
 ### [completed] DB Schema + Migration + SkillRepository 数据层 ✅
+### [in_progress] engine.ts 二次拆分 — 从 722 行降至 ≤500 行
+
+**ID**: skill-098
+**优先级**: P0
+**模块路径**: packages/server/src/core/skill/
+**当前状态**: engine.ts 当前 722 行，虽然之前已拆分出 5 个子模块（engine-queries/template-vars/cleanup/health/confirmation），但仍远超 500 行软限制。`executeSingle()` 方法单独就有 158 行，加上 lifecycle 管理、upgrade 流程、webhook 分发等，文件仍然臃肿。
+**实现方案**: 
+1. 提取 `executeSingle()` + `emitTriggerEvent()` + `dispatchWebhookEvent()` 到 `engine-execute.ts` (~180 行)
+2. 提取 `upgrade()` + `upgradeGitSkill()` + `checkSkillRequirements()` 到 `engine-upgrade.ts` (~120 行)
+3. 提取 `cancel()` + `isExecutionRunning()` + `getRunningExecutionIds()` + `runningExecutions` Map 到 `engine-cancellation.ts` (~50 行)
+4. engine.ts 保留: 构造函数、install/uninstall/updateConfig/updateStatus + start/stop 生命周期 + 单例管理 + 查询委托 (~370 行)
+5. 新文件通过参数注入 `repo`/`triggerManager` 等依赖，不直接依赖 engine 实例
+**验收标准**: 
+- engine.ts ≤ 500 行
+- 每个新文件 ≤ 200 行
+- 所有现有 engine 相关测试继续通过 (engine.test.ts + engine-*.test.ts)
+- 公共 API (getSkillEngine() 等) 不变
+**影响范围**: packages/server/src/core/skill/engine.ts (拆分), 新建 engine-execute.ts, engine-upgrade.ts, engine-cancellation.ts
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] trigger-manager.ts 拆分 — 从 530 行降至 ≤500 行
+
+**ID**: skill-099
+**优先级**: P0
+**模块路径**: packages/server/src/core/skill/
+**当前状态**: trigger-manager.ts 当前 530 行，超过 500 行软限制。文件包含 cron 调度、event 匹配、threshold 评估、熔断器逻辑四种不同职责混合在一个文件中。
+**实现方案**: 
+1. 提取 threshold 评估逻辑 (`evaluateThreshold()`, `checkThresholdTrigger()`, debounce 管理) 到 `trigger-evaluators.ts` (~100 行)
+2. trigger-manager.ts 保留: TriggerManager 类、cron 计算、event 匹配、熔断器、单例管理 (~430 行)
+3. `trigger-evaluators.ts` 导出纯函数，TriggerManager 调用它们
+**验收标准**: 
+- trigger-manager.ts ≤ 500 行
+- trigger-evaluators.ts ≤ 150 行
+- 所有 trigger-manager 相关测试继续通过
+- 新文件有对应单元测试 trigger-evaluators.test.ts (≥5 个测试)
+**影响范围**: packages/server/src/core/skill/trigger-manager.ts (拆分), 新建 trigger-evaluators.ts, trigger-evaluators.test.ts
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Skill Archive 导入路径遍历防护 — 修复 zip-slip 安全漏洞
+
+**ID**: skill-100
+**优先级**: P0
+**模块路径**: packages/server/src/core/skill/
+**当前状态**: `skill-archive.ts` 的 `extractTarGz()` 函数直接调用 `tar xzf -` 解压到目标目录，没有对解压后的文件路径做任何校验。恶意构造的 tar.gz 归档可以包含 `../../etc/passwd` 等路径遍历条目，在解压时写入任意位置 (zip-slip / tar-slip 攻击)。
+**实现方案**: 
+1. 在 `extractTarGz()` 中添加 `--strip-components=0` 并使用 `tar --list` 预扫描归档内容
+2. 实现 `validateArchivePaths(entries: string[], targetDir: string)` 函数:
+   - 使用 `path.resolve()` 解析每个条目的绝对路径
+   - 验证 `resolvedPath.startsWith(targetDir)` — 任何路径逃逸则抛出错误
+   - 拒绝包含 `..` 的路径、绝对路径 (`/etc/...`)、符号链接
+3. 在实际解压前先调用 `validateArchivePaths()`，不通过则拒绝导入
+4. 添加 `--no-same-owner --no-same-permissions` 标志到 tar 命令防止权限提升
+**验收标准**: 
+- 包含 `../` 路径的 tar.gz 归档被拒绝导入
+- 包含绝对路径的 tar.gz 归档被拒绝导入
+- 正常归档不受影响
+- 测试覆盖: ≥6 个测试 (正常路径 + 路径遍历 + 绝对路径 + 符号链接 + 深层嵌套)
+**影响范围**: packages/server/src/core/skill/skill-archive.ts, packages/server/src/core/skill/skill-archive.test.ts
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] engine-cleanup.ts 单元测试 — 补齐清理逻辑测试覆盖
+
+**ID**: skill-101
+**优先级**: P1
+**模块路径**: packages/server/src/core/skill/
+**当前状态**: `engine-cleanup.ts` (75 行) 包含 `cleanupOldExecutions()` 和 `startCleanupTimers()` 两个函数，但没有对应的测试文件。清理逻辑的边界条件 (空记录、大批量删除、定时器启停) 未被验证。
+**实现方案**: 
+1. 创建 `engine-cleanup.test.ts`
+2. 测试用例:
+   - `cleanupOldExecutions()`: 删除过期记录、保留未过期记录、空表返回 0
+   - `startCleanupTimers()`: 定时器启动后调用 cleanup、dispose 后不再调用
+   - `EXECUTION_RETENTION_DAYS` 常量正确性
+   - 初始 fire-and-forget cleanup 执行
+3. 使用 `vi.useFakeTimers()` 测试定时器行为
+4. Mock `SkillRepository.deleteExecutionsBefore()` 和 `expirePendingConfirmations`
+**验收标准**: 
+- ≥8 个测试用例覆盖所有分支
+- 所有测试通过
+- 不依赖外部状态 (纯 mock)
+**影响范围**: 新建 packages/server/src/core/skill/engine-cleanup.test.ts
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] engine-template-vars.ts 单元测试 — 补齐模板变量测试覆盖
+
+**ID**: skill-102
+**优先级**: P1
+**模块路径**: packages/server/src/core/skill/
+**当前状态**: `engine-template-vars.ts` (88 行) 包含 `buildServerVars()` 和 `buildSkillVars()` 两个函数，但没有对应的测试文件。模板变量构建涉及 server profile 解析和执行历史查询，边界条件较多。
+**实现方案**: 
+1. 创建 `engine-template-vars.test.ts`
+2. 测试用例:
+   - `buildServerVars()`: 正常服务器、不存在的服务器、profile 不可用、osInfo 缺失
+   - `buildSkillVars()`: 有历史记录、无历史记录、result 为 object vs string
+   - 异常处理: 仓库抛错时返回默认值
+3. Mock `getServerRepository()` 和 `SkillRepository`
+**验收标准**: 
+- ≥8 个测试用例覆盖所有分支
+- 所有测试通过
+- 验证默认值 fallback 逻辑
+**影响范围**: 新建 packages/server/src/core/skill/engine-template-vars.test.ts
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] AnalyticsTab 组件单元测试 — 补齐 Dashboard 分析页面测试
+
+**ID**: skill-103
+**优先级**: P1
+**模块路径**: packages/dashboard/src/components/skill/
+**当前状态**: `AnalyticsTab.tsx` (185 行) 是 9 个 Skill 组件中唯一没有对应测试文件的组件。该组件渲染执行趋势图表、成功率、Top Skills 和触发分布，数据来自 `useSkillStore().stats`。
+**实现方案**: 
+1. 创建 `AnalyticsTab.test.tsx`
+2. 测试用例:
+   - 加载中状态显示 spinner
+   - 无数据时显示空状态提示
+   - 有数据时渲染各区域 (daily trend, success rate, top skills, trigger distribution)
+   - 日期范围过滤触发 fetchStats
+   - 数据格式化正确 (百分比、数字)
+3. Mock `useSkillStore` 返回不同 stats 数据
+**验收标准**: 
+- ≥6 个测试用例
+- 所有测试通过
+- 覆盖空数据和有数据两种状态
+**影响范围**: 新建 packages/dashboard/src/components/skill/AnalyticsTab.test.tsx
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] SkillKVStore 批量清除接口 — 支持按 skillId 清除所有 KV 条目
+
+**ID**: skill-104
+**优先级**: P1
+**模块路径**: packages/server/src/core/skill/
+**当前状态**: `SkillKVStoreInterface` 只有 `get/set/delete/list` 四个方法，缺少 `deleteAll(skillId)` 批量删除方法。虽然 DB 层有 `ON DELETE CASCADE` 在卸载时自动清理，但无法在不卸载 Skill 的情况下重置其存储状态 (比如重新配置后需要清除旧数据)。
+**实现方案**: 
+1. 在 `SkillKVStoreInterface` 中添加 `deleteAll(skillId: string): Promise<number>` 方法
+2. `SkillKVStore` (Drizzle 实现): `DELETE FROM skill_store WHERE skill_id = ?`，返回删除行数
+3. `InMemorySkillKVStore` (测试实现): 过滤 Map 中 skillId 匹配的条目
+4. `runner-tools.ts` 的 `store` tool 可选添加 `store_clear` 子操作 (让 AI 可以在 Skill 执行中清除旧数据)
+5. 在 `store.test.ts` 中添加 `deleteAll` 测试用例
+**验收标准**: 
+- Interface 添加 `deleteAll` 方法
+- 两种实现均正确
+- ≥3 个测试用例 (正常删除、空存储、验证返回计数)
+**影响范围**: packages/server/src/core/skill/store.ts, packages/server/src/core/skill/store.test.ts
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] skills.ts API 路由拆分 — 从 523 行降至 ≤500 行
+
+**ID**: skill-105
+**优先级**: P2
+**模块路径**: packages/server/src/api/routes/
+**当前状态**: `skills.ts` 当前 523 行，略超 500 行软限制。包含 15+ 端点，其中执行相关端点 (execute/dry-run/cancel/confirm/reject/stream) 和 export/import 端点占据大量代码。
+**实现方案**: 
+1. 提取 SSE streaming + cancel + confirm/reject 端点到 `skills-execution.ts` (~120 行)
+2. 提取 export/import 端点到 `skills-archive-routes.ts` (~60 行)
+3. `skills.ts` 通过 `app.route()` 合并子路由
+4. 所有子路由复用相同的中间件链 (requireAuth + resolveRole + requirePermission)
+**验收标准**: 
+- skills.ts ≤ 450 行
+- 每个新文件 ≤ 200 行
+- 所有 API 测试继续通过
+- 路由路径不变
+**影响范围**: packages/server/src/api/routes/skills.ts (拆分), 新建 skills-execution.ts, skills-archive-routes.ts
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Dashboard Skills.tsx 拆分 — 从 576 行降至 ≤500 行
+
+**ID**: skill-106
+**优先级**: P2
+**模块路径**: packages/dashboard/src/pages/
+**当前状态**: `Skills.tsx` 当前 576 行，超过 500 行软限制。包含 3 个 Tab 面板（已安装、可用、分析）的完整逻辑、Git URL 安装表单、确认横幅集成等，职责过重。
+**实现方案**: 
+1. 提取 "Available Skills" Tab 面板逻辑 (Git URL 安装表单 + 可用 Skill 列表) 到 `components/skill/AvailableTab.tsx` (~120 行)
+2. 提取 "Installed Skills" Tab 面板逻辑 (Skill 卡片列表 + 执行历史弹窗) 到 `components/skill/InstalledTab.tsx` (~120 行)
+3. Skills.tsx 只保留: Tab 切换、确认横幅、导入按钮、布局框架 (~340 行)
+**验收标准**: 
+- Skills.tsx ≤ 500 行
+- 每个新组件 ≤ 200 行
+- 所有 Skills.test.tsx 测试继续通过
+- UI 行为不变
+**影响范围**: packages/dashboard/src/pages/Skills.tsx (拆分), 新建 AvailableTab.tsx, InstalledTab.tsx
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] SkillRunner AI 提供者不可用时的优雅降级
+
+**ID**: skill-107
+**优先级**: P2
+**模块路径**: packages/server/src/core/skill/
+**当前状态**: `runner.ts` 构造函数在 AI 提供者不可用时直接 `throw new Error()`，导致 Skill 模块完全不可用。Skill 列表查看、配置管理、执行历史等功能不依赖 AI 提供者，不应受影响。`SkillRunner` 仅在实际执行 `run()` 时才需要提供者。
+**实现方案**: 
+1. 将 `SkillRunner` 构造函数中的提供者检查延迟到 `run()` 方法调用时
+2. 构造函数改为: `this.provider = provider ?? null;`
+3. `run()` 方法开头: `if (!this.provider) { this.provider = getActiveProvider(); }` + 检查
+4. 如果仍无提供者: 返回明确的 `SkillRunResult` 错误 (status: 'failed', errors: ['No AI provider...'])
+5. 不再在构造函数抛异常，让 engine 可以正常启动和响应查询
+**验收标准**: 
+- AI 提供者不可用时，Skill 列表/配置/历史 API 正常工作
+- AI 提供者不可用时，执行返回明确错误而非未捕获异常
+- 提供者恢复后，执行自动恢复
+- ≥3 个测试用例
+**影响范围**: packages/server/src/core/skill/runner.ts, packages/server/src/core/skill/runner.test.ts
+**创建时间**: 2026-02-13
+**完成时间**: -
+
 ### [completed] SkillEngine 拆分 — engine.ts 已达 800 行硬限制需重构 ✅
 
 **ID**: skill-090
