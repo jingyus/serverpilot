@@ -149,6 +149,41 @@ describe('CORS', () => {
 });
 
 // ============================================================================
+// Security Headers
+// ============================================================================
+
+describe('Security Headers', () => {
+  it('should include X-Content-Type-Options on responses', async () => {
+    const res = await req('/health');
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+  });
+
+  it('should include X-Frame-Options on responses', async () => {
+    const res = await req('/health');
+    expect(res.headers.get('x-frame-options')).toBe('DENY');
+  });
+
+  it('should include Content-Security-Policy on responses', async () => {
+    const res = await req('/health');
+    const csp = res.headers.get('content-security-policy');
+    expect(csp).toContain("default-src 'none'");
+    expect(csp).toContain("frame-ancestors 'none'");
+  });
+
+  it('should include Permissions-Policy on responses', async () => {
+    const res = await req('/health');
+    const pp = res.headers.get('permissions-policy');
+    expect(pp).toContain('camera=()');
+    expect(pp).toContain('microphone=()');
+  });
+
+  it('should include Referrer-Policy on responses', async () => {
+    const res = await req('/health');
+    expect(res.headers.get('referrer-policy')).toBe('strict-origin-when-cross-origin');
+  });
+});
+
+// ============================================================================
 // Auth Routes
 // ============================================================================
 

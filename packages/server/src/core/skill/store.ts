@@ -11,7 +11,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 
 import { getDatabase } from '../../db/connection.js';
 import { skillStore } from '../../db/schema.js';
@@ -23,6 +23,20 @@ const logger = createContextLogger({ module: 'skill-kv-store' });
 
 /** Maximum value size in bytes (1 MB). */
 const MAX_VALUE_SIZE = 1_048_576;
+
+/** Maximum number of keys per skill. */
+export const MAX_KEYS_PER_SKILL = 1_000;
+
+/** Maximum total storage per skill in bytes (50 MB). */
+export const MAX_TOTAL_SIZE_PER_SKILL = 50 * 1024 * 1024;
+
+/** Error thrown when a skill exceeds its storage quota. */
+export class SkillStoreQuotaError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SkillStoreQuotaError';
+  }
+}
 
 // ============================================================================
 // Interface
@@ -62,13 +76,45 @@ export class SkillKVStore implements SkillKVStoreInterface {
 
     const now = new Date();
     const existing = this.db
-      .select({ id: skillStore.id })
+      .select({ id: skillStore.id, value: skillStore.value })
       .from(skillStore)
       .where(and(eq(skillStore.skillId, skillId), eq(skillStore.key, key)))
       .limit(1)
       .all();
 
-    if (existing.length > 0) {
+    const isNewKey = existing.length === 0;
+
+    if (isNewKey) {
+      // Check key count quota
+      const countResult = this.db
+        .select({ count: sql<number>`COUNT(*)` })
+        .from(skillStore)
+        .where(eq(skillStore.skillId, skillId))
+        .all();
+      const keyCount = countResult[0]?.count ?? 0;
+      if (keyCount >= MAX_KEYS_PER_SKILL) {
+        throw new SkillStoreQuotaError(
+          `Skill "${skillId}" has reached the maximum of ${MAX_KEYS_PER_SKILL} keys`,
+        );
+      }
+    }
+
+    // Check total size quota
+    const sizeResult = this.db
+      .select({ total: sql<number>`COALESCE(SUM(LENGTH(${skillStore.value})), 0)` })
+      .from(skillStore)
+      .where(eq(skillStore.skillId, skillId))
+      .all();
+    const currentTotal = sizeResult[0]?.total ?? 0;
+    const oldSize = isNewKey ? 0 : Buffer.byteLength(existing[0].value ?? '', 'utf8');
+    const newTotal = currentTotal - oldSize + byteLength;
+    if (newTotal > MAX_TOTAL_SIZE_PER_SKILL) {
+      throw new SkillStoreQuotaError(
+        `Skill "${skillId}" would exceed the ${MAX_TOTAL_SIZE_PER_SKILL} byte total storage limit`,
+      );
+    }
+
+    if (!isNewKey) {
       this.db
         .update(skillStore)
         .set({ value, updatedAt: now })
@@ -131,6 +177,29 @@ export class InMemorySkillKVStore implements SkillKVStoreInterface {
       skillMap = new Map();
       this.data.set(skillId, skillMap);
     }
+
+    const isNewKey = !skillMap.has(key);
+
+    // Key count quota
+    if (isNewKey && skillMap.size >= MAX_KEYS_PER_SKILL) {
+      throw new SkillStoreQuotaError(
+        `Skill "${skillId}" has reached the maximum of ${MAX_KEYS_PER_SKILL} keys`,
+      );
+    }
+
+    // Total size quota
+    let currentTotal = 0;
+    for (const v of skillMap.values()) {
+      currentTotal += Buffer.byteLength(v, 'utf8');
+    }
+    const oldSize = isNewKey ? 0 : Buffer.byteLength(skillMap.get(key)!, 'utf8');
+    const newTotal = currentTotal - oldSize + byteLength;
+    if (newTotal > MAX_TOTAL_SIZE_PER_SKILL) {
+      throw new SkillStoreQuotaError(
+        `Skill "${skillId}" would exceed the ${MAX_TOTAL_SIZE_PER_SKILL} byte total storage limit`,
+      );
+    }
+
     skillMap.set(key, value);
   }
 

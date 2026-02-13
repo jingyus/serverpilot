@@ -14,6 +14,9 @@ import {
   getSkillKVStore,
   setSkillKVStore,
   _resetSkillKVStore,
+  MAX_KEYS_PER_SKILL,
+  MAX_TOTAL_SIZE_PER_SKILL,
+  SkillStoreQuotaError,
 } from './store.js';
 import type { SkillKVStoreInterface } from './store.js';
 
@@ -128,6 +131,128 @@ describe('InMemorySkillKVStore', () => {
     await expect(store.set('skill-1', 'emoji', value)).rejects.toThrow(
       'exceeds maximum',
     );
+  });
+});
+
+// ============================================================================
+// Quota enforcement — key count limit
+// ============================================================================
+
+describe('Key count quota (MAX_KEYS_PER_SKILL)', () => {
+  let store: InMemorySkillKVStore;
+
+  beforeEach(() => {
+    store = new InMemorySkillKVStore();
+  });
+
+  it('allows storing up to MAX_KEYS_PER_SKILL keys', async () => {
+    for (let i = 0; i < MAX_KEYS_PER_SKILL; i++) {
+      await store.set('skill-1', `key-${i}`, 'v');
+    }
+    const entries = await store.list('skill-1');
+    expect(Object.keys(entries)).toHaveLength(MAX_KEYS_PER_SKILL);
+  });
+
+  it('rejects a new key when MAX_KEYS_PER_SKILL is reached', async () => {
+    for (let i = 0; i < MAX_KEYS_PER_SKILL; i++) {
+      await store.set('skill-1', `key-${i}`, 'v');
+    }
+    await expect(store.set('skill-1', 'one-too-many', 'v')).rejects.toThrow(
+      SkillStoreQuotaError,
+    );
+    await expect(store.set('skill-1', 'one-too-many', 'v')).rejects.toThrow(
+      /maximum of 1000 keys/,
+    );
+  });
+
+  it('allows updating an existing key when at the limit', async () => {
+    for (let i = 0; i < MAX_KEYS_PER_SKILL; i++) {
+      await store.set('skill-1', `key-${i}`, 'old');
+    }
+    // Updating an existing key should succeed
+    await expect(
+      store.set('skill-1', 'key-0', 'updated'),
+    ).resolves.toBeUndefined();
+    expect(await store.get('skill-1', 'key-0')).toBe('updated');
+  });
+
+  it('quota is per-skill — different skills have independent limits', async () => {
+    for (let i = 0; i < MAX_KEYS_PER_SKILL; i++) {
+      await store.set('skill-a', `key-${i}`, 'v');
+    }
+    // skill-b should still accept new keys
+    await expect(
+      store.set('skill-b', 'key-0', 'v'),
+    ).resolves.toBeUndefined();
+  });
+
+  it('allows new keys after deleting one at the limit', async () => {
+    for (let i = 0; i < MAX_KEYS_PER_SKILL; i++) {
+      await store.set('skill-1', `key-${i}`, 'v');
+    }
+    await store.delete('skill-1', 'key-0');
+    await expect(
+      store.set('skill-1', 'new-key', 'v'),
+    ).resolves.toBeUndefined();
+  });
+});
+
+// ============================================================================
+// Quota enforcement — total size limit
+// ============================================================================
+
+describe('Total size quota (MAX_TOTAL_SIZE_PER_SKILL)', () => {
+  let store: InMemorySkillKVStore;
+  /** 1 MB chunk (just under per-value limit). */
+  const CHUNK = 'x'.repeat(1_048_576);
+
+  beforeEach(() => {
+    store = new InMemorySkillKVStore();
+  });
+
+  it('rejects a new value that would exceed the total size limit', async () => {
+    // Fill with 1 MB chunks until close to 50 MB
+    const chunksNeeded = Math.floor(MAX_TOTAL_SIZE_PER_SKILL / CHUNK.length);
+    for (let i = 0; i < chunksNeeded; i++) {
+      await store.set('skill-1', `chunk-${i}`, CHUNK);
+    }
+    // One more 1 MB chunk should exceed the limit
+    await expect(
+      store.set('skill-1', 'overflow', CHUNK),
+    ).rejects.toThrow(SkillStoreQuotaError);
+    await expect(
+      store.set('skill-1', 'overflow', CHUNK),
+    ).rejects.toThrow(/total storage limit/);
+  });
+
+  it('allows updating an existing key without net size increase', async () => {
+    const chunksNeeded = Math.floor(MAX_TOTAL_SIZE_PER_SKILL / CHUNK.length);
+    for (let i = 0; i < chunksNeeded; i++) {
+      await store.set('skill-1', `chunk-${i}`, CHUNK);
+    }
+    // Replace an existing chunk with same-size data — no net increase
+    const replacement = 'z'.repeat(CHUNK.length);
+    await expect(
+      store.set('skill-1', 'chunk-0', replacement),
+    ).resolves.toBeUndefined();
+  });
+
+  it('total size quota is per-skill', async () => {
+    const chunksNeeded = Math.floor(MAX_TOTAL_SIZE_PER_SKILL / CHUNK.length);
+    for (let i = 0; i < chunksNeeded; i++) {
+      await store.set('skill-a', `chunk-${i}`, CHUNK);
+    }
+    // skill-b should still accept data
+    await expect(
+      store.set('skill-b', 'key', CHUNK),
+    ).resolves.toBeUndefined();
+  });
+
+  it('SkillStoreQuotaError has correct name property', () => {
+    const err = new SkillStoreQuotaError('test');
+    expect(err.name).toBe('SkillStoreQuotaError');
+    expect(err).toBeInstanceOf(Error);
+    expect(err).toBeInstanceOf(SkillStoreQuotaError);
   });
 });
 

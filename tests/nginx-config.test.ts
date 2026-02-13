@@ -78,6 +78,27 @@ describe('Nginx Configuration Files', () => {
       expect(content).toContain('Referrer-Policy');
     });
 
+    it('should configure Content-Security-Policy header', async () => {
+      const configPath = join(NGINX_DIR, 'aiinstaller.conf');
+      const content = await readFile(configPath, 'utf-8');
+
+      expect(content).toContain('Content-Security-Policy');
+      expect(content).toContain("default-src 'self'");
+      expect(content).toContain("script-src 'self'");
+      expect(content).toContain("style-src 'self' 'unsafe-inline'");
+      expect(content).toContain('wss:');
+      expect(content).toContain("frame-ancestors 'none'");
+    });
+
+    it('should configure Permissions-Policy header', async () => {
+      const configPath = join(NGINX_DIR, 'aiinstaller.conf');
+      const content = await readFile(configPath, 'utf-8');
+
+      expect(content).toContain('Permissions-Policy');
+      expect(content).toContain('camera=()');
+      expect(content).toContain('microphone=()');
+    });
+
     it('should configure rate limiting', async () => {
       const configPath = join(NGINX_DIR, 'aiinstaller.conf');
       const content = await readFile(configPath, 'utf-8');
@@ -587,6 +608,49 @@ describe('Nginx Configuration Validation', () => {
       expect(nginxContent).toContain('Options:');
       expect(sslContent).toContain('Example:');
     });
+  });
+});
+
+describe('Dashboard Nginx Configuration', () => {
+  const DASHBOARD_NGINX = join(PROJECT_ROOT, 'packages', 'dashboard', 'nginx.conf');
+
+  it('should configure Content-Security-Policy header', async () => {
+    const content = await readFile(DASHBOARD_NGINX, 'utf-8');
+
+    expect(content).toContain('Content-Security-Policy');
+    expect(content).toContain("default-src 'self'");
+    expect(content).toContain("script-src 'self'");
+    expect(content).toContain("style-src 'self' 'unsafe-inline'");
+    expect(content).toContain("connect-src 'self' ws: wss:");
+    expect(content).toContain("frame-ancestors 'self'");
+  });
+
+  it('should configure Permissions-Policy header', async () => {
+    const content = await readFile(DASHBOARD_NGINX, 'utf-8');
+
+    expect(content).toContain('Permissions-Policy');
+    expect(content).toContain('camera=()');
+    expect(content).toContain('microphone=()');
+  });
+
+  it('should allow inline styles for Vite-generated CSS', async () => {
+    const content = await readFile(DASHBOARD_NGINX, 'utf-8');
+
+    expect(content).toContain("'unsafe-inline'");
+  });
+
+  it('should allow WebSocket connections for SSE and WS', async () => {
+    const content = await readFile(DASHBOARD_NGINX, 'utf-8');
+
+    expect(content).toContain('ws:');
+    expect(content).toContain('wss:');
+  });
+
+  it('should allow data: URIs for images and fonts', async () => {
+    const content = await readFile(DASHBOARD_NGINX, 'utf-8');
+
+    expect(content).toContain("img-src 'self' data: blob:");
+    expect(content).toContain("font-src 'self' data:");
   });
 });
 
