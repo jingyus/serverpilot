@@ -3,14 +3,14 @@
 > 此队列专注于 Skill 插件系统的设计与实现
 > AI 自动扫描 → 发现缺失 → 设计实现 → 验证
 
-**最后更新**: 2026-02-13 13:34:02
+**最后更新**: 2026-02-13 13:35:34
 
 ## 📊 统计
 
 - **总任务数**: 77
-- **待完成** (pending): 2
+- **待完成** (pending): 1
 - **进行中** (in_progress): 0
-- **已完成** (completed): 75
+- **已完成** (completed): 76
 - **失败** (failed): 0
 
 ## 📋 任务列表
@@ -202,7 +202,7 @@
 
 ---
 
-### [pending] Dashboard Skills.tsx 拆分 — 从 576 行降至 ≤500 行
+### [completed] Dashboard Skills.tsx 拆分 — 从 576 行降至 ≤500 行 ✅
 
 **ID**: skill-106
 **优先级**: P2
@@ -219,7 +219,7 @@
 - UI 行为不变
 **影响范围**: packages/dashboard/src/pages/Skills.tsx (拆分), 新建 AvailableTab.tsx, InstalledTab.tsx
 **创建时间**: 2026-02-13
-**完成时间**: -
+**完成时间**: 2026-02-13 13:35:34
 
 ---
 
