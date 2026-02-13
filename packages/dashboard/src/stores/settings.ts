@@ -177,5 +177,19 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     }
   },
 
+  fetchHealthDetail: async () => {
+    set({ isCheckingSystemHealth: true });
+    try {
+      const data = await apiRequest<HealthDetailResponse>('/health/detail');
+      set({ systemHealth: data, isCheckingSystemHealth: false });
+    } catch (err) {
+      const message =
+        err instanceof ApiError
+          ? err.message
+          : 'Failed to check system health';
+      set({ systemHealth: null, isCheckingSystemHealth: false, error: message });
+    }
+  },
+
   clearError: () => set({ error: null }),
 }));

@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { Save, Loader2, AlertCircle, CheckCircle2, Key, User, Bell, Shield, Book, RefreshCw, Globe, Sun, Moon, Monitor } from 'lucide-react';
 import { supportedLanguages, setStoredLanguage } from '@/i18n';
 import { DocSourceSection } from '@/components/knowledge/DocSourceSection';
+import { SystemStatus } from '@/components/settings/SystemStatus';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -664,6 +665,9 @@ export function Settings() {
           </Button>
         </CardContent>
       </Card>
+
+      {/* System Status */}
+      <SystemStatus />
     </div>
   );
 }
