@@ -3,14 +3,14 @@
 > 此队列专注于 Skill 插件系统的设计与实现
 > AI 自动扫描 → 发现缺失 → 设计实现 → 验证
 
-**最后更新**: 2026-02-13 08:00:59
+**最后更新**: 2026-02-13 08:05:12
 
 ## 📊 统计
 
 - **总任务数**: 56
-- **待完成** (pending): 8
+- **待完成** (pending): 7
 - **进行中** (in_progress): 0
-- **已完成** (completed): 48
+- **已完成** (completed): 49
 - **失败** (failed): 0
 
 ## 📋 任务列表
@@ -42,7 +42,7 @@
 
 ---
 
-### [pending] Skill 升级 REST API + RBAC 权限
+### [completed] Skill 升级 REST API + RBAC 权限 ✅
 
 **ID**: skill-073
 **优先级**: P0
@@ -60,7 +60,7 @@
 - 测试覆盖: ≥6 个测试用例
 **影响范围**: packages/server/src/api/routes/skills.ts, packages/server/src/api/routes/skills.test.ts
 **创建时间**: 2026-02-13
-**完成时间**: -
+**完成时间**: 2026-02-13 08:05:12
 
 ---
 

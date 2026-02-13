@@ -31,6 +31,7 @@ const mockEngine = {
   getInstalledWithInputs: vi.fn(),
   getExecutions: vi.fn(),
   getExecution: vi.fn(),
+  upgrade: vi.fn(),
   confirmExecution: vi.fn(),
   rejectExecution: vi.fn(),
   listPendingConfirmations: vi.fn(),
@@ -382,6 +383,80 @@ describe('DELETE /skills/:id', () => {
 
     const res = await app.request('/skills/skill-1', { method: 'DELETE' });
     expect(res.status).toBe(403);
+  });
+});
+
+// ============================================================================
+// PUT /skills/:id/upgrade — Upgrade a skill
+// ============================================================================
+
+describe('PUT /skills/:id/upgrade', () => {
+  it('should upgrade a skill and return updated record', async () => {
+    const upgraded = makeSkill({ version: '2.0.0', displayName: 'Nginx Hardening v2' });
+    mockEngine.upgrade.mockResolvedValue(upgraded);
+
+    const res = await app.request('/skills/skill-1/upgrade', { method: 'PUT' });
+    expect(res.status).toBe(200);
+
+    const body = await res.json();
+    expect(body.skill.version).toBe('2.0.0');
+    expect(body.skill.displayName).toBe('Nginx Hardening v2');
+    expect(mockEngine.upgrade).toHaveBeenCalledWith('skill-1', 'user-1');
+  });
+
+  it('should return 404 when skill does not exist', async () => {
+    mockEngine.upgrade.mockRejectedValue(new Error('Skill not found: nonexistent'));
+
+    const res = await app.request('/skills/nonexistent/upgrade', { method: 'PUT' });
+    expect(res.status).toBe(404);
+  });
+
+  it('should return 403 when user is not authorized to upgrade', async () => {
+    mockEngine.upgrade.mockRejectedValue(new Error('Not authorized to upgrade skill: skill-1'));
+
+    const res = await app.request('/skills/skill-1/upgrade', { method: 'PUT' });
+    expect(res.status).toBe(403);
+  });
+
+  it('should return 400 when git clone fails during upgrade', async () => {
+    mockEngine.upgrade.mockRejectedValue(
+      new Error('Git clone failed during upgrade for "https://github.com/user/skill.git": timeout'),
+    );
+
+    const res = await app.request('/skills/skill-1/upgrade', { method: 'PUT' });
+    expect(res.status).toBe(400);
+  });
+
+  it('should return 400 when manifest validation failed after upgrade', async () => {
+    mockEngine.upgrade.mockRejectedValue(
+      new Error('Skill manifest validation failed: missing prompt field'),
+    );
+
+    const res = await app.request('/skills/skill-1/upgrade', { method: 'PUT' });
+    expect(res.status).toBe(400);
+  });
+
+  it('should return 400 when git remote URL cannot determine', async () => {
+    mockEngine.upgrade.mockRejectedValue(
+      new Error('Cannot determine git remote URL for skill at /skills/community/test'),
+    );
+
+    const res = await app.request('/skills/skill-1/upgrade', { method: 'PUT' });
+    expect(res.status).toBe(400);
+  });
+
+  it('should be forbidden for member role (skill:manage)', async () => {
+    mockUserRole = 'member';
+
+    const res = await app.request('/skills/skill-1/upgrade', { method: 'PUT' });
+    expect(res.status).toBe(403);
+  });
+
+  it('should propagate unexpected errors as 500', async () => {
+    mockEngine.upgrade.mockRejectedValue(new Error('Unexpected internal error'));
+
+    const res = await app.request('/skills/skill-1/upgrade', { method: 'PUT' });
+    expect(res.status).toBe(500);
   });
 });
 

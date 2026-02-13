@@ -122,10 +122,10 @@ skillsRoute.post('/install', requirePermission('skill:manage'), validateBody(Ins
 });
 
 // ============================================================================
-// POST /skills/:id/upgrade — Upgrade a skill (preserve config + history)
+// PUT /skills/:id/upgrade — Upgrade a skill (preserve config + history)
 // ============================================================================
 
-skillsRoute.post('/:id/upgrade', requirePermission('skill:manage'), async (c) => {
+skillsRoute.put('/:id/upgrade', requirePermission('skill:manage'), async (c) => {
   const skillId = c.req.param('id');
   const userId = c.get('userId');
   const engine = getSkillEngine();
@@ -141,7 +141,7 @@ skillsRoute.post('/:id/upgrade', requirePermission('skill:manage'), async (c) =>
     if (msg.includes('Not authorized')) {
       throw ApiError.forbidden(msg);
     }
-    if (msg.includes('Git clone failed') || msg.includes('validation failed') || msg.includes('cannot determine')) {
+    if (msg.includes('Git clone failed') || msg.includes('validation failed') || msg.includes('Cannot determine')) {
       throw ApiError.badRequest(msg);
     }
     throw err;

@@ -7,6 +7,8 @@ import {
   createSSEConnection,
   createGetSSE,
   parseSSEStream,
+  getSSEConnectionPool,
+  _resetSSEConnectionPool,
 } from './sse';
 import type { SSECallbacks, SSEConnectionHandle, SSEDispatchFn, GetSSEConfig } from './sse';
 
@@ -288,9 +290,11 @@ describe('createSSEConnection', () => {
     localStorage.setItem('auth_token', 'test-token');
     fetchMock = vi.fn();
     globalThis.fetch = fetchMock;
+    _resetSSEConnectionPool();
   });
 
   afterEach(() => {
+    _resetSSEConnectionPool();
     vi.useRealTimers();
     globalThis.fetch = originalFetch;
     localStorage.clear();
@@ -617,12 +621,14 @@ describe('createGetSSE', () => {
     localStorage.setItem('auth_token', 'test-token');
     fetchMock = vi.fn();
     globalThis.fetch = fetchMock;
+    _resetSSEConnectionPool();
     // Reset the refreshAccessToken mock
     const { refreshAccessToken } = await import('./auth');
     vi.mocked(refreshAccessToken).mockReset().mockResolvedValue(null);
   });
 
   afterEach(() => {
+    _resetSSEConnectionPool();
     vi.useRealTimers();
     globalThis.fetch = originalFetch;
     localStorage.clear();
@@ -859,5 +865,215 @@ describe('createGetSSE', () => {
     expect(headers['Authorization']).toBeUndefined();
     expect(dispatch).toHaveBeenCalledWith('test', 'no-auth');
     handle.abort();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SSE Connection Pool
+// ---------------------------------------------------------------------------
+describe('SSEConnectionPool', () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+  const originalFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    localStorage.setItem('auth_token', 'test-token');
+    fetchMock = vi.fn();
+    globalThis.fetch = fetchMock;
+    _resetSSEConnectionPool();
+  });
+
+  afterEach(() => {
+    _resetSSEConnectionPool();
+    vi.useRealTimers();
+    globalThis.fetch = originalFetch;
+    localStorage.clear();
+  });
+
+  /** Response that never closes — simulates a long-running SSE stream */
+  function hangingResponse(): Response {
+    return new Response(
+      new ReadableStream({ start() { /* intentionally hanging */ } }),
+      { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+    );
+  }
+
+  it('tracks POST SSE connections in the pool', async () => {
+    fetchMock.mockResolvedValue(
+      okSSEResponse(['event: complete\ndata: {}\n\n']),
+    );
+
+    const pool = getSSEConnectionPool();
+    expect(pool.postCount).toBe(0);
+
+    const handle = createSSEConnection('/chat/srv-1', { message: 'hi' }, {});
+    expect(pool.postCount).toBe(1);
+
+    await vi.runAllTimersAsync();
+    // After complete event, connection is unregistered
+    expect(pool.postCount).toBe(0);
+    handle.abort();
+  });
+
+  it('tracks GET SSE connections in the pool', () => {
+    fetchMock.mockReturnValue(hangingResponse());
+
+    const pool = getSSEConnectionPool();
+    expect(pool.getCount).toBe(0);
+
+    const handle = createGetSSE({ path: '/stream', dispatch: vi.fn(), reconnect: false });
+    expect(pool.getCount).toBe(1);
+
+    handle.abort();
+    expect(pool.getCount).toBe(0);
+  });
+
+  it('evicts oldest POST SSE when limit is reached', () => {
+    _resetSSEConnectionPool(2, 3);
+    fetchMock.mockReturnValue(hangingResponse());
+
+    const pool = getSSEConnectionPool();
+    const onError1 = vi.fn();
+
+    const handle1 = createSSEConnection('/chat/srv-1', { message: 'a' }, { onError: onError1 });
+    const handle2 = createSSEConnection('/chat/srv-2', { message: 'b' }, {});
+    expect(pool.postCount).toBe(2);
+
+    // Third connection should evict handle1 (the oldest)
+    const handle3 = createSSEConnection('/chat/srv-3', { message: 'c' }, {});
+    expect(pool.postCount).toBe(2);
+    expect(pool.totalCount).toBe(2);
+
+    // handle1 was aborted by eviction
+    expect(handle1.controller.signal.aborted).toBe(true);
+
+    handle2.abort();
+    handle3.abort();
+  });
+
+  it('evicts oldest GET SSE when limit is reached', () => {
+    _resetSSEConnectionPool(3, 2);
+    fetchMock.mockReturnValue(hangingResponse());
+
+    const pool = getSSEConnectionPool();
+
+    const handle1 = createGetSSE({ path: '/s1', dispatch: vi.fn(), reconnect: false });
+    const handle2 = createGetSSE({ path: '/s2', dispatch: vi.fn(), reconnect: false });
+    expect(pool.getCount).toBe(2);
+
+    // Third should evict handle1
+    const handle3 = createGetSSE({ path: '/s3', dispatch: vi.fn(), reconnect: false });
+    expect(pool.getCount).toBe(2);
+
+    handle2.abort();
+    handle3.abort();
+    expect(pool.getCount).toBe(0);
+  });
+
+  it('POST and GET pools are independent', () => {
+    _resetSSEConnectionPool(2, 2);
+    fetchMock.mockReturnValue(hangingResponse());
+
+    const pool = getSSEConnectionPool();
+
+    const postHandle1 = createSSEConnection('/chat/srv-1', { message: 'a' }, {});
+    const postHandle2 = createSSEConnection('/chat/srv-2', { message: 'b' }, {});
+    const getHandle1 = createGetSSE({ path: '/s1', dispatch: vi.fn(), reconnect: false });
+    const getHandle2 = createGetSSE({ path: '/s2', dispatch: vi.fn(), reconnect: false });
+
+    expect(pool.postCount).toBe(2);
+    expect(pool.getCount).toBe(2);
+    expect(pool.totalCount).toBe(4);
+
+    // Adding a 3rd POST evicts oldest POST, not any GET
+    const postHandle3 = createSSEConnection('/chat/srv-3', { message: 'c' }, {});
+    expect(pool.postCount).toBe(2);
+    expect(pool.getCount).toBe(2);
+
+    postHandle2.abort();
+    postHandle3.abort();
+    getHandle1.abort();
+    getHandle2.abort();
+  });
+
+  it('unregisters POST SSE on non-retriable error', async () => {
+    fetchMock.mockResolvedValueOnce(errorResponse(404, 'Not found'));
+
+    const pool = getSSEConnectionPool();
+    const handle = createSSEConnection('/chat/srv-1', { message: 'hi' }, { onError: vi.fn() });
+    expect(pool.postCount).toBe(1);
+
+    await vi.runAllTimersAsync();
+    expect(pool.postCount).toBe(0);
+    handle.abort();
+  });
+
+  it('keeps POST SSE registered during reconnect attempts', async () => {
+    _resetSSEConnectionPool(3, 3);
+
+    // First: network error → reconnect
+    fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    // Second: success with complete
+    fetchMock.mockResolvedValueOnce(
+      okSSEResponse(['event: complete\ndata: {}\n\n']),
+    );
+
+    const pool = getSSEConnectionPool();
+    const handle = createSSEConnection('/chat/srv-1', { message: 'hi' }, {
+      onReconnecting: vi.fn(),
+    });
+
+    // Connection stays registered during reconnect
+    expect(pool.postCount).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(0);
+    // Still registered (reconnecting)
+    expect(pool.postCount).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.runAllTimersAsync();
+
+    // After complete, unregistered
+    expect(pool.postCount).toBe(0);
+    handle.abort();
+  });
+
+  it('_resetSSEConnectionPool aborts all connections and resets counts', () => {
+    fetchMock.mockReturnValue(hangingResponse());
+
+    createSSEConnection('/chat/srv-1', { message: 'a' }, {});
+    createGetSSE({ path: '/s1', dispatch: vi.fn(), reconnect: false });
+
+    const pool = getSSEConnectionPool();
+    expect(pool.postCount).toBe(1);
+    expect(pool.getCount).toBe(1);
+
+    _resetSSEConnectionPool();
+
+    const newPool = getSSEConnectionPool();
+    expect(newPool.postCount).toBe(0);
+    expect(newPool.getCount).toBe(0);
+    expect(newPool.totalCount).toBe(0);
+  });
+
+  it('abort is idempotent — calling twice does not break pool', () => {
+    fetchMock.mockReturnValue(hangingResponse());
+
+    const pool = getSSEConnectionPool();
+    const handle = createSSEConnection('/chat/srv-1', { message: 'a' }, {});
+    expect(pool.postCount).toBe(1);
+
+    handle.abort();
+    expect(pool.postCount).toBe(0);
+
+    // Calling abort again is safe
+    handle.abort();
+    expect(pool.postCount).toBe(0);
+  });
+
+  it('respects default limits of 3 POST and 3 GET', () => {
+    const pool = getSSEConnectionPool();
+    expect(pool.maxPost).toBe(3);
+    expect(pool.maxGet).toBe(3);
   });
 });
