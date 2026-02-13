@@ -1,12 +1,12 @@
-### [pending] sessionLocks 超时后残留 — 30s 超时不清理 Map 条目导致后续请求永远等待
+### [pending] 知识库 token 估算使用简单 4 chars/token — 中文知识库内容 token 严重低估
 
-**ID**: chat-085
-**优先级**: P0
-**模块路径**: packages/server/src/api/routes/
-**发现的问题**: `acquireSessionLock()` (chat.ts:87-109) 中 `Promise.race([currentLock, timeout])` 超时后只是 resolve，不会从 `sessionLocks` Map 中删除旧条目（行 106 的 `sessionLocks.delete(sessionId)` 只在 release 函数中调用）。如果请求 A 挂起超过 30s 且永远不释放锁（例如 SSE 流因网络问题卡住），请求 B 超时后继续执行并设置新锁，但请求 A 的旧锁仍在 Map 中指向的 Promise 永远不会 resolve。虽然请求 B 覆盖了 Map 中的值（行 100），但如果请求 A 最终释放，它会删除请求 B 的锁条目（行 106），导致请求 C 不等待请求 B 就直接执行。
-**改进方案**: 超时时主动 `sessionLocks.delete(sessionId)` 清理旧条目，并用 `logger.warn` 记录超时事件。同时在 `releaseFn` 中检查当前 Map 中的值是否仍然是自己的 Promise（避免删除他人的锁）。
-**验收标准**: (1) 超时后旧锁条目被清理 (2) release 不会误删其他请求的锁 (3) 超时事件被日志记录 (4) 新增测试验证超时场景
-**影响范围**: `packages/server/src/api/routes/chat.ts`, `packages/server/src/api/routes/chat.test.ts`
+**ID**: chat-086
+**优先级**: P1
+**模块路径**: packages/server/src/knowledge/
+**发现的问题**: `context-enhancer.ts:267-270` 和 `context-window-manager.ts` 中的 `estimateTokenCount()` 使用固定 `Math.ceil(text.length / 4)` 估算 token，不区分中英文。而 `profile-context.ts:81-103` 已有 CJK 感知的 `estimateTokens()` 函数（中文 1.5 chars/token、ASCII 4 chars/token）。context-window-manager 将知识库 token 预算设为 `remainingBudget * 0.4`（行 244），但对中文知识库结果低估约 2.7 倍（4/1.5），实际注入的 token 可能远超预算，挤压对话历史空间甚至导致上下文溢出。
+**改进方案**: 将 `context-enhancer.ts` 和 `context-window-manager.ts` 中的 `estimateTokenCount` 替换为 `profile-context.ts` 导出的 `estimateTokens`（CJK 感知版本）。删除 `context-enhancer.ts` 中的重复函数。
+**验收标准**: (1) 只保留一个 token 估算函数（CJK 感知版） (2) context-window-manager 使用统一的估算 (3) 现有 context-window-manager 测试更新适配 (4) 中文内容的 token 估算偏差小于 50%
+**影响范围**: `packages/server/src/knowledge/context-enhancer.ts`, `packages/server/src/knowledge/context-window-manager.ts`, `packages/server/src/knowledge/context-window-manager.test.ts`
 **创建时间**: 2026-02-13
 **完成时间**: -
 
