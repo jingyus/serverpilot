@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import { useChatStore } from './chat';
+import { appendOutput, MAX_OUTPUT_CHARS } from './chat-execution';
 
 vi.mock('@/api/client', () => ({
   apiRequest: vi.fn(),
@@ -980,6 +981,148 @@ describe('chat-execution (via useChatStore)', () => {
       await useChatStore.getState().respondToAgenticConfirm(true);
 
       expect(apiRequest).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('appendOutput truncation (chat-071)', () => {
+    it('returns combined string when under MAX_OUTPUT_CHARS', () => {
+      const result = appendOutput('hello ', 'world');
+      expect(result).toBe('hello world');
+    });
+
+    it('returns combined string when exactly at MAX_OUTPUT_CHARS', () => {
+      const existing = 'a'.repeat(MAX_OUTPUT_CHARS - 5);
+      const content = 'b'.repeat(5);
+      const result = appendOutput(existing, content);
+      expect(result.length).toBe(MAX_OUTPUT_CHARS);
+      expect(result).toBe(existing + content);
+    });
+
+    it('truncates head when combined exceeds MAX_OUTPUT_CHARS', () => {
+      const existing = 'a'.repeat(MAX_OUTPUT_CHARS);
+      const content = 'b'.repeat(1000);
+      const result = appendOutput(existing, content);
+
+      expect(result.length).toBeLessThanOrEqual(MAX_OUTPUT_CHARS);
+      expect(result).toContain('早期输出已截断');
+      expect(result).toContain('1000 字符');
+      // Tail should be preserved (ends with 'b's from new content)
+      expect(result.endsWith('b'.repeat(100))).toBe(true);
+    });
+
+    it('includes correct truncated char count in notice', () => {
+      const overBy = 5000;
+      const existing = 'x'.repeat(MAX_OUTPUT_CHARS);
+      const content = 'y'.repeat(overBy);
+      const result = appendOutput(existing, content);
+
+      expect(result).toContain(`${overBy} 字符`);
+    });
+
+    it('preserves tail content after truncation', () => {
+      const existing = 'HEAD_DATA_' + 'a'.repeat(MAX_OUTPUT_CHARS);
+      const tail = 'TAIL_MARKER_END';
+      const result = appendOutput(existing, tail);
+
+      expect(result).toContain('TAIL_MARKER_END');
+      // HEAD_DATA_ should have been truncated away
+      expect(result).not.toContain('HEAD_DATA_');
+    });
+
+    it('handles empty existing string', () => {
+      const result = appendOutput('', 'content');
+      expect(result).toBe('content');
+    });
+
+    it('handles empty content string', () => {
+      const result = appendOutput('existing', '');
+      expect(result).toBe('existing');
+    });
+
+    it('handles both empty strings', () => {
+      const result = appendOutput('', '');
+      expect(result).toBe('');
+    });
+  });
+
+  describe('onOutput truncation integration (chat-071)', () => {
+    it('truncates output in log mode via confirmPlan SSE', () => {
+      useChatStore.setState({
+        serverId: 'srv-1',
+        sessionId: 'sess-1',
+        currentPlan: {
+          planId: 'p1',
+          description: 'Test',
+          steps: [{ id: 's1', command: 'find /', description: 'Find all', riskLevel: 'green' }],
+          totalRisk: 'green',
+          requiresConfirmation: false,
+        },
+      });
+
+      useChatStore.getState().confirmPlan();
+
+      const callbacks = getSSECallbacks();
+
+      // Simulate many output events that exceed MAX_OUTPUT_CHARS
+      const chunk = 'x'.repeat(100_000);
+      for (let i = 0; i < 6; i++) {
+        callbacks.onOutput(JSON.stringify({ stepId: 's1', content: chunk }));
+      }
+
+      const output = useChatStore.getState().execution.outputs['s1'] ?? '';
+      expect(output.length).toBeLessThanOrEqual(MAX_OUTPUT_CHARS);
+      expect(output).toContain('早期输出已截断');
+    });
+
+    it('truncates output in log mode via sendMessage SSE', () => {
+      useChatStore.setState({ serverId: 'srv-1' });
+      useChatStore.getState().sendMessage('test');
+
+      useChatStore.setState({ executionMode: 'log' });
+
+      const callbacks = getSSECallbacks();
+
+      const chunk = 'y'.repeat(100_000);
+      for (let i = 0; i < 6; i++) {
+        callbacks.onOutput(JSON.stringify({ stepId: 's1', content: chunk }));
+      }
+
+      const output = useChatStore.getState().execution.outputs['s1'] ?? '';
+      expect(output.length).toBeLessThanOrEqual(MAX_OUTPUT_CHARS);
+      expect(output).toContain('早期输出已截断');
+    });
+
+    it('does NOT truncate output in inline mode (streamingContent)', () => {
+      useChatStore.setState({ serverId: 'srv-1' });
+      useChatStore.getState().sendMessage('test');
+
+      useChatStore.setState({ executionMode: 'inline', streamingContent: '' });
+
+      const callbacks = getSSECallbacks();
+
+      // Inline mode appends to streamingContent without truncation
+      callbacks.onOutput(JSON.stringify({ stepId: 's1', content: 'inline data' }));
+
+      expect(useChatStore.getState().streamingContent).toBe('inline data');
+    });
+
+    it('handles rapid sequential outputs without exceeding limit', () => {
+      useChatStore.setState({ serverId: 'srv-1' });
+      useChatStore.getState().sendMessage('test');
+      useChatStore.setState({ executionMode: 'log' });
+
+      const callbacks = getSSECallbacks();
+
+      // 100 rapid small outputs
+      for (let i = 0; i < 100; i++) {
+        callbacks.onOutput(JSON.stringify({ stepId: 's1', content: `line ${i}\n` }));
+      }
+
+      const output = useChatStore.getState().execution.outputs['s1'] ?? '';
+      expect(output.length).toBeLessThanOrEqual(MAX_OUTPUT_CHARS);
+      // All lines should be present (total is small)
+      expect(output).toContain('line 0');
+      expect(output).toContain('line 99');
     });
   });
 });
