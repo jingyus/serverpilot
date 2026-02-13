@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { ChatMessage } from '@/components/chat/ChatMessage';
 import { MarkdownRenderer } from '@/components/chat/MarkdownRenderer';
 import { PlanPreview } from '@/components/chat/PlanPreview';
-import { MessageInput } from '@/components/chat/MessageInput';
+import { MessageInput, type MessageInputHandle } from '@/components/chat/MessageInput';
 import { ExecutionLog } from '@/components/chat/ExecutionLog';
 import { StepConfirmBar } from '@/components/chat/StepConfirmBar';
 import { AgenticConfirmBar } from '@/components/chat/AgenticConfirmBar';
@@ -92,6 +92,37 @@ export function Chat() {
   useEffect(() => {
     return () => cleanup();
   }, [cleanup]);
+
+  // Global keyboard shortcuts
+  const messageInputRef = useRef<MessageInputHandle>(null);
+  useEffect(() => {
+    function handleGlobalKeyDown(e: KeyboardEvent) {
+      // Escape: cancel streaming (works from anywhere on the page)
+      if (e.key === 'Escape' && isStreaming) {
+        e.preventDefault();
+        cancelStream();
+        return;
+      }
+
+      // Slash: focus input (only when not already in an editable element)
+      if (
+        e.key === '/' &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey
+      ) {
+        const tag = (e.target as HTMLElement).tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement).isContentEditable) {
+          return;
+        }
+        e.preventDefault();
+        messageInputRef.current?.focus();
+      }
+    }
+
+    document.addEventListener('keydown', handleGlobalKeyDown);
+    return () => document.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [isStreaming, cancelStream]);
 
   // Virtuoso followOutput: auto-scroll when new messages arrive or streaming updates
   const followOutput = useCallback(
@@ -272,6 +303,7 @@ export function Chat() {
 
           {/* Input */}
           <MessageInput
+            ref={messageInputRef}
             onSend={handleSend}
             onCancel={cancelStream}
             isStreaming={isStreaming}

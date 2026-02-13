@@ -799,6 +799,78 @@ describe('Chat Page', () => {
     });
   });
 
+  describe('global keyboard shortcuts', () => {
+    it('Escape cancels streaming from anywhere on the page', async () => {
+      const user = (await import('@testing-library/user-event')).default.setup();
+      const cancelStream = vi.fn();
+      useChatStore.setState({
+        isStreaming: true,
+        streamingContent: 'partial...',
+        cancelStream: cancelStream as unknown as () => void,
+        fetchSessions: vi.fn() as unknown as (serverId: string) => Promise<void>,
+        messages: [
+          {
+            id: 'msg-1',
+            role: 'user',
+            content: 'Hello',
+            timestamp: '2025-01-01T00:00:00Z',
+          },
+        ],
+      });
+      renderChat('/chat/srv-1');
+
+      // Press Escape on the document body (not in textarea)
+      await user.keyboard('{Escape}');
+      expect(cancelStream).toHaveBeenCalledTimes(1);
+    });
+
+    it('Escape does nothing when not streaming', async () => {
+      const user = (await import('@testing-library/user-event')).default.setup();
+      const cancelStream = vi.fn();
+      useChatStore.setState({
+        isStreaming: false,
+        cancelStream: cancelStream as unknown as () => void,
+        fetchSessions: vi.fn() as unknown as (serverId: string) => Promise<void>,
+      });
+      renderChat('/chat/srv-1');
+
+      await user.keyboard('{Escape}');
+      expect(cancelStream).not.toHaveBeenCalled();
+    });
+
+    it('/ key focuses the message input when not in a text field', async () => {
+      const user = (await import('@testing-library/user-event')).default.setup();
+      useChatStore.setState({
+        fetchSessions: vi.fn() as unknown as (serverId: string) => Promise<void>,
+      });
+      renderChat('/chat/srv-1');
+
+      const textarea = screen.getByTestId('message-textarea');
+      // Ensure textarea is not focused initially
+      expect(document.activeElement).not.toBe(textarea);
+
+      await user.keyboard('/');
+      expect(document.activeElement).toBe(textarea);
+    });
+
+    it('/ key does not steal focus from textarea', async () => {
+      const user = (await import('@testing-library/user-event')).default.setup();
+      useChatStore.setState({
+        fetchSessions: vi.fn() as unknown as (serverId: string) => Promise<void>,
+      });
+      renderChat('/chat/srv-1');
+
+      const textarea = screen.getByTestId('message-textarea');
+      // Focus the textarea first
+      textarea.focus();
+      expect(document.activeElement).toBe(textarea);
+
+      // Type / — should be typed into the textarea as normal text, not intercepted
+      await user.type(textarea, '/');
+      expect(textarea).toHaveValue('/');
+    });
+  });
+
   describe('virtual scrolling', () => {
     it('uses Virtuoso to render messages', () => {
       useChatStore.setState({

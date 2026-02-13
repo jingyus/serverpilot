@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
+import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -115,5 +116,56 @@ describe('MessageInput', () => {
       '  Hello  {Enter}'
     );
     expect(onSend).toHaveBeenCalledWith('Hello');
+  });
+
+  describe('Escape key', () => {
+    it('calls onCancel when Escape is pressed during streaming', async () => {
+      const user = userEvent.setup();
+      const onCancel = vi.fn();
+      render(
+        <MessageInput {...defaultProps} isStreaming={true} onCancel={onCancel} />
+      );
+
+      const textarea = screen.getByTestId('message-textarea');
+      textarea.focus();
+      await user.keyboard('{Escape}');
+      expect(onCancel).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not call onCancel when Escape is pressed while not streaming', async () => {
+      const user = userEvent.setup();
+      const onCancel = vi.fn();
+      render(
+        <MessageInput {...defaultProps} isStreaming={false} onCancel={onCancel} />
+      );
+
+      const textarea = screen.getByTestId('message-textarea');
+      textarea.focus();
+      await user.keyboard('{Escape}');
+      expect(onCancel).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('accessibility', () => {
+    it('textarea has aria-keyshortcuts attribute', () => {
+      render(<MessageInput {...defaultProps} />);
+      expect(screen.getByTestId('message-textarea')).toHaveAttribute(
+        'aria-keyshortcuts',
+        'Enter Escape'
+      );
+    });
+  });
+
+  describe('imperative handle', () => {
+    it('exposes focus method via ref', () => {
+      const ref = { current: null } as React.RefObject<React.ComponentRef<typeof MessageInput>>;
+      render(<MessageInput {...defaultProps} ref={ref} />);
+
+      const textarea = screen.getByTestId('message-textarea');
+      expect(document.activeElement).not.toBe(textarea);
+
+      ref.current?.focus();
+      expect(document.activeElement).toBe(textarea);
+    });
   });
 });

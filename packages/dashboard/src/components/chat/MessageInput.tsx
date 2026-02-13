@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { Send, Square, Loader2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -14,14 +14,18 @@ interface MessageInputProps {
   disabled?: boolean;
 }
 
-export function MessageInput({
-  onSend,
-  onCancel,
-  isStreaming,
-  disabled = false,
-}: MessageInputProps) {
+export interface MessageInputHandle {
+  focus: () => void;
+}
+
+export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
+  function MessageInput({ onSend, onCancel, isStreaming, disabled = false }, ref) {
   const [input, setInput] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useImperativeHandle(ref, () => ({
+    focus: () => textareaRef.current?.focus(),
+  }), []);
 
   const trimmed = input.trim();
   const charCount = trimmed.length;
@@ -127,4 +131,4 @@ export function MessageInput({
       </div>
     </div>
   );
-}
+});
