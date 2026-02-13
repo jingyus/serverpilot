@@ -1045,6 +1045,75 @@ describe('chat-execution (via useChatStore)', () => {
     });
   });
 
+  describe('onComplete max_turns_reached notification (chat-092)', () => {
+    it('adds system message when reason is max_turns_reached', () => {
+      useChatStore.setState({ serverId: 'srv-1' });
+      useChatStore.getState().sendMessage('test');
+
+      useChatStore.setState({ streamingContent: 'AI was working on the task...' });
+
+      const callbacks = getSSECallbacks();
+      callbacks.onComplete(JSON.stringify({ success: true, turns: 25, toolCallCount: 25, reason: 'max_turns_reached' }));
+
+      const state = useChatStore.getState();
+      expect(state.isStreaming).toBe(false);
+      // Should have: user msg + assistant msg + system msg
+      expect(state.messages.length).toBe(3);
+      expect(state.messages[1].role).toBe('assistant');
+      expect(state.messages[1].content).toBe('AI was working on the task...');
+      expect(state.messages[2].role).toBe('system');
+      expect(state.messages[2].content).toContain('最大执行轮次');
+      expect(state.messages[2].content).toContain('25 轮');
+    });
+
+    it('does NOT add system message when reason is absent', () => {
+      useChatStore.setState({ serverId: 'srv-1' });
+      useChatStore.getState().sendMessage('test');
+
+      useChatStore.setState({ streamingContent: 'Quick response' });
+
+      const callbacks = getSSECallbacks();
+      callbacks.onComplete(JSON.stringify({ success: true, turns: 3, toolCallCount: 2 }));
+
+      const state = useChatStore.getState();
+      // Should have: user msg + assistant msg (no system msg)
+      expect(state.messages.length).toBe(2);
+      expect(state.messages[1].role).toBe('assistant');
+    });
+
+    it('adds system message even without streaming content when max_turns_reached', () => {
+      useChatStore.setState({ serverId: 'srv-1' });
+      useChatStore.getState().sendMessage('test');
+
+      useChatStore.setState({ streamingContent: '' });
+
+      const callbacks = getSSECallbacks();
+      callbacks.onComplete(JSON.stringify({ success: true, reason: 'max_turns_reached' }));
+
+      const state = useChatStore.getState();
+      // Should have: user msg + system msg (no assistant msg since streamingContent was empty)
+      expect(state.messages.length).toBe(2);
+      expect(state.messages[1].role).toBe('system');
+      expect(state.messages[1].content).toContain('最大执行轮次');
+    });
+
+    it('does not add system message for agent_offline reason', () => {
+      useChatStore.setState({ serverId: 'srv-1' });
+      useChatStore.getState().sendMessage('test');
+
+      useChatStore.setState({ streamingContent: 'Agent offline msg' });
+
+      const callbacks = getSSECallbacks();
+      callbacks.onComplete(JSON.stringify({ success: false, reason: 'agent_offline' }));
+
+      const state = useChatStore.getState();
+      expect(state.messages.length).toBe(2);
+      expect(state.messages[1].role).toBe('assistant');
+      // No system message for agent_offline
+      expect(state.messages.every((m) => m.role !== 'system' || !m.content.includes('最大执行轮次'))).toBe(true);
+    });
+  });
+
   describe('onOutput truncation integration (chat-071)', () => {
     it('truncates output in log mode via confirmPlan SSE', () => {
       useChatStore.setState({

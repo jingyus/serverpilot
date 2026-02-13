@@ -75,6 +75,7 @@ export const ExecutionCompleteSchema = z.object({
   snapshotId: z.string().optional(),
   failedAtStep: z.string().nullable().optional(),
   cancelled: z.boolean().optional(),
+  reason: z.string().optional(),
 });
 
 export type ExecutionComplete = z.infer<typeof ExecutionCompleteSchema>;

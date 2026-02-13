@@ -1,12 +1,12 @@
-### [pending] Legacy 模式 conversationContext 不扣除 knowledge/profile token — 总 prompt 可能超出上下文窗口
+### [pending] Agentic 循环 MAX_TURNS=25 时无用户感知 — AI 静默停止不解释原因
 
-**ID**: chat-091
-**优先级**: P1
-**模块路径**: packages/server/src/api/routes/
-**发现的问题**: Legacy 模式（chat.ts:319-377）中，`buildContextWithLimit(session.id, 8000)` (行 322) 固定使用 8000 token 预算，与 `profileCtx` 和 `knowledgeContext` 的大小完全独立。最终 `userPrompt` 包含 `serverLabel + conversationContext + message`，`systemPrompt` 包含 `BASE_SYSTEM_PROMPT + profileContext + caveats + knowledgeContext`。如果 profile 占 5000 token、knowledge 占 3000 token、base prompt 占 2000 token，加上 conversation 8000 token，总计 ~18000 token。虽然大多数模型有 128K+ 上下文窗口所以不会溢出，但 ollama 本地模型可能只有 4K-8K 上下文，此时必定溢出。且 8000 token 的固定预算对短对话浪费、对长对话不够。
-**改进方案**: `buildContextWithLimit` 的 `maxTokens` 参数应根据模型的上下文窗口和已分配的 system prompt + knowledge token 动态计算：`availableTokens = modelContextWindow - systemPromptTokens - knowledgeTokens - reservedOutputTokens`。可从 provider 接口获取 `contextWindowSize`。
-**验收标准**: (1) conversation history 预算动态计算 (2) 不超过模型上下文窗口 (3) 对 ollama 等小上下文模型安全 (4) 默认行为向后兼容
-**影响范围**: `packages/server/src/api/routes/chat.ts`, `packages/server/src/core/session/manager.ts`
+**ID**: chat-092
+**优先级**: P2
+**模块路径**: packages/server/src/ai/
+**发现的问题**: `AgenticChatEngine.run()` (agentic-chat.ts:162) 中 `for (let turn = 0; turn < MAX_TURNS; turn++)` 循环达到 25 轮上限后直接 break 并发送 `complete` 事件（行 222-224），AI 的最后输出可能是一个工具调用结果，用户看到的是 AI 突然停止而没有总结性回复。前端也没有显示"已达到最大轮次"的提示。用户可能误以为任务已完成或连接断开。
+**改进方案**: 达到 MAX_TURNS 时在 `complete` 事件中增加 `reason: 'max_turns_reached'` 字段，并在最后一轮结束后发送一条消息提示用户："已达到最大执行轮次（25 轮）。如需继续，请发送新消息。"前端在 `onComplete` 中检查 reason 并显示提示。
+**验收标准**: (1) 达到 MAX_TURNS 时用户看到明确提示 (2) complete 事件包含 reason 字段 (3) 前端显示友好提示
+**影响范围**: `packages/server/src/ai/agentic-chat.ts`
 **创建时间**: 2026-02-13
 **完成时间**: -
 

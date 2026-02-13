@@ -23,7 +23,6 @@ import {
   index,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
-
 // Re-export shared types from SQLite schema (same interfaces)
 export type {
   UserSettingsAIProvider,

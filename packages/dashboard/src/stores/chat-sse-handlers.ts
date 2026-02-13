@@ -220,14 +220,30 @@ export function buildStreamingCallbacks(set: SetFn, get: GetFn): SSECallbacks {
         }
       } else {
         const cleanText = stripJsonPlan(streamingContent);
+        const newMessages: ChatMessage[] = [];
         if (cleanText) {
           const { currentPlan } = get();
-          const msg: ChatMessage = {
+          newMessages.push({
             id: generateId(), role: 'assistant', content: cleanText,
             timestamp: new Date().toISOString(), plan: currentPlan ?? undefined,
-          };
+          });
+        }
+
+        // Detect max_turns_reached and add a system notice
+        try {
+          const parsed = JSON.parse(data) as Record<string, unknown>;
+          if (parsed.reason === 'max_turns_reached') {
+            newMessages.push({
+              id: generateId(), role: 'system',
+              content: '已达到最大执行轮次（25 轮）。如需继续，请发送新消息。',
+              timestamp: new Date().toISOString(),
+            });
+          }
+        } catch { /* ignore parse errors */ }
+
+        if (newMessages.length > 0) {
           set((state) => ({
-            messages: [...state.messages, msg],
+            messages: [...state.messages, ...newMessages],
             streamingContent: '',
             ...STREAM_DONE_RESET,
           }));

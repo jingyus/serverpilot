@@ -220,7 +220,18 @@ export class AgenticChatEngine {
       }
 
       if (!abort.aborted) {
-        await this.writeSSE(stream, 'complete', { success: true, turns, toolCallCount }, abort);
+        // Detect if we exited because MAX_TURNS was reached (not a natural stop)
+        const maxTurnsReached = turns >= MAX_TURNS;
+        if (maxTurnsReached) {
+          await this.writeSSE(stream, 'message', {
+            content: '\n\n已达到最大执行轮次（25 轮）。如需继续，请发送新消息。',
+          }, abort);
+        }
+
+        await this.writeSSE(stream, 'complete', {
+          success: true, turns, toolCallCount,
+          ...(maxTurnsReached ? { reason: 'max_turns_reached' } : {}),
+        }, abort);
       }
       return { success: true, turns, toolCallCount, finalText };
     } catch (err) {

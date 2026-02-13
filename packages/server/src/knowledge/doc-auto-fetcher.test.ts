@@ -13,6 +13,7 @@ import {
   DocAutoFetcher,
   createDocAutoFetcher,
 } from './doc-auto-fetcher.js';
+// eslint-disable-next-line import-x/order -- false positive: same sibling group
 import { DocFetcher, type FetchTask } from './doc-fetcher.js';
 
 // ============================================================================

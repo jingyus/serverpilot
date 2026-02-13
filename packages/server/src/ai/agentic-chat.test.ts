@@ -12,8 +12,8 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type Anthropic from '@anthropic-ai/sdk';
+// eslint-disable-next-line import-x/order -- vi.mock blocks must separate import groups
 import type { SSEStreamingApi } from 'hono/streaming';
-
 // Module mocks for AgenticChatEngine.run() — must be before import
 vi.mock('../core/agent/agent-connector.js', () => ({
   findConnectedAgent: vi.fn(() => 'agent-1'),
@@ -2168,5 +2168,128 @@ describe('AgenticChatEngine — pre-trim long conversation history', () => {
 
     // Should have been trimmed (original was way over budget)
     expect(sentMessages.length).toBeLessThan(601); // 300 pairs + 1 current
+  });
+});
+
+// ============================================================================
+// AgenticChatEngine — MAX_TURNS reached notification (chat-092)
+// ============================================================================
+
+describe('AgenticChatEngine — MAX_TURNS reached notification', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  /** Create a client that always returns tool_use (never stops voluntarily). */
+  function createNeverStopClient() {
+    let callIndex = 0;
+    const client = {
+      messages: {
+        stream: vi.fn(() => {
+          callIndex++;
+          return {
+            on: vi.fn(),
+            finalMessage: vi.fn(async () => ({
+              content: [
+                { type: 'tool_use', id: `tool-${callIndex}`, name: 'execute_command', input: { command: `echo step${callIndex}`, description: `Step ${callIndex}` } },
+              ],
+              stop_reason: 'tool_use',
+            })),
+          };
+        }),
+      },
+    } as unknown as Anthropic;
+    return { client, getCallCount: () => callIndex };
+  }
+
+  it('should send max_turns_reached reason in complete event when loop exhausts all turns', async () => {
+    const { client, getCallCount } = createNeverStopClient();
+    const engine = new AgenticChatEngine(client);
+    const { stream, sseEvents } = createMockStream();
+
+    const result = await engine.run({
+      userMessage: 'do a long task',
+      serverId: 'srv-1',
+      userId: 'usr-1',
+      sessionId: 'sess-1',
+      stream,
+    });
+
+    // All 25 turns should have been used
+    expect(getCallCount()).toBe(25);
+    expect(result.success).toBe(true);
+    expect(result.turns).toBe(25);
+
+    // Complete event should include reason: 'max_turns_reached'
+    const completeEvents = sseEvents.filter((e) => e.event === 'complete');
+    expect(completeEvents).toHaveLength(1);
+    expect(completeEvents[0].data).toMatchObject({
+      success: true,
+      turns: 25,
+      reason: 'max_turns_reached',
+    });
+  });
+
+  it('should send a message event with max turns notice before complete', async () => {
+    const { client } = createNeverStopClient();
+    const engine = new AgenticChatEngine(client);
+    const { stream, sseEvents } = createMockStream();
+
+    await engine.run({
+      userMessage: 'long running task',
+      serverId: 'srv-1',
+      userId: 'usr-1',
+      sessionId: 'sess-1',
+      stream,
+    });
+
+    // Find the message event that contains the max turns notice
+    const maxTurnsMessage = sseEvents.find(
+      (e) => e.event === 'message' && typeof e.data.content === 'string'
+        && (e.data.content as string).includes('最大执行轮次'),
+    );
+    expect(maxTurnsMessage).toBeDefined();
+    expect(maxTurnsMessage!.data.content).toContain('25 轮');
+
+    // The message should appear before the complete event
+    const messageIdx = sseEvents.indexOf(maxTurnsMessage!);
+    const completeIdx = sseEvents.findIndex((e) => e.event === 'complete');
+    expect(messageIdx).toBeLessThan(completeIdx);
+  });
+
+  it('should NOT include reason in complete event when loop ends naturally', async () => {
+    const { client } = createMockAnthropicClient(1);
+    const engine = new AgenticChatEngine(client);
+    const { stream, sseEvents } = createMockStream();
+
+    await engine.run({
+      userMessage: 'quick task',
+      serverId: 'srv-1',
+      userId: 'usr-1',
+      sessionId: 'sess-1',
+      stream,
+    });
+
+    const completeEvents = sseEvents.filter((e) => e.event === 'complete');
+    expect(completeEvents).toHaveLength(1);
+    expect(completeEvents[0].data).not.toHaveProperty('reason');
+  });
+
+  it('should NOT include reason when loop ends after a few tool calls', async () => {
+    const { client } = createMockAnthropicClient(3); // 3 turns: 2 with tools, 1 end
+    const engine = new AgenticChatEngine(client);
+    const { stream, sseEvents } = createMockStream();
+
+    await engine.run({
+      userMessage: 'moderate task',
+      serverId: 'srv-1',
+      userId: 'usr-1',
+      sessionId: 'sess-1',
+      stream,
+    });
+
+    const completeEvents = sseEvents.filter((e) => e.event === 'complete');
+    expect(completeEvents).toHaveLength(1);
+    expect(completeEvents[0].data).not.toHaveProperty('reason');
   });
 });
