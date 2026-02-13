@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
 import { useTranslation } from 'react-i18next';
-import { Loader2 } from 'lucide-react';
+import { Eye, Loader2 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -12,6 +13,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { ExecutionStream } from '@/components/skill/ExecutionStream';
+import type { SkillExecutionResult } from '@/types/skill';
 
 // ============================================================================
 // ExecuteDialog Props
@@ -27,6 +29,9 @@ export interface ExecuteDialogProps {
   isExecuting: boolean;
   dryRun?: boolean;
   onDryRunChange?: (enabled: boolean) => void;
+  onPreview?: () => void;
+  isPreviewing?: boolean;
+  dryRunResult?: SkillExecutionResult | null;
   onExecute: () => void;
   onClose: () => void;
 }
@@ -45,6 +50,9 @@ export function ExecuteDialog({
   isExecuting,
   dryRun,
   onDryRunChange,
+  onPreview,
+  isPreviewing,
+  dryRunResult,
   onExecute,
   onClose,
 }: ExecuteDialogProps) {
@@ -98,6 +106,9 @@ export function ExecuteDialog({
                 )}
               </>
             )}
+
+            {/* Dry-run result preview */}
+            {dryRunResult && <DryRunResultPanel result={dryRunResult} />}
           </div>
         )}
 
@@ -107,6 +118,26 @@ export function ExecuteDialog({
           ) : (
             <>
               <Button variant="outline" onClick={onClose}>{t('common.cancel')}</Button>
+              {onPreview && (
+                <Button
+                  variant="secondary"
+                  onClick={onPreview}
+                  disabled={!selectedServerId || isPreviewing || isExecuting}
+                  data-testid="preview-btn"
+                >
+                  {isPreviewing ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      {t('skills.previewing')}
+                    </>
+                  ) : (
+                    <>
+                      <Eye className="mr-2 h-4 w-4" />
+                      {t('skills.preview')}
+                    </>
+                  )}
+                </Button>
+              )}
               <Button
                 onClick={onExecute}
                 disabled={!selectedServerId || isExecuting}
@@ -127,5 +158,42 @@ export function ExecuteDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ============================================================================
+// DryRunResultPanel — inline preview of dry-run output
+// ============================================================================
+
+function DryRunResultPanel({ result }: { result: SkillExecutionResult }) {
+  const { t } = useTranslation();
+  const output =
+    result.result && typeof (result.result as Record<string, unknown>).output === 'string'
+      ? (result.result as Record<string, unknown>).output as string
+      : null;
+
+  return (
+    <div className="rounded-md border border-border bg-muted/30 p-3 space-y-2" data-testid="dry-run-result">
+      <div className="flex items-center gap-2">
+        <Badge variant="outline" className="text-xs font-semibold" data-testid="dry-run-badge">
+          {t('skills.dryRunBadge')}
+        </Badge>
+        <span className="text-xs text-muted-foreground">
+          {result.status === 'success' ? t('skills.execStatus.success') : t(`skills.execStatus.${result.status}`)}
+        </span>
+      </div>
+      {output && (
+        <pre className="whitespace-pre-wrap text-xs text-muted-foreground" data-testid="dry-run-output">
+          {output}
+        </pre>
+      )}
+      {result.errors.length > 0 && (
+        <ul className="space-y-1">
+          {result.errors.map((err, i) => (
+            <li key={i} className="text-xs text-destructive">{err}</li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }

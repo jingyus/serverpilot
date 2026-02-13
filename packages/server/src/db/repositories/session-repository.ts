@@ -26,6 +26,7 @@ export interface Session {
   id: string;
   userId: string;
   serverId: string;
+  name: string | null;
   messages: SessionMessage[];
   context: SessionContext | null;
   createdAt: string;
@@ -47,6 +48,7 @@ export interface PaginationOptions {
 export interface SessionSummaryRow {
   id: string;
   serverId: string;
+  name: string | null;
   messageCount: number;
   lastMessageContent: string | null;
   createdAt: string;
@@ -92,6 +94,9 @@ export interface SessionRepository {
     context: SessionContext,
   ): Promise<boolean>;
 
+  /** Update the session name. */
+  updateName(id: string, userId: string, name: string): Promise<boolean>;
+
   /** Delete a session. */
   delete(id: string, userId: string): Promise<boolean>;
 }
@@ -115,6 +120,7 @@ export class DrizzleSessionRepository implements SessionRepository {
       id,
       userId: input.userId,
       serverId: input.serverId,
+      name: null,
       messages: [],
       context: input.context ?? null,
       createdAt: now,
@@ -125,6 +131,7 @@ export class DrizzleSessionRepository implements SessionRepository {
       id,
       userId: input.userId,
       serverId: input.serverId,
+      name: null,
       messages: [],
       context: input.context ?? null,
       createdAt: now.toISOString(),
@@ -200,6 +207,7 @@ export class DrizzleSessionRepository implements SessionRepository {
       .select({
         id: sessions.id,
         serverId: sessions.serverId,
+        name: sessions.name,
         createdAt: sessions.createdAt,
         updatedAt: sessions.updatedAt,
         messageCount: sql<number>`json_array_length(${sessions.messages})`.as('message_count'),
@@ -218,6 +226,7 @@ export class DrizzleSessionRepository implements SessionRepository {
       summaries: rows.map((row) => ({
         id: row.id,
         serverId: row.serverId,
+        name: row.name ?? null,
         messageCount: row.messageCount ?? 0,
         lastMessageContent: row.lastMessageContent ?? null,
         createdAt: row.createdAt.toISOString(),
@@ -262,6 +271,19 @@ export class DrizzleSessionRepository implements SessionRepository {
     return true;
   }
 
+  async updateName(id: string, userId: string, name: string): Promise<boolean> {
+    const existing = await this.getById(id, userId);
+    if (!existing) return false;
+
+    this.db
+      .update(sessions)
+      .set({ name, updatedAt: new Date() })
+      .where(and(eq(sessions.id, id), eq(sessions.userId, userId)))
+      .run();
+
+    return true;
+  }
+
   async delete(id: string, userId: string): Promise<boolean> {
     const existing = await this.getById(id, userId);
     if (!existing) return false;
@@ -293,6 +315,7 @@ export class DrizzleSessionRepository implements SessionRepository {
       id: row.id,
       userId: row.userId,
       serverId: row.serverId,
+      name: row.name ?? null,
       messages: (row.messages ?? []) as SessionMessage[],
       context: row.context ?? null,
       createdAt: row.createdAt.toISOString(),
@@ -316,6 +339,7 @@ export class InMemorySessionRepository implements SessionRepository {
       id,
       userId: input.userId,
       serverId: input.serverId,
+      name: null,
       messages: [],
       context: input.context ?? null,
       createdAt: now,
@@ -364,6 +388,7 @@ export class InMemorySessionRepository implements SessionRepository {
       summaries: page.map((s) => ({
         id: s.id,
         serverId: s.serverId,
+        name: s.name ?? null,
         messageCount: s.messages.length,
         lastMessageContent: s.messages.length > 0
           ? s.messages[s.messages.length - 1].content
@@ -397,6 +422,15 @@ export class InMemorySessionRepository implements SessionRepository {
     if (!session || session.userId !== userId) return false;
 
     session.context = context;
+    session.updatedAt = new Date().toISOString();
+    return true;
+  }
+
+  async updateName(id: string, userId: string, name: string): Promise<boolean> {
+    const session = this.sessions.get(id);
+    if (!session || session.userId !== userId) return false;
+
+    session.name = name;
     session.updatedAt = new Date().toISOString();
     return true;
   }

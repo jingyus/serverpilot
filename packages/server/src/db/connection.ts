@@ -165,6 +165,7 @@ export function createTables(db?: DrizzleDB): void {
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+      name TEXT,
       messages TEXT DEFAULT '[]',
       context TEXT,
       created_at INTEGER NOT NULL,

@@ -51,6 +51,8 @@ describe('useSettingsStore', () => {
       isSaving: false,
       healthStatus: null,
       isCheckingHealth: false,
+      systemHealth: null,
+      isCheckingSystemHealth: false,
     });
   });
 
@@ -439,6 +441,69 @@ describe('useSettingsStore', () => {
       await checkPromise;
 
       expect(useSettingsStore.getState().isCheckingHealth).toBe(false);
+    });
+  });
+
+  describe('fetchHealthDetail', () => {
+    const mockHealthData = {
+      status: 'healthy' as const,
+      timestamp: Date.now(),
+      subsystems: {
+        aiProvider: { status: 'healthy' as const, provider: 'claude' },
+        database: { status: 'healthy' as const, type: 'sqlite' },
+        websocket: { status: 'healthy' as const, connections: 2, maxConnections: 100 },
+        rag: { status: 'healthy' as const, indexedDocs: 5 },
+      },
+    };
+
+    it('should fetch health detail successfully', async () => {
+      mockApiRequest.mockResolvedValueOnce(mockHealthData);
+
+      await useSettingsStore.getState().fetchHealthDetail();
+
+      const state = useSettingsStore.getState();
+      expect(state.systemHealth).toEqual(mockHealthData);
+      expect(state.isCheckingSystemHealth).toBe(false);
+      expect(mockApiRequest).toHaveBeenCalledWith('/health/detail');
+    });
+
+    it('should handle ApiError on fetchHealthDetail', async () => {
+      const { ApiError } = await import('@/api/client');
+      mockApiRequest.mockRejectedValueOnce(
+        new ApiError(403, 'FORBIDDEN', 'Insufficient permissions'),
+      );
+
+      await useSettingsStore.getState().fetchHealthDetail();
+
+      const state = useSettingsStore.getState();
+      expect(state.systemHealth).toBeNull();
+      expect(state.isCheckingSystemHealth).toBe(false);
+      expect(state.error).toBe('Insufficient permissions');
+    });
+
+    it('should use fallback message for non-ApiError', async () => {
+      mockApiRequest.mockRejectedValueOnce(new Error('Network timeout'));
+
+      await useSettingsStore.getState().fetchHealthDetail();
+
+      expect(useSettingsStore.getState().error).toBe('Failed to check system health');
+    });
+
+    it('should set isCheckingSystemHealth true during fetch', async () => {
+      let resolvePromise: (v: unknown) => void;
+      const pendingPromise = new Promise((resolve) => {
+        resolvePromise = resolve;
+      });
+      mockApiRequest.mockReturnValueOnce(pendingPromise);
+
+      const fetchPromise = useSettingsStore.getState().fetchHealthDetail();
+
+      expect(useSettingsStore.getState().isCheckingSystemHealth).toBe(true);
+
+      resolvePromise!(mockHealthData);
+      await fetchPromise;
+
+      expect(useSettingsStore.getState().isCheckingSystemHealth).toBe(false);
     });
   });
 

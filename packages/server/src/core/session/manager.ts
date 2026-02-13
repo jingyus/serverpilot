@@ -65,6 +65,7 @@ export interface PlanStep {
 export interface SessionSummary {
   id: string;
   serverId: string;
+  name?: string | null;
   messageCount: number;
   createdAt: string;
   updatedAt: string;
@@ -75,6 +76,7 @@ export interface SessionSummary {
 export interface Session {
   id: string;
   serverId: string;
+  name?: string | null;
   messages: ChatMessage[];
   plans: Map<string, StoredPlan>;
   createdAt: string;
@@ -291,6 +293,7 @@ export class SessionManager {
     return result.summaries.map((s) => ({
       id: s.id,
       serverId: s.serverId,
+      name: s.name,
       messageCount: s.messageCount,
       createdAt: s.createdAt,
       updatedAt: s.updatedAt,
@@ -309,6 +312,17 @@ export class SessionManager {
     const session = this.dbToSession(dbSession);
     this.cache.put(session);
     return session;
+  }
+
+  /** Rename a session. Updates both cache and DB. */
+  async renameSession(sessionId: string, serverId: string, userId: string, name: string): Promise<boolean> {
+    const cached = this.cache.get(sessionId);
+    if (cached) {
+      if (cached.serverId !== serverId) return false;
+      cached.name = name;
+      cached.updatedAt = new Date().toISOString();
+    }
+    return this.repo.updateName(sessionId, userId, name);
   }
 
   /** Delete a session from both cache and DB. */
@@ -501,11 +515,12 @@ export class SessionManager {
 
   /** Convert DB session to in-memory Session format. */
   private dbToSession(
-    dbSession: { id: string; serverId: string; messages: SessionMessage[]; createdAt: string; updatedAt: string },
+    dbSession: { id: string; serverId: string; name?: string | null; messages: SessionMessage[]; createdAt: string; updatedAt: string },
   ): Session {
     return {
       id: dbSession.id,
       serverId: dbSession.serverId,
+      name: dbSession.name ?? null,
       messages: dbSession.messages.map(toChatMessage),
       plans: new Map(),
       createdAt: dbSession.createdAt,

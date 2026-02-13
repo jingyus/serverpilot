@@ -37,6 +37,8 @@ interface SkillsState {
   pendingConfirmations: SkillExecution[];
   stats: SkillStats | null;
   isLoadingStats: boolean;
+  dryRunResult: SkillExecutionResult | null;
+  isDryRunning: boolean;
 
   fetchSkills: () => Promise<void>;
   fetchAvailable: () => Promise<void>;
@@ -46,6 +48,7 @@ interface SkillsState {
   configureSkill: (id: string, config: Record<string, unknown>) => Promise<void>;
   updateStatus: (id: string, status: SkillStatus) => Promise<void>;
   executeSkill: (id: string, serverId: string, config?: Record<string, unknown>, dryRun?: boolean) => Promise<SkillExecutionResult>;
+  dryRunSkill: (id: string, serverId: string, inputs?: Record<string, unknown>) => Promise<SkillExecutionResult>;
   upgradeSkill: (id: string) => Promise<void>;
   cancelExecution: (eid: string) => Promise<void>;
   fetchExecutions: (id: string) => Promise<void>;
@@ -54,6 +57,7 @@ interface SkillsState {
   confirmExecution: (executionId: string) => Promise<SkillExecutionResult>;
   rejectExecution: (executionId: string) => Promise<void>;
   clearSelectedExecution: () => void;
+  clearDryRunResult: () => void;
   startExecutionStream: (executionId: string) => void;
   stopExecutionStream: () => void;
   clearError: () => void;
@@ -76,6 +80,8 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
   pendingConfirmations: [],
   stats: null,
   isLoadingStats: false,
+  dryRunResult: null,
+  isDryRunning: false,
 
   fetchStats: async () => {
     set({ isLoadingStats: true, error: null });
@@ -193,6 +199,22 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
     }
   },
 
+  dryRunSkill: async (id, serverId, inputs) => {
+    set({ isDryRunning: true, dryRunResult: null, error: null });
+    try {
+      const data = await apiRequest<ExecutionResponse>(`/skills/${id}/execute`, {
+        method: 'POST',
+        body: JSON.stringify({ serverId, ...(inputs ? { config: inputs } : {}), dryRun: true }),
+      });
+      set({ dryRunResult: data.execution, isDryRunning: false });
+      return data.execution;
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to preview skill';
+      set({ error: message, isDryRunning: false });
+      throw err;
+    }
+  },
+
   upgradeSkill: async (id) => {
     set({ isUpgrading: id, error: null });
     try {
@@ -298,6 +320,8 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
   },
 
   clearSelectedExecution: () => set({ selectedExecution: null }),
+
+  clearDryRunResult: () => set({ dryRunResult: null }),
 
   startExecutionStream: (executionId: string) => {
     // Stop any existing stream

@@ -215,6 +215,11 @@ export const ChatSessionParamSchema = z.object({
   sessionId: uuid,
 });
 
+export const RenameSessionBodySchema = z.object({
+  name: z.string().min(1, 'Session name is required').max(200, 'Session name too long'),
+});
+export type RenameSessionBody = z.infer<typeof RenameSessionBodySchema>;
+
 // ============================================================================
 // Task Schemas
 // ============================================================================

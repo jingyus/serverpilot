@@ -269,7 +269,21 @@
     "language": "语言",
     "languageDesc": "选择界面显示语言",
     "languageSaved": "语言切换成功",
-    "saveFailed": "保存设置失败"
+    "saveFailed": "保存设置失败",
+    "systemStatus": "系统状态",
+    "systemStatusDesc": "监控各子系统的运行状态",
+    "allSystemsOperational": "所有系统运行正常",
+    "someSystemsDegraded": "部分系统异常",
+    "allSystemsDown": "所有系统异常",
+    "refreshSystemStatus": "刷新系统状态",
+    "database": "数据库",
+    "websocket": "WebSocket",
+    "ragPipeline": "RAG 管道",
+    "wsConnections": "{{current}}/{{max}} 连接",
+    "ragIndexedDocs": "{{count}} 个文档已索引",
+    "configureProvider": "去配置",
+    "lastChecked": "最后检查",
+    "systemStatusUnavailable": "无法获取系统状态"
   },
   "login": {
     "appName": "ServerPilot",

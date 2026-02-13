@@ -16,6 +16,7 @@ import {
   CancelExecutionBodySchema,
   StepDecisionBodySchema,
   ConfirmBodySchema,
+  RenameSessionBodySchema,
 } from './schemas.js';
 import { validateBody } from '../middleware/validate.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -606,6 +607,31 @@ chat.get('/:serverId/sessions/:sessionId', requirePermission('chat:use'), async 
       updatedAt: session.updatedAt,
     },
   });
+});
+
+// PATCH /chat/:serverId/sessions/:sessionId — Rename session
+chat.patch('/:serverId/sessions/:sessionId', requirePermission('chat:use'), validateBody(RenameSessionBodySchema), async (c) => {
+  const { serverId, sessionId } = c.req.param();
+  const userId = c.get('userId');
+  const { name } = c.req.valid('json' as never);
+
+  const repo = getServerRepository();
+  const server = await repo.findById(serverId, userId);
+  if (!server) {
+    throw ApiError.notFound('Server');
+  }
+
+  const updated = await getSessionManager().renameSession(sessionId, serverId, userId, name);
+  if (!updated) {
+    throw ApiError.notFound('Session');
+  }
+
+  logger.info(
+    { operation: 'session_rename', serverId, sessionId, userId },
+    'Chat session renamed',
+  );
+
+  return c.json({ success: true });
 });
 
 // DELETE /chat/:serverId/sessions/:sessionId — Delete session

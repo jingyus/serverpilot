@@ -269,7 +269,21 @@
     "language": "Language",
     "languageDesc": "Choose your preferred display language",
     "languageSaved": "Language changed successfully",
-    "saveFailed": "Failed to save settings"
+    "saveFailed": "Failed to save settings",
+    "systemStatus": "System Status",
+    "systemStatusDesc": "Monitor the health of each subsystem",
+    "allSystemsOperational": "All systems operational",
+    "someSystemsDegraded": "Some systems degraded",
+    "allSystemsDown": "All systems down",
+    "refreshSystemStatus": "Refresh system status",
+    "database": "Database",
+    "websocket": "WebSocket",
+    "ragPipeline": "RAG Pipeline",
+    "wsConnections": "{{current}}/{{max}} connections",
+    "ragIndexedDocs": "{{count}} documents indexed",
+    "configureProvider": "Configure",
+    "lastChecked": "Last checked",
+    "systemStatusUnavailable": "Unable to retrieve system status"
   },
   "login": {
     "appName": "ServerPilot",

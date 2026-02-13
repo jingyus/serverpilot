@@ -288,6 +288,7 @@ export const sessions = sqliteTable(
     serverId: text('server_id')
       .references(() => servers.id, { onDelete: 'cascade' })
       .notNull(),
+    name: text('name'),
     messages: text('messages', { mode: 'json' })
       .$type<SessionMessage[]>()
       .default([]),

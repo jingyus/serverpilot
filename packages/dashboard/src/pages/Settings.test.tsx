@@ -13,6 +13,9 @@ vi.mock('@/stores/auth');
 vi.mock('@/components/knowledge/DocSourceSection', () => ({
   DocSourceSection: () => <div data-testid="doc-source-section">DocSourceSection</div>,
 }));
+vi.mock('@/components/settings/SystemStatus', () => ({
+  SystemStatus: () => <div data-testid="system-status-section">SystemStatus</div>,
+}));
 
 const mockUseSettingsStore = vi.mocked(useSettingsStore);
 const mockUseAuthStore = vi.mocked(useAuthStore);
@@ -55,12 +58,15 @@ describe('Settings', () => {
     isSaving: false,
     healthStatus: null,
     isCheckingHealth: false,
+    systemHealth: null,
+    isCheckingSystemHealth: false,
     fetchSettings: vi.fn(),
     updateAIProvider: vi.fn(),
     updateUserProfile: vi.fn(),
     updateNotifications: vi.fn(),
     updateKnowledgeBase: vi.fn(),
     checkProviderHealth: vi.fn(),
+    fetchHealthDetail: vi.fn(),
     clearError: vi.fn(),
   };
 
@@ -104,6 +110,7 @@ describe('Settings', () => {
     expect(screen.getByText('Security')).toBeInTheDocument();
     expect(screen.getByText('Theme')).toBeInTheDocument();
     expect(screen.getByText('Knowledge Base')).toBeInTheDocument();
+    expect(screen.getByTestId('system-status-section')).toBeInTheDocument();
   });
 
   it('should display error message', () => {
