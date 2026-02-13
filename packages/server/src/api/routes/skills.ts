@@ -29,6 +29,7 @@ import { getSkillEngine } from '../../core/skill/engine.js';
 import { getSkillRepository } from '../../db/repositories/skill-repository.js';
 import { getSkillEventBus } from '../../core/skill/skill-event-bus.js';
 import { installFromGitUrl } from '../../core/skill/git-installer.js';
+import { exportSkill, importSkill } from '../../core/skill/skill-archive.js';
 import type {
   InstallSkillBody,
   ConfigureSkillBody,
@@ -451,6 +452,72 @@ skillsRoute.get('/executions/:eid/stream', requirePermission('skill:view'), asyn
       stream.onAbort(() => resolve());
     });
   });
+});
+
+// ============================================================================
+// GET /skills/:id/export — Export a skill as .tar.gz archive
+// ============================================================================
+
+skillsRoute.get('/:id/export', requirePermission('skill:manage'), async (c) => {
+  const skillId = c.req.param('id');
+
+  try {
+    const { filename, buffer } = await exportSkill(skillId);
+
+    c.header('Content-Type', 'application/gzip');
+    c.header('Content-Disposition', `attachment; filename="${filename}"`);
+    c.header('Content-Length', String(buffer.length));
+
+    return c.body(buffer);
+  } catch (err) {
+    const msg = (err as Error).message;
+    if (msg.includes('not found')) {
+      throw ApiError.notFound('Skill');
+    }
+    if (msg.includes('does not exist')) {
+      throw ApiError.badRequest(msg);
+    }
+    throw err;
+  }
+});
+
+// ============================================================================
+// POST /skills/import — Import a skill from .tar.gz archive
+// ============================================================================
+
+skillsRoute.post('/import', requirePermission('skill:manage'), async (c) => {
+  const userId = c.get('userId');
+
+  const body = await c.req.parseBody();
+  const file = body['file'];
+
+  if (!file || !(file instanceof File)) {
+    throw ApiError.badRequest('Missing or invalid file upload. Send a .tar.gz file as "file" field.');
+  }
+
+  if (!file.name.endsWith('.tar.gz') && !file.name.endsWith('.tgz')) {
+    throw ApiError.badRequest('File must be a .tar.gz or .tgz archive');
+  }
+
+  const arrayBuffer = await file.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+
+  try {
+    const { skill, warnings } = await importSkill(buffer, userId, COMMUNITY_SKILL_DIR);
+    return c.json({ skill, warnings }, 201);
+  } catch (err) {
+    const msg = (err as Error).message;
+    if (msg.includes('already installed')) {
+      throw ApiError.badRequest(msg);
+    }
+    if (msg.includes('does not contain a valid skill') || msg.includes('Security scan failed')) {
+      throw ApiError.badRequest(msg);
+    }
+    if (msg.includes('already exists')) {
+      throw ApiError.badRequest(msg);
+    }
+    throw err;
+  }
 });
 
 export { skillsRoute };

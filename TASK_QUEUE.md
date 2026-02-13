@@ -6,10 +6,10 @@
 
 ## 📊 统计信息
 
-- **总任务数**: 96
-- **待完成** (pending): 0
+- **总任务数**: 106
+- **待完成** (pending): 9
 - **进行中** (in_progress): 0
-- **已完成** (completed): 96
+- **已完成** (completed): 97
 - **失败** (failed): 0
 
 ---
@@ -17,6 +17,192 @@
 ## 📋 任务列表
 
 <!-- 任务将由 AI 自动生成和更新 -->
+### [completed] Dashboard 服务器标签/分组 UI — 后端已支持但前端缺失 ✅
+
+**ID**: task-060
+**优先级**: P0
+**模块路径**: packages/dashboard/src/
+**任务描述**: 服务器 Schema 已有 `tags` 和 `group` 字段，Repository 已有 `findByTags()` 方法，但 Dashboard 完全没有标签/分组的 UI。需要在服务器列表页添加标签筛选器，在添加/编辑服务器对话框中添加标签输入和分组选择器，在服务器卡片上展示标签 badge。
+**产品需求**: MVP 服务器管理 — 服务器分组与标签管理（产品方案 6.6 服务器档案）
+**验收标准**:
+- 服务器列表页顶部有标签/分组筛选栏，点击标签可过滤
+- 添加/编辑服务器对话框中可输入多个标签（tag input 组件）
+- 服务器卡片上展示标签 badge
+- stores/servers.ts 支持按标签/分组筛选
+- 新增组件及 store 变更有对应测试（≥5 个测试用例）
+- 最多修改 4 个文件：Servers.tsx、AddServerDialog 或 ServerCard、stores/servers.ts、types
+**创建时间**: 2026-02-13
+**完成时间**: 2026-02-13 11:15:17
+
+---
+
+### [pending] Dashboard 404 页面与路由守卫完善
+
+**ID**: task-061
+**优先级**: P0
+**模块路径**: packages/dashboard/src/
+**任务描述**: 当前路由配置缺少 catch-all 404 路由，用户访问不存在的路径会看到空白页。需要创建 NotFound 页面组件，在 App.tsx 路由最后添加 `<Route path="*" element={<NotFound />} />`，提供返回首页链接。
+**产品需求**: Dashboard 基础体验 — 错误页面（产品方案 5.1 首次使用流程）
+**验收标准**:
+- 创建 pages/NotFound.tsx 组件，展示 404 提示和返回首页按钮
+- App.tsx 添加 catch-all 路由
+- 支持 i18n（使用现有 useTranslation）
+- 有 1-2 个组件渲染测试
+- 最多修改 2 个文件：App.tsx + 新建 NotFound.tsx
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Dashboard 表单客户端校验 — 关键表单缺少即时反馈
+
+**ID**: task-062
+**优先级**: P0
+**模块路径**: packages/dashboard/src/
+**任务描述**: 当前所有表单（登录、添加服务器、设置、邀请成员等）仅依赖服务端返回错误，缺少客户端即时校验。用户体验差——需填完提交后才知道输入有误。需要为 Login 页面和 AddServerDialog 添加字段级实时校验（必填提示、格式检查），并标注必填字段。优先处理最高频的 2 个表单。
+**产品需求**: 用户体验优化 — 表单交互（产品方案 5.1 首次使用流程）
+**验收标准**:
+- Login.tsx：用户名/密码非空检测，提交前显示错误提示
+- AddServerDialog：服务器名非空、名称长度限制的实时校验
+- 必填字段有视觉标识（红色星号或边框变色）
+- 校验信息支持 i18n
+- 每个表单 2-3 个校验测试用例
+- 最多修改 3 个文件
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Server 端 AI Provider tool_use 适配 — OpenAI Provider 支持 function calling
+
+**ID**: task-063
+**优先级**: P0
+**模块路径**: packages/server/src/ai/providers/
+**任务描述**: 当前 Agentic Chat Engine（tool_use 自主循环）仅 Claude Provider 支持 tool_use，OpenAI/DeepSeek/Ollama 均不支持。选择非 Claude 的 AI Provider 时 agentic 模式静默降级，用户无感知。需要为 OpenAI Provider 添加 function calling 支持（OpenAI API 原生支持），使 agentic 模式可用。本任务只处理 OpenAI，DeepSeek 另开任务。
+**产品需求**: AI Provider 适配器 — 多模型对等支持（产品方案 4.2 内部架构、3.1 对话即运维）
+**验收标准**:
+- openai.ts 实现 `chatWithTools()` 方法，支持 OpenAI function calling API
+- 工具定义格式从 Claude tool_use 转换为 OpenAI function schema
+- 工具调用结果正确解析并返回给 AgenticChatEngine
+- 流式输出中的 tool_call 事件正确处理
+- 至少 8 个测试用例覆盖：工具调用、流式、错误处理
+- 最多修改 2 个文件：openai.ts + openai.test.ts
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Server 端 AI Provider tool_use 适配 — DeepSeek Provider 支持 function calling
+
+**ID**: task-064
+**优先级**: P1
+**模块路径**: packages/server/src/ai/providers/
+**任务描述**: DeepSeek API 兼容 OpenAI 格式，支持 function calling。需要为 DeepSeek Provider 添加 tool_use 支持，使 agentic 模式对 DeepSeek 用户可用。实现方式参考 task-063 的 OpenAI 适配。
+**产品需求**: AI Provider 适配器 — 多模型对等支持（产品方案 4.2）
+**验收标准**:
+- deepseek.ts 实现 `chatWithTools()` 方法
+- 复用 OpenAI 的 function calling 格式（DeepSeek 兼容 OpenAI API）
+- 至少 6 个测试用例
+- 最多修改 2 个文件：deepseek.ts + deepseek.test.ts
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Dashboard 对话导出功能 — 支持 Markdown/JSON 格式下载
+
+**ID**: task-065
+**优先级**: P1
+**模块路径**: packages/dashboard/src/
+**任务描述**: 当前对话历史无法导出，用户无法保存或分享运维记录。需要在 Chat 页面的 SessionSidebar 或 ChatHeader 添加"导出对话"按钮，支持将当前会话的消息导出为 Markdown 或 JSON 文件并下载。纯前端实现，从 store 中的 messages 数组转换格式后触发浏览器下载。
+**产品需求**: AI 对话引擎 — 对话记录管理（产品方案 6.1）
+**验收标准**:
+- ChatHeader 或 SessionSidebar 添加导出按钮（下载图标）
+- 支持 Markdown 格式：用户消息 `> ` 引用，AI 回复正常文本，命令用代码块
+- 支持 JSON 格式：结构化消息数组含时间戳
+- 文件名包含会话名称和日期
+- 至少 4 个测试用例（格式转换 + 组件渲染）
+- 最多修改 3 个文件
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Server 端 AI 离线降级 — AI 不可用时提供回退方案
+
+**ID**: task-066
+**优先级**: P1
+**模块路径**: packages/server/src/ai/
+**任务描述**: 当前 AI Provider 不可用时（API key 无效、网络超时、配额耗尽），handlers.test.ts 中有 skipped 测试表明 fallback plan 逻辑未实现。需要在 chat 流程中检测 AI 不可用状态，返回友好错误消息并提供备选方案：1）提示用户检查 AI 配置；2）对常见命令提供模板化的非 AI 方案（如 `apt install X` 的标准步骤）。
+**产品需求**: AI 质量与可靠性 — 模型降级策略（产品方案 8.2）
+**验收标准**:
+- AI 调用失败时返回明确的错误消息（非 500 错误）
+- 提供 2-3 个常见场景的模板化 fallback（如软件安装、服务重启）
+- SSE 流中发送 `error` 事件携带用户友好消息
+- 取消 handlers.test.ts 中的 skipped 测试并通过
+- 至少 6 个测试用例
+- 最多修改 3 个文件
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Dashboard 概览页增强 — 添加趋势图表和汇总统计
+
+**ID**: task-067
+**优先级**: P1
+**模块路径**: packages/dashboard/src/
+**任务描述**: 当前 Dashboard 概览页仅展示基础数量统计（服务器总数、在线/离线）。缺少运维活跃度趋势、操作成功率、最近活跃服务器等有价值的汇总信息。需要添加：1）近 7 天操作数量趋势折线图（使用已有的 Recharts）；2）操作成功/失败率饼图；3）最近 5 条操作记录快速列表。数据从已有的 operations store 获取。
+**产品需求**: Dashboard 基础 — 概览页（产品方案 5.2 日常使用场景）
+**验收标准**:
+- 添加 7 日操作趋势折线图（Recharts LineChart）
+- 添加操作成功/失败率统计卡片
+- 添加最近操作快速列表（最多 5 条，可点击跳转）
+- 数据从 stores/dashboard.ts 或 stores/operations.ts 获取
+- 响应式布局适配移动端
+- 至少 3 个测试用例
+- 最多修改 3 个文件：Dashboard.tsx + stores/dashboard.ts + 可选新增图表组件
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Shared 包 — 对话导出格式 Schema 定义
+
+**ID**: task-068
+**优先级**: P1
+**模块路径**: packages/shared/src/
+**任务描述**: 为对话导出功能（task-065）和未来的 Server 端导出 API 提供共享的类型定义。定义 `ConversationExportSchema`（Zod）包含会话元数据（id、title、serverId、createdAt）和消息数组结构（role、content、timestamp、toolCalls）。同时定义导出格式枚举。此任务是 task-065 的前置依赖。
+**产品需求**: AI 对话引擎 — 对话记录管理（产品方案 6.1）
+**验收标准**:
+- shared/src/protocol/ 下新增 conversation-export.ts
+- 定义 ConversationExportSchema（Zod）含完整字段
+- 导出 TypeScript 类型 `ConversationExport`
+- 从 shared/src/index.ts 导出
+- 至少 4 个 schema 验证测试
+- 最多修改 2 个文件：新增 conversation-export.ts + 修改 index.ts
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Server 端 Agentic Prompt 深化 — 增加场景示例与工具使用指南
+
+**ID**: task-069
+**优先级**: P2
+**模块路径**: packages/server/src/ai/
+**任务描述**: 当前 agentic-prompts.ts 仅 36 行，缺少常见运维场景示例、工具使用最佳实践、错误恢复策略指导。AI 在复杂场景下可能生成低质量方案。需要增强 system prompt：1）添加 3-5 个典型场景示例（安装软件、调试服务、配置修改）；2）说明何时读取文件 vs 执行命令；3）添加结果验证步骤指导；4）多步骤任务的分解策略。
+**产品需求**: AI 质量与可靠性 — 三层质量防线（产品方案 8.1）
+**验收标准**:
+- system prompt 扩充至 80-120 行，涵盖典型场景
+- 包含 3 个以上 few-shot 示例
+- 包含工具选择决策树描述
+- 包含错误恢复指导
+- 至少 3 个测试验证 prompt 包含关键指导内容
+- 仅修改 1 个文件：agentic-prompts.ts
+**创建时间**: 2026-02-13
+**完成时间**: -
+
 ### [completed] Cron 触发熔断机制 — 防止失败 Skill 无限重试 ✅
 
 **ID**: task-091
@@ -2040,4 +2226,4 @@ ID: task-001
 
 ---
 
-**最后更新**: 2026-02-13 10:58:26
+**最后更新**: 2026-02-13 11:15:17
