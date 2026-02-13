@@ -1,12 +1,12 @@
-### [pending] Agentic 循环错误信息不区分类型 — 用户看到泛化的"执行过程中发生错误"
+### [pending] ExecutionSummary duration 是静态快照 — 不显示实时计时器
 
-**ID**: chat-098
-**优先级**: P2
-**模块路径**: packages/server/src/ai/
-**发现的问题**: `AgenticChatEngine.run()` 的 catch 块（agentic-chat.ts:226-239）将所有错误统一包装为 `执行过程中发生错误: ${errorMsg}` 返回给用户。无论是 API 认证失败 (401)、token 超限 (context_length_exceeded)、速率限制 (429)、网络超时还是工具执行内部错误，用户都看到相同的泛化消息。这导致用户无法自助排查：(1) API key 过期需要在设置中更新 (2) 429 需要等待后重试 (3) 上下文超限可能需要新建会话。
-**改进方案**: 在 catch 块中解析错误类型（复用 `request-retry.ts` 的 `classifyError`），根据 `classification.category` 返回具体建议：认证错误 → "请检查 AI Provider API Key 设置"；速率限制 → "请稍后重试"；上下文超限 → "对话过长，建议新建会话"；网络错误 → "网络连接异常，请检查网络"。
-**验收标准**: (1) 不同类型错误显示不同提示 (2) 提示包含可操作建议 (3) 仍然记录详细错误到日志
-**影响范围**: `packages/server/src/ai/agentic-chat.ts`
+**ID**: chat-099
+**优先级**: P3
+**模块路径**: packages/dashboard/src/components/chat/
+**发现的问题**: `ExecutionLog.tsx` 中 `ExecutionSummary` 组件（约行 257）的 `totalDuration = startTime ? Date.now() - startTime : 0` 只在组件渲染时计算一次，不是实时更新的。用户在执行过程中看到的耗时数字是静态的（只有在有新渲染触发时才更新，比如收到新的步骤输出）。对于长时间运行的命令（如软件安装 5 分钟），显示的时间不变直到下一次渲染。
+**改进方案**: 在执行期间（`isExecuting=true`）使用 `useEffect` + `setInterval` 每秒更新 duration 显示。执行完成后停止计时器并显示最终时间。
+**验收标准**: (1) 执行中实时显示耗时 (2) 每秒更新一次 (3) 完成后显示最终耗时 (4) 计时器正确清理
+**影响范围**: `packages/dashboard/src/components/chat/ExecutionLog.tsx`
 **创建时间**: 2026-02-13
 **完成时间**: -
 

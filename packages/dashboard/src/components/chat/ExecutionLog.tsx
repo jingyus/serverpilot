@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
+import { useEffect, useRef, useCallback, useState, useMemo } from "react";
 import {
   CheckCircle2,
   XCircle,
@@ -11,20 +11,15 @@ import {
   AlertTriangle,
   Copy,
   Check,
-} from 'lucide-react';
+} from "lucide-react";
 
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
-import { formatDuration } from '@/utils/format';
-import { parseAnsi } from '@/utils/ansi';
-import type { ExecutionPlan } from '@/types/chat';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { formatDuration } from "@/utils/format";
+import { parseAnsi } from "@/utils/ansi";
+import type { ExecutionPlan } from "@/types/chat";
 
 interface ExecutionLogProps {
   plan: ExecutionPlan;
@@ -52,14 +47,22 @@ function countLines(text: string): number {
   return count;
 }
 
-function TruncationBanner({ totalLines, shownLines }: { totalLines: number; shownLines: number }) {
+function TruncationBanner({
+  totalLines,
+  shownLines,
+}: {
+  totalLines: number;
+  shownLines: number;
+}) {
   const hiddenLines = totalLines - shownLines;
   return (
     <div
       className="mb-1 rounded bg-yellow-900/60 px-2 py-1 text-[10px] text-yellow-300"
       data-testid="output-truncation-banner"
     >
-      Output truncated — showing last {shownLines.toLocaleString()} of {totalLines.toLocaleString()} lines ({hiddenLines.toLocaleString()} lines hidden)
+      Output truncated — showing last {shownLines.toLocaleString()} of{" "}
+      {totalLines.toLocaleString()} lines ({hiddenLines.toLocaleString()} lines
+      hidden)
     </div>
   );
 }
@@ -67,27 +70,44 @@ function TruncationBanner({ totalLines, shownLines }: { totalLines: number; show
 function AnsiOutput({ text }: { text: string }) {
   const { segments, totalLines, shownLines, isTruncated } = useMemo(() => {
     if (text.length <= RENDER_CHAR_LIMIT) {
-      return { segments: parseAnsi(text), totalLines: 0, shownLines: 0, isTruncated: false };
+      return {
+        segments: parseAnsi(text),
+        totalLines: 0,
+        shownLines: 0,
+        isTruncated: false,
+      };
     }
     const total = countLines(text);
     // Find the start of a line boundary within the tail portion
     const sliceStart = text.length - RENDER_CHAR_LIMIT;
-    const nextNewline = text.indexOf('\n', sliceStart);
-    const renderStart = nextNewline !== -1 && nextNewline < text.length - 1 ? nextNewline + 1 : sliceStart;
+    const nextNewline = text.indexOf("\n", sliceStart);
+    const renderStart =
+      nextNewline !== -1 && nextNewline < text.length - 1
+        ? nextNewline + 1
+        : sliceStart;
     const tail = text.slice(renderStart);
     const shown = countLines(tail);
-    return { segments: parseAnsi(tail), totalLines: total, shownLines: shown, isTruncated: true };
+    return {
+      segments: parseAnsi(tail),
+      totalLines: total,
+      shownLines: shown,
+      isTruncated: true,
+    };
   }, [text]);
 
   return (
     <>
-      {isTruncated && <TruncationBanner totalLines={totalLines} shownLines={shownLines} />}
+      {isTruncated && (
+        <TruncationBanner totalLines={totalLines} shownLines={shownLines} />
+      )}
       {segments.map((seg, i) =>
         seg.className ? (
-          <span key={i} className={seg.className}>{seg.text}</span>
+          <span key={i} className={seg.className}>
+            {seg.text}
+          </span>
         ) : (
           seg.text
-        )
+        ),
       )}
     </>
   );
@@ -106,14 +126,16 @@ function ProgressBar({
   return (
     <div className="space-y-1" data-testid="execution-progress-bar">
       <div className="flex items-center justify-between text-xs text-muted-foreground">
-        <span>{completed}/{total} steps completed</span>
+        <span>
+          {completed}/{total} steps completed
+        </span>
         <span>{pct}%</span>
       </div>
       <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
         <div
           className={cn(
-            'h-full rounded-full transition-all',
-            hasFailure ? 'bg-red-500' : 'bg-green-500'
+            "h-full rounded-full transition-all",
+            hasFailure ? "bg-red-500" : "bg-green-500",
           )}
           style={{ width: `${pct}%` }}
         />
@@ -133,13 +155,16 @@ function CopyOutputButton({ text }: { text: string }) {
   }, []);
 
   const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(true);
-      if (timerRef.current !== null) clearTimeout(timerRef.current);
-      timerRef.current = setTimeout(() => setCopied(false), 2000);
-    }).catch(() => {
-      // Clipboard API may fail in non-HTTPS contexts
-    });
+    navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        setCopied(true);
+        if (timerRef.current !== null) clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(() => setCopied(false), 2000);
+      })
+      .catch(() => {
+        // Clipboard API may fail in non-HTTPS contexts
+      });
   }, [text]);
 
   return (
@@ -147,7 +172,7 @@ function CopyOutputButton({ text }: { text: string }) {
       type="button"
       onClick={handleCopy}
       className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-gray-400 transition-colors hover:bg-white/10 hover:text-gray-200"
-      aria-label={copied ? 'Copied' : 'Copy output'}
+      aria-label={copied ? "Copied" : "Copy output"}
       data-testid="copy-output-button"
     >
       {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
@@ -163,7 +188,7 @@ function StepLog({
   output,
   completed,
 }: {
-  step: ExecutionPlan['steps'][number];
+  step: ExecutionPlan["steps"][number];
   index: number;
   totalSteps: number;
   isActive: boolean;
@@ -194,17 +219,24 @@ function StepLog({
   return (
     <div
       className={cn(
-        'rounded-lg border p-3',
-        isActive && 'border-blue-300 bg-blue-50/50 dark:border-blue-700 dark:bg-blue-900/20',
-        isSuccess && 'border-green-200 bg-green-50/30 dark:border-green-800 dark:bg-green-900/20',
-        isFailed && 'border-red-200 bg-red-50/30 dark:border-red-800 dark:bg-red-900/20'
+        "rounded-lg border p-3",
+        isActive &&
+          "border-blue-300 bg-blue-50/50 dark:border-blue-700 dark:bg-blue-900/20",
+        isSuccess &&
+          "border-green-200 bg-green-50/30 dark:border-green-800 dark:bg-green-900/20",
+        isFailed &&
+          "border-red-200 bg-red-50/30 dark:border-red-800 dark:bg-red-900/20",
       )}
       data-testid={`exec-step-${step.id}`}
     >
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-2">
-          {isActive && <Loader2 className="h-4 w-4 shrink-0 animate-spin text-blue-600" />}
-          {isSuccess && <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600" />}
+          {isActive && (
+            <Loader2 className="h-4 w-4 shrink-0 animate-spin text-blue-600" />
+          )}
+          {isSuccess && (
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600" />
+          )}
           {isFailed && <XCircle className="h-4 w-4 shrink-0 text-red-600" />}
           {!isActive && !completed && (
             <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-muted text-[10px]">
@@ -212,9 +244,12 @@ function StepLog({
             </span>
           )}
           <span className="text-xs font-medium sm:text-sm">
-            <span className="text-muted-foreground" data-testid={`step-progress-${step.id}`}>
+            <span
+              className="text-muted-foreground"
+              data-testid={`step-progress-${step.id}`}
+            >
               [{index + 1}/{totalSteps}]
-            </span>{' '}
+            </span>{" "}
             {step.description}
           </span>
         </div>
@@ -226,7 +261,7 @@ function StepLog({
               {formatDuration(completed.duration)}
             </span>
             <Badge
-              variant={isSuccess ? 'default' : 'destructive'}
+              variant={isSuccess ? "default" : "destructive"}
               className="text-xs"
             >
               Exit: {completed.exitCode}
@@ -253,27 +288,80 @@ function StepLog({
               className="whitespace-pre-wrap font-mono text-[10px] text-green-400 sm:text-xs"
               data-testid={`exec-output-${step.id}`}
             >
-              {output ? <AnsiOutput text={output} /> : (isActive ? 'Waiting for output...' : '')}
+              {output ? (
+                <AnsiOutput text={output} />
+              ) : isActive ? (
+                "Waiting for output..."
+              ) : (
+                ""
+              )}
             </pre>
-          {userScrolledUp && isActive && (
-            <button
-              type="button"
-              className="sticky bottom-0 mt-1 w-full rounded bg-blue-600/80 px-2 py-0.5 text-center text-[10px] text-white hover:bg-blue-600"
-              onClick={() => {
-                setUserScrolledUp(false);
-                if (containerRef.current) {
-                  containerRef.current.scrollTop = containerRef.current.scrollHeight;
-                }
-              }}
-              data-testid={`scroll-to-bottom-${step.id}`}
-            >
-              Scroll to latest
-            </button>
-          )}
+            {userScrolledUp && isActive && (
+              <button
+                type="button"
+                className="sticky bottom-0 mt-1 w-full rounded bg-blue-600/80 px-2 py-0.5 text-center text-[10px] text-white hover:bg-blue-600"
+                onClick={() => {
+                  setUserScrolledUp(false);
+                  if (containerRef.current) {
+                    containerRef.current.scrollTop =
+                      containerRef.current.scrollHeight;
+                  }
+                }}
+                data-testid={`scroll-to-bottom-${step.id}`}
+              >
+                Scroll to latest
+              </button>
+            )}
           </div>
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Returns a live elapsed-time value (ms) that updates every second while
+ * `active` is true.  When `active` becomes false the value freezes at the
+ * final elapsed time.
+ */
+function useElapsedTimer(startTime: number | null, active: boolean): number {
+  const [elapsed, setElapsed] = useState(() =>
+    startTime ? Date.now() - startTime : 0,
+  );
+
+  useEffect(() => {
+    if (!startTime || !active) {
+      // Freeze at final value when execution ends
+      if (startTime) setElapsed(Date.now() - startTime);
+      return;
+    }
+    // Immediately sync in case the component mounted late
+    setElapsed(Date.now() - startTime);
+    const id = setInterval(() => setElapsed(Date.now() - startTime), 1000);
+    return () => clearInterval(id);
+  }, [startTime, active]);
+
+  return elapsed;
+}
+
+function LiveDuration({
+  startTime,
+  isExecuting,
+}: {
+  startTime: number | null;
+  isExecuting: boolean;
+}) {
+  const elapsed = useElapsedTimer(startTime, isExecuting);
+  if (!startTime) return null;
+
+  return (
+    <span
+      className="flex items-center gap-1 text-xs text-muted-foreground"
+      data-testid="live-duration"
+    >
+      <Clock className="h-3.5 w-3.5" />
+      {formatDuration(elapsed)}
+    </span>
   );
 }
 
@@ -290,11 +378,14 @@ function ExecutionSummary({
   startTime: number | null;
   cancelled: boolean;
 }) {
+  // summary only renders after execution is done, so freeze duration once
+  const totalDuration = useElapsedTimer(startTime, false);
   const completedCount = Object.keys(completedSteps).length;
-  const successCount = Object.values(completedSteps).filter((s) => s.exitCode === 0).length;
+  const successCount = Object.values(completedSteps).filter(
+    (s) => s.exitCode === 0,
+  ).length;
   const failedCount = completedCount - successCount;
   const skippedCount = plan.steps.length - completedCount;
-  const totalDuration = startTime ? Date.now() - startTime : 0;
 
   return (
     <div
@@ -302,10 +393,17 @@ function ExecutionSummary({
       data-testid="execution-summary"
     >
       <h4 className="mb-2 text-sm font-semibold">
-        {cancelled ? 'Execution Stopped' : success ? 'Execution Complete' : 'Execution Failed'}
+        {cancelled
+          ? "Execution Stopped"
+          : success
+            ? "Execution Complete"
+            : "Execution Failed"}
       </h4>
       <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
-        <div className="flex items-center gap-1.5" data-testid="summary-success">
+        <div
+          className="flex items-center gap-1.5"
+          data-testid="summary-success"
+        >
           <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
           <span>{successCount} passed</span>
         </div>
@@ -313,11 +411,17 @@ function ExecutionSummary({
           <XCircle className="h-3.5 w-3.5 text-red-600" />
           <span>{failedCount} failed</span>
         </div>
-        <div className="flex items-center gap-1.5" data-testid="summary-skipped">
+        <div
+          className="flex items-center gap-1.5"
+          data-testid="summary-skipped"
+        >
           <AlertTriangle className="h-3.5 w-3.5 text-yellow-600" />
           <span>{skippedCount} skipped</span>
         </div>
-        <div className="flex items-center gap-1.5" data-testid="summary-duration">
+        <div
+          className="flex items-center gap-1.5"
+          data-testid="summary-duration"
+        >
           <Clock className="h-3.5 w-3.5 text-muted-foreground" />
           <span>{formatDuration(totalDuration)}</span>
         </div>
@@ -329,7 +433,8 @@ function ExecutionSummary({
       )}
       {!cancelled && !success && (
         <p className="mt-2 text-xs text-muted-foreground">
-          Execution stopped at the first failed step. Remaining steps were skipped.
+          Execution stopped at the first failed step. Remaining steps were
+          skipped.
         </p>
       )}
     </div>
@@ -356,6 +461,9 @@ export function ExecutionLog({
             Execution Progress
           </CardTitle>
           <div className="flex items-center gap-2">
+            {isExecuting && startTime && (
+              <LiveDuration startTime={startTime} isExecuting={isExecuting} />
+            )}
             {isExecuting && onEmergencyStop && (
               <Button
                 variant="destructive"
@@ -371,10 +479,12 @@ export function ExecutionLog({
             )}
             {success != null && (
               <Badge
-                variant={cancelled ? 'outline' : success ? 'default' : 'destructive'}
+                variant={
+                  cancelled ? "outline" : success ? "default" : "destructive"
+                }
                 data-testid="exec-result-badge"
               >
-                {cancelled ? 'Stopped' : success ? 'Completed' : 'Failed'}
+                {cancelled ? "Stopped" : success ? "Completed" : "Failed"}
               </Badge>
             )}
           </div>
@@ -385,7 +495,9 @@ export function ExecutionLog({
         <ProgressBar
           completed={Object.keys(completedSteps).length}
           total={plan.steps.length}
-          hasFailure={Object.values(completedSteps).some((s) => s.exitCode !== 0)}
+          hasFailure={Object.values(completedSteps).some(
+            (s) => s.exitCode !== 0,
+          )}
         />
 
         {plan.steps.map((step, i) => (
