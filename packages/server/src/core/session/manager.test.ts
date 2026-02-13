@@ -139,8 +139,10 @@ describe('deleteSession', () => {
 });
 
 describe('listSessions', () => {
-  it('should return empty array for server with no sessions', async () => {
-    expect(await mgr.listSessions(SERVER_ID, USER_ID)).toEqual([]);
+  it('should return empty result for server with no sessions', async () => {
+    const result = await mgr.listSessions(SERVER_ID, USER_ID);
+    expect(result.sessions).toEqual([]);
+    expect(result.total).toBe(0);
   });
 
   it('should return sessions for the given server', async () => {
@@ -148,10 +150,11 @@ describe('listSessions', () => {
     await mgr.getOrCreate(SERVER_ID, USER_ID);
     await mgr.getOrCreate('server-2', USER_ID);
 
-    const list = await mgr.listSessions(SERVER_ID, USER_ID);
-    expect(list).toHaveLength(2);
-    expect(list[0].serverId).toBe(SERVER_ID);
-    expect(list[1].serverId).toBe(SERVER_ID);
+    const result = await mgr.listSessions(SERVER_ID, USER_ID);
+    expect(result.sessions).toHaveLength(2);
+    expect(result.total).toBe(2);
+    expect(result.sessions[0].serverId).toBe(SERVER_ID);
+    expect(result.sessions[1].serverId).toBe(SERVER_ID);
   });
 
   it('should include messageCount and lastMessage', async () => {
@@ -159,9 +162,9 @@ describe('listSessions', () => {
     await mgr.addMessage(session.id, USER_ID, 'user', 'Hello');
     await mgr.addMessage(session.id, USER_ID, 'assistant', 'Hi there!');
 
-    const list = await mgr.listSessions(SERVER_ID, USER_ID);
-    expect(list[0].messageCount).toBe(2);
-    expect(list[0].lastMessage).toBe('Hi there!');
+    const { sessions } = await mgr.listSessions(SERVER_ID, USER_ID);
+    expect(sessions[0].messageCount).toBe(2);
+    expect(sessions[0].lastMessage).toBe('Hi there!');
   });
 
   it('should sort by updatedAt descending', async () => {
@@ -169,17 +172,17 @@ describe('listSessions', () => {
     await new Promise((r) => setTimeout(r, 10));
     const s2 = await mgr.getOrCreate(SERVER_ID, USER_ID);
 
-    const list = await mgr.listSessions(SERVER_ID, USER_ID);
-    expect(list[0].id).toBe(s2.id);
-    expect(list[1].id).toBe(s1.id);
+    const { sessions } = await mgr.listSessions(SERVER_ID, USER_ID);
+    expect(sessions[0].id).toBe(s2.id);
+    expect(sessions[1].id).toBe(s1.id);
   });
 
   it('should truncate lastMessage to 100 chars', async () => {
     const session = await mgr.getOrCreate(SERVER_ID, USER_ID);
     await mgr.addMessage(session.id, USER_ID, 'user', 'x'.repeat(200));
 
-    const list = await mgr.listSessions(SERVER_ID, USER_ID);
-    expect(list[0].lastMessage!.length).toBe(100);
+    const { sessions } = await mgr.listSessions(SERVER_ID, USER_ID);
+    expect(sessions[0].lastMessage!.length).toBe(100);
   });
 
   it('should use listSummaries instead of listByServer', async () => {
@@ -201,8 +204,36 @@ describe('listSessions', () => {
   it('should return undefined lastMessage for session with no messages', async () => {
     await mgr.getOrCreate(SERVER_ID, USER_ID);
 
-    const list = await mgr.listSessions(SERVER_ID, USER_ID);
-    expect(list[0].lastMessage).toBeUndefined();
+    const { sessions } = await mgr.listSessions(SERVER_ID, USER_ID);
+    expect(sessions[0].lastMessage).toBeUndefined();
+  });
+
+  it('should support custom limit and offset', async () => {
+    // Create 3 sessions
+    await mgr.getOrCreate(SERVER_ID, USER_ID);
+    await new Promise((r) => setTimeout(r, 5));
+    await mgr.getOrCreate(SERVER_ID, USER_ID);
+    await new Promise((r) => setTimeout(r, 5));
+    await mgr.getOrCreate(SERVER_ID, USER_ID);
+
+    // Get first 2
+    const page1 = await mgr.listSessions(SERVER_ID, USER_ID, { limit: 2, offset: 0 });
+    expect(page1.sessions).toHaveLength(2);
+    expect(page1.total).toBe(3);
+
+    // Get remaining
+    const page2 = await mgr.listSessions(SERVER_ID, USER_ID, { limit: 2, offset: 2 });
+    expect(page2.sessions).toHaveLength(1);
+    expect(page2.total).toBe(3);
+  });
+
+  it('should default to limit=100 offset=0 when no options provided', async () => {
+    const summariesSpy = vi.spyOn(repo, 'listSummaries');
+
+    await mgr.listSessions(SERVER_ID, USER_ID);
+
+    expect(summariesSpy).toHaveBeenCalledWith(SERVER_ID, USER_ID, { limit: 100, offset: 0 });
+    summariesSpy.mockRestore();
   });
 });
 
@@ -617,7 +648,7 @@ describe('persistence', () => {
 
     // Simulate restart: new manager, same repo
     const mgr2 = new SessionManager(repo, TEST_CACHE_OPTS);
-    const list = await mgr2.listSessions(SERVER_ID, USER_ID);
+    const { sessions: list } = await mgr2.listSessions(SERVER_ID, USER_ID);
     expect(list).toHaveLength(1);
     expect(list[0].messageCount).toBe(2);
 

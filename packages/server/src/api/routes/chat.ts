@@ -45,6 +45,7 @@ import type { StoredPlan } from './chat-execution.js';
 import type { ChatMessageBody, ExecutePlanBody, CancelExecutionBody, StepDecisionBody, ConfirmBody, RenameSessionBody } from './schemas.js';
 import type { ApiEnv } from './types.js';
 import { getTaskExecutor } from '../../core/task/executor.js';
+import { generateChatFallback } from '../../ai/chat-fallback.js';
 
 /**
  * Tracks pending agentic confirmations: `confirmId → resolve callback`.
@@ -289,7 +290,9 @@ chat.post('/:serverId', requirePermission('chat:use'), validateBody(ChatMessageB
             { operation: 'agentic_chat_error', serverId, sessionId: session.id, error: message },
             'Agentic chat error',
           );
-          await safeWriteSSE(stream, 'message', JSON.stringify({ content: `\n错误: ${message}` }));
+          await safeWriteSSE(stream, 'error', JSON.stringify({ error: message, reason: 'ai_unavailable' }));
+          const fallback = generateChatFallback(body.message!);
+          await safeWriteSSE(stream, 'message', JSON.stringify({ content: `${message}\n\n${fallback}` }));
           await safeWriteSSE(stream, 'complete', JSON.stringify({ success: false }));
         } finally {
           // Clean up any pending confirmations for this session.
@@ -304,15 +307,12 @@ chat.post('/:serverId', requirePermission('chat:use'), validateBody(ChatMessageB
       const agent = getChatAIAgent();
       if (!agent) {
         await stream.writeSSE({
-          event: 'message',
-          data: JSON.stringify({
-            content: 'AI service is not configured. Please set AI_PROVIDER and the corresponding API key.',
-          }),
+          event: 'error',
+          data: JSON.stringify({ error: 'AI service is not configured', reason: 'ai_not_configured' }),
         });
-        await stream.writeSSE({
-          event: 'complete',
-          data: JSON.stringify({ success: false }),
-        });
+        const fallback = generateChatFallback(body.message!);
+        await stream.writeSSE({ event: 'message', data: JSON.stringify({ content: `AI service is not configured\n\n${fallback}` }) });
+        await stream.writeSSE({ event: 'complete', data: JSON.stringify({ success: false }) });
         return;
       }
 
@@ -428,7 +428,9 @@ chat.post('/:serverId', requirePermission('chat:use'), validateBody(ChatMessageB
           { operation: 'chat_ai_error', serverId, sessionId: session.id, error: message },
           'AI chat error',
         );
-        await safeWriteSSE(stream, 'message', JSON.stringify({ content: `Error: ${message}` }));
+        await safeWriteSSE(stream, 'error', JSON.stringify({ error: message, reason: 'ai_unavailable' }));
+        const fallback = generateChatFallback(body.message!);
+        await safeWriteSSE(stream, 'message', JSON.stringify({ content: `${message}\n\n${fallback}` }));
         await safeWriteSSE(stream, 'complete', JSON.stringify({ success: false }));
       }
     } finally {
@@ -585,7 +587,7 @@ chat.post('/:serverId/execute/cancel', requirePermission('chat:use'), validateBo
   return c.json({ success: cancelled });
 });
 
-// GET /chat/:serverId/sessions — List chat sessions
+// GET /chat/:serverId/sessions — List chat sessions (paginated)
 chat.get('/:serverId/sessions', requirePermission('chat:use'), async (c) => {
   const { serverId } = c.req.param();
   const userId = c.get('userId');
@@ -596,8 +598,14 @@ chat.get('/:serverId/sessions', requirePermission('chat:use'), async (c) => {
     throw ApiError.notFound('Server');
   }
 
-  const sessions = await getSessionManager().listSessions(serverId, userId);
-  return c.json({ sessions });
+  const limitRaw = c.req.query('limit');
+  const offsetRaw = c.req.query('offset');
+
+  const limit = limitRaw ? Math.max(1, Math.min(200, parseInt(limitRaw, 10) || 100)) : 100;
+  const offset = offsetRaw ? Math.max(0, parseInt(offsetRaw, 10) || 0) : 0;
+
+  const result = await getSessionManager().listSessions(serverId, userId, { limit, offset });
+  return c.json({ sessions: result.sessions, total: result.total });
 });
 
 // GET /chat/:serverId/sessions/:sessionId — Get session details

@@ -907,15 +907,16 @@ describe('GET /api/v1/chat/:serverId/sessions', () => {
     expect(res.status).toBe(404);
   });
 
-  it('should return empty list initially', async () => {
+  it('should return empty list initially with total=0', async () => {
     const server = await createServer('web-01', tokenA);
     const res = await req(`/api/v1/chat/${server.id}/sessions`, tokenA);
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.sessions).toEqual([]);
+    expect(body.total).toBe(0);
   });
 
-  it('should return sessions for the server', async () => {
+  it('should return sessions for the server with total', async () => {
     const server = await createServer('web-01', tokenA);
     const sessionMgr = getSessionManager();
     const session = await sessionMgr.getOrCreate(server.id, USER_A);
@@ -925,6 +926,7 @@ describe('GET /api/v1/chat/:serverId/sessions', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.sessions).toHaveLength(1);
+    expect(body.total).toBe(1);
     expect(body.sessions[0].id).toBe(session.id);
     expect(body.sessions[0].messageCount).toBe(1);
   });
@@ -946,6 +948,51 @@ describe('GET /api/v1/chat/:serverId/sessions', () => {
     const server = await createServer('web-01', tokenA);
     const res = await req(`/api/v1/chat/${server.id}/sessions`, tokenB);
     expect(res.status).toBe(404);
+  });
+
+  it('should support limit and offset query params', async () => {
+    const server = await createServer('web-01', tokenA);
+    const sessionMgr = getSessionManager();
+    await sessionMgr.getOrCreate(server.id, USER_A);
+    await new Promise((r) => setTimeout(r, 5));
+    await sessionMgr.getOrCreate(server.id, USER_A);
+    await new Promise((r) => setTimeout(r, 5));
+    await sessionMgr.getOrCreate(server.id, USER_A);
+
+    // Page 1: limit=2
+    const res1 = await req(`/api/v1/chat/${server.id}/sessions?limit=2&offset=0`, tokenA);
+    const body1 = await res1.json();
+    expect(body1.sessions).toHaveLength(2);
+    expect(body1.total).toBe(3);
+
+    // Page 2: offset=2
+    const res2 = await req(`/api/v1/chat/${server.id}/sessions?limit=2&offset=2`, tokenA);
+    const body2 = await res2.json();
+    expect(body2.sessions).toHaveLength(1);
+    expect(body2.total).toBe(3);
+  });
+
+  it('should clamp limit to 1-200 range', async () => {
+    const server = await createServer('web-01', tokenA);
+    const sessionMgr = getSessionManager();
+    await sessionMgr.getOrCreate(server.id, USER_A);
+
+    // limit=0 → clamped to 1
+    const res1 = await req(`/api/v1/chat/${server.id}/sessions?limit=0`, tokenA);
+    expect(res1.status).toBe(200);
+
+    // limit=999 → clamped to 200
+    const res2 = await req(`/api/v1/chat/${server.id}/sessions?limit=999`, tokenA);
+    expect(res2.status).toBe(200);
+  });
+
+  it('should default to limit=100 when no query params', async () => {
+    const server = await createServer('web-01', tokenA);
+    const res = await req(`/api/v1/chat/${server.id}/sessions`, tokenA);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.total).toBe(0);
+    expect(body.sessions).toEqual([]);
   });
 });
 

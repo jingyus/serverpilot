@@ -3,14 +3,14 @@
 > 此队列专注于 Chat 和 AI 对话系统的质量改进
 > AI 自动发现问题 → 生成任务 → 实现 → 验证
 
-**最后更新**: 2026-02-13 12:44:38
+**最后更新**: 2026-02-13 12:57:51
 
 ## 📊 统计
 
 - **总任务数**: 100
-- **待完成** (pending): 19
+- **待完成** (pending): 18
 - **进行中** (in_progress): 0
-- **已完成** (completed): 81
+- **已完成** (completed): 82
 - **失败** (failed): 0
 
 ## 📋 任务列表
@@ -30,7 +30,7 @@
 
 ---
 
-### [pending] listSessions 硬编码 limit=100 无分页 — 超过 100 个会话的服务器丢失历史
+### [completed] listSessions 硬编码 limit=100 无分页 — 超过 100 个会话的服务器丢失历史 ✅
 
 **ID**: chat-082
 **优先级**: P0
@@ -40,7 +40,7 @@
 **验收标准**: (1) `listSessions(serverId, userId, { limit, offset })` 支持分页 (2) 返回值增加 `total` 字段 (3) GET /sessions API 支持 `?limit=&offset=` 查询参数 (4) 默认值保持 100 以兼容现有前端
 **影响范围**: `packages/server/src/core/session/manager.ts`, `packages/server/src/api/routes/chat.ts`
 **创建时间**: 2026-02-13
-**完成时间**: -
+**完成时间**: 2026-02-13 12:57:51
 
 ---
 

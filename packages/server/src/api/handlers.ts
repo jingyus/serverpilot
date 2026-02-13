@@ -350,7 +350,19 @@ export async function handleEnvReport(
       }
     }
 
-    // If AI agent is provided, analyze the environment
+    // No AI agent — send error notification and use fallback plan
+    if (!aiAgent) {
+      logger.warn({ sessionId, clientId }, 'No AI agent, using fallback plan');
+      server.updateSessionStatus(sessionId, SessionStatus.PLANNING);
+      server.send(clientId, createMessage(MessageType.AI_STREAM_ERROR, {
+        error: 'AI service is not available. Using template-based fallback plan.',
+      }, requestId));
+      server.send(clientId, createMessage(MessageType.PLAN_RECEIVE,
+        generateFallbackPlan(environment, software, version), requestId));
+      return { success: true };
+    }
+
+    // Analyze the environment with AI
     if (aiAgent) {
       logAIOperation('call', { requestId, sessionId, clientId }, { operation: 'analyzeEnvironment' });
 
@@ -452,9 +464,12 @@ export async function handleEnvReport(
       endPlanTimer({ fromCache: !plan });
     }
 
-    // If AI plan generation failed, use fallback plan
+    // If AI plan generation failed, notify and use fallback plan
     if (!plan) {
       logAIOperation('fallback', { requestId, sessionId, clientId }, { operation: 'generateInstallPlan' });
+      server.send(clientId, createMessage(MessageType.AI_STREAM_ERROR, {
+        error: 'AI plan generation failed. Using template-based fallback plan.',
+      }, requestId));
       plan = generateFallbackPlan(environment, software, version);
     } else {
       // Use actual token counts from AI response (safe fallback to 0 if not available)

@@ -12,7 +12,7 @@
  * - HandlerResult interface type checks
  */
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import WebSocket from 'ws';
 import { createMessage, MessageType, SessionStatus } from '@aiinstaller/shared';
 import type {
@@ -1811,7 +1811,7 @@ describe('handleEnvReport - Plan Generation', () => {
     expect(server.getSession(sessionId)!.status).toBe(SessionStatus.PLANNING);
   });
 
-  it.skip('should send fallback plan when AI is not available', async () => {
+  it('should send fallback plan when AI is not available', async () => {
     const port = nextPort();
     server = new InstallServer({ port, heartbeatIntervalMs: 60000 });
 
@@ -1830,37 +1830,37 @@ describe('handleEnvReport - Plan Generation', () => {
     handleCreateSession(server, clientId, createMsg);
     await waitForMessage(ws); // drain initial plan.receive
 
+    // Collect ALL messages using a persistent listener
+    const received: Array<{ type: string; payload: Record<string, unknown> }> = [];
+    const allReceived = new Promise<void>((resolve) => {
+      const handler = (data: Buffer | string) => {
+        received.push(JSON.parse(data.toString()));
+        // Expect 2 messages: AI_STREAM_ERROR + PLAN_RECEIVE
+        if (received.length >= 2) {
+          ws.off('message', handler);
+          resolve();
+        }
+      };
+      ws.on('message', handler);
+      // Safety timeout
+      setTimeout(() => { ws.off('message', handler); resolve(); }, 2000);
+    });
+
     // Send env.report without AI agent
     const envMsg = createMessage(MessageType.ENV_REPORT, makeEnvInfo()) as EnvReportMessage;
+    await handleEnvReport(server, clientId, envMsg);
+    await allReceived;
 
-    // Call handleEnvReport and wait for it to complete
-    const handlePromise = handleEnvReport(server, clientId, envMsg);
-
-    // Give some time for the handler to process and send messages
-    await new Promise(resolve => setTimeout(resolve, 200));
-
-    // Collect any messages
-    const messages = [];
-    for (let i = 0; i < 5; i++) {
-      try {
-        const msg = await Promise.race([
-          waitForMessage(ws),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 500))
-        ]);
-        messages.push(msg);
-      } catch {
-        break;
-      }
-    }
-
-    await handlePromise;
+    // Should receive AI_STREAM_ERROR notification before fallback plan
+    const errorMsg = received.find(m => m.type === MessageType.AI_STREAM_ERROR);
+    expect(errorMsg).toBeDefined();
+    expect(errorMsg?.payload).toHaveProperty('error');
 
     // Should receive a plan.receive message with fallback plan
-    const planMsg = messages.find(m => m.type === MessageType.PLAN_RECEIVE);
+    const planMsg = received.find(m => m.type === MessageType.PLAN_RECEIVE);
     expect(planMsg).toBeDefined();
     expect(planMsg?.payload).toBeDefined();
-    expect(planMsg?.payload.steps).toBeDefined();
-    expect(planMsg?.payload.steps.length).toBeGreaterThan(0);
+    expect((planMsg?.payload as { steps: unknown[] }).steps.length).toBeGreaterThan(0);
   });
 
   it('should include knowledge base context when generating plan', async () => {
@@ -1933,7 +1933,7 @@ describe('handleEnvReport - Plan Generation', () => {
     expect(calls[0][4]).toBeDefined();
   });
 
-  it.skip('should send AI streaming messages during plan generation', async () => {
+  it('should send AI streaming messages during plan generation', async () => {
     const port = nextPort();
     server = new InstallServer({ port, heartbeatIntervalMs: 60000 });
 
@@ -1969,14 +1969,14 @@ describe('handleEnvReport - Plan Generation', () => {
           },
         },
       }),
-      generateInstallPlanStreaming: vi.fn().mockImplementation(async (env, sw, ver, callbacks, kb) => {
+      generateInstallPlanStreaming: vi.fn().mockImplementation(async (env: unknown, sw: unknown, ver: unknown, callbacks: { onStart?: () => void; onToken?: (t: string) => void; onEnd?: () => void; onComplete?: (text: string, usage: { inputTokens: number; outputTokens: number }) => void }) => {
         // Simulate streaming callbacks
         if (callbacks) {
           callbacks.onStart?.();
           callbacks.onToken?.('Generating');
           callbacks.onToken?.(' installation');
           callbacks.onToken?.(' plan...');
-          callbacks.onEnd?.();
+          callbacks.onComplete?.('Plan complete', { inputTokens: 100, outputTokens: 50 });
         }
 
         return {
@@ -1993,41 +1993,204 @@ describe('handleEnvReport - Plan Generation', () => {
             estimatedTime: 120000,
             risks: [],
           },
+          usage: { inputTokens: 100, outputTokens: 50 },
         };
       }),
     };
 
+    // Collect ALL messages using a persistent listener
+    const received: Array<{ type: string }> = [];
+    const done = new Promise<void>((resolve) => {
+      const handler = (data: Buffer | string) => {
+        received.push(JSON.parse(data.toString()));
+        // Expect ~9 messages: analysis(START+TOKEN+COMPLETE) + plan(START+3×TOKEN+COMPLETE) + PLAN_RECEIVE
+        if (received.length >= 8) { ws.off('message', handler); resolve(); }
+      };
+      ws.on('message', handler);
+      setTimeout(() => { ws.off('message', handler); resolve(); }, 2000);
+    });
+
     // Send env.report
     const envMsg = createMessage(MessageType.ENV_REPORT, makeEnvInfo()) as EnvReportMessage;
+    await handleEnvReport(server, clientId, envMsg, mockAgent as unknown as import('../ai/agent.js').InstallAIAgent);
+    await done;
 
-    // Call handleEnvReport and wait a bit for processing to start
-    const handlePromise = handleEnvReport(server, clientId, envMsg, mockAgent as any);
+    // Should have received streaming messages (analysis + plan generation)
+    const streamStartMsgs = received.filter(m => m.type === MessageType.AI_STREAM_START);
+    const streamEndMsgs = received.filter(m => m.type === MessageType.AI_STREAM_COMPLETE);
+
+    // We expect at least 1 stream start and 1 stream end (from either analysis or plan generation)
+    expect(streamStartMsgs.length).toBeGreaterThan(0);
+    expect(streamEndMsgs.length).toBeGreaterThan(0);
+  });
+
+  it('should send AI_STREAM_ERROR with descriptive message when AI is unavailable', async () => {
+    const port = nextPort();
+    server = new InstallServer({ port, heartbeatIntervalMs: 60000 });
+
+    const clientIdPromise = new Promise<string>((resolve) => {
+      server.on('connection', (id) => resolve(id));
+    });
+
+    await server.start();
+    ws = await connectClient(port);
+    clientId = await clientIdPromise;
+
+    const createMsg = createMessage(MessageType.SESSION_CREATE, {
+      software: 'nginx',
+    }) as SessionCreateMessage;
+    handleCreateSession(server, clientId, createMsg);
+    await waitForMessage(ws); // drain initial plan.receive
+
+    // Set up listeners before handler call
+    const messagePromises: Promise<string>[] = [];
+    for (let i = 0; i < 5; i++) {
+      messagePromises.push(waitForMessage(ws));
+    }
+
+    const envMsg = createMessage(MessageType.ENV_REPORT, makeEnvInfo()) as EnvReportMessage;
+    const result = await handleEnvReport(server, clientId, envMsg);
+
+    expect(result.success).toBe(true);
 
     await new Promise(resolve => setTimeout(resolve, 100));
 
-    // Collect streaming messages
-    const streamMessages: Message[] = [];
-    for (let i = 0; i < 10; i++) {
+    const messages: Array<{ type: string; payload: { error?: string } }> = [];
+    for (const p of messagePromises) {
       try {
-        const msg = await Promise.race([
-          waitForMessage(ws),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 300))
-        ]) as Message;
-        streamMessages.push(msg);
+        const raw = await Promise.race([
+          p,
+          new Promise<string>((_, reject) => setTimeout(() => reject(new Error('timeout')), 300)),
+        ]);
+        messages.push(JSON.parse(raw));
       } catch {
         break;
       }
     }
 
-    await handlePromise;
+    const errorMsg = messages.find(m => m.type === MessageType.AI_STREAM_ERROR);
+    expect(errorMsg).toBeDefined();
+    expect(errorMsg!.payload.error).toContain('AI service is not available');
+  });
 
-    // Should have received streaming messages (analysis + plan generation)
-    const streamStartMsgs = streamMessages.filter(m => m.type === MessageType.AI_STREAM_START);
-    const streamTokenMsgs = streamMessages.filter(m => m.type === MessageType.AI_STREAM_TOKEN);
-    const streamEndMsgs = streamMessages.filter(m => m.type === MessageType.AI_STREAM_COMPLETE);
+  it('should return success even when using fallback plan (no 500 error)', async () => {
+    const port = nextPort();
+    server = new InstallServer({ port, heartbeatIntervalMs: 60000 });
 
-    // We expect at least 1 stream start and 1 stream end (from either analysis or plan generation)
-    expect(streamStartMsgs.length).toBeGreaterThan(0);
-    expect(streamEndMsgs.length).toBeGreaterThan(0);
+    const clientIdPromise = new Promise<string>((resolve) => {
+      server.on('connection', (id) => resolve(id));
+    });
+
+    await server.start();
+    ws = await connectClient(port);
+    clientId = await clientIdPromise;
+
+    const createMsg = createMessage(MessageType.SESSION_CREATE, {
+      software: 'redis',
+    }) as SessionCreateMessage;
+    handleCreateSession(server, clientId, createMsg);
+    await waitForMessage(ws);
+
+    const envMsg = createMessage(MessageType.ENV_REPORT, makeEnvInfo()) as EnvReportMessage;
+    const result = await handleEnvReport(server, clientId, envMsg);
+
+    // Should succeed (graceful fallback), not return error
+    expect(result.success).toBe(true);
+    expect(result.error).toBeUndefined();
+  });
+
+  it('should send AI_STREAM_ERROR when AI plan generation fails', async () => {
+    const port = nextPort();
+    server = new InstallServer({ port, heartbeatIntervalMs: 60000 });
+
+    const clientIdPromise = new Promise<string>((resolve) => {
+      server.on('connection', (id) => resolve(id));
+    });
+
+    await server.start();
+    ws = await connectClient(port);
+    clientId = await clientIdPromise;
+
+    const createMsg = createMessage(MessageType.SESSION_CREATE, {
+      software: 'test-pkg',
+    }) as SessionCreateMessage;
+    handleCreateSession(server, clientId, createMsg);
+    await waitForMessage(ws);
+
+    // Mock AI agent where plan generation fails
+    const failingAgent = {
+      analyzeEnvironment: vi.fn().mockResolvedValue({
+        success: true,
+        data: {
+          summary: 'OK', ready: true, issues: [], recommendations: [],
+          detectedCapabilities: {
+            hasRequiredRuntime: true, hasPackageManager: true,
+            hasNetworkAccess: true, hasSufficientPermissions: true,
+          },
+        },
+      }),
+      generateInstallPlanStreaming: vi.fn().mockResolvedValue({
+        success: false,
+        error: 'API key invalid',
+        data: null,
+      }),
+    };
+
+    // Collect ALL messages using a persistent listener
+    const received: Array<{ type: string; payload: Record<string, unknown> }> = [];
+    const done = new Promise<void>((resolve) => {
+      const handler = (data: Buffer | string) => {
+        received.push(JSON.parse(data.toString()));
+        // Expect ~6 messages: analysis(3) + AI_STREAM_ERROR + PLAN_RECEIVE
+        if (received.length >= 5) { ws.off('message', handler); resolve(); }
+      };
+      ws.on('message', handler);
+      setTimeout(() => { ws.off('message', handler); resolve(); }, 2000);
+    });
+
+    const envMsg = createMessage(MessageType.ENV_REPORT, makeEnvInfo()) as EnvReportMessage;
+    await handleEnvReport(server, clientId, envMsg, failingAgent as unknown as import('../ai/agent.js').InstallAIAgent);
+    await done;
+
+    // Should have AI_STREAM_ERROR notification
+    const errorMsg = received.find(m => m.type === MessageType.AI_STREAM_ERROR);
+    expect(errorMsg).toBeDefined();
+    expect(errorMsg!.payload.error).toContain('plan generation failed');
+
+    // Should still have a fallback PLAN_RECEIVE
+    const planMsg = received.find(m => m.type === MessageType.PLAN_RECEIVE);
+    expect(planMsg).toBeDefined();
+  });
+
+  it('should set session to PLANNING status when using fallback plan', async () => {
+    const port = nextPort();
+    server = new InstallServer({ port, heartbeatIntervalMs: 60000 });
+
+    const clientIdPromise = new Promise<string>((resolve) => {
+      server.on('connection', (id) => resolve(id));
+    });
+
+    await server.start();
+    ws = await connectClient(port);
+    clientId = await clientIdPromise;
+
+    const createMsg = createMessage(MessageType.SESSION_CREATE, {
+      software: 'docker',
+    }) as SessionCreateMessage;
+    handleCreateSession(server, clientId, createMsg);
+    await waitForMessage(ws);
+
+    // Set up listeners
+    const messagePromises: Promise<string>[] = [];
+    for (let i = 0; i < 5; i++) {
+      messagePromises.push(waitForMessage(ws));
+    }
+
+    const envMsg = createMessage(MessageType.ENV_REPORT, makeEnvInfo()) as EnvReportMessage;
+    await handleEnvReport(server, clientId, envMsg);
+
+    const sessionId = server.getClientSessionId(clientId)!;
+    const session = server.getSession(sessionId)!;
+    expect(session.status).toBe(SessionStatus.PLANNING);
   });
 });

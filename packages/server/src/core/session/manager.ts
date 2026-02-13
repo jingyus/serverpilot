@@ -61,6 +61,18 @@ export interface PlanStep {
   canRollback: boolean;
 }
 
+/** Pagination options for listSessions (with backward-compatible defaults). */
+export interface ListSessionsOptions {
+  limit?: number;
+  offset?: number;
+}
+
+/** Paginated result from listSessions. */
+export interface ListSessionsResult {
+  sessions: SessionSummary[];
+  total: number;
+}
+
 /** Summary of a session (returned in list endpoints) */
 export interface SessionSummary {
   id: string;
@@ -284,13 +296,20 @@ export class SessionManager {
   }
 
   /** List sessions for a server. Uses lightweight summaries (no full message loading). */
-  async listSessions(serverId: string, userId: string): Promise<SessionSummary[]> {
+  async listSessions(
+    serverId: string,
+    userId: string,
+    options?: ListSessionsOptions,
+  ): Promise<ListSessionsResult> {
+    const limit = options?.limit ?? 100;
+    const offset = options?.offset ?? 0;
+
     const result = await this.repo.listSummaries(serverId, userId, {
-      limit: 100,
-      offset: 0,
+      limit,
+      offset,
     });
 
-    return result.summaries.map((s) => ({
+    const sessions = result.summaries.map((s) => ({
       id: s.id,
       serverId: s.serverId,
       name: s.name,
@@ -299,6 +318,8 @@ export class SessionManager {
       updatedAt: s.updatedAt,
       lastMessage: s.lastMessageContent?.slice(0, 100),
     }));
+
+    return { sessions, total: result.total };
   }
 
   /** Get a session by ID. Checks cache first, then DB. */
