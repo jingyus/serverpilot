@@ -382,6 +382,45 @@ describe('useSkillsStore', () => {
 
       expect(useSkillsStore.getState().error).toBe('Skill not enabled');
     });
+
+    it('should pass dryRun=true to API request', async () => {
+      const executionResult = {
+        executionId: 'exec-dry',
+        status: 'success' as const,
+        stepsExecuted: 0,
+        duration: 200,
+        result: { output: 'Step 1: shell — apt update' },
+        errors: [],
+      };
+      mockApiRequest.mockResolvedValueOnce({ execution: executionResult });
+
+      const result = await useSkillsStore.getState().executeSkill('sk-1', 'srv-1', undefined, true);
+
+      expect(result).toEqual(executionResult);
+      expect(mockApiRequest).toHaveBeenCalledWith('/skills/sk-1/execute', {
+        method: 'POST',
+        body: JSON.stringify({ serverId: 'srv-1', dryRun: true }),
+      });
+    });
+
+    it('should not include dryRun in body when it is falsy', async () => {
+      const executionResult = {
+        executionId: 'exec-normal',
+        status: 'success' as const,
+        stepsExecuted: 2,
+        duration: 1000,
+        result: null,
+        errors: [],
+      };
+      mockApiRequest.mockResolvedValueOnce({ execution: executionResult });
+
+      await useSkillsStore.getState().executeSkill('sk-1', 'srv-1', undefined, false);
+
+      expect(mockApiRequest).toHaveBeenCalledWith('/skills/sk-1/execute', {
+        method: 'POST',
+        body: JSON.stringify({ serverId: 'srv-1' }),
+      });
+    });
   });
 
   // --------------------------------------------------------------------------

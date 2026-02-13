@@ -35,6 +35,7 @@ import { webhooksRoute } from './webhooks.js';
 import { membersRoute } from './members.js';
 import { teamRoute } from './team.js';
 import { skillsRoute } from './skills.js';
+import { healthRoute } from './health.js';
 import { openapi } from './openapi.js';
 import { onError, onNotFound } from '../middleware/error-handler.js';
 import { createRateLimitMiddleware } from '../middleware/rate-limit.js';
@@ -113,6 +114,7 @@ export function createApiApp(): Hono<ApiEnv> {
   v1.route('/members', membersRoute);
   v1.route('/team', teamRoute);
   v1.route('/skills', skillsRoute);
+  v1.route('/health', healthRoute);
 
   app.route('/api/v1', v1);
 
@@ -126,5 +128,5 @@ export function createApiApp(): Hono<ApiEnv> {
   return app;
 }
 
-export { auth, authGitHub, servers, chat, tasks, alerts, alertRules, operations, agent, knowledge, settings, metricsRoutes, auditLog, webhooksRoute, membersRoute, teamRoute, skillsRoute };
+export { auth, authGitHub, servers, chat, tasks, alerts, alertRules, operations, agent, knowledge, settings, metricsRoutes, auditLog, webhooksRoute, membersRoute, teamRoute, skillsRoute, healthRoute };
 export { docSources };

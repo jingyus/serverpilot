@@ -25,6 +25,8 @@ export interface ExecuteDialogProps {
   onServerChange: (id: string) => void;
   executionId: string | null;
   isExecuting: boolean;
+  dryRun?: boolean;
+  onDryRunChange?: (enabled: boolean) => void;
   onExecute: () => void;
   onClose: () => void;
 }
@@ -41,6 +43,8 @@ export function ExecuteDialog({
   onServerChange,
   executionId,
   isExecuting,
+  dryRun,
+  onDryRunChange,
   onExecute,
   onClose,
 }: ExecuteDialogProps) {
@@ -79,6 +83,18 @@ export function ExecuteDialog({
                   ))}
                 </select>
               </div>
+              {onDryRunChange && (
+                <label className="flex items-center gap-2 text-sm" data-testid="dry-run-toggle">
+                  <input
+                    type="checkbox"
+                    checked={!!dryRun}
+                    onChange={(e) => onDryRunChange(e.target.checked)}
+                    className="rounded border-input"
+                  />
+                  <span className="font-medium">{t('skills.dryRun')}</span>
+                  <span className="text-muted-foreground">{t('skills.dryRunDesc')}</span>
+                </label>
+              )}
             )}
           </div>
         )}
@@ -98,6 +114,8 @@ export function ExecuteDialog({
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     {t('skills.executing')}
                   </>
+                ) : dryRun ? (
+                  t('skills.dryRunExecute')
                 ) : (
                   t('skills.execute')
                 )}

@@ -138,4 +138,46 @@ describe('ExecuteDialog', () => {
     expect(screen.getByText('No servers available')).toBeInTheDocument();
     expect(screen.queryByTestId('exec-server-select')).not.toBeInTheDocument();
   });
+
+  it('renders dry-run toggle when onDryRunChange is provided', () => {
+    const onDryRunChange = vi.fn();
+    render(
+      <ExecuteDialog {...defaultProps} dryRun={false} onDryRunChange={onDryRunChange} />,
+    );
+
+    const toggle = screen.getByTestId('dry-run-toggle');
+    expect(toggle).toBeInTheDocument();
+    expect(screen.getByText('Dry Run')).toBeInTheDocument();
+  });
+
+  it('does not render dry-run toggle when onDryRunChange is absent', () => {
+    render(<ExecuteDialog {...defaultProps} />);
+
+    expect(screen.queryByTestId('dry-run-toggle')).not.toBeInTheDocument();
+  });
+
+  it('calls onDryRunChange when checkbox is toggled', async () => {
+    const user = userEvent.setup();
+    const onDryRunChange = vi.fn();
+    render(
+      <ExecuteDialog {...defaultProps} dryRun={false} onDryRunChange={onDryRunChange} />,
+    );
+
+    const checkbox = screen.getByTestId('dry-run-toggle').querySelector('input')!;
+    await user.click(checkbox);
+    expect(onDryRunChange).toHaveBeenCalledWith(true);
+  });
+
+  it('shows "Dry Run" button text when dryRun is true', () => {
+    render(
+      <ExecuteDialog
+        {...defaultProps}
+        selectedServerId="srv-1"
+        dryRun={true}
+        onDryRunChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Dry Run')).toBeInTheDocument();
+  });
 });

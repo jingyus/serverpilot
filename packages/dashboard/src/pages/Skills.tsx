@@ -80,6 +80,7 @@ export function Skills() {
   const [selectedServerId, setSelectedServerId] = useState('');
   const [executionId, setExecutionId] = useState<string | null>(null);
   const [isExecuting, setIsExecuting] = useState(false);
+  const [isDryRun, setIsDryRun] = useState(false);
 
   useEffect(() => {
     fetchSkills();
@@ -124,11 +125,11 @@ export function Skills() {
     if (!executeTarget || !selectedServerId) return;
     setIsExecuting(true);
     try {
-      const result = await executeSkill(executeTarget.id, selectedServerId);
+      const result = await executeSkill(executeTarget.id, selectedServerId, undefined, isDryRun || undefined);
       setExecutionId(result.executionId);
     } catch { /* handled by store */ }
     setIsExecuting(false);
-  }, [executeTarget, selectedServerId, executeSkill]);
+  }, [executeTarget, selectedServerId, isDryRun, executeSkill]);
 
   const handleConfirm = useCallback(async (executionId: string) => {
     try {
@@ -153,6 +154,7 @@ export function Skills() {
     setSelectedServerId('');
     setExecutionId(null);
     setIsExecuting(false);
+    setIsDryRun(false);
   }, []);
 
   return (
@@ -287,6 +289,8 @@ export function Skills() {
         onServerChange={setSelectedServerId}
         executionId={executionId}
         isExecuting={isExecuting}
+        dryRun={isDryRun}
+        onDryRunChange={setIsDryRun}
         onExecute={handleExecuteConfirm}
         onClose={handleExecuteClose}
       />

@@ -630,6 +630,7 @@ describe('POST /skills/:id/execute', () => {
       userId: 'user-1',
       triggerType: 'manual',
       config: undefined,
+      dryRun: undefined,
     });
   });
 
@@ -702,6 +703,123 @@ describe('POST /skills/:id/execute', () => {
     });
 
     expect(res.status).toBe(403);
+  });
+
+  it('should pass dryRun=true to engine and include dryRun in response', async () => {
+    const result: SkillExecutionResult = {
+      executionId: 'exec-dry-1',
+      status: 'success',
+      stepsExecuted: 0,
+      duration: 200,
+      result: { output: 'Step 1: shell — apt update\nStep 2: shell — apt upgrade' },
+      errors: [],
+    };
+    mockEngine.execute.mockResolvedValue(result);
+
+    const res = await app.request('/skills/skill-1/execute', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ serverId: 'server-1', dryRun: true }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.dryRun).toBe(true);
+    expect(body.execution.executionId).toBe('exec-dry-1');
+    expect(body.execution.stepsExecuted).toBe(0);
+    expect(mockEngine.execute).toHaveBeenCalledWith({
+      skillId: 'skill-1',
+      serverId: 'server-1',
+      userId: 'user-1',
+      triggerType: 'manual',
+      config: undefined,
+      dryRun: true,
+    });
+  });
+
+  it('should not include dryRun flag in response when dryRun is false', async () => {
+    const result: SkillExecutionResult = {
+      executionId: 'exec-3',
+      status: 'success',
+      stepsExecuted: 3,
+      duration: 1000,
+      result: null,
+      errors: [],
+    };
+    mockEngine.execute.mockResolvedValue(result);
+
+    const res = await app.request('/skills/skill-1/execute', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ serverId: 'server-1', dryRun: false }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.dryRun).toBeUndefined();
+    expect(body.execution.executionId).toBe('exec-3');
+  });
+
+  it('should not include dryRun flag when dryRun is omitted', async () => {
+    const result: SkillExecutionResult = {
+      executionId: 'exec-4',
+      status: 'success',
+      stepsExecuted: 1,
+      duration: 500,
+      result: null,
+      errors: [],
+    };
+    mockEngine.execute.mockResolvedValue(result);
+
+    const res = await app.request('/skills/skill-1/execute', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ serverId: 'server-1' }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.dryRun).toBeUndefined();
+  });
+
+  it('should pass dryRun along with config to engine', async () => {
+    const result: SkillExecutionResult = {
+      executionId: 'exec-dry-cfg',
+      status: 'success',
+      stepsExecuted: 0,
+      duration: 150,
+      result: { output: 'Step 1: shell — nginx -t' },
+      errors: [],
+    };
+    mockEngine.execute.mockResolvedValue(result);
+
+    const res = await app.request('/skills/skill-1/execute', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ serverId: 'server-1', config: { port: 8080 }, dryRun: true }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.dryRun).toBe(true);
+    expect(mockEngine.execute).toHaveBeenCalledWith({
+      skillId: 'skill-1',
+      serverId: 'server-1',
+      userId: 'user-1',
+      triggerType: 'manual',
+      config: { port: 8080 },
+      dryRun: true,
+    });
+  });
+
+  it('should return 400 for non-boolean dryRun', async () => {
+    const res = await app.request('/skills/skill-1/execute', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ serverId: 'server-1', dryRun: 'yes' }),
+    });
+
+    expect(res.status).toBe(400);
   });
 });
 

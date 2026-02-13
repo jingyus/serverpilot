@@ -45,7 +45,7 @@ interface SkillsState {
   uninstallSkill: (id: string) => Promise<void>;
   configureSkill: (id: string, config: Record<string, unknown>) => Promise<void>;
   updateStatus: (id: string, status: SkillStatus) => Promise<void>;
-  executeSkill: (id: string, serverId: string, config?: Record<string, unknown>) => Promise<SkillExecutionResult>;
+  executeSkill: (id: string, serverId: string, config?: Record<string, unknown>, dryRun?: boolean) => Promise<SkillExecutionResult>;
   upgradeSkill: (id: string) => Promise<void>;
   cancelExecution: (eid: string) => Promise<void>;
   fetchExecutions: (id: string) => Promise<void>;
@@ -178,12 +178,12 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
     }
   },
 
-  executeSkill: async (id, serverId, config) => {
+  executeSkill: async (id, serverId, config, dryRun) => {
     set({ error: null });
     try {
       const data = await apiRequest<ExecutionResponse>(`/skills/${id}/execute`, {
         method: 'POST',
-        body: JSON.stringify({ serverId, ...(config ? { config } : {}) }),
+        body: JSON.stringify({ serverId, ...(config ? { config } : {}), ...(dryRun ? { dryRun } : {}) }),
       });
       return data.execution;
     } catch (err) {

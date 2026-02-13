@@ -232,7 +232,7 @@ skillsRoute.post('/:id/execute', requirePermission('skill:execute'), validateBod
       config: body.config,
       dryRun: body.dryRun,
     });
-    return c.json({ execution: result });
+    return c.json({ execution: result, ...(body.dryRun ? { dryRun: true } : {}) });
   } catch (err) {
     const msg = (err as Error).message;
     if (msg.includes('not found')) {

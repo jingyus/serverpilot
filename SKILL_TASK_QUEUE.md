@@ -3,13 +3,13 @@
 > 此队列专注于 Skill 插件系统的设计与实现
 > AI 自动扫描 → 发现缺失 → 设计实现 → 验证
 
-**最后更新**: 2026-02-13 10:16:01
+**最后更新**: 2026-02-13 10:16:32
 
 ## 📊 统计
 
 - **总任务数**: 67
-- **待完成** (pending): 7
-- **进行中** (in_progress): 0
+- **待完成** (pending): 6
+- **进行中** (in_progress): 1
 - **已完成** (completed): 60
 - **失败** (failed): 0
 
@@ -112,7 +112,7 @@
 
 ---
 
-### [pending] Skill Dry-Run API 端点 + Dashboard 支持
+### [in_progress] Skill Dry-Run API 端点 + Dashboard 支持
 
 **ID**: skill-094
 **优先级**: P1

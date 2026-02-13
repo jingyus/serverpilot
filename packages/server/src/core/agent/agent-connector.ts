@@ -42,6 +42,16 @@ function getServer(): InstallServer {
   return _server;
 }
 
+/**
+ * Get the InstallServer instance if initialized, or null.
+ *
+ * Unlike getServer(), this does not throw — intended for health checks
+ * and monitoring where absence is a valid state.
+ */
+export function getInstallServer(): InstallServer | null {
+  return _server;
+}
+
 // ============================================================================
 // Public API
 // ============================================================================
