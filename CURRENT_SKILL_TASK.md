@@ -1,24 +1,20 @@
-### [pending] Skill 导出为可分发归档包
+### [pending] Skill 导出/导入 API 端点
 
-**ID**: skill-098
+**ID**: skill-099
 **优先级**: P2
-**模块路径**: packages/server/src/core/skill/
-**当前状态**: Skill 安装仅支持 Git URL 和本地目录。无法将已安装的 Skill 打包为可分发的归档文件 (.tar.gz)，阻碍 Skill 在非 Git 环境中的分享。
+**模块路径**: packages/server/src/api/routes/
+**当前状态**: 依赖 skill-098 归档功能完成后，需暴露 REST API。
 **实现方案**: 
-1. 新建 `core/skill/skill-archive.ts` (~150 行):
-   - `exportSkill(skillId: string): Promise<{ filename: string; buffer: Buffer }>` 
-   - 读取 skill 目录 → 验证 manifest → tar.gz 打包 (使用 Node.js `zlib` + `tar` 或内置 API)
-   - 排除: .git/, node_modules/, *.test.*, .DS_Store
-   - 文件名格式: `{name}-{version}.tar.gz`
-2. `importSkill(buffer: Buffer, userId: string): Promise<InstalledSkill>`
-   - 解压到临时目录 → 验证 manifest → 移动到 `skills/community/{name}/` → 调用 engine.install()
-3. 对应测试文件 `skill-archive.test.ts`
+1. `api/routes/skills.ts` 添加:
+   - `GET /skills/:id/export` → 返回 .tar.gz 文件 (Content-Type: application/gzip)
+   - `POST /skills/import` → 接受 multipart/form-data 上传 → 调用 importSkill()
+2. 权限: `skill:manage` (admin/owner only)
+3. 文件大小限制: 10MB
 **验收标准**: 
-- 可导出 skill 为 .tar.gz
-- 可从 .tar.gz 导入安装 skill
-- 导入时验证 manifest schema
-- 测试覆盖: ≥8 个测试用例
-**影响范围**: 新建 packages/server/src/core/skill/skill-archive.ts, skill-archive.test.ts
+- 可通过 API 下载 skill 归档
+- 可通过 API 上传归档安装 skill
+- 测试覆盖: ≥6 个 API 测试
+**影响范围**: packages/server/src/api/routes/skills.ts (增加 <50 行)
 **创建时间**: 2026-02-13
 **完成时间**: -
 

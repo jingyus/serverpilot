@@ -56,9 +56,10 @@ export function highlightText(text: string, query: string): (string | { highligh
   if (!trimmed) return [text];
   const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const regex = new RegExp(`(${escaped})`, 'gi');
+  const testRegex = new RegExp(`^${escaped}$`, 'i');
   const parts = text.split(regex);
-  return parts.map((part) =>
-    regex.test(part) ? { highlight: part } : part,
+  return parts.filter((p) => p !== '').map((part) =>
+    testRegex.test(part) ? { highlight: part } : part,
   );
 }
 
