@@ -773,11 +773,14 @@ describe('InstallClient trySend', () => {
     await wait(50);
 
     // Queue messages while disconnected
-    // Force close from server side
+    // Force close from server side — wait for the client to actually detect disconnect
+    const disconnectedPromise = new Promise<void>((resolve) => {
+      client.on('disconnected', () => resolve());
+    });
     for (const ws of wss.clients) {
       ws.close(1001, 'test disconnect');
     }
-    await wait(100);
+    await disconnectedPromise;
 
     // Now queue messages while disconnected
     const m1 = createMessage(MessageType.STEP_COMPLETE, {
