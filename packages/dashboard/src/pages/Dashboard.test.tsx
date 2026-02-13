@@ -134,6 +134,8 @@ function renderDashboard() {
 describe('Dashboard Page', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Mark onboarding as completed so wizard doesn't interfere with other tests
+    localStorage.setItem('onboarding_completed', 'true');
     useServersStore.setState({
       servers: mockServers,
       isLoading: false,
@@ -453,6 +455,31 @@ describe('Dashboard Page', () => {
       });
       renderDashboard();
       expect(screen.getByText('srv-unknown')).toBeInTheDocument();
+    });
+  });
+
+  describe('welcome wizard integration', () => {
+    it('shows wizard when onboarding is not completed', () => {
+      localStorage.removeItem('onboarding_completed');
+      renderDashboard();
+      expect(screen.getByTestId('welcome-wizard')).toBeInTheDocument();
+    });
+
+    it('hides wizard when onboarding is already completed', () => {
+      localStorage.setItem('onboarding_completed', 'true');
+      renderDashboard();
+      expect(screen.queryByTestId('welcome-wizard')).not.toBeInTheDocument();
+    });
+
+    it('hides wizard after skip is clicked', async () => {
+      const user = userEvent.setup();
+      localStorage.removeItem('onboarding_completed');
+      renderDashboard();
+
+      expect(screen.getByTestId('welcome-wizard')).toBeInTheDocument();
+      await user.click(screen.getByTestId('wizard-skip'));
+      expect(screen.queryByTestId('welcome-wizard')).not.toBeInTheDocument();
+      expect(localStorage.getItem('onboarding_completed')).toBe('true');
     });
   });
 });

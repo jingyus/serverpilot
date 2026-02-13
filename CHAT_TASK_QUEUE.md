@@ -3,13 +3,13 @@
 > 此队列专注于 Chat 和 AI 对话系统的质量改进
 > AI 自动发现问题 → 生成任务 → 实现 → 验证
 
-**最后更新**: 2026-02-13 09:57:10
+**最后更新**: 2026-02-13 09:57:42
 
 ## 📊 统计
 
 - **总任务数**: 80
-- **待完成** (pending): 9
-- **进行中** (in_progress): 0
+- **待完成** (pending): 8
+- **进行中** (in_progress): 1
 - **已完成** (completed): 71
 - **失败** (failed): 0
 
@@ -166,7 +166,7 @@
 
 ---
 
-### [pending] buildHistoryWithLimit 截断无通知 — AI 不知道早期上下文被移除导致幻觉
+### [in_progress] buildHistoryWithLimit 截断无通知 — AI 不知道早期上下文被移除导致幻觉
 
 **ID**: chat-072
 **优先级**: P1

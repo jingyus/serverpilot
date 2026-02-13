@@ -556,5 +556,23 @@
     "system": "跟随系统",
     "title": "主题",
     "description": "选择界面外观"
+  },
+  "onboarding": {
+    "title": "欢迎使用 ServerPilot",
+    "subtitle": "只需 3 步即可快速上手。",
+    "skip": "跳过",
+    "next": "下一步",
+    "finish": "开始使用",
+    "stepOf": "第 {{current}} 步，共 {{total}} 步",
+    "goToStep": "前往第 {{step}} 步",
+    "step1Title": "配置 AI 提供商",
+    "step1Desc": "设置您偏好的 AI 提供商（Claude、OpenAI 等），为智能服务器管理提供动力。",
+    "step1Action": "前往设置",
+    "step2Title": "添加第一台服务器",
+    "step2Desc": "连接服务器，开始使用 AI 驱动的自动化和监控功能。",
+    "step2Action": "添加服务器",
+    "step3Title": "开始对话",
+    "step3Desc": "与 AI 助手对话，安装软件、配置服务或排查问题。",
+    "step3Action": "开始聊天"
   }
 }

@@ -37,7 +37,17 @@ const logger = createContextLogger({ module: 'skill-runner' });
  * Each tool type has a dedicated method handling security checks,
  * audit logging, agent communication, and error handling.
  */
+/** Side-effect tool names that must be blocked in dry-run mode. */
+const SIDE_EFFECT_TOOLS = new Set(['shell', 'read_file', 'write_file', 'notify', 'http', 'store']);
+
 export class SkillToolExecutor {
+  private dryRun = false;
+
+  /** Enable dry-run mode — all side-effect tools return a preview message instead of executing. */
+  setDryRun(enabled: boolean): void {
+    this.dryRun = enabled;
+  }
+
   /**
    * Dispatch a tool call to the appropriate executor method.
    *
@@ -54,6 +64,15 @@ export class SkillToolExecutor {
     skillName: string,
     runAs?: string,
   ): Promise<{ result: string; success: boolean }> {
+    // Defense-in-depth: block all side-effect tools in dry-run mode
+    if (this.dryRun && SIDE_EFFECT_TOOLS.has(toolCall.name)) {
+      const inputSummary = JSON.stringify(toolCall.input);
+      return {
+        result: `[DRY RUN] Would execute: ${toolCall.name}(${inputSummary})`,
+        success: true,
+      };
+    }
+
     const input = toolCall.input;
 
     switch (toolCall.name) {

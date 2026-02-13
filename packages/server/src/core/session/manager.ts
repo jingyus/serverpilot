@@ -430,6 +430,17 @@ export class SessionManager {
       usedTokens += msgTokens;
     }
 
+    if (selected.length < eligible.length) {
+      const removed = eligible.length - selected.length;
+      selected.unshift({
+        role: 'user',
+        content:
+          `[System: Earlier conversation context was truncated. ` +
+          `${removed} messages removed. ` +
+          `If you need information from earlier steps, re-read the relevant files.]`,
+      });
+    }
+
     return selected;
   }
 

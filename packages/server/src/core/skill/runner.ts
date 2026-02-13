@@ -46,6 +46,17 @@ Rules:
 - Never execute destructive commands unless the skill explicitly requires it.
 - Provide clear, structured output summarizing your actions.`;
 
+const DRY_RUN_PROMPT_SUFFIX = `
+
+IMPORTANT — DRY RUN MODE:
+This is a dry-run preview. Do NOT call any tools. Instead, output a numbered list of the commands and actions you would execute, including:
+- The exact shell commands you would run
+- Any files you would read or write (with paths)
+- Any notifications you would send
+- Any HTTP requests you would make
+Format each planned step as: "Step N: [tool_name] — description"
+Do NOT use any tools. Only describe what you would do.`;
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -83,6 +94,8 @@ export interface RunnerParams {
   config?: Record<string, unknown>;
   /** External abort signal for cancellation support. */
   signal?: AbortSignal;
+  /** When true, AI outputs planned commands without executing side-effect tools. */
+  dryRun?: boolean;
 }
 
 // Re-export for convenience
@@ -119,13 +132,15 @@ export class SkillRunner {
       manifest, resolvedPrompt, skillId, serverId, userId, executionId,
     } = params;
     const constraints = manifest.constraints;
+    const dryRun = params.dryRun ?? false;
+    this.toolExecutor.setDryRun(dryRun);
 
     const startTime = Date.now();
     const timeoutMs = parseTimeout(constraints.timeout);
     const maxSteps = constraints.max_steps;
     const riskLevelMax = constraints.risk_level_max;
     const runAs = constraints.run_as;
-    const tools = buildToolDefinitions(manifest.tools);
+    const tools = dryRun ? [] : buildToolDefinitions(manifest.tools);
 
     const bus = getSkillEventBus();
     const toolResults: ToolCallRecord[] = [];
@@ -159,9 +174,13 @@ export class SkillRunner {
     try {
       // Build initial messages
       const outputInstructions = buildOutputInstructions(manifest.outputs ?? []);
-      const systemPrompt = `${SYSTEM_PROMPT_PREFIX}${outputInstructions}\n\n--- Skill Prompt ---\n${resolvedPrompt}`;
+      const dryRunSuffix = dryRun ? DRY_RUN_PROMPT_SUFFIX : '';
+      const systemPrompt = `${SYSTEM_PROMPT_PREFIX}${outputInstructions}${dryRunSuffix}\n\n--- Skill Prompt ---\n${resolvedPrompt}`;
+      const userMessage = dryRun
+        ? 'This is a dry-run preview. List all commands and actions you would execute, but do NOT call any tools.'
+        : 'Execute the skill as described above. Use the provided tools to complete the task.';
       const messages: ChatMessage[] = [
-        { role: 'user', content: 'Execute the skill as described above. Use the provided tools to complete the task.' },
+        { role: 'user', content: userMessage },
       ];
 
       // Agentic loop

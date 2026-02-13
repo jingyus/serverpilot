@@ -390,8 +390,9 @@ export class SkillEngine {
     skill: InstalledSkill,
     manifest: SkillManifest,
   ): Promise<SkillExecutionResult> {
-    const { skillId, serverId, userId, triggerType, chainContext } = params;
+    const { skillId, serverId, userId, triggerType, chainContext, dryRun } = params;
     const startTime = Date.now();
+    const effectiveTriggerType = dryRun ? 'dry-run' as const : triggerType;
 
     // Check skill requirements against server profile
     const reqCheck = await this.checkSkillRequirements(manifest, serverId, userId);
@@ -407,8 +408,9 @@ export class SkillEngine {
       );
     }
 
-    // Check if confirmation is required for auto-triggered skills
+    // Check if confirmation is required for auto-triggered skills (never for dry-run)
     const needsConfirmation =
+      !dryRun &&
       manifest.constraints?.requires_confirmation === true &&
       triggerType !== 'manual';
 
@@ -421,7 +423,7 @@ export class SkillEngine {
       skillId,
       serverId,
       userId,
-      triggerType,
+      triggerType: effectiveTriggerType,
     });
 
     // Build chain context for downstream triggers
@@ -463,6 +465,7 @@ export class SkillEngine {
         executionId: execution.id,
         config: mergedConfig,
         signal: abortController.signal,
+        dryRun,
       });
 
       const duration = Date.now() - startTime;
@@ -500,16 +503,19 @@ export class SkillEngine {
         errors: runResult.errors,
       };
 
-      this.emitTriggerEvent(
-        status === 'success' ? 'skill.completed' : 'skill.failed',
-        { serverId, skillId, skillName: skill.name, executionId: execution.id, chainContext: nextChain },
-      );
+      // Skip trigger events and webhooks for dry-run — it's just a preview
+      if (!dryRun) {
+        this.emitTriggerEvent(
+          status === 'success' ? 'skill.completed' : 'skill.failed',
+          { serverId, skillId, skillName: skill.name, executionId: execution.id, chainContext: nextChain },
+        );
 
-      this.dispatchWebhookEvent(
-        status === 'success' ? 'skill.completed' : 'skill.failed',
-        userId,
-        { serverId, skillId, skillName: skill.name, executionId: execution.id, status, duration },
-      );
+        this.dispatchWebhookEvent(
+          status === 'success' ? 'skill.completed' : 'skill.failed',
+          userId,
+          { serverId, skillId, skillName: skill.name, executionId: execution.id, status, duration },
+        );
+      }
 
       return execResult;
     } catch (err) {
@@ -519,14 +525,16 @@ export class SkillEngine {
       await this.repo.completeExecution(execution.id, 'failed', { error: errorMessage }, 0, duration);
       logger.error({ executionId: execution.id, skillId, error: errorMessage }, 'Skill execution failed');
 
-      this.emitTriggerEvent('skill.failed', {
-        serverId, skillId, skillName: skill.name, executionId: execution.id, chainContext: nextChain,
-      });
+      if (!dryRun) {
+        this.emitTriggerEvent('skill.failed', {
+          serverId, skillId, skillName: skill.name, executionId: execution.id, chainContext: nextChain,
+        });
 
-      this.dispatchWebhookEvent('skill.failed', userId, {
-        serverId, skillId, skillName: skill.name, executionId: execution.id,
-        status: 'failed', duration, error: errorMessage,
-      });
+        this.dispatchWebhookEvent('skill.failed', userId, {
+          serverId, skillId, skillName: skill.name, executionId: execution.id,
+          status: 'failed', duration, error: errorMessage,
+        });
+      }
 
       return {
         executionId: execution.id, status: 'failed', stepsExecuted: 0,

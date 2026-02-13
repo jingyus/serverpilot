@@ -133,6 +133,8 @@ export interface SkillRunParams {
   config?: Record<string, unknown>;
   /** Chain context for cycle detection in chained skill triggers. */
   chainContext?: ChainContext;
+  /** When true, AI outputs planned commands without executing side-effect tools. */
+  dryRun?: boolean;
 }
 
 /** Tracks the execution chain for skill.completed event-driven triggers. */

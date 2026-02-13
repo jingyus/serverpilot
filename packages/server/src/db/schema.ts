@@ -928,7 +928,7 @@ export const installedSkills = sqliteTable(
 // Skill Executions (execution history log)
 // ============================================================================
 
-export type SkillTriggerType = 'manual' | 'cron' | 'event' | 'threshold';
+export type SkillTriggerType = 'manual' | 'cron' | 'event' | 'threshold' | 'dry-run';
 export type SkillExecutionStatus = 'pending_confirmation' | 'running' | 'success' | 'failed' | 'timeout' | 'cancelled';
 
 export const skillExecutions = sqliteTable(
@@ -945,7 +945,7 @@ export const skillExecutions = sqliteTable(
       .references(() => users.id, { onDelete: 'cascade' })
       .notNull(),
     triggerType: text('trigger_type', {
-      enum: ['manual', 'cron', 'event', 'threshold'],
+      enum: ['manual', 'cron', 'event', 'threshold', 'dry-run'],
     }).notNull(),
     status: text('status', {
       enum: ['pending_confirmation', 'running', 'success', 'failed', 'timeout', 'cancelled'],

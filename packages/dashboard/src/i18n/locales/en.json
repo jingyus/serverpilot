@@ -556,5 +556,23 @@
     "system": "System",
     "title": "Theme",
     "description": "Choose your preferred appearance"
+  },
+  "onboarding": {
+    "title": "Welcome to ServerPilot",
+    "subtitle": "Let's get you started in 3 quick steps.",
+    "skip": "Skip",
+    "next": "Next",
+    "finish": "Get Started",
+    "stepOf": "Step {{current}} of {{total}}",
+    "goToStep": "Go to step {{step}}",
+    "step1Title": "Configure AI Provider",
+    "step1Desc": "Set up your preferred AI provider (Claude, OpenAI, or others) to power intelligent server management.",
+    "step1Action": "Go to Settings",
+    "step2Title": "Add Your First Server",
+    "step2Desc": "Connect a server to start managing it with AI-powered automation and monitoring.",
+    "step2Action": "Add Server",
+    "step3Title": "Start a Conversation",
+    "step3Desc": "Chat with the AI assistant to install software, configure services, or troubleshoot issues.",
+    "step3Action": "Start Chat"
   }
 }

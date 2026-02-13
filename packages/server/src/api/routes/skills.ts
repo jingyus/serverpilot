@@ -230,6 +230,7 @@ skillsRoute.post('/:id/execute', requirePermission('skill:execute'), validateBod
       userId,
       triggerType: 'manual',
       config: body.config,
+      dryRun: body.dryRun,
     });
     return c.json({ execution: result });
   } catch (err) {

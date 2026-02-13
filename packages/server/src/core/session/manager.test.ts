@@ -534,12 +534,15 @@ describe('buildHistoryWithLimit', () => {
 
     // Very small budget forces truncation
     const result = mgr.buildHistoryWithLimit(session.id, 200);
-    // Should have fewer messages than original
+    // Should have fewer messages than original (+ 1 for truncation notice)
     expect(result.length).toBeLessThan(20);
     expect(result.length).toBeGreaterThan(0);
     // Most recent messages should be kept
     const lastMsg = result[result.length - 1];
     expect(lastMsg.content).toContain('Msg-19');
+    // First message should be truncation notice
+    expect(result[0].role).toBe('user');
+    expect(result[0].content).toContain('[System: Earlier conversation context was truncated');
   });
 
   it('should return empty array when only one message exists', async () => {
@@ -548,6 +551,54 @@ describe('buildHistoryWithLimit', () => {
 
     const result = mgr.buildHistoryWithLimit(session.id);
     expect(result).toEqual([]);
+  });
+
+  it('should not insert truncation notice when all messages fit', async () => {
+    const session = await mgr.getOrCreate(SERVER_ID, USER_ID);
+    await mgr.addMessage(session.id, USER_ID, 'user', 'Q1');
+    await mgr.addMessage(session.id, USER_ID, 'assistant', 'A1');
+    await mgr.addMessage(session.id, USER_ID, 'user', 'Q2');
+
+    const result = mgr.buildHistoryWithLimit(session.id, 40000);
+    expect(result).toHaveLength(2); // Q1, A1 (Q2 excluded as latest)
+    expect(result[0].content).toBe('Q1');
+    expect(result[0].content).not.toContain('[System:');
+  });
+
+  it('should include removed message count in truncation notice', async () => {
+    const session = await mgr.getOrCreate(SERVER_ID, USER_ID);
+    for (let i = 0; i < 10; i++) {
+      const role = i % 2 === 0 ? 'user' : 'assistant';
+      await mgr.addMessage(session.id, USER_ID, role as 'user' | 'assistant', `Msg-${i}: ${'y'.repeat(300)}`);
+    }
+    await mgr.addMessage(session.id, USER_ID, 'user', 'Latest');
+
+    // Budget that fits only ~2-3 messages
+    const result = mgr.buildHistoryWithLimit(session.id, 300);
+    const notice = result[0];
+    expect(notice.role).toBe('user');
+    expect(notice.content).toContain('[System: Earlier conversation context was truncated');
+    expect(notice.content).toMatch(/\d+ messages removed/);
+    expect(notice.content).toContain('re-read the relevant files');
+  });
+
+  it('should prepend truncation notice as first element before kept messages', async () => {
+    const session = await mgr.getOrCreate(SERVER_ID, USER_ID);
+    // 6 messages: Q0, A0, Q1, A1, Q2, A2 + Q3 (latest, excluded)
+    for (let i = 0; i < 6; i++) {
+      const role = i % 2 === 0 ? 'user' : 'assistant';
+      await mgr.addMessage(session.id, USER_ID, role as 'user' | 'assistant', `Msg-${i}: ${'z'.repeat(200)}`);
+    }
+    await mgr.addMessage(session.id, USER_ID, 'user', 'Latest');
+
+    // Budget that fits ~2 content messages (not all 6)
+    const result = mgr.buildHistoryWithLimit(session.id, 200);
+    // First element is the notice
+    expect(result[0].content).toContain('[System:');
+    // Remaining elements are actual conversation messages (most recent)
+    const contentMessages = result.slice(1);
+    expect(contentMessages.length).toBeGreaterThan(0);
+    expect(contentMessages.every((m) => !m.content.includes('[System:'))).toBe(true);
   });
 });
 

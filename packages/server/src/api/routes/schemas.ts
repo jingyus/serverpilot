@@ -488,6 +488,8 @@ export type UpdateSkillStatusBody = z.infer<typeof UpdateSkillStatusBodySchema>;
 export const ExecuteSkillBodySchema = z.object({
   serverId: z.string().min(1, 'Server ID is required'),
   config: z.record(z.string(), z.unknown()).optional(),
+  /** When true, AI outputs planned commands without executing side-effect tools. */
+  dryRun: z.boolean().optional(),
 });
 export type ExecuteSkillBody = z.infer<typeof ExecuteSkillBodySchema>;
 
