@@ -57,6 +57,7 @@ vi.mock('../../core/skill/skill-event-bus.js', () => ({
 
 const mockSkillRepo = {
   getStats: vi.fn(),
+  getLogs: vi.fn().mockResolvedValue([]),
 };
 
 vi.mock('../../db/repositories/skill-repository.js', () => ({

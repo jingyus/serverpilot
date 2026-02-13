@@ -537,5 +537,16 @@ export function createTables(db?: DrizzleDB): void {
     );
     CREATE UNIQUE INDEX IF NOT EXISTS skill_store_skill_key_idx ON skill_store(skill_id, key);
     CREATE INDEX IF NOT EXISTS skill_store_skill_id_idx ON skill_store(skill_id);
+
+    CREATE TABLE IF NOT EXISTS skill_execution_logs (
+      id TEXT PRIMARY KEY,
+      execution_id TEXT NOT NULL REFERENCES skill_executions(id) ON DELETE CASCADE,
+      event_type TEXT NOT NULL CHECK(event_type IN ('step', 'log', 'error', 'completed', 'confirmation_required')),
+      data TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS skill_execution_logs_execution_id_idx ON skill_execution_logs(execution_id);
+    CREATE INDEX IF NOT EXISTS skill_execution_logs_event_type_idx ON skill_execution_logs(event_type);
+    CREATE INDEX IF NOT EXISTS skill_execution_logs_created_at_idx ON skill_execution_logs(created_at);
   `);
 }

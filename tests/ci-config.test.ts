@@ -269,9 +269,9 @@ describe('GitHub Actions CI 配置', () => {
       expect(smoke['timeout-minutes']).toBeDefined();
     });
 
-    it('docker-smoke job 使用 docker compose', () => {
+    it('docker-smoke job 使用 docker compose with build override', () => {
       content = readFileSync(ciYmlPath, 'utf-8');
-      expect(content).toContain('docker compose up');
+      expect(content).toContain('docker compose -f docker-compose.yml -f docker-compose.build.yml up');
       expect(content).toContain('docker compose down');
     });
 
@@ -372,8 +372,10 @@ describe('GitHub Actions CI 配置', () => {
         const push = on.push as Record<string, unknown>;
         const paths = push.paths as string[];
         expect(paths).toContain('packages/server/**');
+        expect(paths).toContain('packages/agent/**');
         expect(paths).toContain('packages/dashboard/**');
         expect(paths).toContain('packages/server/Dockerfile');
+        expect(paths).toContain('packages/agent/Dockerfile');
         expect(paths).toContain('packages/dashboard/Dockerfile');
       });
     });
@@ -451,6 +453,32 @@ describe('GitHub Actions CI 配置', () => {
       });
     });
 
+    describe('Agent 镜像构建 Job', () => {
+      it('包含 build-agent job', () => {
+        content = readFileSync(dockerPublishYmlPath, 'utf-8');
+        config = parseYaml(content);
+        const jobs = config.jobs as Record<string, unknown>;
+        expect(jobs['build-agent']).toBeDefined();
+      });
+
+      it('依赖 test job', () => {
+        content = readFileSync(dockerPublishYmlPath, 'utf-8');
+        config = parseYaml(content);
+        const jobs = config.jobs as Record<string, unknown>;
+        const job = jobs['build-agent'] as Record<string, unknown>;
+        expect(job.needs).toBe('test');
+      });
+
+      it('有 packages:write 权限', () => {
+        content = readFileSync(dockerPublishYmlPath, 'utf-8');
+        config = parseYaml(content);
+        const jobs = config.jobs as Record<string, unknown>;
+        const job = jobs['build-agent'] as Record<string, unknown>;
+        const perms = job.permissions as Record<string, unknown>;
+        expect(perms.packages).toBe('write');
+      });
+    });
+
     describe('Dashboard 镜像构建 Job', () => {
       it('包含 build-dashboard job', () => {
         content = readFileSync(dockerPublishYmlPath, 'utf-8');
@@ -502,7 +530,9 @@ describe('GitHub Actions CI 配置', () => {
         config = parseYaml(content);
         const env = config.env as Record<string, string>;
         expect(env.GHCR_SERVER_IMAGE).toContain('ghcr.io');
+        expect(env.GHCR_AGENT_IMAGE).toContain('ghcr.io');
         expect(env.DOCKERHUB_SERVER_IMAGE).toBe('serverpilot/server');
+        expect(env.DOCKERHUB_AGENT_IMAGE).toBe('serverpilot/agent');
         expect(env.DOCKERHUB_DASHBOARD_IMAGE).toBe('serverpilot/dashboard');
       });
     });

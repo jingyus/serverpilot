@@ -12,7 +12,7 @@ import { randomUUID } from 'node:crypto';
 import { eq, and, desc, lt, not, inArray, count as drizzleCount } from 'drizzle-orm';
 
 import { getDatabase } from '../connection.js';
-import { installedSkills, skillExecutions, skillStore } from '../schema.js';
+import { installedSkills, skillExecutions, skillStore, skillExecutionLogs } from '../schema.js';
 
 import type { DrizzleDB } from '../connection.js';
 import type {
@@ -20,10 +20,12 @@ import type {
   SkillStatus,
   SkillTriggerType,
   SkillExecutionStatus,
+  SkillLogEventType,
 } from '../schema.js';
 import type {
   InstalledSkill,
   SkillExecution,
+  SkillExecutionLog,
   SkillStats,
 } from '../../core/skill/types.js';
 
@@ -91,6 +93,11 @@ export interface SkillRepository {
   countExecutions(skillId?: string): Promise<number>;
 
   getStats(userId: string, from?: Date, to?: Date): Promise<SkillStats>;
+
+  /** Append a log entry for a skill execution. */
+  appendLog(executionId: string, eventType: SkillLogEventType, data: Record<string, unknown>): Promise<void>;
+  /** Get all log entries for a skill execution, ordered by creation time. */
+  getLogs(executionId: string): Promise<SkillExecutionLog[]>;
 }
 
 // ============================================================================
@@ -341,6 +348,30 @@ export class DrizzleSkillRepository implements SkillRepository {
     return computeStats(rows, skillNameMap);
   }
 
+  async appendLog(
+    executionId: string,
+    eventType: SkillLogEventType,
+    data: Record<string, unknown>,
+  ): Promise<void> {
+    this.db.insert(skillExecutionLogs).values({
+      id: randomUUID(),
+      executionId,
+      eventType,
+      data,
+      createdAt: new Date(),
+    }).run();
+  }
+
+  async getLogs(executionId: string): Promise<SkillExecutionLog[]> {
+    const rows = this.db
+      .select()
+      .from(skillExecutionLogs)
+      .where(eq(skillExecutionLogs.executionId, executionId))
+      .orderBy(skillExecutionLogs.createdAt)
+      .all();
+    return rows.map((r) => this.toExecutionLog(r));
+  }
+
   // --------------------------------------------------------------------------
   // Private helpers
   // --------------------------------------------------------------------------
@@ -378,6 +409,16 @@ export class DrizzleSkillRepository implements SkillRepository {
       duration: row.duration,
     };
   }
+
+  private toExecutionLog(row: typeof skillExecutionLogs.$inferSelect): SkillExecutionLog {
+    return {
+      id: row.id,
+      executionId: row.executionId,
+      eventType: row.eventType as SkillLogEventType,
+      data: row.data as Record<string, unknown>,
+      createdAt: row.createdAt!.toISOString(),
+    };
+  }
 }
 
 // ============================================================================
@@ -387,6 +428,7 @@ export class DrizzleSkillRepository implements SkillRepository {
 export class InMemorySkillRepository implements SkillRepository {
   private skills: InstalledSkill[] = [];
   private executions: SkillExecution[] = [];
+  private logs: SkillExecutionLog[] = [];
 
   async findAll(userId: string): Promise<InstalledSkill[]> {
     return this.skills
@@ -459,8 +501,10 @@ export class InMemorySkillRepository implements SkillRepository {
   }
 
   async uninstall(id: string): Promise<void> {
+    const executionIds = new Set(this.executions.filter((e) => e.skillId === id).map((e) => e.id));
     this.skills = this.skills.filter((s) => s.id !== id);
     this.executions = this.executions.filter((e) => e.skillId !== id);
+    this.logs = this.logs.filter((l) => !executionIds.has(l.executionId));
   }
 
   async createExecution(input: CreateExecutionInput): Promise<SkillExecution> {
@@ -533,10 +577,14 @@ export class InMemorySkillRepository implements SkillRepository {
   async deleteExecutionsBefore(cutoff: Date): Promise<number> {
     const cutoffStr = cutoff.toISOString();
     const terminalStatuses = new Set(['success', 'failed', 'timeout', 'cancelled']);
-    const before = this.executions.length;
-    this.executions = this.executions.filter(
-      (e) => !(e.startedAt < cutoffStr && terminalStatuses.has(e.status)),
+    const deletedIds = new Set(
+      this.executions
+        .filter((e) => e.startedAt < cutoffStr && terminalStatuses.has(e.status))
+        .map((e) => e.id),
     );
+    const before = this.executions.length;
+    this.executions = this.executions.filter((e) => !deletedIds.has(e.id));
+    this.logs = this.logs.filter((l) => !deletedIds.has(l.executionId));
     return before - this.executions.length;
   }
 
@@ -570,6 +618,26 @@ export class InMemorySkillRepository implements SkillRepository {
       }));
 
     return computeStats(rows, skillNameMap);
+  }
+
+  async appendLog(
+    executionId: string,
+    eventType: SkillLogEventType,
+    data: Record<string, unknown>,
+  ): Promise<void> {
+    this.logs.push({
+      id: randomUUID(),
+      executionId,
+      eventType,
+      data,
+      createdAt: new Date().toISOString(),
+    });
+  }
+
+  async getLogs(executionId: string): Promise<SkillExecutionLog[]> {
+    return this.logs
+      .filter((l) => l.executionId === executionId)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   }
 }
 

@@ -270,13 +270,15 @@ skillsRoute.get('/:id/executions', requirePermission('skill:view'), validateQuer
 skillsRoute.get('/:id/executions/:eid', requirePermission('skill:view'), async (c) => {
   const executionId = c.req.param('eid');
   const engine = getSkillEngine();
+  const repo = getSkillRepository();
 
   const execution = await engine.getExecution(executionId);
   if (!execution) {
     throw ApiError.notFound('Execution');
   }
 
-  return c.json({ execution });
+  const logs = await repo.getLogs(executionId);
+  return c.json({ execution, logs });
 });
 
 // ============================================================================

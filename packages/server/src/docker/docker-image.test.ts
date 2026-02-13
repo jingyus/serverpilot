@@ -30,6 +30,7 @@ function fileExists(relativePath: string): boolean {
 
 let dockerfile: string;
 let compose: string;
+let buildOverride: string;
 let dockerignore: string;
 let envExample: string;
 let rootPkg: Record<string, unknown>;
@@ -39,6 +40,7 @@ let sharedPkg: Record<string, unknown>;
 beforeAll(() => {
   dockerfile = readFile('packages/server/Dockerfile');
   compose = readFile('docker-compose.yml');
+  buildOverride = readFile('docker-compose.build.yml');
   dockerignore = readFile('.dockerignore');
   envExample = readFile('.env.example');
   rootPkg = JSON.parse(readFile('package.json'));
@@ -51,9 +53,13 @@ beforeAll(() => {
 // ============================================================================
 
 describe('Dockerfile ↔ docker-compose.yml consistency', () => {
-  it('compose build.dockerfile should match Dockerfile location', () => {
-    expect(compose).toContain('dockerfile: packages/server/Dockerfile');
+  it('build override dockerfile should match Dockerfile location', () => {
+    expect(buildOverride).toContain('dockerfile: packages/server/Dockerfile');
     expect(fileExists('packages/server/Dockerfile')).toBe(true);
+  });
+
+  it('compose should use pre-built image (no build section)', () => {
+    expect(compose).toContain('image: serverpilot/server:latest');
   });
 
   it('exposed port in Dockerfile should match compose port mapping', () => {

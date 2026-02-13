@@ -48,6 +48,8 @@ import { getWebhookDispatcher } from './core/webhook/dispatcher.js';
 import { getServerRepository } from './db/repositories/server-repository.js';
 import { getServerStatusBus } from './core/server-status-bus.js';
 import { getSkillEngine } from './core/skill/engine.js';
+import { getSkillEventBus } from './core/skill/skill-event-bus.js';
+import { getSkillRepository } from './db/repositories/skill-repository.js';
 import { getTriggerManager } from './core/skill/trigger-manager.js';
 import { shutdownExecutionTracking, startExecutionSweep } from './api/routes/chat-execution.js';
 
@@ -322,6 +324,11 @@ export function createServer(serverConfig: ServerConfig): InstallServer {
 
   // Initialize the skill engine (lazy singleton — first call sets projectRoot)
   getSkillEngine(process.cwd());
+
+  // Wire up execution log persistence: events → DB (fire-and-forget)
+  getSkillEventBus().setPersistFn((executionId, eventType, data) =>
+    getSkillRepository().appendLog(executionId, eventType, data),
+  );
 
   // Initialize services that depend on the server instance
   // Note: TaskExecutor must be initialized before TaskScheduler

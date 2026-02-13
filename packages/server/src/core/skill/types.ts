@@ -16,6 +16,7 @@ import type {
   SkillStatus,
   SkillTriggerType,
   SkillExecutionStatus,
+  SkillLogEventType,
 } from '../../db/schema.js';
 
 // ============================================================================
@@ -64,6 +65,15 @@ export interface SkillExecution {
   result: Record<string, unknown> | null;
   stepsExecuted: number;
   duration: number | null;
+}
+
+/** Persisted execution log entry (mirrors DB schema). */
+export interface SkillExecutionLog {
+  id: string;
+  executionId: string;
+  eventType: SkillLogEventType;
+  data: Record<string, unknown>;
+  createdAt: string;
 }
 
 /** Result returned from SkillEngine.execute() for a single server. */

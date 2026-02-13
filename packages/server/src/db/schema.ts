@@ -968,6 +968,32 @@ export const skillExecutions = sqliteTable(
 );
 
 // ============================================================================
+// Skill Execution Logs (step-level event persistence)
+// ============================================================================
+
+export type SkillLogEventType = 'step' | 'log' | 'error' | 'completed' | 'confirmation_required';
+
+export const skillExecutionLogs = sqliteTable(
+  'skill_execution_logs',
+  {
+    id: text('id').primaryKey(),
+    executionId: text('execution_id')
+      .references(() => skillExecutions.id, { onDelete: 'cascade' })
+      .notNull(),
+    eventType: text('event_type', {
+      enum: ['step', 'log', 'error', 'completed', 'confirmation_required'],
+    }).notNull(),
+    data: text('data', { mode: 'json' }).$type<Record<string, unknown>>().notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  },
+  (table) => [
+    index('skill_execution_logs_execution_id_idx').on(table.executionId),
+    index('skill_execution_logs_event_type_idx').on(table.eventType),
+    index('skill_execution_logs_created_at_idx').on(table.createdAt),
+  ],
+);
+
+// ============================================================================
 // Skill Store (per-skill key-value persistence)
 // ============================================================================
 

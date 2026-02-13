@@ -278,12 +278,12 @@ build_and_start() {
   fi
 
   echo ""
-  info "Building Docker images..."
-  docker compose -f "${SCRIPT_DIR}/docker-compose.yml" build
+  info "Building Docker images from source..."
+  docker compose -f "${SCRIPT_DIR}/docker-compose.yml" -f "${SCRIPT_DIR}/docker-compose.build.yml" build
 
   echo ""
   info "Starting containers..."
-  docker compose -f "${SCRIPT_DIR}/docker-compose.yml" up -d
+  docker compose -f "${SCRIPT_DIR}/docker-compose.yml" -f "${SCRIPT_DIR}/docker-compose.build.yml" up -d
 
   echo ""
   info "Waiting for services to become healthy..."
@@ -376,7 +376,7 @@ main() {
     print_summary
   else
     echo ""
-    success "Configuration complete! Run 'docker compose up -d' to start."
+    success "Configuration complete! Run 'docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build' to build & start from source."
   fi
 }
 

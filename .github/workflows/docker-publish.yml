@@ -5,10 +5,12 @@ on:
     branches: [master, main]
     paths:
       - 'packages/server/**'
+      - 'packages/agent/**'
       - 'packages/dashboard/**'
       - 'packages/shared/**'
       - 'docker-compose.yml'
       - 'packages/server/Dockerfile'
+      - 'packages/agent/Dockerfile'
       - 'packages/dashboard/Dockerfile'
       - '.github/workflows/docker-publish.yml'
     tags:
@@ -22,8 +24,10 @@ concurrency:
 env:
   GHCR_REGISTRY: ghcr.io
   DOCKERHUB_SERVER_IMAGE: serverpilot/server
+  DOCKERHUB_AGENT_IMAGE: serverpilot/agent
   DOCKERHUB_DASHBOARD_IMAGE: serverpilot/dashboard
   GHCR_SERVER_IMAGE: ghcr.io/${{ github.repository }}/server
+  GHCR_AGENT_IMAGE: ghcr.io/${{ github.repository }}/agent
   GHCR_DASHBOARD_IMAGE: ghcr.io/${{ github.repository }}/dashboard
 
 jobs:
@@ -115,6 +119,65 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=server
           cache-to: type=gha,scope=server,mode=max
+
+  build-agent:
+    name: Build & Push Agent Image
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.GHCR_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract metadata (Agent)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ env.GHCR_AGENT_IMAGE }}
+            ${{ env.DOCKERHUB_AGENT_IMAGE }}
+          tags: |
+            type=sha,prefix=sha-
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Agent image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: packages/agent/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=agent
+          cache-to: type=gha,scope=agent,mode=max
 
   build-dashboard:
     name: Build & Push Dashboard Image

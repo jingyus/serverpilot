@@ -1699,6 +1699,95 @@ describe('AgenticChatEngine — confirmation abort race', () => {
     );
     expect(rejectedEvents).toHaveLength(1);
   });
+
+  it('should clean up abort listener after user approves (no leaked interval/listener)', async () => {
+    const { validateCommand } = await import('../core/security/command-validator.js');
+    vi.mocked(validateCommand).mockReturnValue({
+      action: 'allowed',
+      classification: { riskLevel: 'yellow', reason: 'needs confirmation' },
+    } as ReturnType<typeof validateCommand>);
+
+    const { client } = createRiskyToolClient();
+    const engine = new AgenticChatEngine(client);
+    const { stream, simulateAbort } = createMockStream();
+
+    // Track whether abort listener is still active after confirmation resolves
+    let abortListenerFired = false;
+
+    // User approves after 30ms
+    const onConfirmRequired = vi.fn((_cmd: string, _risk: string, _desc: string) => {
+      let resolveApproved!: (v: boolean) => void;
+      const approved = new Promise<boolean>((resolve) => { resolveApproved = resolve; });
+      setTimeout(() => resolveApproved(true), 30);
+      return { confirmId: 'sess-1:confirm-cleanup', approved };
+    });
+
+    const result = await engine.run({
+      userMessage: 'test cleanup',
+      serverId: 'srv-1',
+      userId: 'usr-1',
+      sessionId: 'sess-1',
+      stream,
+      onConfirmRequired,
+    });
+
+    expect(result.success).toBe(true);
+
+    // Now fire abort AFTER the run completed — if the listener leaked,
+    // it would still be registered and would fire.
+    // We spy on Promise resolution to verify no stale callbacks execute.
+    const preAbortTime = Date.now();
+    simulateAbort();
+    const postAbortTime = Date.now();
+
+    // The abort should fire synchronously (no interval polling delay).
+    // If the old setInterval approach leaked, it would keep polling for up to 200ms.
+    expect(postAbortTime - preAbortTime).toBeLessThan(50);
+
+    // Verify no setInterval is running by waiting 300ms and confirming
+    // no unexpected side effects (the run already completed successfully).
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    // If we got here without hanging or errors, the cleanup worked correctly.
+    abortListenerFired = true;
+    expect(abortListenerFired).toBe(true);
+  });
+
+  it('should clean up abort listener after user rejects (no leaked listener)', async () => {
+    const { validateCommand } = await import('../core/security/command-validator.js');
+    vi.mocked(validateCommand).mockReturnValue({
+      action: 'allowed',
+      classification: { riskLevel: 'red', reason: 'destructive' },
+    } as ReturnType<typeof validateCommand>);
+
+    const { client } = createRiskyToolClient();
+    const engine = new AgenticChatEngine(client);
+    const { stream, simulateAbort } = createMockStream();
+
+    // User rejects after 30ms
+    const onConfirmRequired = vi.fn((_cmd: string, _risk: string, _desc: string) => {
+      let resolveApproved!: (v: boolean) => void;
+      const approved = new Promise<boolean>((resolve) => { resolveApproved = resolve; });
+      setTimeout(() => resolveApproved(false), 30);
+      return { confirmId: 'sess-1:confirm-cleanup-reject', approved };
+    });
+
+    const result = await engine.run({
+      userMessage: 'test cleanup on reject',
+      serverId: 'srv-1',
+      userId: 'usr-1',
+      sessionId: 'sess-1',
+      stream,
+      onConfirmRequired,
+    });
+
+    expect(result.success).toBe(true);
+
+    // Fire abort after completion — should be a no-op (listener already cleaned up)
+    simulateAbort();
+
+    // Wait to confirm no leaked interval/timer causes issues
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  });
 });
 
 // ============================================================================

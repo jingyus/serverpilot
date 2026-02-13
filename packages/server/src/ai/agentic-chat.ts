@@ -470,10 +470,16 @@ export class AgenticChatEngine {
       }, abort);
 
       // Race confirmation against abort to avoid hanging 5min when client disconnects
-      const approved = await Promise.race([
-        confirmation.approved,
-        this.awaitAbort(abort),
-      ]);
+      const abortHandle = this.awaitAbort(abort);
+      let approved: boolean;
+      try {
+        approved = await Promise.race([
+          confirmation.approved,
+          abortHandle.promise,
+        ]);
+      } finally {
+        abortHandle.unsubscribe();
+      }
 
       if (!approved) {
         const msg = `用户拒绝执行: ${command}`;
@@ -603,24 +609,19 @@ export class AgenticChatEngine {
   }
 
   /**
-   * Returns a Promise that resolves to `false` once abort.aborted becomes true.
-   * If already aborted, resolves immediately. Otherwise polls every 200ms.
-   * Used with Promise.race to unblock confirmation waits on client disconnect.
+   * Returns a Promise that resolves to `false` once abort.aborted becomes true,
+   * plus an `unsubscribe` function to clean up the listener when no longer needed.
+   * Uses event-based AbortState.onAbort() — no polling, no leaked intervals.
    */
-  private awaitAbort(abort: AbortState): Promise<false> {
-    if (abort.aborted) return Promise.resolve(false as const);
-    return new Promise<false>((resolve) => {
-      const interval = setInterval(() => {
-        if (abort.aborted) {
-          clearInterval(interval);
-          resolve(false as const);
-        }
-      }, 200);
-      // Ensure the interval doesn't keep the process alive
-      if (typeof interval === 'object' && 'unref' in interval) {
-        interval.unref();
-      }
+  private awaitAbort(abort: AbortState): { promise: Promise<false>; unsubscribe: () => void } {
+    if (abort.aborted) {
+      return { promise: Promise.resolve(false as const), unsubscribe: () => {} };
+    }
+    let unsubscribe: () => void = () => {};
+    const promise = new Promise<false>((resolve) => {
+      unsubscribe = abort.onAbort(() => resolve(false as const));
     });
+    return { promise, unsubscribe };
   }
 
   /** Write SSE event; on failure sets abort.aborted immediately. */

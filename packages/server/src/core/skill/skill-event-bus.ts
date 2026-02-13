@@ -12,6 +12,8 @@
 
 import { EventEmitter } from 'node:events';
 
+import type { SkillLogEventType } from '../../db/schema.js';
+
 // ============================================================================
 // Event Types
 // ============================================================================
@@ -74,19 +76,51 @@ export type SkillEvent =
 type SkillEventListener = (event: SkillEvent) => void;
 
 // ============================================================================
+// Log Persistence Hook
+// ============================================================================
+
+/**
+ * Callback type for persisting events to DB.
+ * Called asynchronously after each publish — failures are silently caught
+ * so SSE delivery is never blocked.
+ */
+export type LogPersistFn = (
+  executionId: string,
+  eventType: SkillLogEventType,
+  data: Record<string, unknown>,
+) => Promise<void>;
+
+// ============================================================================
 // SkillEventBus
 // ============================================================================
 
 class SkillEventBus {
   private emitter = new EventEmitter();
+  private persistFn: LogPersistFn | null = null;
 
   constructor() {
     this.emitter.setMaxListeners(200);
   }
 
+  /**
+   * Register an async persistence callback. Called fire-and-forget on every
+   * publish so DB writes never block SSE delivery.
+   */
+  setPersistFn(fn: LogPersistFn | null): void {
+    this.persistFn = fn;
+  }
+
   /** Publish an event for a specific execution. */
   publish(executionId: string, event: SkillEvent): void {
     this.emitter.emit(`skill:${executionId}`, event);
+
+    // Fire-and-forget DB persistence
+    if (this.persistFn) {
+      const { type, ...rest } = event;
+      this.persistFn(executionId, type, rest as Record<string, unknown>).catch(() => {
+        // Silently swallow — DB write failure must never break SSE
+      });
+    }
   }
 
   /** Subscribe to events for a specific execution. Returns unsubscribe fn. */

@@ -1,22 +1,26 @@
 # ==============================================================================
-# ServerPilot - Docker Compose Configuration
+# ServerPilot - Docker Compose Configuration (Pre-built Images)
 # ==============================================================================
 # Usage:
-#   ./init.sh              # First install: guided setup + start
-#   docker compose up -d   # Start in background
+#   docker compose up -d   # Start with pre-built images (fastest)
 #   docker compose logs -f # Follow logs
 #   docker compose down    # Stop and remove containers
+#   docker compose pull    # Pull latest images
+# ==============================================================================
+# Build from source (for development):
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 # ==============================================================================
 # Zero-configuration deployment using SQLite. No database setup required!
 # Dashboard accessible at http://localhost:${DASHBOARD_PORT:-3001}
 # Server API/WebSocket at http://localhost:${SERVER_PORT:-3000}
 # ==============================================================================
-# Pre-built images (skip local build):
-#   docker pull serverpilot/server:latest
-#   docker pull serverpilot/dashboard:latest
-# Or use GHCR:
-#   docker pull ghcr.io/<owner>/serverpilot/server:latest
-#   docker pull ghcr.io/<owner>/serverpilot/dashboard:latest
+# Image sources (Docker Hub):
+#   serverpilot/server:latest
+#   serverpilot/agent:latest
+#   serverpilot/dashboard:latest
+# Or GHCR:
+#   ghcr.io/jingjinbao/serverpilot/server:latest
+#   ghcr.io/jingjinbao/serverpilot/dashboard:latest
 # Pinned versions (recommended for production):
 #   serverpilot/server:0.3.0   serverpilot/dashboard:0.3.0
 # ==============================================================================
@@ -26,9 +30,6 @@ services:
   # ServerPilot Server (REST API + WebSocket + SQLite)
   # ==============================================================================
   server:
-    build:
-      context: .
-      dockerfile: packages/server/Dockerfile
     image: serverpilot/server:latest
     container_name: serverpilot-server
     restart: unless-stopped
@@ -81,9 +82,6 @@ services:
   # ServerPilot Agent (Daemon Mode — co-located server management)
   # ==============================================================================
   agent:
-    build:
-      context: .
-      dockerfile: packages/agent/Dockerfile
     image: serverpilot/agent:latest
     container_name: serverpilot-agent
     restart: unless-stopped
@@ -108,9 +106,6 @@ services:
   # ServerPilot Dashboard (Nginx + Static Frontend)
   # ==============================================================================
   dashboard:
-    build:
-      context: .
-      dockerfile: packages/dashboard/Dockerfile
     image: serverpilot/dashboard:latest
     container_name: serverpilot-dashboard
     restart: unless-stopped

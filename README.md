@@ -74,19 +74,40 @@ ServerPilot: 用户 → 对话 AI → AI 生成计划 → 用户确认 → Agent
 
 ## 快速开始
 
-### 30 秒 Docker 部署
+### 30 秒 Docker 部署（推荐）
+
+使用预构建镜像，无需克隆代码，无需本地编译：
+
+```bash
+# 1. 下载配置文件
+curl -fsSL https://raw.githubusercontent.com/jingjinbao/ServerPilot/master/docker-compose.yml -o docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/jingjinbao/ServerPilot/master/.env.example -o .env
+
+# 2. 编辑 .env 配置（至少设置 JWT_SECRET 和 AI Provider）
+#    JWT_SECRET=your-secret-key-at-least-32-chars
+#    AI_PROVIDER=claude
+#    ANTHROPIC_API_KEY=sk-ant-...
+
+# 3. 拉取镜像并启动
+docker compose pull && docker compose up -d
+
+# 4. 打开浏览器
+#    Dashboard: http://localhost:3001
+#    API 文档:  http://localhost:3001/api-docs
+```
+
+### 从源码构建
 
 ```bash
 # 1. 克隆仓库
 git clone https://github.com/jingjinbao/ServerPilot.git
 cd ServerPilot
 
-# 2. 一键启动（零配置，开箱即用）
-docker compose up -d
+# 2. 从源码构建并启动
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 
 # 3. 打开浏览器
 #    Dashboard: http://localhost:3001
-#    API 文档:  http://localhost:3001/api-docs
 ```
 
 首次启动会自动创建管理员账户（密码在日志中查看）：
@@ -105,6 +126,7 @@ docker compose logs server | grep -i "password"
 
 ```bash
 docker pull serverpilot/server:latest
+docker pull serverpilot/agent:latest
 docker pull serverpilot/dashboard:latest
 ```
 
@@ -279,10 +301,16 @@ pnpm lint && pnpm typecheck && pnpm test
 ### Quick Start
 
 ```bash
-git clone https://github.com/jingjinbao/ServerPilot.git
-cd ServerPilot
-docker compose up -d
+# Pre-built images (fastest — no build needed)
+curl -fsSL https://raw.githubusercontent.com/jingjinbao/ServerPilot/master/docker-compose.yml -o docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/jingjinbao/ServerPilot/master/.env.example -o .env
+# Edit .env, then:
+docker compose pull && docker compose up -d
 # Open http://localhost:3001
+
+# Or build from source:
+git clone https://github.com/jingjinbao/ServerPilot.git && cd ServerPilot
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 ```
 
 ### Documentation

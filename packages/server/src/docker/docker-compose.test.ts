@@ -24,11 +24,14 @@ import { resolve } from 'node:path';
 
 const ROOT_DIR = resolve(__dirname, '..', '..', '..', '..');
 const COMPOSE_PATH = resolve(ROOT_DIR, 'docker-compose.yml');
+const BUILD_OVERRIDE_PATH = resolve(ROOT_DIR, 'docker-compose.build.yml');
 
 let composeContent: string;
+let buildOverrideContent: string;
 
 beforeAll(() => {
   composeContent = readFileSync(COMPOSE_PATH, 'utf-8');
+  buildOverrideContent = readFileSync(BUILD_OVERRIDE_PATH, 'utf-8');
 });
 
 // ============================================================================
@@ -64,16 +67,31 @@ describe('server service', () => {
 });
 
 // ============================================================================
-// Build configuration
+// Image configuration (pre-built images, no build section)
 // ============================================================================
 
-describe('build configuration', () => {
-  it('should specify build context', () => {
-    expect(composeContent).toMatch(/context:\s*\./);
+describe('image configuration', () => {
+  it('should use pre-built server image (no build section)', () => {
+    expect(composeContent).toMatch(/image:\s*serverpilot\/server:latest/);
+    expect(composeContent).not.toMatch(/^\s+build:/m);
+  });
+});
+
+// ============================================================================
+// Build override configuration (docker-compose.build.yml)
+// ============================================================================
+
+describe('build override configuration', () => {
+  it('should have build override file', () => {
+    expect(existsSync(BUILD_OVERRIDE_PATH)).toBe(true);
   });
 
-  it('should reference the server Dockerfile', () => {
-    expect(composeContent).toMatch(/dockerfile:\s*packages\/server\/Dockerfile/);
+  it('should specify build context in override', () => {
+    expect(buildOverrideContent).toMatch(/context:\s*\./);
+  });
+
+  it('should reference the server Dockerfile in override', () => {
+    expect(buildOverrideContent).toMatch(/dockerfile:\s*packages\/server\/Dockerfile/);
   });
 });
 

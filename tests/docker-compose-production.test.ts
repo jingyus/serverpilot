@@ -362,14 +362,21 @@ describe('Docker Compose Production Deployment', () => {
     });
   });
 
-  describe('Build Configuration', () => {
-    it('should configure server build context', () => {
+  describe('Image Configuration', () => {
+    it('should use pre-built images (no build section)', () => {
       const content = readFileSync(dockerComposePath, 'utf-8');
       const config = parseYaml(content);
 
-      expect(config.services.server.build).toBeDefined();
-      expect(config.services.server.build.context).toBe('.');
-      expect(config.services.server.build.dockerfile).toBe('packages/server/Dockerfile');
+      expect(config.services.server.build).toBeUndefined();
+      expect(config.services.server.image).toBe('serverpilot/server:latest');
+    });
+
+    it('should use pre-built dashboard image', () => {
+      const content = readFileSync(dockerComposePath, 'utf-8');
+      const config = parseYaml(content);
+
+      expect(config.services.dashboard.build).toBeUndefined();
+      expect(config.services.dashboard.image).toBe('serverpilot/dashboard:latest');
     });
 
     it.skip('should use MySQL official image (Legacy MySQL test)', () => {
@@ -377,6 +384,41 @@ describe('Docker Compose Production Deployment', () => {
       const config = parseYaml(content);
 
       expect(config.services.mysql.image).toMatch(/^mysql:8\./);
+    });
+  });
+
+  describe('Build Override File', () => {
+    const buildOverridePath = join(projectRoot, 'docker-compose.build.yml');
+
+    it('should have docker-compose.build.yml file', () => {
+      expect(existsSync(buildOverridePath)).toBe(true);
+    });
+
+    it('should configure server build context in override', () => {
+      const content = readFileSync(buildOverridePath, 'utf-8');
+      const config = parseYaml(content);
+
+      expect(config.services.server.build).toBeDefined();
+      expect(config.services.server.build.context).toBe('.');
+      expect(config.services.server.build.dockerfile).toBe('packages/server/Dockerfile');
+    });
+
+    it('should configure agent build context in override', () => {
+      const content = readFileSync(buildOverridePath, 'utf-8');
+      const config = parseYaml(content);
+
+      expect(config.services.agent.build).toBeDefined();
+      expect(config.services.agent.build.context).toBe('.');
+      expect(config.services.agent.build.dockerfile).toBe('packages/agent/Dockerfile');
+    });
+
+    it('should configure dashboard build context in override', () => {
+      const content = readFileSync(buildOverridePath, 'utf-8');
+      const config = parseYaml(content);
+
+      expect(config.services.dashboard.build).toBeDefined();
+      expect(config.services.dashboard.build.context).toBe('.');
+      expect(config.services.dashboard.build.dockerfile).toBe('packages/dashboard/Dockerfile');
     });
   });
 
@@ -401,8 +443,10 @@ describe('Docker Compose Production Deployment', () => {
     it('should have all required files present', () => {
       const requiredFiles = [
         'docker-compose.yml',
+        'docker-compose.build.yml',
         '.env.example',
         'packages/server/Dockerfile',
+        'packages/agent/Dockerfile',
         'packages/dashboard/Dockerfile',
         'packages/dashboard/nginx.conf',
         '.dockerignore',
