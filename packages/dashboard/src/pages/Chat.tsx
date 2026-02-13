@@ -22,6 +22,7 @@ import { StepConfirmBar } from '@/components/chat/StepConfirmBar';
 import { AgenticConfirmBar } from '@/components/chat/AgenticConfirmBar';
 import { ChatHeader } from '@/components/chat/ChatHeader';
 import { ChatEmptyState } from '@/components/chat/ChatEmptyState';
+import { ChatErrorBoundary } from '@/components/chat/ChatErrorBoundary';
 import { ServerSelector } from '@/components/chat/ServerSelector';
 import { SessionSidebar } from '@/components/chat/SessionSidebar';
 import { useChatStore, stripJsonPlan } from '@/stores/chat';
@@ -280,48 +281,50 @@ export function Chat() {
         <div className="flex flex-1 flex-col overflow-hidden rounded-lg border">
           {/* Messages */}
           <div className="flex-1 overflow-hidden" data-testid="message-list">
-            {messages.length === 0 && !isStreaming ? (
-              <ChatEmptyState serverName={serverName} onSuggestionClick={handleSend} disabled={isStreaming} />
-            ) : (
-              <Virtuoso
-                ref={virtuosoRef}
-                data={messages}
-                initialTopMostItemIndex={Math.max(0, messages.length - 1)}
-                followOutput={followOutput}
-                itemContent={(_index, msg) => (
-                  <ChatMessage
-                    key={msg.id}
-                    message={msg}
-                    failed={msg.id === failedMessageId}
-                    onRetry={handleRetry}
-                    isLastAssistant={msg.id === lastAssistantId}
-                    onRegenerate={handleRegenerate}
-                  />
-                )}
-                components={{
-                  Footer: () => (
-                    <MessageListFooter
-                      isStreaming={isStreaming}
-                      streamingContent={streamingContent}
-                      isAgenticMode={isAgenticMode}
-                      executionMode={executionMode}
-                      currentPlan={currentPlan}
-                      planStatus={planStatus}
-                      execution={execution}
-                      pendingConfirm={pendingConfirm}
-                      agenticConfirm={agenticConfirm}
-                      confirmPlan={confirmPlan}
-                      rejectPlan={rejectPlan}
-                      emergencyStop={emergencyStop}
-                      respondToStep={respondToStep}
-                      respondToAgenticConfirm={respondToAgenticConfirm}
-                      t={t}
+            <ChatErrorBoundary onNewSession={newSession}>
+              {messages.length === 0 && !isStreaming ? (
+                <ChatEmptyState serverName={serverName} onSuggestionClick={handleSend} disabled={isStreaming} />
+              ) : (
+                <Virtuoso
+                  ref={virtuosoRef}
+                  data={messages}
+                  initialTopMostItemIndex={Math.max(0, messages.length - 1)}
+                  followOutput={followOutput}
+                  itemContent={(_index, msg) => (
+                    <ChatMessage
+                      key={msg.id}
+                      message={msg}
+                      failed={msg.id === failedMessageId}
+                      onRetry={handleRetry}
+                      isLastAssistant={msg.id === lastAssistantId}
+                      onRegenerate={handleRegenerate}
                     />
-                  ),
-                }}
-                className="h-full"
-              />
-            )}
+                  )}
+                  components={{
+                    Footer: () => (
+                      <MessageListFooter
+                        isStreaming={isStreaming}
+                        streamingContent={streamingContent}
+                        isAgenticMode={isAgenticMode}
+                        executionMode={executionMode}
+                        currentPlan={currentPlan}
+                        planStatus={planStatus}
+                        execution={execution}
+                        pendingConfirm={pendingConfirm}
+                        agenticConfirm={agenticConfirm}
+                        confirmPlan={confirmPlan}
+                        rejectPlan={rejectPlan}
+                        emergencyStop={emergencyStop}
+                        respondToStep={respondToStep}
+                        respondToAgenticConfirm={respondToAgenticConfirm}
+                        t={t}
+                      />
+                    ),
+                  }}
+                  className="h-full"
+                />
+              )}
+            </ChatErrorBoundary>
           </div>
 
           {/* Input */}

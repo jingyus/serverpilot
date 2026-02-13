@@ -16,6 +16,12 @@ interface AuthResponse {
   user: User;
 }
 
+interface ChangePasswordParams {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}
+
 interface AuthState {
   user: User | null;
   isAuthenticated: boolean;
@@ -23,6 +29,7 @@ interface AuthState {
   error: string | null;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name?: string) => Promise<void>;
+  changePassword: (params: ChangePasswordParams) => Promise<void>;
   logout: () => void;
   clearError: () => void;
   restoreSession: () => void;
@@ -89,6 +96,13 @@ export const useAuthStore = create<AuthState>((set) => ({
       set({ error: message, isLoading: false });
       throw err;
     }
+  },
+
+  changePassword: async (params) => {
+    await apiRequest<{ message: string }>('/auth/password', {
+      method: 'PUT',
+      body: JSON.stringify(params),
+    });
   },
 
   logout: () => {

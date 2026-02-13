@@ -16,6 +16,9 @@ vi.mock('@/components/knowledge/DocSourceSection', () => ({
 vi.mock('@/components/settings/SystemStatus', () => ({
   SystemStatus: () => <div data-testid="system-status-section">SystemStatus</div>,
 }));
+vi.mock('@/components/settings/PasswordChangeSection', () => ({
+  PasswordChangeSection: () => <div data-testid="password-change-section">PasswordChangeSection</div>,
+}));
 
 const mockUseSettingsStore = vi.mocked(useSettingsStore);
 const mockUseAuthStore = vi.mocked(useAuthStore);
@@ -80,6 +83,7 @@ describe('Settings', () => {
       error: null,
       login: vi.fn(),
       register: vi.fn(),
+      changePassword: vi.fn(),
       logout: vi.fn(),
       clearError: vi.fn(),
       restoreSession: vi.fn(),
@@ -107,7 +111,7 @@ describe('Settings', () => {
     expect(screen.getByText('AI Provider')).toBeInTheDocument();
     expect(screen.getByText('User Profile')).toBeInTheDocument();
     expect(screen.getByText('Notifications')).toBeInTheDocument();
-    expect(screen.getByText('Security')).toBeInTheDocument();
+    expect(screen.getByTestId('password-change-section')).toBeInTheDocument();
     expect(screen.getByText('Theme')).toBeInTheDocument();
     expect(screen.getByText('Knowledge Base')).toBeInTheDocument();
     expect(screen.getByTestId('system-status-section')).toBeInTheDocument();

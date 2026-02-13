@@ -2,10 +2,11 @@
 // Copyright (c) 2024-2026 ServerPilot Contributors
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Save, Loader2, AlertCircle, CheckCircle2, Key, User, Bell, Shield, Book, RefreshCw, Globe, Sun, Moon, Monitor } from 'lucide-react';
+import { Save, Loader2, AlertCircle, CheckCircle2, Key, User, Bell, Book, RefreshCw, Globe, Sun, Moon, Monitor } from 'lucide-react';
 import { supportedLanguages, setStoredLanguage } from '@/i18n';
 import { DocSourceSection } from '@/components/knowledge/DocSourceSection';
 import { SystemStatus } from '@/components/settings/SystemStatus';
+import { PasswordChangeSection } from '@/components/settings/PasswordChangeSection';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -528,23 +529,8 @@ export function Settings() {
         </CardContent>
       </Card>
 
-      {/* Security Settings */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Shield className="h-5 w-5 text-muted-foreground" />
-            <CardTitle>{t('settings.security')}</CardTitle>
-          </div>
-          <CardDescription>{t('settings.securityDesc')}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <p className="text-sm text-muted-foreground">
-              {t('settings.securityComingSoon')}
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Security Settings — Password Change */}
+      <PasswordChangeSection />
 
       {/* Language */}
       <Card>

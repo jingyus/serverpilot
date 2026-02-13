@@ -181,7 +181,8 @@ export function generateId(): string {
 }
 
 /** Strip json-plan blocks and any raw JSON plan objects from AI text so users never see them. */
-export function stripJsonPlan(text: string): string {
+export function stripJsonPlan(text: string | null | undefined): string {
+  if (!text) return '';
   let clean = text;
   // Complete ```json-plan ... ``` blocks
   clean = clean.replace(/```json-plan\s*\n[\s\S]*?```/g, '');

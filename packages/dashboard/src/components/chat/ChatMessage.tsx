@@ -51,7 +51,7 @@ export const ChatMessage = memo(function ChatMessage({ message, failed, onRetry,
       <div className="flex justify-center px-2 py-2 sm:px-4" data-testid="chat-message-system">
         <div className={cn('flex items-center gap-2 rounded-lg px-3 py-2 text-xs sm:px-4 sm:text-sm', config.bubble)}>
           <Icon className="h-4 w-4 shrink-0" />
-          <span>{message.content}</span>
+          <span>{message.content ?? ''}</span>
         </div>
       </div>
     );
@@ -82,9 +82,9 @@ export const ChatMessage = memo(function ChatMessage({ message, failed, onRetry,
           failed && 'ring-2 ring-destructive/50',
         )}>
           {isUser ? (
-            <p className="whitespace-pre-wrap break-words">{message.content}</p>
+            <p className="whitespace-pre-wrap break-words">{message.content ?? ''}</p>
           ) : (
-            <MarkdownRenderer content={message.content} />
+            <MarkdownRenderer content={message.content ?? ''} />
           )}
         </div>
         <div className="flex items-center gap-2 px-1">

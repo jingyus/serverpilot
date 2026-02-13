@@ -871,6 +871,71 @@ describe('Chat Page', () => {
     });
   });
 
+  describe('error boundary', () => {
+    it('catches message rendering errors and shows error fallback', () => {
+      // Provide a message whose content will cause the ChatMessage to throw
+      // We override the mock Virtuoso so itemContent throws during render
+      useChatStore.setState({
+        messages: [
+          {
+            id: 'msg-bad',
+            role: 'assistant',
+            content: 'valid content',
+            timestamp: '2025-01-01T00:00:00Z',
+          },
+        ],
+      });
+
+      // Temporarily make ChatMessage throw by providing a message with a getter that throws
+      const badMessage = {
+        id: 'msg-throw',
+        role: 'assistant' as const,
+        get content(): string {
+          throw new Error('Simulated render crash');
+        },
+        timestamp: '2025-01-01T00:00:00Z',
+      };
+
+      useChatStore.setState({
+        messages: [badMessage as unknown as { id: string; role: 'assistant'; content: string; timestamp: string }],
+      });
+
+      renderChat('/chat/srv-1');
+
+      // ErrorBoundary should catch the error and display fallback
+      expect(screen.getByTestId('chat-error-boundary')).toBeInTheDocument();
+      expect(screen.getByText('Chat failed to load')).toBeInTheDocument();
+      expect(screen.getByTestId('chat-error-retry')).toBeInTheDocument();
+      expect(screen.getByTestId('chat-error-new-session')).toBeInTheDocument();
+    });
+
+    it('new session button in error fallback calls newSession', async () => {
+      const user = (await import('@testing-library/user-event')).default.setup();
+      const newSessionFn = vi.fn();
+
+      const badMessage = {
+        id: 'msg-throw',
+        role: 'assistant' as const,
+        get content(): string {
+          throw new Error('Simulated render crash');
+        },
+        timestamp: '2025-01-01T00:00:00Z',
+      };
+
+      useChatStore.setState({
+        messages: [badMessage as unknown as { id: string; role: 'assistant'; content: string; timestamp: string }],
+        newSession: newSessionFn as unknown as () => void,
+        fetchSessions: vi.fn() as unknown as (serverId: string) => Promise<void>,
+      });
+
+      renderChat('/chat/srv-1');
+      expect(screen.getByTestId('chat-error-boundary')).toBeInTheDocument();
+
+      await user.click(screen.getByTestId('chat-error-new-session'));
+      expect(newSessionFn).toHaveBeenCalledOnce();
+    });
+  });
+
   describe('virtual scrolling', () => {
     it('uses Virtuoso to render messages', () => {
       useChatStore.setState({

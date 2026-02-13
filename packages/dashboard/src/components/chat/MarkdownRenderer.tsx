@@ -97,6 +97,8 @@ function CodeBlock({ className, children, ...props }: ComponentPropsWithoutRef<'
 }
 
 export function MarkdownRenderer({ content }: MarkdownRendererProps) {
+  if (!content) return null;
+
   return (
     <div className="markdown-content prose prose-sm dark:prose-invert max-w-none break-words" data-testid="markdown-content">
       <ReactMarkdown

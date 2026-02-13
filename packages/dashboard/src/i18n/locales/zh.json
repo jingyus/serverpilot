@@ -210,7 +210,11 @@
     },
     "export": "导出对话",
     "exportMarkdown": "导出为 Markdown",
-    "exportJson": "导出为 JSON"
+    "exportJson": "导出为 JSON",
+    "error": {
+      "renderFailed": "对话加载出错",
+      "renderFailedDesc": "消息渲染失败，请重试或新建会话。"
+    }
   },
   "search": {
     "title": "知识库",
@@ -286,7 +290,30 @@
     "preferencesSaved": "通知偏好已保存",
     "security": "安全",
     "securityDesc": "密码和会话管理",
-    "securityComingSoon": "密码管理功能即将推出。请使用认证系统修改密码。",
+    "currentPassword": "当前密码",
+    "currentPasswordPlaceholder": "输入当前密码",
+    "newPassword": "新密码",
+    "newPasswordPlaceholder": "输入新密码",
+    "confirmNewPassword": "确认新密码",
+    "confirmNewPasswordPlaceholder": "再次输入新密码",
+    "changePassword": "修改密码",
+    "changingPassword": "修改中...",
+    "passwordChanged": "密码修改成功",
+    "passwordChangeFailed": "密码修改失败",
+    "passwordCurrentRequired": "请输入当前密码",
+    "passwordMinLength": "密码至少需要 8 个字符",
+    "passwordUppercase": "密码必须包含至少一个大写字母",
+    "passwordLowercase": "密码必须包含至少一个小写字母",
+    "passwordDigit": "密码必须包含至少一个数字",
+    "passwordMismatch": "两次输入的新密码不一致",
+    "showPassword": "显示密码",
+    "hidePassword": "隐藏密码",
+    "passwordStrength": {
+      "weak": "弱",
+      "fair": "一般",
+      "good": "良好",
+      "strong": "强"
+    },
     "knowledgeBase": "知识库",
     "knowledgeBaseDesc": "配置自动学习和文档",
     "autoLearning": "自动学习",

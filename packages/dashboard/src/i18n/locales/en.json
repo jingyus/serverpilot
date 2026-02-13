@@ -210,7 +210,11 @@
     },
     "export": "Export chat",
     "exportMarkdown": "Export as Markdown",
-    "exportJson": "Export as JSON"
+    "exportJson": "Export as JSON",
+    "error": {
+      "renderFailed": "Chat failed to load",
+      "renderFailedDesc": "A message could not be rendered. Please try again or start a new session."
+    }
   },
   "search": {
     "title": "Knowledge Base",
@@ -286,7 +290,30 @@
     "preferencesSaved": "Notification preferences saved",
     "security": "Security",
     "securityDesc": "Password and session management",
-    "securityComingSoon": "Password management coming soon. Use the authentication system to change your password.",
+    "currentPassword": "Current Password",
+    "currentPasswordPlaceholder": "Enter your current password",
+    "newPassword": "New Password",
+    "newPasswordPlaceholder": "Enter a new password",
+    "confirmNewPassword": "Confirm New Password",
+    "confirmNewPasswordPlaceholder": "Re-enter the new password",
+    "changePassword": "Change Password",
+    "changingPassword": "Changing...",
+    "passwordChanged": "Password changed successfully",
+    "passwordChangeFailed": "Failed to change password",
+    "passwordCurrentRequired": "Current password is required",
+    "passwordMinLength": "Password must be at least 8 characters",
+    "passwordUppercase": "Password must contain at least one uppercase letter",
+    "passwordLowercase": "Password must contain at least one lowercase letter",
+    "passwordDigit": "Password must contain at least one digit",
+    "passwordMismatch": "New password and confirmation do not match",
+    "showPassword": "Show password",
+    "hidePassword": "Hide password",
+    "passwordStrength": {
+      "weak": "Weak",
+      "fair": "Fair",
+      "good": "Good",
+      "strong": "Strong"
+    },
     "knowledgeBase": "Knowledge Base",
     "knowledgeBaseDesc": "Configure automatic learning and documentation",
     "autoLearning": "Automatic Learning",

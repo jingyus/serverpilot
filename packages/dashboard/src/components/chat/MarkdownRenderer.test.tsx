@@ -152,6 +152,12 @@ describe('MarkdownRenderer', () => {
     vi.useRealTimers();
   });
 
+  it('renders nothing when content is empty string', () => {
+    const { container } = render(<MarkdownRenderer content="" />);
+    expect(container.innerHTML).toBe('');
+    expect(screen.queryByTestId('markdown-content')).not.toBeInTheDocument();
+  });
+
   it('resets copied state after 2 seconds', async () => {
     vi.useFakeTimers();
     const writeText = vi.fn().mockResolvedValue(undefined);
