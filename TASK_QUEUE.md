@@ -7,8 +7,8 @@
 ## 📊 统计信息
 
 - **总任务数**: 106
-- **待完成** (pending): 7
-- **进行中** (in_progress): 0
+- **待完成** (pending): 6
+- **进行中** (in_progress): 1
 - **已完成** (completed): 99
 - **失败** (failed): 0
 
@@ -73,7 +73,7 @@
 
 ---
 
-### [pending] Server 端 AI Provider tool_use 适配 — OpenAI Provider 支持 function calling
+### [in_progress] Server 端 AI Provider tool_use 适配 — OpenAI Provider 支持 function calling
 
 **ID**: task-063
 **优先级**: P0
@@ -2226,4 +2226,4 @@ ID: task-001
 
 ---
 
-**最后更新**: 2026-02-13 12:13:51
+**最后更新**: 2026-02-13 12:14:25
