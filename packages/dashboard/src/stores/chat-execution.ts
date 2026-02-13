@@ -385,8 +385,10 @@ export function buildStreamingCallbacks(set: SetFn, get: GetFn): SSECallbacks {
               ...state.execution,
               outputs: {
                 ...state.execution.outputs,
-                [parsed.stepId]:
-                  (state.execution.outputs[parsed.stepId] ?? '') + parsed.content,
+                [parsed.stepId]: appendOutput(
+                  state.execution.outputs[parsed.stepId] ?? '',
+                  parsed.content,
+                ),
               },
             },
           }));
