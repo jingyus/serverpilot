@@ -21,11 +21,14 @@ export interface RetryQueueOptions {
   retryIntervalMs: number;
   /** Maximum number of retry attempts for queued messages (default: 5) */
   maxRetryAttempts: number;
+  /** Maximum queue size — oldest entries are discarded when exceeded (default: 10,000) */
+  maxQueueSize: number;
 }
 
 export const DEFAULT_RETRY_OPTIONS: RetryQueueOptions = {
   retryIntervalMs: 5 * 1000,    // 5 seconds
   maxRetryAttempts: 5,
+  maxQueueSize: 10_000,
 };
 
 /** Entry in the persistence retry queue */
@@ -49,6 +52,7 @@ export class RetryQueue {
   private repo: SessionRepository;
   private cache: SessionCache;
   private _onPersistenceFailure: PersistenceFailureCallback | null = null;
+  private _queueFullCount = 0;
 
   constructor(
     repo: SessionRepository,
@@ -61,14 +65,28 @@ export class RetryQueue {
     this.startRetryTimer();
   }
 
-  /** Enqueue a failed message for retry. */
+  /** Enqueue a failed message for retry. Discards oldest entries when queue is full. */
   enqueue(sessionId: string, userId: string, message: SessionMessage, attempts = 1): void {
+    if (this.queue.length >= this.options.maxQueueSize) {
+      const dropped = this.queue.shift()!;
+      this._queueFullCount++;
+      logger.warn(
+        { droppedMessageId: dropped.message.id, droppedSessionId: dropped.sessionId, queueSize: this.options.maxQueueSize },
+        'Retry queue full — discarding oldest entry',
+      );
+      this._onPersistenceFailure?.(dropped.sessionId, dropped.message.id);
+    }
     this.queue.push({ sessionId, userId, message, attempts });
   }
 
   /** Get number of messages pending in the retry queue. */
   get pendingCount(): number {
     return this.queue.length;
+  }
+
+  /** Number of times the queue hit its size limit and discarded entries. */
+  get queueFullCount(): number {
+    return this._queueFullCount;
   }
 
   /** Set a callback invoked when persistence fails after all retries. */

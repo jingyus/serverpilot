@@ -155,6 +155,120 @@ describe('processQueue (failure / retry)', () => {
 });
 
 // ============================================================================
+// maxQueueSize — queue cap
+// ============================================================================
+
+describe('maxQueueSize', () => {
+  it('should never exceed maxQueueSize', () => {
+    const cappedQueue = new RetryQueue(repo, cache, { retryIntervalMs: 0, maxQueueSize: 3 });
+    cappedQueue.enqueue(SESSION_ID, USER_ID, makeMessage('m1'));
+    cappedQueue.enqueue(SESSION_ID, USER_ID, makeMessage('m2'));
+    cappedQueue.enqueue(SESSION_ID, USER_ID, makeMessage('m3'));
+    cappedQueue.enqueue(SESSION_ID, USER_ID, makeMessage('m4'));
+    cappedQueue.enqueue(SESSION_ID, USER_ID, makeMessage('m5'));
+
+    expect(cappedQueue.pendingCount).toBe(3);
+    cappedQueue.stop();
+  });
+
+  it('should discard oldest entry when full', async () => {
+    const cappedQueue = new RetryQueue(repo, cache, { retryIntervalMs: 0, maxQueueSize: 2 });
+    const failureCalls: string[] = [];
+    cappedQueue.onPersistenceFailure = (_sid, msgId) => { failureCalls.push(msgId); };
+
+    cappedQueue.enqueue(SESSION_ID, USER_ID, makeMessage('m1'));
+    cappedQueue.enqueue(SESSION_ID, USER_ID, makeMessage('m2'));
+    // Queue is full [m1, m2]. Adding m3 should drop m1.
+    cappedQueue.enqueue(SESSION_ID, USER_ID, makeMessage('m3'));
+
+    expect(cappedQueue.pendingCount).toBe(2);
+    expect(failureCalls).toEqual(['m1']);
+    cappedQueue.stop();
+  });
+
+  it('should invoke onPersistenceFailure for each dropped entry', () => {
+    const cappedQueue = new RetryQueue(repo, cache, { retryIntervalMs: 0, maxQueueSize: 1 });
+    const failureCalls: string[] = [];
+    cappedQueue.onPersistenceFailure = (_sid, msgId) => { failureCalls.push(msgId); };
+
+    cappedQueue.enqueue(SESSION_ID, USER_ID, makeMessage('m1'));
+    cappedQueue.enqueue(SESSION_ID, USER_ID, makeMessage('m2')); // drops m1
+    cappedQueue.enqueue(SESSION_ID, USER_ID, makeMessage('m3')); // drops m2
+
+    expect(cappedQueue.pendingCount).toBe(1);
+    expect(failureCalls).toEqual(['m1', 'm2']);
+    cappedQueue.stop();
+  });
+
+  it('should not invoke callback when queue is not full', () => {
+    const cappedQueue = new RetryQueue(repo, cache, { retryIntervalMs: 0, maxQueueSize: 10 });
+    const failureCalls: string[] = [];
+    cappedQueue.onPersistenceFailure = (_sid, msgId) => { failureCalls.push(msgId); };
+
+    cappedQueue.enqueue(SESSION_ID, USER_ID, makeMessage('m1'));
+    cappedQueue.enqueue(SESSION_ID, USER_ID, makeMessage('m2'));
+
+    expect(failureCalls).toEqual([]);
+    cappedQueue.stop();
+  });
+
+  it('should increment queueFullCount on each overflow', () => {
+    const cappedQueue = new RetryQueue(repo, cache, { retryIntervalMs: 0, maxQueueSize: 2 });
+
+    expect(cappedQueue.queueFullCount).toBe(0);
+    cappedQueue.enqueue(SESSION_ID, USER_ID, makeMessage('m1'));
+    cappedQueue.enqueue(SESSION_ID, USER_ID, makeMessage('m2'));
+    expect(cappedQueue.queueFullCount).toBe(0);
+
+    cappedQueue.enqueue(SESSION_ID, USER_ID, makeMessage('m3'));
+    expect(cappedQueue.queueFullCount).toBe(1);
+
+    cappedQueue.enqueue(SESSION_ID, USER_ID, makeMessage('m4'));
+    expect(cappedQueue.queueFullCount).toBe(2);
+    cappedQueue.stop();
+  });
+
+  it('should log warning when discarding entries', () => {
+    const warnSpy = vi.spyOn(logger, 'warn');
+    const cappedQueue = new RetryQueue(repo, cache, { retryIntervalMs: 0, maxQueueSize: 1 });
+
+    cappedQueue.enqueue(SESSION_ID, USER_ID, makeMessage('m1'));
+    cappedQueue.enqueue(SESSION_ID, USER_ID, makeMessage('m2'));
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ droppedMessageId: 'm1', queueSize: 1 }),
+      expect.stringContaining('discarding oldest'),
+    );
+
+    warnSpy.mockRestore();
+    cappedQueue.stop();
+  });
+
+  it('should work correctly without onPersistenceFailure callback', () => {
+    const cappedQueue = new RetryQueue(repo, cache, { retryIntervalMs: 0, maxQueueSize: 1 });
+
+    cappedQueue.enqueue(SESSION_ID, USER_ID, makeMessage('m1'));
+    // Should not throw even without callback set
+    cappedQueue.enqueue(SESSION_ID, USER_ID, makeMessage('m2'));
+
+    expect(cappedQueue.pendingCount).toBe(1);
+    expect(cappedQueue.queueFullCount).toBe(1);
+    cappedQueue.stop();
+  });
+
+  it('should use default maxQueueSize of 10000', () => {
+    const defaultQueue = new RetryQueue(repo, cache, { retryIntervalMs: 0 });
+    // Enqueue within default limit — no overflow
+    for (let i = 0; i < 100; i++) {
+      defaultQueue.enqueue(SESSION_ID, USER_ID, makeMessage(`m${i}`));
+    }
+    expect(defaultQueue.pendingCount).toBe(100);
+    expect(defaultQueue.queueFullCount).toBe(0);
+    defaultQueue.stop();
+  });
+});
+
+// ============================================================================
 // stop
 // ============================================================================
 
