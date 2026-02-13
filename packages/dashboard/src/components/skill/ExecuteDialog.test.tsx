@@ -178,6 +178,9 @@ describe('ExecuteDialog', () => {
       />,
     );
 
-    expect(screen.getByText('Dry Run')).toBeInTheDocument();
+    const buttons = screen.getAllByRole('button');
+    const dryRunBtn = buttons.find((b) => b.textContent === 'Dry Run');
+    expect(dryRunBtn).toBeDefined();
+    expect(dryRunBtn).not.toBeDisabled();
   });
 });

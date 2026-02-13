@@ -66,35 +66,37 @@ export function ExecuteDialog({
             {onlineServers.length === 0 ? (
               <p className="text-sm text-muted-foreground">{t('skills.noServers')}</p>
             ) : (
-              <div className="space-y-2">
-                <label htmlFor="exec-server" className="text-sm font-medium">
-                  {t('skills.selectServer')}
-                </label>
-                <select
-                  id="exec-server"
-                  value={selectedServerId}
-                  onChange={(e) => onServerChange(e.target.value)}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  data-testid="exec-server-select"
-                >
-                  <option value="">{t('skills.selectServer')}</option>
-                  {onlineServers.map((s) => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                </select>
-              </div>
-              {onDryRunChange && (
-                <label className="flex items-center gap-2 text-sm" data-testid="dry-run-toggle">
-                  <input
-                    type="checkbox"
-                    checked={!!dryRun}
-                    onChange={(e) => onDryRunChange(e.target.checked)}
-                    className="rounded border-input"
-                  />
-                  <span className="font-medium">{t('skills.dryRun')}</span>
-                  <span className="text-muted-foreground">{t('skills.dryRunDesc')}</span>
-                </label>
-              )}
+              <>
+                <div className="space-y-2">
+                  <label htmlFor="exec-server" className="text-sm font-medium">
+                    {t('skills.selectServer')}
+                  </label>
+                  <select
+                    id="exec-server"
+                    value={selectedServerId}
+                    onChange={(e) => onServerChange(e.target.value)}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    data-testid="exec-server-select"
+                  >
+                    <option value="">{t('skills.selectServer')}</option>
+                    {onlineServers.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+                {onDryRunChange && (
+                  <label className="flex items-center gap-2 text-sm" data-testid="dry-run-toggle">
+                    <input
+                      type="checkbox"
+                      checked={!!dryRun}
+                      onChange={(e) => onDryRunChange(e.target.checked)}
+                      className="rounded border-input"
+                    />
+                    <span className="font-medium">{t('skills.dryRun')}</span>
+                    <span className="text-muted-foreground">{t('skills.dryRunDesc')}</span>
+                  </label>
+                )}
+              </>
             )}
           </div>
         )}

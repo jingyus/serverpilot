@@ -191,6 +191,44 @@ export interface UpdateAlertRuleInput {
   cooldownMinutes?: number;
 }
 
+// ── Health Detail Types ──
+
+export type SubsystemStatus = 'healthy' | 'unhealthy';
+export type OverallStatus = 'healthy' | 'degraded' | 'unhealthy';
+
+export interface SubsystemHealth {
+  status: SubsystemStatus;
+  message?: string;
+}
+
+export interface AIProviderHealth extends SubsystemHealth {
+  provider?: string;
+}
+
+export interface DatabaseHealth extends SubsystemHealth {
+  type: string;
+}
+
+export interface WebSocketHealth extends SubsystemHealth {
+  connections: number;
+  maxConnections: number;
+}
+
+export interface RagHealth extends SubsystemHealth {
+  indexedDocs: number;
+}
+
+export interface HealthDetailResponse {
+  status: OverallStatus;
+  timestamp: number;
+  subsystems: {
+    aiProvider: AIProviderHealth;
+    database: DatabaseHealth;
+    websocket: WebSocketHealth;
+    rag: RagHealth;
+  };
+}
+
 // ── Audit Log Types ──
 
 export const AuditRiskLevelSchema = z.enum([

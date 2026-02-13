@@ -497,7 +497,7 @@ describe('Skills Page', () => {
     const confirmBtn = screen.getByRole('button', { name: 'Execute' });
     await user.click(confirmBtn);
 
-    expect(executeSkill).toHaveBeenCalledWith('sk-1', 'srv-1');
+    expect(executeSkill).toHaveBeenCalledWith('sk-1', 'srv-1', undefined, undefined);
   });
 
   it('should show no servers message when no online servers available', async () => {

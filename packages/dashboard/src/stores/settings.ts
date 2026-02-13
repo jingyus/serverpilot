@@ -2,6 +2,7 @@
 // Copyright (c) 2024-2026 ServerPilot Contributors
 import { create } from 'zustand';
 import { apiRequest, ApiError } from '@/api/client';
+import type { HealthDetailResponse } from '@/types/dashboard';
 
 export type AIProvider = 'claude' | 'openai' | 'ollama' | 'deepseek' | 'custom-openai';
 
@@ -51,12 +52,15 @@ interface SettingsState {
   isSaving: boolean;
   healthStatus: ProviderHealthStatus | null;
   isCheckingHealth: boolean;
+  systemHealth: HealthDetailResponse | null;
+  isCheckingSystemHealth: boolean;
   fetchSettings: () => Promise<void>;
   updateAIProvider: (config: AIProviderConfig) => Promise<void>;
   updateUserProfile: (profile: UserProfile) => Promise<void>;
   updateNotifications: (prefs: NotificationPreferences) => Promise<void>;
   updateKnowledgeBase: (config: KnowledgeBaseConfig) => Promise<void>;
   checkProviderHealth: () => Promise<void>;
+  fetchHealthDetail: () => Promise<void>;
   clearError: () => void;
 }
 
@@ -67,6 +71,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   isSaving: false,
   healthStatus: null,
   isCheckingHealth: false,
+  systemHealth: null,
+  isCheckingSystemHealth: false,
 
   fetchSettings: async () => {
     set({ isLoading: true, error: null });
