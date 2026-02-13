@@ -258,4 +258,43 @@ describe('chat-sessions (via useChatStore)', () => {
       expect(useChatStore.getState().error).toBe('Failed to delete session');
     });
   });
+
+  describe('renameSession', () => {
+    it('updates session name in the list', async () => {
+      useChatStore.setState({
+        sessions: [
+          { id: 'sess-1', serverId: 'srv-1', messageCount: 1, createdAt: '', updatedAt: '' },
+          { id: 'sess-2', serverId: 'srv-1', messageCount: 2, createdAt: '', updatedAt: '' },
+        ],
+      });
+      (apiRequest as Mock).mockResolvedValueOnce({ success: true });
+
+      await useChatStore.getState().renameSession('srv-1', 'sess-1', 'My Session');
+
+      const state = useChatStore.getState();
+      expect(state.sessions[0].name).toBe('My Session');
+      expect(state.sessions[1].name).toBeUndefined();
+      expect(apiRequest).toHaveBeenCalledWith(
+        '/chat/srv-1/sessions/sess-1',
+        { method: 'PATCH', body: JSON.stringify({ name: 'My Session' }) },
+      );
+    });
+
+    it('sets error on failure', async () => {
+      (apiRequest as Mock).mockRejectedValueOnce(new Error('rename failed'));
+
+      await useChatStore.getState().renameSession('srv-1', 'sess-1', 'New Name');
+
+      expect(useChatStore.getState().error).toBe('Failed to rename session');
+    });
+
+    it('handles ApiError with its message', async () => {
+      const { ApiError } = await import('@/api/client');
+      (apiRequest as Mock).mockRejectedValueOnce(new ApiError(404, 'NOT_FOUND', 'Session not found'));
+
+      await useChatStore.getState().renameSession('srv-1', 'sess-1', 'New Name');
+
+      expect(useChatStore.getState().error).toBe('Session not found');
+    });
+  });
 });

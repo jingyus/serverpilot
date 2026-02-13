@@ -11,7 +11,7 @@ export interface SessionItem {
   createdAt: string;
   lastMessage?: string;
   messageCount: number;
-  title?: string | null;
+  name?: string | null;
 }
 
 export interface SessionSidebarProps {
@@ -61,7 +61,7 @@ function SessionItemRow({
   t: (key: string) => string;
 }) {
   const isEditing = editingId === session.id;
-  const displayTitle = session.title || session.lastMessage || t('chat.newSession');
+  const displayTitle = session.name || session.lastMessage || t('chat.newSession');
   const [editValue, setEditValue] = useState(displayTitle);
   const inputRef = useRef<HTMLInputElement>(null);
 
