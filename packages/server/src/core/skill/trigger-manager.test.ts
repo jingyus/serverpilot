@@ -13,6 +13,7 @@ import {
   getTriggerManager,
   setTriggerManager,
   _resetTriggerManager,
+  MAX_CONSECUTIVE_FAILURES,
   type ExecuteCallback,
 } from './trigger-manager.js';
 import {
@@ -468,5 +469,226 @@ describe('TriggerManager startup loading', () => {
     await manager.start();
 
     expect(manager.getThresholdCount()).toBe(1);
+  });
+});
+
+// ============================================================================
+// Circuit Breaker — failure tracking & auto-pause
+// ============================================================================
+
+describe('TriggerManager circuit breaker', () => {
+  it('should increment failure counter on execution failure', async () => {
+    executeCallback.mockRejectedValue(new Error('fail'));
+
+    const manifest = createMockManifest({
+      triggers: [{ type: 'event', on: 'alert.triggered' }],
+    });
+    manager.registerTriggersFromManifest('skill-1', 'user-1', manifest);
+
+    await manager.handleEvent('alert.triggered', { serverId: 'server-1' });
+    await vi.waitFor(() => expect(manager.getFailureCount('skill-1')).toBe(1));
+  });
+
+  it('should reset failure counter on successful execution', async () => {
+    // First fail, then succeed
+    executeCallback
+      .mockRejectedValueOnce(new Error('fail'))
+      .mockResolvedValueOnce(undefined);
+
+    const manifest = createMockManifest({
+      triggers: [{ type: 'event', on: 'alert.triggered' }],
+    });
+    manager.registerTriggersFromManifest('skill-1', 'user-1', manifest);
+
+    // Trigger first event (fail)
+    await manager.handleEvent('alert.triggered', { serverId: 'server-1' });
+    await vi.waitFor(() => expect(manager.getFailureCount('skill-1')).toBe(1));
+
+    // Expire debounce so second event can fire
+    const debounceMap = (manager as unknown as { debounceMap: Map<string, number> }).debounceMap;
+    debounceMap.set('skill-1:server-1', Date.now() - 6 * 60 * 1000);
+
+    // Trigger second event (success)
+    await manager.handleEvent('alert.triggered', { serverId: 'server-1' });
+    await vi.waitFor(() => expect(manager.getFailureCount('skill-1')).toBe(0));
+  });
+
+  it('should auto-pause skill after MAX_CONSECUTIVE_FAILURES', async () => {
+    executeCallback.mockRejectedValue(new Error('fail'));
+
+    const skill = await repo.install({
+      userId: 'user-1',
+      name: 'flaky-skill',
+      version: '1.0.0',
+      source: 'local',
+      skillPath: '/skills/flaky',
+    });
+    await repo.updateStatus(skill.id, 'enabled');
+
+    const manifest = createMockManifest({
+      triggers: [{ type: 'event', on: 'alert.triggered' }],
+    });
+    manager.registerTriggersFromManifest(skill.id, 'user-1', manifest);
+
+    // Trigger MAX_CONSECUTIVE_FAILURES times (expire debounce between calls)
+    const debounceMap = (manager as unknown as { debounceMap: Map<string, number> }).debounceMap;
+    for (let i = 0; i < MAX_CONSECUTIVE_FAILURES; i++) {
+      debounceMap.delete(`${skill.id}:server-1`);
+      await manager.handleEvent('alert.triggered', { serverId: 'server-1' });
+    }
+
+    // Wait for async operations to complete
+    await vi.waitFor(async () => {
+      const updated = await repo.findById(skill.id);
+      expect(updated?.status).toBe('error');
+    });
+  });
+
+  it('should unregister triggers after auto-pause', async () => {
+    executeCallback.mockRejectedValue(new Error('fail'));
+
+    const skill = await repo.install({
+      userId: 'user-1',
+      name: 'auto-pause-skill',
+      version: '1.0.0',
+      source: 'local',
+      skillPath: '/skills/auto-pause',
+    });
+    await repo.updateStatus(skill.id, 'enabled');
+
+    const manifest = createMockManifest({
+      triggers: [
+        { type: 'event', on: 'alert.triggered' },
+        { type: 'cron', schedule: '0 * * * *' },
+      ],
+    });
+    manager.registerTriggersFromManifest(skill.id, 'user-1', manifest);
+    expect(manager.getCronCount()).toBe(1);
+    expect(manager.getEventCount()).toBe(1);
+
+    // Trigger enough failures to trip the breaker
+    const debounceMap = (manager as unknown as { debounceMap: Map<string, number> }).debounceMap;
+    for (let i = 0; i < MAX_CONSECUTIVE_FAILURES; i++) {
+      debounceMap.delete(`${skill.id}:server-1`);
+      await manager.handleEvent('alert.triggered', { serverId: 'server-1' });
+    }
+
+    await vi.waitFor(() => {
+      expect(manager.getCronCount()).toBe(0);
+      expect(manager.getEventCount()).toBe(0);
+    });
+  });
+
+  it('should not auto-pause before reaching MAX_CONSECUTIVE_FAILURES', async () => {
+    executeCallback.mockRejectedValue(new Error('fail'));
+
+    const skill = await repo.install({
+      userId: 'user-1',
+      name: 'mostly-okay',
+      version: '1.0.0',
+      source: 'local',
+      skillPath: '/skills/mostly-okay',
+    });
+    await repo.updateStatus(skill.id, 'enabled');
+
+    const manifest = createMockManifest({
+      triggers: [{ type: 'event', on: 'alert.triggered' }],
+    });
+    manager.registerTriggersFromManifest(skill.id, 'user-1', manifest);
+
+    // Trigger one less than the threshold
+    const debounceMap = (manager as unknown as { debounceMap: Map<string, number> }).debounceMap;
+    for (let i = 0; i < MAX_CONSECUTIVE_FAILURES - 1; i++) {
+      debounceMap.delete(`${skill.id}:server-1`);
+      await manager.handleEvent('alert.triggered', { serverId: 'server-1' });
+    }
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    const updated = await repo.findById(skill.id);
+    expect(updated?.status).toBe('enabled');
+    expect(manager.getFailureCount(skill.id)).toBe(MAX_CONSECUTIVE_FAILURES - 1);
+  });
+
+  it('should reset failure counter via resetFailureCounter()', async () => {
+    executeCallback.mockRejectedValue(new Error('fail'));
+
+    const manifest = createMockManifest({
+      triggers: [{ type: 'event', on: 'alert.triggered' }],
+    });
+    manager.registerTriggersFromManifest('skill-1', 'user-1', manifest);
+
+    const debounceMap = (manager as unknown as { debounceMap: Map<string, number> }).debounceMap;
+    for (let i = 0; i < 3; i++) {
+      debounceMap.delete('skill-1:server-1');
+      await manager.handleEvent('alert.triggered', { serverId: 'server-1' });
+    }
+
+    await vi.waitFor(() => expect(manager.getFailureCount('skill-1')).toBe(3));
+
+    manager.resetFailureCounter('skill-1');
+    expect(manager.getFailureCount('skill-1')).toBe(0);
+  });
+
+  it('should return 0 for failure count of unknown skill', () => {
+    expect(manager.getFailureCount('nonexistent')).toBe(0);
+  });
+
+  it('should clear failure counters on stop', async () => {
+    executeCallback.mockRejectedValue(new Error('fail'));
+
+    const manifest = createMockManifest({
+      triggers: [{ type: 'event', on: 'alert.triggered' }],
+    });
+    manager.registerTriggersFromManifest('skill-1', 'user-1', manifest);
+
+    await manager.handleEvent('alert.triggered', { serverId: 'server-1' });
+    await vi.waitFor(() => expect(manager.getFailureCount('skill-1')).toBe(1));
+
+    await manager.start();
+    manager.stop();
+
+    expect(manager.getFailureCount('skill-1')).toBe(0);
+  });
+
+  it('should track failures independently per skill', async () => {
+    executeCallback.mockRejectedValue(new Error('fail'));
+
+    const manifest1 = createMockManifest({
+      triggers: [{ type: 'event', on: 'alert.triggered' }],
+    });
+    const manifest2 = createMockManifest({
+      triggers: [{ type: 'event', on: 'alert.triggered' }],
+    });
+
+    manager.registerTriggersFromManifest('skill-1', 'user-1', manifest1);
+    manager.registerTriggersFromManifest('skill-2', 'user-1', manifest2);
+
+    await manager.handleEvent('alert.triggered', { serverId: 'server-1' });
+
+    await vi.waitFor(() => {
+      expect(manager.getFailureCount('skill-1')).toBe(1);
+      expect(manager.getFailureCount('skill-2')).toBe(1);
+    });
+
+    // Reset only skill-1
+    manager.resetFailureCounter('skill-1');
+    expect(manager.getFailureCount('skill-1')).toBe(0);
+    expect(manager.getFailureCount('skill-2')).toBe(1);
+  });
+
+  it('should clear failure counter on unregisterSkill', async () => {
+    executeCallback.mockRejectedValue(new Error('fail'));
+
+    const manifest = createMockManifest({
+      triggers: [{ type: 'event', on: 'alert.triggered' }],
+    });
+    manager.registerTriggersFromManifest('skill-1', 'user-1', manifest);
+
+    await manager.handleEvent('alert.triggered', { serverId: 'server-1' });
+    await vi.waitFor(() => expect(manager.getFailureCount('skill-1')).toBe(1));
+
+    manager.unregisterSkill('skill-1');
+    expect(manager.getFailureCount('skill-1')).toBe(0);
   });
 });

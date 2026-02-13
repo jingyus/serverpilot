@@ -54,6 +54,7 @@ export function Chat() {
     setServerId,
     sendMessage,
     retryMessage,
+    regenerateLastResponse,
     confirmPlan,
     rejectPlan,
     respondToStep,
@@ -176,6 +177,19 @@ export function Chat() {
     return null;
   }, [error, isStreaming, messages]);
 
+  // Find the last assistant message ID for the regenerate button
+  const lastAssistantId = useMemo(() => {
+    if (isStreaming) return null;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'assistant') return messages[i].id;
+    }
+    return null;
+  }, [isStreaming, messages]);
+
+  const handleRegenerate = useCallback(() => {
+    regenerateLastResponse();
+  }, [regenerateLastResponse]);
+
   if (!serverId) {
     return <ServerSelector servers={servers} navigate={navigate} />;
   }
@@ -260,6 +274,8 @@ export function Chat() {
                     message={msg}
                     failed={msg.id === failedMessageId}
                     onRetry={handleRetry}
+                    isLastAssistant={msg.id === lastAssistantId}
+                    onRegenerate={handleRegenerate}
                   />
                 ))}
 

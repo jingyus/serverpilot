@@ -175,6 +175,8 @@
     "retryMessage": "重新发送此消息",
     "copied": "已复制！",
     "copyOutput": "复制输出",
+    "copyMessage": "复制消息",
+    "regenerate": "重新生成",
     "toggleSessions": "切换会话列表",
     "sessionGroup": {
       "today": "今天",

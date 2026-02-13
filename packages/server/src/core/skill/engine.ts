@@ -312,6 +312,7 @@ export class SkillEngine {
     // Update trigger registration based on new status
     if (this.triggerManager) {
       if (newStatus === 'enabled') {
+        this.triggerManager.resetFailureCounter(skillId);
         const updatedSkill = await this.repo.findById(skillId);
         if (updatedSkill) {
           await this.triggerManager.registerSkill(updatedSkill);

@@ -32,6 +32,14 @@ const DEBOUNCE_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 /** Cron poll interval — check which cron jobs are due. */
 const CRON_POLL_INTERVAL_MS = 60_000; // 1 minute
 
+/** Max consecutive failures before a skill is auto-paused. */
+export const MAX_CONSECUTIVE_FAILURES = 5;
+
+interface FailureRecord {
+  consecutive: number;
+  lastFailure: Date;
+}
+
 interface CronRegistration {
   skillId: string;
   userId: string;
@@ -70,6 +78,7 @@ export class TriggerManager {
   private eventTriggers: Map<string, EventRegistration[]> = new Map();
   private thresholdTriggers: Map<string, ThresholdRegistration[]> = new Map();
   private debounceMap: Map<DebounceKey, number> = new Map();
+  private failureCounters: Map<string, FailureRecord> = new Map();
   private cronTimer: ReturnType<typeof setInterval> | null = null;
   private metricsUnsubscribe: (() => void) | null = null;
   private dispatcherUnsubscribe: (() => void) | null = null;
@@ -133,6 +142,7 @@ export class TriggerManager {
     this.eventTriggers.clear();
     this.thresholdTriggers.clear();
     this.debounceMap.clear();
+    this.failureCounters.clear();
     logger.info('TriggerManager stopped');
   }
 
@@ -204,6 +214,7 @@ export class TriggerManager {
         this.debounceMap.delete(key);
       }
     }
+    this.failureCounters.delete(skillId);
     logger.debug({ skillId }, 'All triggers unregistered for skill');
   }
 
@@ -371,12 +382,55 @@ export class TriggerManager {
     triggerType: 'cron' | 'event' | 'threshold',
     chainContext?: ChainContext,
   ): void {
-    this.executeCallback(skillId, serverId, userId, triggerType, chainContext).catch((err) => {
+    this.executeCallback(skillId, serverId, userId, triggerType, chainContext)
+      .then(() => {
+        // Success — reset failure counter
+        this.failureCounters.delete(skillId);
+      })
+      .catch((err) => {
+        logger.error(
+          { skillId, serverId, triggerType, error: (err as Error).message },
+          'Triggered skill execution failed',
+        );
+        this.recordFailure(skillId);
+      });
+  }
+
+  /** Record a failure and auto-pause the skill if it exceeds the threshold. */
+  private recordFailure(skillId: string): void {
+    const record = this.failureCounters.get(skillId) ?? { consecutive: 0, lastFailure: new Date() };
+    record.consecutive += 1;
+    record.lastFailure = new Date();
+    this.failureCounters.set(skillId, record);
+
+    if (record.consecutive >= MAX_CONSECUTIVE_FAILURES) {
+      logger.warn(
+        { skillId, consecutiveFailures: record.consecutive },
+        'Skill auto-paused after consecutive failures',
+      );
+      this.autoPauseSkill(skillId);
+    }
+  }
+
+  /** Auto-pause a skill by setting its status to 'error' and unregistering triggers. */
+  private autoPauseSkill(skillId: string): void {
+    this.repo.updateStatus(skillId, 'error').catch((err) => {
       logger.error(
-        { skillId, serverId, triggerType, error: (err as Error).message },
-        'Triggered skill execution failed',
+        { skillId, error: (err as Error).message },
+        'Failed to auto-pause skill',
       );
     });
+    this.unregisterSkill(skillId);
+  }
+
+  /** Reset the failure counter for a skill (called on manual re-enable). */
+  resetFailureCounter(skillId: string): void {
+    this.failureCounters.delete(skillId);
+  }
+
+  /** Get the current consecutive failure count for a skill (for testing/introspection). */
+  getFailureCount(skillId: string): number {
+    return this.failureCounters.get(skillId)?.consecutive ?? 0;
   }
 
   /**

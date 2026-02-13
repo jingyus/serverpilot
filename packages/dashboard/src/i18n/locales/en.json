@@ -175,6 +175,8 @@
     "retryMessage": "Resend this message",
     "copied": "Copied!",
     "copyOutput": "Copy output",
+    "copyMessage": "Copy message",
+    "regenerate": "Regenerate response",
     "toggleSessions": "Toggle sessions",
     "sessionGroup": {
       "today": "Today",

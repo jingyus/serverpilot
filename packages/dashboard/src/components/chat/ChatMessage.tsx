@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
+import { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Bot, User, Info, RotateCcw } from 'lucide-react';
+import { Bot, User, Info, RotateCcw, Copy, Check, RefreshCw } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { formatDate } from '@/utils/format';
+import { useNotificationsStore } from '@/stores/notifications';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import type { ChatMessage as ChatMessageType } from '@/types/chat';
 
@@ -12,6 +14,10 @@ interface ChatMessageProps {
   message: ChatMessageType;
   failed?: boolean;
   onRetry?: (messageId: string) => void;
+  /** Whether this is the last assistant message in the conversation */
+  isLastAssistant?: boolean;
+  /** Callback to regenerate the last assistant response */
+  onRegenerate?: () => void;
 }
 
 const ROLE_CONFIG = {
@@ -35,7 +41,7 @@ const ROLE_CONFIG = {
   },
 };
 
-export function ChatMessage({ message, failed, onRetry }: ChatMessageProps) {
+export function ChatMessage({ message, failed, onRetry, isLastAssistant, onRegenerate }: ChatMessageProps) {
   const { t } = useTranslation();
   const config = ROLE_CONFIG[message.role];
   const Icon = config.icon;
@@ -55,7 +61,7 @@ export function ChatMessage({ message, failed, onRetry }: ChatMessageProps) {
 
   return (
     <div
-      className={cn('flex gap-2 px-2 py-2 sm:gap-3 sm:px-4 sm:py-3', config.align)}
+      className={cn('group relative flex gap-2 px-2 py-2 sm:gap-3 sm:px-4 sm:py-3', config.align)}
       data-testid={`chat-message-${message.role}`}
     >
       {!isUser && (
@@ -71,7 +77,7 @@ export function ChatMessage({ message, failed, onRetry }: ChatMessageProps) {
 
       <div className={cn('max-w-[85%] space-y-1 sm:max-w-[75%]', isUser && 'items-end')}>
         <div className={cn(
-          'rounded-2xl px-3 py-2 text-sm sm:px-4 sm:py-2.5',
+          'relative rounded-2xl px-3 py-2 text-sm sm:px-4 sm:py-2.5',
           config.bubble,
           failed && 'ring-2 ring-destructive/50',
         )}>
@@ -97,6 +103,11 @@ export function ChatMessage({ message, failed, onRetry }: ChatMessageProps) {
               {t('chat.retry')}
             </button>
           )}
+          <MessageActions
+            content={message.content}
+            showRegenerate={!isUser && !!isLastAssistant && !!onRegenerate}
+            onRegenerate={onRegenerate}
+          />
         </div>
       </div>
 
@@ -109,6 +120,62 @@ export function ChatMessage({ message, failed, onRetry }: ChatMessageProps) {
         >
           <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
         </div>
+      )}
+    </div>
+  );
+}
+
+function MessageActions({
+  content,
+  showRegenerate,
+  onRegenerate,
+}: {
+  content: string;
+  showRegenerate: boolean;
+  onRegenerate?: () => void;
+}) {
+  const { t } = useTranslation();
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopied(true);
+      useNotificationsStore.getState().add({
+        type: 'success',
+        title: t('chat.copied'),
+        duration: 2000,
+      });
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard API not available (e.g. insecure context)
+    }
+  }, [content, t]);
+
+  return (
+    <div
+      className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100"
+      data-testid="message-actions"
+    >
+      <button
+        type="button"
+        onClick={handleCopy}
+        className="flex items-center gap-1 rounded p-0.5 text-xs text-muted-foreground hover:text-foreground"
+        data-testid="copy-message-btn"
+        aria-label={t('chat.copyMessage')}
+      >
+        {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+      </button>
+      {showRegenerate && (
+        <button
+          type="button"
+          onClick={onRegenerate}
+          className="flex items-center gap-1 rounded p-0.5 text-xs text-muted-foreground hover:text-foreground"
+          data-testid="regenerate-btn"
+          aria-label={t('chat.regenerate')}
+        >
+          <RefreshCw className="h-3 w-3" />
+        </button>
       )}
     </div>
   );

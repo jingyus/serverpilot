@@ -57,6 +57,7 @@ const mockTriggerManager = {
   stop: vi.fn(),
   registerSkill: vi.fn().mockResolvedValue(undefined),
   unregisterSkill: vi.fn(),
+  resetFailureCounter: vi.fn(),
   isRunning: vi.fn().mockReturnValue(false),
 };
 

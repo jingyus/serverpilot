@@ -138,6 +138,96 @@ describe('useChatStore', () => {
     });
   });
 
+  describe('regenerateLastResponse', () => {
+    it('removes last assistant message and re-sends the preceding user message', () => {
+      useChatStore.setState({
+        serverId: 'srv-1',
+        messages: [
+          { id: 'u1', role: 'user', content: 'install nginx', timestamp: '' },
+          { id: 'a1', role: 'assistant', content: 'Sure, let me help', timestamp: '' },
+        ],
+      });
+
+      useChatStore.getState().regenerateLastResponse();
+
+      const state = useChatStore.getState();
+      // Assistant message removed, user message kept, new user message added by sendMessage
+      expect(state.messages).toHaveLength(2);
+      expect(state.messages[0].id).toBe('u1');
+      expect(state.messages[1].role).toBe('user');
+      expect(state.messages[1].content).toBe('install nginx');
+      expect(state.isStreaming).toBe(true);
+      expect(createSSEConnection).toHaveBeenCalled();
+    });
+
+    it('is a no-op when streaming', () => {
+      useChatStore.setState({
+        serverId: 'srv-1',
+        isStreaming: true,
+        messages: [
+          { id: 'u1', role: 'user', content: 'hi', timestamp: '' },
+          { id: 'a1', role: 'assistant', content: 'hello', timestamp: '' },
+        ],
+      });
+
+      useChatStore.getState().regenerateLastResponse();
+
+      expect(useChatStore.getState().messages).toHaveLength(2);
+      expect(createSSEConnection).not.toHaveBeenCalled();
+    });
+
+    it('is a no-op when no assistant messages exist', () => {
+      useChatStore.setState({
+        serverId: 'srv-1',
+        messages: [
+          { id: 'u1', role: 'user', content: 'hi', timestamp: '' },
+        ],
+      });
+
+      useChatStore.getState().regenerateLastResponse();
+
+      expect(useChatStore.getState().messages).toHaveLength(1);
+      expect(createSSEConnection).not.toHaveBeenCalled();
+    });
+
+    it('is a no-op when no user message precedes the assistant message', () => {
+      useChatStore.setState({
+        serverId: 'srv-1',
+        messages: [
+          { id: 'a1', role: 'assistant', content: 'unsolicited', timestamp: '' },
+        ],
+      });
+
+      useChatStore.getState().regenerateLastResponse();
+
+      expect(useChatStore.getState().messages).toHaveLength(1);
+      expect(createSSEConnection).not.toHaveBeenCalled();
+    });
+
+    it('handles multiple messages — only removes the last assistant', () => {
+      useChatStore.setState({
+        serverId: 'srv-1',
+        messages: [
+          { id: 'u1', role: 'user', content: 'q1', timestamp: '' },
+          { id: 'a1', role: 'assistant', content: 'answer1', timestamp: '' },
+          { id: 'u2', role: 'user', content: 'q2', timestamp: '' },
+          { id: 'a2', role: 'assistant', content: 'answer2', timestamp: '' },
+        ],
+      });
+
+      useChatStore.getState().regenerateLastResponse();
+
+      const state = useChatStore.getState();
+      // First pair kept, a2 removed, new user message from sendMessage added
+      expect(state.messages).toHaveLength(4);
+      expect(state.messages[0].id).toBe('u1');
+      expect(state.messages[1].id).toBe('a1');
+      expect(state.messages[2].id).toBe('u2');
+      expect(state.messages[3].content).toBe('q2');
+      expect(state.messages[3].role).toBe('user');
+    });
+  });
+
   describe('rejectPlan', () => {
     it('clears plan and adds system message', () => {
       useChatStore.setState({

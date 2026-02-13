@@ -110,6 +110,33 @@ export const useChatStore = create<ChatState>((set, get) => ({
     get().sendMessage(msg.content);
   },
 
+  regenerateLastResponse: () => {
+    const { messages, isStreaming } = get();
+    if (isStreaming) return;
+    // Find the last assistant message
+    let lastAssistantIdx = -1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'assistant') {
+        lastAssistantIdx = i;
+        break;
+      }
+    }
+    if (lastAssistantIdx < 0) return;
+    // Find the user message that preceded it
+    let userMsg: ChatMessage | null = null;
+    for (let i = lastAssistantIdx - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') {
+        userMsg = messages[i];
+        break;
+      }
+    }
+    if (!userMsg) return;
+    // Remove the assistant message (and anything after it) and re-send
+    const trimmed = messages.slice(0, lastAssistantIdx);
+    set({ messages: trimmed, error: null });
+    get().sendMessage(userMsg.content);
+  },
+
   confirmPlan: createConfirmPlan(set, get),
   respondToStep: createRespondToStep(set, get),
   respondToAgenticConfirm: createRespondToAgenticConfirm(set, get),
