@@ -7,8 +7,8 @@
 ## 📊 统计信息
 
 - **总任务数**: 106
-- **待完成** (pending): 5
-- **进行中** (in_progress): 0
+- **待完成** (pending): 4
+- **进行中** (in_progress): 1
 - **已完成** (completed): 101
 - **失败** (failed): 0
 
@@ -109,7 +109,7 @@
 
 ---
 
-### [pending] Dashboard 对话导出功能 — 支持 Markdown/JSON 格式下载
+### [in_progress] Dashboard 对话导出功能 — 支持 Markdown/JSON 格式下载
 
 **ID**: task-065
 **优先级**: P1
@@ -2226,4 +2226,4 @@ ID: task-001
 
 ---
 
-**最后更新**: 2026-02-13 12:28:28
+**最后更新**: 2026-02-13 12:29:00

@@ -260,11 +260,17 @@ export async function checkSkillRequirements(
   return checkRequirements(manifest.requires, serverProfile, agentVersion);
 }
 
+/** Minimal interface for tracking running executions (duck-typed). */
+interface ExecutionTracker {
+  set(executionId: string, controller: AbortController): void;
+  delete(executionId: string): void;
+}
+
 /** Dependencies injected from SkillEngine into executeSingle(). */
 export interface ExecuteSingleDeps {
   repo: SkillRepository;
   triggerManager: TriggerManager | null;
-  runningExecutions: Map<string, AbortController>;
+  runningExecutions: ExecutionTracker;
   confirmationManager: {
     createPendingConfirmation(
       params: SkillRunParams,
