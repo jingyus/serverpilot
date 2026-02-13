@@ -16,6 +16,7 @@ interface UiState {
   activeModal: string | null;
   breadcrumbs: Breadcrumb[];
   commandPaletteOpen: boolean;
+  isFirstRun: boolean;
 
   toggleSidebar: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
@@ -27,6 +28,20 @@ interface UiState {
   setBreadcrumbs: (breadcrumbs: Breadcrumb[]) => void;
   setCommandPaletteOpen: (open: boolean) => void;
   toggleCommandPalette: () => void;
+  /** Re-evaluate first-run status based on server count */
+  checkFirstRun: (serverCount: number) => void;
+  /** Mark onboarding as complete and exit first-run mode */
+  completeOnboarding: () => void;
+}
+
+const ONBOARDING_KEY = 'onboarding_completed';
+
+function isOnboardingDone(): boolean {
+  try {
+    return localStorage.getItem(ONBOARDING_KEY) === 'true';
+  } catch {
+    return false;
+  }
 }
 
 function getStoredTheme(): Theme {
@@ -48,6 +63,7 @@ export const useUiStore = create<UiState>((set) => ({
   activeModal: null,
   breadcrumbs: [],
   commandPaletteOpen: false,
+  isFirstRun: !isOnboardingDone(),
 
   toggleSidebar: () =>
     set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
@@ -78,4 +94,18 @@ export const useUiStore = create<UiState>((set) => ({
 
   toggleCommandPalette: () =>
     set((state) => ({ commandPaletteOpen: !state.commandPaletteOpen })),
+
+  checkFirstRun: (serverCount: number) => {
+    const firstRun = !isOnboardingDone() && serverCount === 0;
+    set({ isFirstRun: firstRun });
+  },
+
+  completeOnboarding: () => {
+    try {
+      localStorage.setItem(ONBOARDING_KEY, 'true');
+    } catch {
+      // localStorage unavailable
+    }
+    set({ isFirstRun: false });
+  },
 }));

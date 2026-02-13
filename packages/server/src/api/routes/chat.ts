@@ -57,6 +57,44 @@ const pendingConfirmations = new Map<string, {
 /** Confirmation timeout for agentic mode (5 minutes). */
 const CONFIRM_TIMEOUT_MS = 5 * 60 * 1000;
 
+/** Lock timeout — prevents deadlocks if a request hangs (30 seconds). */
+const SESSION_LOCK_TIMEOUT_MS = 30_000;
+
+/**
+ * Per-session serialization lock. Each entry is a Promise that resolves when
+ * the current request for that session finishes its SSE stream.
+ */
+const sessionLocks = new Map<string, Promise<void>>();
+
+/**
+ * Acquire a per-session lock. Returns a `release` function that MUST be
+ * called when the request finishes. Same-session requests are serialized;
+ * different sessions are unaffected.
+ */
+async function acquireSessionLock(sessionId: string): Promise<() => void> {
+  const currentLock = sessionLocks.get(sessionId);
+  if (currentLock) {
+    await Promise.race([
+      currentLock,
+      new Promise<void>((resolve) => setTimeout(resolve, SESSION_LOCK_TIMEOUT_MS)),
+    ]);
+  }
+
+  let releaseFn!: () => void;
+  const newLock = new Promise<void>((resolve) => {
+    releaseFn = resolve;
+  });
+  sessionLocks.set(sessionId, newLock);
+
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    sessionLocks.delete(sessionId);
+    releaseFn();
+  };
+}
+
 /**
  * Clean up all pending confirmations for a given session.
  * Clears timers and resolves promises with `false` so the agentic loop unblocks.
@@ -152,226 +190,234 @@ chat.post('/:serverId', requirePermission('chat:use'), validateBody(ChatMessageB
 
   const session = await sessionMgr.getOrCreate(serverId, userId, body.sessionId);
 
+  // Acquire per-session lock — serializes concurrent requests for the same session
+  const releaseSessionLock = await acquireSessionLock(session.id);
+
   try {
     await sessionMgr.addMessage(session.id, userId, 'user', body.message!);
   } catch {
+    releaseSessionLock();
     throw ApiError.internal('Failed to save message — please try again');
   }
   logger.info({ operation: 'chat_message', serverId, sessionId: session.id, userId }, `Chat message received for server ${server.name}`);
 
   return streamSSE(c, async (stream) => {
-    // Send sessionId to client so it can track the conversation
-    await stream.writeSSE({
-      event: 'message',
-      data: JSON.stringify({ sessionId: session.id }),
-    });
-
-    // Load profile inside SSE stream so failures emit SSE error events
-    // instead of HTTP 500 (graceful degradation: continue without profile)
-    let fullProfile = null;
     try {
-      const profileMgr = getProfileManager();
-      fullProfile = await profileMgr.getProfile(serverId, userId);
-    } catch (profileErr) {
-      logger.error(
-        { operation: 'profile_load', serverId, error: profileErr instanceof Error ? profileErr.message : String(profileErr) },
-        'Failed to load server profile for chat',
-      );
-      await safeWriteSSE(stream, 'message', JSON.stringify({
-        content: '⚠️ Failed to load server profile — continuing without profile context.',
-      }));
-    }
-
-    // Try agentic mode first (Claude provider with tool_use support)
-    const agenticEngine = getAgenticEngine();
-
-    if (agenticEngine) {
-      // ====== AGENTIC MODE ======
-      try {
-        const history = sessionMgr.buildHistoryWithLimit(session.id, 40000);
-
-        const result = await agenticEngine.run({
-          userMessage: body.message!,
-          serverId,
-          userId,
-          sessionId: session.id,
-          stream,
-          conversationHistory: history,
-          serverProfile: fullProfile,
-          serverName: server.name,
-          onConfirmRequired: (command, riskLevel, description) => {
-            const confirmId = `${session.id}:${randomUUID()}`;
-            const approved = new Promise<boolean>((resolve) => {
-              const timer = setTimeout(() => {
-                pendingConfirmations.delete(confirmId);
-                resolve(false);
-              }, CONFIRM_TIMEOUT_MS);
-              pendingConfirmations.set(confirmId, { resolve, timer });
-            });
-            return { confirmId, approved };
-          },
-        });
-
-        if (result.finalText) {
-          await sessionMgr.addMessage(session.id, userId, 'assistant', result.finalText);
-        }
-
-        logger.info(
-          {
-            operation: 'agentic_chat_complete',
-            serverId, sessionId: session.id,
-            turns: result.turns, toolCalls: result.toolCallCount,
-            success: result.success,
-          },
-          `Agentic chat: ${result.turns} turns, ${result.toolCallCount} tool calls`,
-        );
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'AI request failed';
-        logger.error(
-          { operation: 'agentic_chat_error', serverId, sessionId: session.id, error: message },
-          'Agentic chat error',
-        );
-        await safeWriteSSE(stream, 'message', JSON.stringify({ content: `\n错误: ${message}` }));
-        await safeWriteSSE(stream, 'complete', JSON.stringify({ success: false }));
-      } finally {
-        // Clean up any pending confirmations for this session.
-        // Handles: (1) client disconnect while confirmation is pending,
-        // (2) agentic loop ended with unresolved confirmations.
-        cleanupSessionConfirmations(session.id);
-      }
-      return;
-    }
-
-    // ====== LEGACY MODE (non-Claude providers) ======
-    const agent = getChatAIAgent();
-    if (!agent) {
+      // Send sessionId to client so it can track the conversation
       await stream.writeSSE({
         event: 'message',
-        data: JSON.stringify({
-          content: 'AI service is not configured. Please set AI_PROVIDER and the corresponding API key.',
-        }),
+        data: JSON.stringify({ sessionId: session.id }),
       });
-      await stream.writeSSE({
-        event: 'complete',
-        data: JSON.stringify({ success: false }),
-      });
-      return;
-    }
 
-    try {
-      const profileCtx = buildProfileContext(fullProfile, server.name);
-      const caveats = buildProfileCaveats(fullProfile);
-      const conversationContext = sessionMgr.buildContextWithLimit(session.id, 8000);
-      const serverLabel = `Server: ${server.name}`;
-
-      // Search knowledge base (graceful degradation — never blocks chat)
-      let knowledgeContext: string | undefined;
+      // Load profile inside SSE stream so failures emit SSE error events
+      // instead of HTTP 500 (graceful degradation: continue without profile)
+      let fullProfile = null;
       try {
-        const ragPipeline = getRagPipeline();
-        if (ragPipeline) {
-          const ragResult = await ragPipeline.search(body.message!);
-          if (ragResult.hasResults) {
-            knowledgeContext = ragResult.contextText;
-          }
-        }
-      } catch (ragErr) {
-        logger.warn(
-          { operation: 'rag_search', error: ragErr instanceof Error ? ragErr.message : String(ragErr) },
-          'RAG search failed, continuing without knowledge context',
+        const profileMgr = getProfileManager();
+        fullProfile = await profileMgr.getProfile(serverId, userId);
+      } catch (profileErr) {
+        logger.error(
+          { operation: 'profile_load', serverId, error: profileErr instanceof Error ? profileErr.message : String(profileErr) },
+          'Failed to load server profile for chat',
         );
+        await safeWriteSSE(stream, 'message', JSON.stringify({
+          content: '⚠️ Failed to load server profile — continuing without profile context.',
+        }));
       }
 
-      let fullResponse = '';
-      const chatCallbacks = {
-        onToken: async (token: string) => {
-          fullResponse += token;
-          await stream.writeSSE({
-            event: 'message',
-            data: JSON.stringify({ content: token }),
-          });
-        },
-        onRetry: async (retryEvent: ChatRetryEvent) => {
-          await stream.writeSSE({
-            event: 'retry',
-            data: JSON.stringify(retryEvent),
-          });
-        },
-      };
+      // Try agentic mode first (Claude provider with tool_use support)
+      const agenticEngine = getAgenticEngine();
 
-      let result;
+      if (agenticEngine) {
+        // ====== AGENTIC MODE ======
+        try {
+          const history = sessionMgr.buildHistoryWithLimit(session.id, 40000);
+
+          const result = await agenticEngine.run({
+            userMessage: body.message!,
+            serverId,
+            userId,
+            sessionId: session.id,
+            stream,
+            conversationHistory: history,
+            serverProfile: fullProfile,
+            serverName: server.name,
+            onConfirmRequired: (command, riskLevel, description) => {
+              const confirmId = `${session.id}:${randomUUID()}`;
+              const approved = new Promise<boolean>((resolve) => {
+                const timer = setTimeout(() => {
+                  pendingConfirmations.delete(confirmId);
+                  resolve(false);
+                }, CONFIRM_TIMEOUT_MS);
+                pendingConfirmations.set(confirmId, { resolve, timer });
+              });
+              return { confirmId, approved };
+            },
+          });
+
+          if (result.finalText) {
+            await sessionMgr.addMessage(session.id, userId, 'assistant', result.finalText);
+          }
+
+          logger.info(
+            {
+              operation: 'agentic_chat_complete',
+              serverId, sessionId: session.id,
+              turns: result.turns, toolCalls: result.toolCallCount,
+              success: result.success,
+            },
+            `Agentic chat: ${result.turns} turns, ${result.toolCallCount} tool calls`,
+          );
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'AI request failed';
+          logger.error(
+            { operation: 'agentic_chat_error', serverId, sessionId: session.id, error: message },
+            'Agentic chat error',
+          );
+          await safeWriteSSE(stream, 'message', JSON.stringify({ content: `\n错误: ${message}` }));
+          await safeWriteSSE(stream, 'complete', JSON.stringify({ success: false }));
+        } finally {
+          // Clean up any pending confirmations for this session.
+          // Handles: (1) client disconnect while confirmation is pending,
+          // (2) agentic loop ended with unresolved confirmations.
+          cleanupSessionConfirmations(session.id);
+        }
+        return;
+      }
+
+      // ====== LEGACY MODE (non-Claude providers) ======
+      const agent = getChatAIAgent();
+      if (!agent) {
+        await stream.writeSSE({
+          event: 'message',
+          data: JSON.stringify({
+            content: 'AI service is not configured. Please set AI_PROVIDER and the corresponding API key.',
+          }),
+        });
+        await stream.writeSSE({
+          event: 'complete',
+          data: JSON.stringify({ success: false }),
+        });
+        return;
+      }
+
       try {
-        result = await agent.chat(
-          body.message!, serverLabel, conversationContext,
-          chatCallbacks, profileCtx.text, caveats, knowledgeContext,
-        );
-      } catch (retryErr) {
-        if (retryErr instanceof ChatRetryExhaustedError) {
-          fullResponse = '';
-          const fallbackResult = await agent.chatWithFallback(
+        const profileCtx = buildProfileContext(fullProfile, server.name);
+        const caveats = buildProfileCaveats(fullProfile);
+        const conversationContext = sessionMgr.buildContextWithLimit(session.id, 8000);
+        const serverLabel = `Server: ${server.name}`;
+
+        // Search knowledge base (graceful degradation — never blocks chat)
+        let knowledgeContext: string | undefined;
+        try {
+          const ragPipeline = getRagPipeline();
+          if (ragPipeline) {
+            const ragResult = await ragPipeline.search(body.message!);
+            if (ragResult.hasResults) {
+              knowledgeContext = ragResult.contextText;
+            }
+          }
+        } catch (ragErr) {
+          logger.warn(
+            { operation: 'rag_search', error: ragErr instanceof Error ? ragErr.message : String(ragErr) },
+            'RAG search failed, continuing without knowledge context',
+          );
+        }
+
+        let fullResponse = '';
+        const chatCallbacks = {
+          onToken: async (token: string) => {
+            fullResponse += token;
+            await stream.writeSSE({
+              event: 'message',
+              data: JSON.stringify({ content: token }),
+            });
+          },
+          onRetry: async (retryEvent: ChatRetryEvent) => {
+            await stream.writeSSE({
+              event: 'retry',
+              data: JSON.stringify(retryEvent),
+            });
+          },
+        };
+
+        let result;
+        try {
+          result = await agent.chat(
             body.message!, serverLabel, conversationContext,
             chatCallbacks, profileCtx.text, caveats, knowledgeContext,
           );
-          if (!fallbackResult) throw retryErr;
-          result = fallbackResult;
-        } else {
-          throw retryErr;
-        }
-      }
-
-      if (fullResponse) {
-        await sessionMgr.addMessage(session.id, userId, 'assistant', fullResponse);
-      }
-
-      // Legacy plan execution (for non-Claude providers)
-      let autoExecuted = false;
-      if (result.plan) {
-        const planId = randomUUID();
-        const { storedPlan, validation: planValidation } = buildStoredPlan(
-          planId,
-          result.plan.steps,
-          result.plan.description ?? 'Execution plan',
-          result.plan.estimatedTime,
-        );
-        sessionMgr.storePlan(session.id, storedPlan);
-
-        const clientId = findConnectedAgent(serverId);
-        if (clientId && planValidation.action !== 'blocked') {
-          autoExecuted = true;
-          const mode = planValidation.action === 'allowed' ? 'auto' : 'step_confirm';
-          await stream.writeSSE({
-            event: 'auto_execute',
-            data: JSON.stringify({ planId, plan: storedPlan }),
-          });
-          await executePlanSteps({
-            plan: storedPlan, serverId, userId,
-            sessionId: session.id, clientId, stream,
-            serverProfile: fullProfile, planId, mode,
-          });
-        } else {
-          await stream.writeSSE({ event: 'plan', data: JSON.stringify(storedPlan) });
-          if (!clientId) {
-            await stream.writeSSE({
-              event: 'message',
-              data: JSON.stringify({ content: '\n⚠️ Agent 未连接，无法执行。' }),
-            });
+        } catch (retryErr) {
+          if (retryErr instanceof ChatRetryExhaustedError) {
+            fullResponse = '';
+            const fallbackResult = await agent.chatWithFallback(
+              body.message!, serverLabel, conversationContext,
+              chatCallbacks, profileCtx.text, caveats, knowledgeContext,
+            );
+            if (!fallbackResult) throw retryErr;
+            result = fallbackResult;
+          } else {
+            throw retryErr;
           }
         }
-      }
 
-      if (!autoExecuted) {
-        await stream.writeSSE({
-          event: 'complete',
-          data: JSON.stringify({ success: true }),
-        });
+        if (fullResponse) {
+          await sessionMgr.addMessage(session.id, userId, 'assistant', fullResponse);
+        }
+
+        // Legacy plan execution (for non-Claude providers)
+        let autoExecuted = false;
+        if (result.plan) {
+          const planId = randomUUID();
+          const { storedPlan, validation: planValidation } = buildStoredPlan(
+            planId,
+            result.plan.steps,
+            result.plan.description ?? 'Execution plan',
+            result.plan.estimatedTime,
+          );
+          sessionMgr.storePlan(session.id, storedPlan);
+
+          const clientId = findConnectedAgent(serverId);
+          if (clientId && planValidation.action !== 'blocked') {
+            autoExecuted = true;
+            const mode = planValidation.action === 'allowed' ? 'auto' : 'step_confirm';
+            await stream.writeSSE({
+              event: 'auto_execute',
+              data: JSON.stringify({ planId, plan: storedPlan }),
+            });
+            await executePlanSteps({
+              plan: storedPlan, serverId, userId,
+              sessionId: session.id, clientId, stream,
+              serverProfile: fullProfile, planId, mode,
+            });
+          } else {
+            await stream.writeSSE({ event: 'plan', data: JSON.stringify(storedPlan) });
+            if (!clientId) {
+              await stream.writeSSE({
+                event: 'message',
+                data: JSON.stringify({ content: '\n⚠️ Agent 未连接，无法执行。' }),
+              });
+            }
+          }
+        }
+
+        if (!autoExecuted) {
+          await stream.writeSSE({
+            event: 'complete',
+            data: JSON.stringify({ success: true }),
+          });
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'AI request failed';
+        logger.error(
+          { operation: 'chat_ai_error', serverId, sessionId: session.id, error: message },
+          'AI chat error',
+        );
+        await safeWriteSSE(stream, 'message', JSON.stringify({ content: `Error: ${message}` }));
+        await safeWriteSSE(stream, 'complete', JSON.stringify({ success: false }));
       }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'AI request failed';
-      logger.error(
-        { operation: 'chat_ai_error', serverId, sessionId: session.id, error: message },
-        'AI chat error',
-      );
-      await safeWriteSSE(stream, 'message', JSON.stringify({ content: `Error: ${message}` }));
-      await safeWriteSSE(stream, 'complete', JSON.stringify({ success: false }));
+    } finally {
+      releaseSessionLock();
     }
   });
 });
@@ -610,5 +656,19 @@ export function _hasPendingConfirmation(confirmId: string): boolean {
   return pendingConfirmations.has(confirmId);
 }
 
+/** @internal Test helper — clear all session locks. */
+export function _resetSessionLocks(): void {
+  sessionLocks.clear();
+}
+
+/** @internal Test helper — check if a session lock exists. */
+export function _hasSessionLock(sessionId: string): boolean {
+  return sessionLocks.has(sessionId);
+}
+
 /** @internal Exported for testing. */
-export { CONFIRM_TIMEOUT_MS, cleanupSessionConfirmations, safeWriteSSE };
+export {
+  CONFIRM_TIMEOUT_MS, SESSION_LOCK_TIMEOUT_MS,
+  cleanupSessionConfirmations, safeWriteSSE,
+  acquireSessionLock,
+};

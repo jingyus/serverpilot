@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -30,14 +30,12 @@ import {
 } from '@/components/ui/card';
 import { useServersStore } from '@/stores/servers';
 import { useDashboardStore } from '@/stores/dashboard';
+import { useUiStore } from '@/stores/ui';
 import { cn } from '@/lib/utils';
 import { formatDate } from '@/utils/format';
 import type { Operation } from '@/types/dashboard';
 import type { Alert } from '@/types/dashboard';
-import {
-  WelcomeWizard,
-  isOnboardingCompleted,
-} from '@/components/onboarding/WelcomeWizard';
+import { WelcomeWizard } from '@/components/onboarding/WelcomeWizard';
 
 const OPERATION_STATUS_CONFIG: Record<
   string,
@@ -124,7 +122,9 @@ function AlertRow({ alert }: { alert: Alert }) {
 export function Dashboard() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const [showWizard, setShowWizard] = useState(() => !isOnboardingCompleted());
+  const isFirstRun = useUiStore((s) => s.isFirstRun);
+  const checkFirstRun = useUiStore((s) => s.checkFirstRun);
+  const completeOnboarding = useUiStore((s) => s.completeOnboarding);
   const {
     servers,
     isLoading: isLoadingServers,
@@ -142,14 +142,21 @@ export function Dashboard() {
   } = useDashboardStore();
 
   const handleOnboardingComplete = useCallback(() => {
-    setShowWizard(false);
-  }, []);
+    completeOnboarding();
+  }, [completeOnboarding]);
 
   useEffect(() => {
     fetchServers();
     fetchRecentOperations();
     fetchAlerts();
   }, [fetchServers, fetchRecentOperations, fetchAlerts]);
+
+  // Re-evaluate first-run status when servers are loaded
+  useEffect(() => {
+    if (!isLoadingServers) {
+      checkFirstRun(servers.length);
+    }
+  }, [isLoadingServers, servers.length, checkFirstRun]);
 
   const serverStats = useMemo(() => {
     const counts = { total: servers.length, online: 0, offline: 0, error: 0 };
@@ -163,13 +170,16 @@ export function Dashboard() {
 
   const unresolvedAlertCount = alerts.length;
 
+  if (isFirstRun) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center" data-testid="dashboard-page">
+        <WelcomeWizard onComplete={handleOnboardingComplete} />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6" data-testid="dashboard-page">
-      {/* Welcome Wizard for first-time users */}
-      {showWizard && (
-        <WelcomeWizard onComplete={handleOnboardingComplete} />
-      )}
-
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>

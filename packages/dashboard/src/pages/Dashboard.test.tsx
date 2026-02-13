@@ -7,6 +7,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Dashboard } from './Dashboard';
 import { useServersStore } from '@/stores/servers';
 import { useDashboardStore } from '@/stores/dashboard';
+import { useUiStore } from '@/stores/ui';
 import type { Server } from '@/types/server';
 import type { Operation, Alert } from '@/types/dashboard';
 
@@ -136,6 +137,7 @@ describe('Dashboard Page', () => {
     vi.clearAllMocks();
     // Mark onboarding as completed so wizard doesn't interfere with other tests
     localStorage.setItem('onboarding_completed', 'true');
+    useUiStore.setState({ isFirstRun: false });
     useServersStore.setState({
       servers: mockServers,
       isLoading: false,
@@ -459,27 +461,59 @@ describe('Dashboard Page', () => {
   });
 
   describe('welcome wizard integration', () => {
-    it('shows wizard when onboarding is not completed', () => {
+    it('shows wizard when isFirstRun is true (no onboarding, no servers)', () => {
       localStorage.removeItem('onboarding_completed');
+      useUiStore.setState({ isFirstRun: true });
+      useServersStore.setState({ servers: [], isLoading: false });
       renderDashboard();
       expect(screen.getByTestId('welcome-wizard')).toBeInTheDocument();
+      // Normal dashboard content should NOT be visible
+      expect(screen.queryByText('Dashboard')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('server-stats')).not.toBeInTheDocument();
     });
 
     it('hides wizard when onboarding is already completed', () => {
       localStorage.setItem('onboarding_completed', 'true');
+      useUiStore.setState({ isFirstRun: false });
       renderDashboard();
       expect(screen.queryByTestId('welcome-wizard')).not.toBeInTheDocument();
+      expect(screen.getByText('Dashboard')).toBeInTheDocument();
+    });
+
+    it('hides wizard when servers exist even without onboarding flag', () => {
+      localStorage.removeItem('onboarding_completed');
+      // isFirstRun starts true, but checkFirstRun effect sets it false when servers > 0
+      useUiStore.setState({ isFirstRun: false });
+      useServersStore.setState({ servers: mockServers, isLoading: false });
+      renderDashboard();
+      expect(screen.queryByTestId('welcome-wizard')).not.toBeInTheDocument();
+      expect(screen.getByText('Dashboard')).toBeInTheDocument();
     });
 
     it('hides wizard after skip is clicked', async () => {
       const user = userEvent.setup();
       localStorage.removeItem('onboarding_completed');
+      useUiStore.setState({ isFirstRun: true });
+      useServersStore.setState({ servers: [], isLoading: false });
       renderDashboard();
 
       expect(screen.getByTestId('welcome-wizard')).toBeInTheDocument();
       await user.click(screen.getByTestId('wizard-skip'));
       expect(screen.queryByTestId('welcome-wizard')).not.toBeInTheDocument();
       expect(localStorage.getItem('onboarding_completed')).toBe('true');
+      // Normal dashboard should now be visible
+      expect(screen.getByText('Dashboard')).toBeInTheDocument();
+    });
+
+    it('renders dashboard-page testid in both wizard and normal mode', () => {
+      useUiStore.setState({ isFirstRun: true });
+      const { unmount } = renderDashboard();
+      expect(screen.getByTestId('dashboard-page')).toBeInTheDocument();
+      unmount();
+
+      useUiStore.setState({ isFirstRun: false });
+      renderDashboard();
+      expect(screen.getByTestId('dashboard-page')).toBeInTheDocument();
     });
   });
 });

@@ -13,6 +13,7 @@ describe('useUiStore', () => {
       activeModal: null,
       breadcrumbs: [],
       commandPaletteOpen: false,
+      isFirstRun: true,
     });
   });
 
@@ -130,6 +131,63 @@ describe('useUiStore', () => {
       useUiStore.getState().setBreadcrumbs([{ label: 'Old' }]);
       useUiStore.getState().setBreadcrumbs([{ label: 'New' }]);
       expect(useUiStore.getState().breadcrumbs).toEqual([{ label: 'New' }]);
+    });
+  });
+
+  describe('isFirstRun', () => {
+    it('defaults to true when onboarding not completed', () => {
+      // localStorage is clear (no onboarding_completed key)
+      expect(useUiStore.getState().isFirstRun).toBe(true);
+    });
+
+    it('defaults to false when onboarding already completed', () => {
+      localStorage.setItem('onboarding_completed', 'true');
+      // Re-create store state to simulate fresh load
+      useUiStore.setState({ isFirstRun: false });
+      expect(useUiStore.getState().isFirstRun).toBe(false);
+    });
+  });
+
+  describe('checkFirstRun', () => {
+    it('sets isFirstRun to true when no onboarding and zero servers', () => {
+      useUiStore.getState().checkFirstRun(0);
+      expect(useUiStore.getState().isFirstRun).toBe(true);
+    });
+
+    it('sets isFirstRun to false when servers exist', () => {
+      useUiStore.getState().checkFirstRun(3);
+      expect(useUiStore.getState().isFirstRun).toBe(false);
+    });
+
+    it('sets isFirstRun to false when onboarding completed even with zero servers', () => {
+      localStorage.setItem('onboarding_completed', 'true');
+      useUiStore.getState().checkFirstRun(0);
+      expect(useUiStore.getState().isFirstRun).toBe(false);
+    });
+
+    it('sets isFirstRun to false when onboarding completed and servers exist', () => {
+      localStorage.setItem('onboarding_completed', 'true');
+      useUiStore.getState().checkFirstRun(5);
+      expect(useUiStore.getState().isFirstRun).toBe(false);
+    });
+  });
+
+  describe('completeOnboarding', () => {
+    it('sets isFirstRun to false', () => {
+      expect(useUiStore.getState().isFirstRun).toBe(true);
+      useUiStore.getState().completeOnboarding();
+      expect(useUiStore.getState().isFirstRun).toBe(false);
+    });
+
+    it('persists onboarding_completed to localStorage', () => {
+      useUiStore.getState().completeOnboarding();
+      expect(localStorage.getItem('onboarding_completed')).toBe('true');
+    });
+
+    it('prevents isFirstRun from becoming true again via checkFirstRun', () => {
+      useUiStore.getState().completeOnboarding();
+      useUiStore.getState().checkFirstRun(0);
+      expect(useUiStore.getState().isFirstRun).toBe(false);
     });
   });
 

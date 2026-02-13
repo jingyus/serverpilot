@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { App } from './App';
 import { useAuthStore } from '@/stores/auth';
+import { useUiStore } from '@/stores/ui';
 
 function renderApp(initialRoute = '/dashboard') {
   return render(
@@ -16,6 +17,8 @@ function renderApp(initialRoute = '/dashboard') {
 
 describe('App', () => {
   beforeEach(() => {
+    localStorage.setItem('onboarding_completed', 'true');
+    useUiStore.setState({ isFirstRun: false });
     useAuthStore.setState({
       user: { id: '1', email: 'test@example.com', name: 'Test' },
       isAuthenticated: true,

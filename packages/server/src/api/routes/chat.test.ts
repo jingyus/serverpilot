@@ -56,9 +56,13 @@ import {
   _setPendingConfirmation,
   _resetPendingConfirmations,
   _hasPendingConfirmation,
+  _resetSessionLocks,
+  _hasSessionLock,
   CONFIRM_TIMEOUT_MS,
+  SESSION_LOCK_TIMEOUT_MS,
   cleanupSessionConfirmations,
   safeWriteSSE,
+  acquireSessionLock,
 } from './chat.js';
 import type { ApiEnv } from './types.js';
 import { logger } from '../../utils/logger.js';
@@ -172,6 +176,7 @@ beforeEach(() => {
   _resetActiveExecutions();
   _resetPendingConfirmations();
   _resetPendingDecisions();
+  _resetSessionLocks();
   _mockRagPipeline = null;
   app = createApiApp();
 });
@@ -1762,5 +1767,299 @@ describe('Legacy mode RAG search graceful degradation', () => {
     expect(mockAgent.chat).toHaveBeenCalled();
     const callArgs = mockAgent.chat.mock.calls[0];
     expect(callArgs[6]).toBeUndefined();
+  });
+});
+
+// ============================================================================
+// Per-session concurrency lock (chat-073)
+// ============================================================================
+
+describe('acquireSessionLock', () => {
+  it('should serialize same-session requests', async () => {
+    const order: number[] = [];
+
+    const release1 = await acquireSessionLock('session-1');
+    order.push(1);
+
+    // Second acquire should be blocked until release1 is called
+    const acquirePromise2 = acquireSessionLock('session-1').then((release) => {
+      order.push(2);
+      return release;
+    });
+
+    // Give event loop a tick — acquire2 should still be waiting
+    await new Promise((r) => setTimeout(r, 10));
+    expect(order).toEqual([1]);
+
+    release1();
+
+    const release2 = await acquirePromise2;
+    expect(order).toEqual([1, 2]);
+    release2();
+  });
+
+  it('should not block different sessions', async () => {
+    const release1 = await acquireSessionLock('session-a');
+    const release2 = await acquireSessionLock('session-b');
+
+    // Both acquired without blocking
+    expect(_hasSessionLock('session-a')).toBe(true);
+    expect(_hasSessionLock('session-b')).toBe(true);
+
+    release1();
+    release2();
+  });
+
+  it('should time out after SESSION_LOCK_TIMEOUT_MS to prevent deadlocks', async () => {
+    vi.useFakeTimers();
+
+    // First acquire — never released (simulates a hung request)
+    const release1 = await acquireSessionLock('session-stuck');
+
+    // Second acquire — should time out and proceed
+    const acquirePromise2 = acquireSessionLock('session-stuck');
+
+    // Advance past the timeout
+    vi.advanceTimersByTime(SESSION_LOCK_TIMEOUT_MS + 1);
+
+    const release2 = await acquirePromise2;
+
+    // Should have acquired despite first not being released
+    expect(typeof release2).toBe('function');
+
+    release1();
+    release2();
+    vi.useRealTimers();
+  });
+
+  it('should be idempotent — double release is safe', async () => {
+    const release = await acquireSessionLock('session-double');
+
+    release();
+    expect(_hasSessionLock('session-double')).toBe(false);
+
+    // Second release should be a no-op (no throw)
+    release();
+    expect(_hasSessionLock('session-double')).toBe(false);
+  });
+
+  it('should clean up lock entry on release', async () => {
+    const release = await acquireSessionLock('session-cleanup');
+    expect(_hasSessionLock('session-cleanup')).toBe(true);
+
+    release();
+    expect(_hasSessionLock('session-cleanup')).toBe(false);
+  });
+
+  it('should export SESSION_LOCK_TIMEOUT_MS as 30 seconds', () => {
+    expect(SESSION_LOCK_TIMEOUT_MS).toBe(30_000);
+  });
+});
+
+describe('POST /api/v1/chat/:serverId (session concurrency)', () => {
+  it('should acquire and release lock for each request', async () => {
+    const server = await createServer('web-01', tokenA);
+    const sessionMgr = getSessionManager();
+    const session = await sessionMgr.getOrCreate(server.id, USER_A);
+
+    _setMockAgent({
+      chat: vi.fn().mockResolvedValue({ text: 'ok', plan: null }),
+    });
+
+    // Before request: no lock
+    expect(_hasSessionLock(session.id)).toBe(false);
+
+    const res = await jsonPost(
+      `/api/v1/chat/${server.id}`,
+      { message: 'hello', sessionId: session.id },
+      tokenA,
+    );
+    expect(res.status).toBe(200);
+    await parseSSEEvents(res);
+
+    // After request completes: lock released
+    expect(_hasSessionLock(session.id)).toBe(false);
+  });
+
+  it('should release lock when addMessage fails', async () => {
+    const server = await createServer('web-01', tokenA);
+    const sessionMgr = getSessionManager();
+    const session = await sessionMgr.getOrCreate(server.id, USER_A);
+
+    // Make addMessage fail for the first request
+    const originalAddMessage = sessionMgr.addMessage.bind(sessionMgr);
+    let failOnce = true;
+    vi.spyOn(sessionMgr, 'addMessage').mockImplementation(async (...args) => {
+      if (failOnce) {
+        failOnce = false;
+        throw new Error('DB write failed');
+      }
+      return originalAddMessage(...args);
+    });
+
+    _setMockAgent({
+      chat: vi.fn().mockResolvedValue({ text: 'ok', plan: null }),
+    });
+
+    // First request should fail with 500
+    const res1 = await jsonPost(
+      `/api/v1/chat/${server.id}`,
+      { message: 'failing', sessionId: session.id },
+      tokenA,
+    );
+    expect(res1.status).toBe(500);
+
+    // Lock should be released — second request should succeed
+    expect(_hasSessionLock(session.id)).toBe(false);
+
+    const res2 = await jsonPost(
+      `/api/v1/chat/${server.id}`,
+      { message: 'succeeding', sessionId: session.id },
+      tokenA,
+    );
+    expect(res2.status).toBe(200);
+    const events2 = await parseSSEEvents(res2);
+    const complete = events2.find(e => e.event === 'complete');
+    expect(complete).toBeDefined();
+  });
+
+  it('should release lock when AI processing fails', async () => {
+    const server = await createServer('web-01', tokenA);
+    const sessionMgr = getSessionManager();
+    const session = await sessionMgr.getOrCreate(server.id, USER_A);
+
+    // First request: AI fails
+    _setMockAgent({
+      chat: vi.fn().mockRejectedValue(new Error('AI exploded')),
+    });
+
+    const res1 = await jsonPost(
+      `/api/v1/chat/${server.id}`,
+      { message: 'crash', sessionId: session.id },
+      tokenA,
+    );
+    expect(res1.status).toBe(200);
+    const events1 = await parseSSEEvents(res1);
+    expect(events1.find(e => e.event === 'complete')).toBeDefined();
+
+    // Lock released after error
+    expect(_hasSessionLock(session.id)).toBe(false);
+
+    // Second request should succeed
+    _setMockAgent({
+      chat: vi.fn().mockResolvedValue({ text: 'recovered', plan: null }),
+    });
+
+    const res2 = await jsonPost(
+      `/api/v1/chat/${server.id}`,
+      { message: 'retry', sessionId: session.id },
+      tokenA,
+    );
+    expect(res2.status).toBe(200);
+    const events2 = await parseSSEEvents(res2);
+    const complete = events2.find(e => e.event === 'complete');
+    expect(complete).toBeDefined();
+    expect(JSON.parse(complete!.data).success).toBe(true);
+  });
+
+  it('should preserve message ordering with sequential same-session requests', async () => {
+    const server = await createServer('web-01', tokenA);
+    const sessionMgr = getSessionManager();
+    const session = await sessionMgr.getOrCreate(server.id, USER_A);
+    let callCount = 0;
+
+    const mockAgent = {
+      chat: vi.fn().mockImplementation(async (
+        _message: string,
+        _s: string, _c: string,
+        callbacks?: { onToken?: (t: string) => void | Promise<void> },
+      ) => {
+        callCount++;
+        const reply = `reply-${callCount}`;
+        if (callbacks?.onToken) await callbacks.onToken(reply);
+        return { text: reply, plan: null };
+      }),
+    };
+    _setMockAgent(mockAgent);
+
+    // Send two messages sequentially — must consume response to release lock
+    const res1 = await jsonPost(
+      `/api/v1/chat/${server.id}`,
+      { message: 'msg-1', sessionId: session.id },
+      tokenA,
+    );
+    await parseSSEEvents(res1); // drain stream → releases lock
+
+    const res2 = await jsonPost(
+      `/api/v1/chat/${server.id}`,
+      { message: 'msg-2', sessionId: session.id },
+      tokenA,
+    );
+    await parseSSEEvents(res2);
+
+    // Check session history: should be strictly alternating user/assistant
+    const updatedSession = await sessionMgr.getSession(session.id, USER_A);
+    expect(updatedSession).toBeDefined();
+    expect(updatedSession!.messages).toHaveLength(4); // 2 user + 2 assistant
+
+    // Verify strict alternation: user, assistant, user, assistant
+    for (let i = 0; i < updatedSession!.messages.length; i++) {
+      const expectedRole = i % 2 === 0 ? 'user' : 'assistant';
+      expect(updatedSession!.messages[i].role).toBe(expectedRole);
+    }
+  });
+
+  it('should not lock on reconnect requests', async () => {
+    const server = await createServer('web-01', tokenA);
+    const sessionMgr = getSessionManager();
+    const session = await sessionMgr.getOrCreate(server.id, USER_A);
+    await sessionMgr.addMessage(session.id, USER_A, 'user', 'hello');
+
+    // Reconnect should not acquire a lock
+    const res = await jsonPost(
+      `/api/v1/chat/${server.id}`,
+      { reconnect: true, sessionId: session.id },
+      tokenA,
+    );
+    expect(res.status).toBe(200);
+    expect(_hasSessionLock(session.id)).toBe(false);
+
+    const events = await parseSSEEvents(res);
+    const msgEvent = events.find(e =>
+      e.event === 'message' && JSON.parse(e.data).reconnected,
+    );
+    expect(msgEvent).toBeDefined();
+  });
+
+  it('should not block different sessions from each other', async () => {
+    const server = await createServer('web-01', tokenA);
+
+    _setMockAgent({
+      chat: vi.fn().mockResolvedValue({ text: 'ok', plan: null }),
+    });
+
+    // Two different sessions (no sessionId → creates new)
+    const [res1, res2] = await Promise.all([
+      jsonPost(`/api/v1/chat/${server.id}`, { message: 'alpha' }, tokenA),
+      jsonPost(`/api/v1/chat/${server.id}`, { message: 'beta' }, tokenA),
+    ]);
+
+    expect(res1.status).toBe(200);
+    expect(res2.status).toBe(200);
+
+    // Both requests should have completed
+    const events1 = await parseSSEEvents(res1);
+    const events2 = await parseSSEEvents(res2);
+    expect(events1.find(e => e.event === 'complete')).toBeDefined();
+    expect(events2.find(e => e.event === 'complete')).toBeDefined();
+
+    // Verify they got different session IDs
+    const sid1 = JSON.parse(events1.find(e =>
+      e.event === 'message' && JSON.parse(e.data).sessionId,
+    )!.data).sessionId;
+    const sid2 = JSON.parse(events2.find(e =>
+      e.event === 'message' && JSON.parse(e.data).sessionId,
+    )!.data).sessionId;
+    expect(sid1).not.toBe(sid2);
   });
 });
