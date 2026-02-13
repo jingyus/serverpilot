@@ -105,7 +105,14 @@
     "noOperations": "暂无操作记录",
     "noAlerts": "暂无活跃告警",
     "startChat": "开始对话",
-    "addServer": "添加服务器"
+    "addServer": "添加服务器",
+    "operationTrend": "操作趋势",
+    "operationTrendDesc": "近 7 天每日操作数量",
+    "operations": "操作",
+    "successRate": "成功率",
+    "successRateDesc": "操作整体成功率",
+    "overallSuccess": "整体成功率",
+    "totalOps": "总操作数"
   },
   "servers": {
     "title": "服务器",

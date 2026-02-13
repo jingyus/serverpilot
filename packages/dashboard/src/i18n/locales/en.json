@@ -105,7 +105,14 @@
     "noOperations": "No operations yet",
     "noAlerts": "No active alerts",
     "startChat": "Start Chat",
-    "addServer": "Add Server"
+    "addServer": "Add Server",
+    "operationTrend": "Operation Trend",
+    "operationTrendDesc": "Daily operation count over the last 7 days",
+    "operations": "Operations",
+    "successRate": "Success Rate",
+    "successRateDesc": "Overall operation success rate",
+    "overallSuccess": "Overall Success",
+    "totalOps": "Total Operations"
   },
   "servers": {
     "title": "Servers",

@@ -4,6 +4,15 @@ import { useCallback, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+} from 'recharts';
+import {
   Monitor,
   Wifi,
   WifiOff,
@@ -17,6 +26,8 @@ import {
   Loader2,
   AlertCircle,
   ArrowRight,
+  TrendingUp,
+  BarChart3,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -29,7 +40,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { useServersStore } from '@/stores/servers';
-import { useDashboardStore } from '@/stores/dashboard';
+import { useDashboardStore, buildTrendData } from '@/stores/dashboard';
 import { useUiStore } from '@/stores/ui';
 import { cn } from '@/lib/utils';
 import { formatDate } from '@/utils/format';
@@ -69,11 +80,18 @@ function OperationStatusBadge({ status }: { status: string }) {
   );
 }
 
-function OperationRow({ operation }: { operation: Operation }) {
+function OperationRow({ operation, onClick }: { operation: Operation; onClick?: () => void }) {
   return (
     <div
       data-testid={`operation-${operation.id}`}
-      className="flex items-center justify-between gap-3 border-b border-border/50 py-3 last:border-b-0"
+      className={cn(
+        'flex items-center justify-between gap-3 border-b border-border/50 py-3 last:border-b-0',
+        onClick && 'cursor-pointer hover:bg-muted/50 -mx-2 px-2 rounded-md transition-colors',
+      )}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') onClick(); } : undefined}
     >
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-foreground">
@@ -119,6 +137,11 @@ function AlertRow({ alert }: { alert: Alert }) {
   );
 }
 
+function formatShortDate(dateStr: string): string {
+  const d = new Date(dateStr + 'T00:00:00');
+  return `${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getDate().toString().padStart(2, '0')}`;
+}
+
 export function Dashboard() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -133,12 +156,18 @@ export function Dashboard() {
   const {
     operations,
     alerts,
+    stats,
+    weekOperations,
     isLoadingOperations,
     isLoadingAlerts,
+    isLoadingStats,
+    isLoadingWeekOps,
     operationsError,
     alertsError,
     fetchRecentOperations,
     fetchAlerts,
+    fetchOperationStats,
+    fetchWeekOperations,
   } = useDashboardStore();
 
   const handleOnboardingComplete = useCallback(() => {
@@ -149,7 +178,9 @@ export function Dashboard() {
     fetchServers();
     fetchRecentOperations();
     fetchAlerts();
-  }, [fetchServers, fetchRecentOperations, fetchAlerts]);
+    fetchOperationStats();
+    fetchWeekOperations();
+  }, [fetchServers, fetchRecentOperations, fetchAlerts, fetchOperationStats, fetchWeekOperations]);
 
   // Re-evaluate first-run status when servers are loaded
   useEffect(() => {
@@ -167,6 +198,18 @@ export function Dashboard() {
     }
     return counts;
   }, [servers]);
+
+  const trendData = useMemo(() => {
+    return buildTrendData(weekOperations).map((p) => ({
+      ...p,
+      label: formatShortDate(p.date),
+    }));
+  }, [weekOperations]);
+
+  const successCount = stats?.byStatus?.success ?? 0;
+  const failedCount = stats?.byStatus?.failed ?? 0;
+  const totalFinished = successCount + failedCount;
+  const successRate = stats?.successRate ?? (totalFinished > 0 ? Math.round((successCount / totalFinished) * 100) : 0);
 
   const unresolvedAlertCount = alerts.length;
 
@@ -278,6 +321,102 @@ export function Dashboard() {
         </div>
       )}
 
+      {/* Trend Chart + Success Rate */}
+      <div className="grid gap-4 sm:gap-6 lg:grid-cols-3" data-testid="overview-charts">
+        {/* 7-day Operation Trend */}
+        <Card className="lg:col-span-2">
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="h-5 w-5 text-muted-foreground" />
+              <CardTitle className="text-base">{t('dashboard.operationTrend')}</CardTitle>
+            </div>
+            <CardDescription>{t('dashboard.operationTrendDesc')}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isLoadingWeekOps ? (
+              <div className="flex items-center justify-center py-12" data-testid="trend-loading">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              <div data-testid="trend-chart" className="h-[200px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={trendData}>
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                    <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                    <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                    <Tooltip
+                      formatter={(value: number) => [value, t('dashboard.operations')]}
+                      labelFormatter={(label: string) => label}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="count"
+                      name={t('dashboard.operations')}
+                      stroke="#3b82f6"
+                      strokeWidth={2}
+                      dot={{ r: 3 }}
+                      activeDot={{ r: 5 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Success Rate Card */}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <BarChart3 className="h-5 w-5 text-muted-foreground" />
+              <CardTitle className="text-base">{t('dashboard.successRate')}</CardTitle>
+            </div>
+            <CardDescription>{t('dashboard.successRateDesc')}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isLoadingStats ? (
+              <div className="flex items-center justify-center py-12" data-testid="stats-card-loading">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              <div className="space-y-4" data-testid="success-rate-card">
+                <div className="text-center">
+                  <div className={cn(
+                    'text-4xl font-bold',
+                    successRate >= 80 ? 'text-green-600' : successRate >= 50 ? 'text-yellow-600' : 'text-red-600',
+                  )}>
+                    {successRate}%
+                  </div>
+                  <p className="mt-1 text-sm text-muted-foreground">{t('dashboard.overallSuccess')}</p>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-1.5">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+                      <span>{t('status.success')}</span>
+                    </div>
+                    <span className="font-medium">{successCount}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-1.5">
+                      <XCircle className="h-3.5 w-3.5 text-red-600" />
+                      <span>{t('status.failed')}</span>
+                    </div>
+                    <span className="font-medium">{failedCount}</span>
+                  </div>
+                  {stats && (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">{t('dashboard.totalOps')}</span>
+                      <span className="font-medium">{stats.total}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Main Content Grid: Operations + Alerts */}
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Recent Operations */}
@@ -322,7 +461,11 @@ export function Dashboard() {
             ) : (
               <div data-testid="operations-list">
                 {operations.map((op) => (
-                  <OperationRow key={op.id} operation={op} />
+                  <OperationRow
+                    key={op.id}
+                    operation={op}
+                    onClick={() => navigate(`/operations?highlight=${op.id}`)}
+                  />
                 ))}
               </div>
             )}
