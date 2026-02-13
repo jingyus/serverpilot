@@ -25,6 +25,24 @@ import {
   MessageEventSchema, RetryEventSchema,
 } from './chat-types.js';
 
+/** Maximum characters kept per step output. Head is truncated to stay within budget. */
+export const MAX_OUTPUT_CHARS = 500_000;
+
+const TRUNCATION_NOTICE_PREFIX = '[... 早期输出已截断，共 ';
+const TRUNCATION_NOTICE_SUFFIX = ' 字符 ...]\n';
+
+/** Append `content` to existing output, truncating head when over MAX_OUTPUT_CHARS. */
+export function appendOutput(existing: string, content: string): string {
+  const combined = existing + content;
+  if (combined.length <= MAX_OUTPUT_CHARS) return combined;
+
+  const truncatedChars = combined.length - MAX_OUTPUT_CHARS;
+  const notice = TRUNCATION_NOTICE_PREFIX + truncatedChars + TRUNCATION_NOTICE_SUFFIX;
+  // Keep tail of (MAX_OUTPUT_CHARS - notice.length) chars so total ≤ MAX_OUTPUT_CHARS
+  const keepLen = MAX_OUTPUT_CHARS - notice.length;
+  return notice + combined.slice(combined.length - keepLen);
+}
+
 /** Log SSE JSON parse failures to console.warn and bump counter. */
 function warnParseFail(set: SetFn, event: string, raw: string, err: unknown): void {
   console.warn(`[SSE] Failed to parse "${event}" event:`, err, '\nRaw data:', raw);
@@ -80,7 +98,10 @@ export function createConfirmPlan(set: SetFn, get: GetFn) {
                 ...s.execution,
                 outputs: {
                   ...s.execution.outputs,
-                  [parsed.stepId]: (s.execution.outputs[parsed.stepId] ?? '') + parsed.content,
+                  [parsed.stepId]: appendOutput(
+                    s.execution.outputs[parsed.stepId] ?? '',
+                    parsed.content,
+                  ),
                 },
               },
             }));
