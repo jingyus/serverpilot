@@ -129,9 +129,16 @@ const OpenAIErrorResponseSchema = z.object({
  * });
  * ```
  */
+/**
+ * Default context window for custom OpenAI-compatible providers.
+ * Conservative default — user can override via env if their model supports more.
+ */
+const DEFAULT_CUSTOM_CONTEXT_WINDOW = 128_000;
+
 export class CustomOpenAIProvider implements AIProviderInterface {
   readonly name = 'custom-openai';
   readonly tier = 2 as const;
+  readonly contextWindowSize: number;
 
   private readonly baseUrl: string;
   private readonly apiKey: string;
@@ -144,6 +151,7 @@ export class CustomOpenAIProvider implements AIProviderInterface {
     this.apiKey = validated.apiKey;
     this.model = validated.model;
     this.timeoutMs = validated.timeoutMs;
+    this.contextWindowSize = DEFAULT_CUSTOM_CONTEXT_WINDOW;
   }
 
   /** Expose model name for external access */

@@ -1,12 +1,12 @@
-### [pending] cancelStream 未重置执行相关状态 — 取消流式后 UI 可能显示旧的执行进度
+### [pending] Legacy 模式 conversationContext 不扣除 knowledge/profile token — 总 prompt 可能超出上下文窗口
 
-**ID**: chat-090
+**ID**: chat-091
 **优先级**: P1
-**模块路径**: packages/dashboard/src/stores/
-**发现的问题**: `cancelStream()` (chat.ts:189-208) 只重置 `isStreaming` 和 `streamingContent`，不重置 `execution`、`executionMode`、`pendingConfirm`、`agenticConfirm`、`currentPlan`、`planStatus`、`toolCalls` 等状态。如果用户在 agentic 模式执行命令时按 Escape 取消：(1) `agenticConfirm` 可能残留，显示一个无法操作的确认栏 (2) `toolCalls` 列表不清除，显示过时的工具调用记录 (3) `executionMode` 仍为 `'inline'` 或 `'log'`，下次对话可能误显示执行日志。`cleanup()` (行 210-221) 也遗漏了 `toolCalls`、`currentPlan`、`planStatus`、`execution`。
-**改进方案**: `cancelStream` 中增加执行状态重置。对比 `newSession()` (行 168-187) 的完整重置列表，确保 `cancelStream` 也重置 `executionMode`、`pendingConfirm`、`agenticConfirm`、`toolCalls`。`cleanup` 同步更新。
-**验收标准**: (1) Escape 取消后所有执行相关 UI 清除 (2) 不影响已持久化的消息 (3) 现有测试通过 (4) 新增测试验证取消后状态清洁
-**影响范围**: `packages/dashboard/src/stores/chat.ts`
+**模块路径**: packages/server/src/api/routes/
+**发现的问题**: Legacy 模式（chat.ts:319-377）中，`buildContextWithLimit(session.id, 8000)` (行 322) 固定使用 8000 token 预算，与 `profileCtx` 和 `knowledgeContext` 的大小完全独立。最终 `userPrompt` 包含 `serverLabel + conversationContext + message`，`systemPrompt` 包含 `BASE_SYSTEM_PROMPT + profileContext + caveats + knowledgeContext`。如果 profile 占 5000 token、knowledge 占 3000 token、base prompt 占 2000 token，加上 conversation 8000 token，总计 ~18000 token。虽然大多数模型有 128K+ 上下文窗口所以不会溢出，但 ollama 本地模型可能只有 4K-8K 上下文，此时必定溢出。且 8000 token 的固定预算对短对话浪费、对长对话不够。
+**改进方案**: `buildContextWithLimit` 的 `maxTokens` 参数应根据模型的上下文窗口和已分配的 system prompt + knowledge token 动态计算：`availableTokens = modelContextWindow - systemPromptTokens - knowledgeTokens - reservedOutputTokens`。可从 provider 接口获取 `contextWindowSize`。
+**验收标准**: (1) conversation history 预算动态计算 (2) 不超过模型上下文窗口 (3) 对 ollama 等小上下文模型安全 (4) 默认行为向后兼容
+**影响范围**: `packages/server/src/api/routes/chat.ts`, `packages/server/src/core/session/manager.ts`
 **创建时间**: 2026-02-13
 **完成时间**: -
 

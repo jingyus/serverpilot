@@ -3,13 +3,13 @@
 > 此队列专注于 Chat 和 AI 对话系统的质量改进
 > AI 自动发现问题 → 生成任务 → 实现 → 验证
 
-**最后更新**: 2026-02-13 14:15:58
+**最后更新**: 2026-02-13 14:16:30
 
 ## 📊 统计
 
 - **总任务数**: 100
-- **待完成** (pending): 10
-- **进行中** (in_progress): 0
+- **待完成** (pending): 9
+- **进行中** (in_progress): 1
 - **已完成** (completed): 90
 - **失败** (failed): 0
 
@@ -156,7 +156,7 @@
 
 ---
 
-### [pending] Legacy 模式 conversationContext 不扣除 knowledge/profile token — 总 prompt 可能超出上下文窗口
+### [in_progress] Legacy 模式 conversationContext 不扣除 knowledge/profile token — 总 prompt 可能超出上下文窗口
 
 **ID**: chat-091
 **优先级**: P1

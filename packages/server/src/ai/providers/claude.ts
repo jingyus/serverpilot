@@ -54,9 +54,25 @@ export const ClaudeConfigSchema = z.object({
  *
  * Wraps the Anthropic SDK to implement AIProviderInterface.
  */
+/** Known context window sizes for Claude models (in tokens) */
+const CLAUDE_CONTEXT_WINDOWS: Record<string, number> = {
+  'claude-sonnet-4-20250514': 200_000,
+  'claude-opus-4-20250514': 200_000,
+  'claude-haiku-4-20250514': 200_000,
+  'claude-3-5-sonnet-20241022': 200_000,
+  'claude-3-5-haiku-20241022': 200_000,
+  'claude-3-opus-20240229': 200_000,
+  'claude-3-sonnet-20240229': 200_000,
+  'claude-3-haiku-20240307': 200_000,
+};
+
+/** Default context window for unknown Claude models */
+const DEFAULT_CLAUDE_CONTEXT_WINDOW = 200_000;
+
 export class ClaudeProvider implements AIProviderInterface {
   readonly name = 'claude';
   readonly tier = 1 as const;
+  readonly contextWindowSize: number;
 
   private readonly client: Anthropic;
   private readonly model: string;
@@ -71,6 +87,7 @@ export class ClaudeProvider implements AIProviderInterface {
     this.client = new Anthropic({ apiKey: validated.apiKey });
     this.model = validated.model;
     this.timeoutMs = validated.timeoutMs;
+    this.contextWindowSize = CLAUDE_CONTEXT_WINDOWS[this.model] ?? DEFAULT_CLAUDE_CONTEXT_WINDOW;
   }
 
   async chat(options: ChatOptions): Promise<ChatResponse> {

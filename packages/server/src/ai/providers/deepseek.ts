@@ -180,9 +180,20 @@ const DeepSeekErrorResponseSchema = z.object({
  * }
  * ```
  */
+/** Known context window sizes for DeepSeek models (in tokens) */
+const DEEPSEEK_CONTEXT_WINDOWS: Record<string, number> = {
+  'deepseek-chat': 64_000,
+  'deepseek-coder': 128_000,
+  'deepseek-reasoner': 64_000,
+};
+
+/** Default context window for unknown DeepSeek models */
+const DEFAULT_DEEPSEEK_CONTEXT_WINDOW = 64_000;
+
 export class DeepSeekProvider implements AIProviderInterface {
   readonly name = 'deepseek';
   readonly tier = 2 as const;
+  readonly contextWindowSize: number;
 
   private readonly baseUrl: string;
   private readonly apiKey: string;
@@ -199,6 +210,7 @@ export class DeepSeekProvider implements AIProviderInterface {
     this.apiKey = validated.apiKey;
     this.model = validated.model;
     this.timeoutMs = validated.timeoutMs;
+    this.contextWindowSize = DEEPSEEK_CONTEXT_WINDOWS[this.model] ?? DEFAULT_DEEPSEEK_CONTEXT_WINDOW;
   }
 
   // --------------------------------------------------------------------------

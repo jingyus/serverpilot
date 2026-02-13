@@ -699,46 +699,6 @@ chat.patch('/:serverId/sessions/:sessionId', requirePermission('chat:use'), vali
   return c.json({ success: true });
 });
 
-// GET /chat/:serverId/sessions/:sessionId/export — Export session as JSON or Markdown
-chat.get('/:serverId/sessions/:sessionId/export', requirePermission('chat:use'), async (c) => {
-  const { serverId, sessionId } = c.req.param();
-  const userId = c.get('userId');
-  const query = ExportSessionQuerySchema.parse(c.req.query());
-
-  const server = await getServerRepository().findById(serverId, userId);
-  if (!server) throw ApiError.notFound('Server');
-
-  const session = await getSessionManager().getSession(sessionId, userId);
-  if (!session || session.serverId !== serverId) throw ApiError.notFound('Session');
-
-  const messages: ExportMessage[] = session.messages.map((m) => ({
-    role: m.role, content: m.content, timestamp: m.timestamp,
-  }));
-  const exportedAt = new Date().toISOString();
-  const title = session.name ?? 'Chat Session';
-  const exportData: ConversationExport = {
-    id: session.id, title, serverId, createdAt: session.createdAt,
-    exportedAt, format: query.format, messages,
-  };
-
-  const date = exportedAt.slice(0, 10);
-  const safeName = session.name
-    ? session.name.replace(/[^a-zA-Z0-9\u4e00-\u9fff_-]/g, '_').slice(0, 50)
-    : 'chat';
-  const ext = query.format === 'markdown' ? 'md' : 'json';
-  const filename = `${safeName}-${date}.${ext}`;
-  const contentType = query.format === 'markdown' ? 'text/markdown; charset=utf-8' : 'application/json; charset=utf-8';
-
-  c.header('Content-Type', contentType);
-  c.header('Content-Disposition', `attachment; filename="${filename}"`);
-  c.header('Cache-Control', 'no-cache');
-
-  if (query.format === 'markdown') {
-    return c.text(buildExportMarkdown(title, server.name, exportedAt, messages));
-  }
-  return c.json(exportData);
-});
-
 // DELETE /chat/:serverId/sessions/:sessionId — Delete session
 chat.delete('/:serverId/sessions/:sessionId', requirePermission('chat:use'), async (c) => {
   const { serverId, sessionId } = c.req.param();

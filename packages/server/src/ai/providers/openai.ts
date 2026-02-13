@@ -197,9 +197,22 @@ const OpenAIErrorResponseSchema = z.object({
   }),
 });
 
+/** Known context window sizes for OpenAI models (in tokens) */
+const OPENAI_CONTEXT_WINDOWS: Record<string, number> = {
+  'gpt-4o':        128_000,
+  'gpt-4o-mini':   128_000,
+  'gpt-4-turbo':   128_000,
+  'gpt-4':         8_192,
+  'gpt-3.5-turbo': 16_385,
+};
+
+/** Default context window for unknown OpenAI models */
+const DEFAULT_OPENAI_CONTEXT_WINDOW = 128_000;
+
 export class OpenAIProvider implements AIProviderInterface {
   readonly name = 'openai';
   readonly tier = 2 as const;
+  readonly contextWindowSize: number;
 
   private readonly baseUrl: string;
   private readonly apiKey: string;
@@ -216,6 +229,7 @@ export class OpenAIProvider implements AIProviderInterface {
     this.apiKey = validated.apiKey;
     this.model = validated.model;
     this.timeoutMs = validated.timeoutMs;
+    this.contextWindowSize = OPENAI_CONTEXT_WINDOWS[this.model] ?? DEFAULT_OPENAI_CONTEXT_WINDOW;
   }
 
   async chat(options: ChatOptions): Promise<ChatResponse> {

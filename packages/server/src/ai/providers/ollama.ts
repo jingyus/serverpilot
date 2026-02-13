@@ -133,9 +133,34 @@ const OllamaTagsResponseSchema = z.object({
  * }
  * ```
  */
+/** Known context window sizes for common Ollama models (in tokens) */
+const OLLAMA_CONTEXT_WINDOWS: Record<string, number> = {
+  'llama3.2': 128_000,
+  'llama3.1': 128_000,
+  'llama3': 8_192,
+  'llama2': 4_096,
+  'mistral': 32_000,
+  'mixtral': 32_000,
+  'codellama': 16_384,
+  'qwen2.5': 32_000,
+  'qwen2': 32_000,
+  'qwen': 8_192,
+  'phi3': 128_000,
+  'gemma2': 8_192,
+  'gemma': 8_192,
+  'deepseek-coder-v2': 128_000,
+};
+
+/**
+ * Default context window for unknown Ollama models.
+ * Conservative default (8K) since local models often have small contexts.
+ */
+const DEFAULT_OLLAMA_CONTEXT_WINDOW = 8_192;
+
 export class OllamaProvider implements AIProviderInterface {
   readonly name = 'ollama';
   readonly tier = 3 as const;
+  readonly contextWindowSize: number;
 
   private readonly baseUrl: string;
   private readonly model: string;
@@ -146,6 +171,21 @@ export class OllamaProvider implements AIProviderInterface {
     this.baseUrl = validated.baseUrl.replace(/\/+$/, '');
     this.model = validated.model;
     this.timeoutMs = validated.timeoutMs;
+    this.contextWindowSize = this.resolveContextWindow(this.model);
+  }
+
+  /** Resolve context window size, matching by exact name or prefix (e.g. 'llama3:8b'). */
+  private resolveContextWindow(modelName: string): number {
+    // Exact match first
+    if (modelName in OLLAMA_CONTEXT_WINDOWS) {
+      return OLLAMA_CONTEXT_WINDOWS[modelName];
+    }
+    // Strip tag suffix (e.g. 'llama3.2:3b' → 'llama3.2')
+    const baseName = modelName.split(':')[0];
+    if (baseName in OLLAMA_CONTEXT_WINDOWS) {
+      return OLLAMA_CONTEXT_WINDOWS[baseName];
+    }
+    return DEFAULT_OLLAMA_CONTEXT_WINDOW;
   }
 
   // --------------------------------------------------------------------------

@@ -21,6 +21,7 @@ import { auth } from './auth.js';
 import { authGitHub } from './auth-github.js';
 import { servers } from './servers.js';
 import { chat } from './chat.js';
+import { chatExport } from './chat-export.js';
 import { tasks } from './tasks.js';
 import { alerts } from './alerts.js';
 import { alertRules } from './alert-rules.js';
@@ -100,6 +101,7 @@ export function createApiApp(): Hono<ApiEnv> {
   v1.route('/auth/github', authGitHub);
   v1.route('/servers', servers);
   v1.route('/chat', chat);
+  v1.route('/chat', chatExport);
   v1.route('/tasks', tasks);
   v1.route('/alerts', alerts);
   v1.route('/alert-rules', alertRules);
@@ -128,5 +130,5 @@ export function createApiApp(): Hono<ApiEnv> {
   return app;
 }
 
-export { auth, authGitHub, servers, chat, tasks, alerts, alertRules, operations, agent, knowledge, settings, metricsRoutes, auditLog, webhooksRoute, membersRoute, teamRoute, skillsRoute, healthRoute };
+export { auth, authGitHub, servers, chat, chatExport, tasks, alerts, alertRules, operations, agent, knowledge, settings, metricsRoutes, auditLog, webhooksRoute, membersRoute, teamRoute, skillsRoute, healthRoute };
 export { docSources };

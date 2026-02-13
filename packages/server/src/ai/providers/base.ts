@@ -131,6 +131,8 @@ export interface AIProviderInterface {
   readonly name: string;
   /** Model capability tier (1 = highest, 3 = lowest) */
   readonly tier: 1 | 2 | 3;
+  /** Model context window size in tokens */
+  readonly contextWindowSize: number;
 
   /**
    * Send a chat request and get a response.
