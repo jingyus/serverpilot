@@ -1,12 +1,12 @@
-### [pending] Agentic 循环 MAX_TURNS=25 时无用户感知 — AI 静默停止不解释原因
+### [pending] 前端 Agentic 模式无工具调用摘要 — 用户看不到 AI 执行了哪些命令及结果
 
-**ID**: chat-092
+**ID**: chat-093
 **优先级**: P2
-**模块路径**: packages/server/src/ai/
-**发现的问题**: `AgenticChatEngine.run()` (agentic-chat.ts:162) 中 `for (let turn = 0; turn < MAX_TURNS; turn++)` 循环达到 25 轮上限后直接 break 并发送 `complete` 事件（行 222-224），AI 的最后输出可能是一个工具调用结果，用户看到的是 AI 突然停止而没有总结性回复。前端也没有显示"已达到最大轮次"的提示。用户可能误以为任务已完成或连接断开。
-**改进方案**: 达到 MAX_TURNS 时在 `complete` 事件中增加 `reason: 'max_turns_reached'` 字段，并在最后一轮结束后发送一条消息提示用户："已达到最大执行轮次（25 轮）。如需继续，请发送新消息。"前端在 `onComplete` 中检查 reason 并显示提示。
-**验收标准**: (1) 达到 MAX_TURNS 时用户看到明确提示 (2) complete 事件包含 reason 字段 (3) 前端显示友好提示
-**影响范围**: `packages/server/src/ai/agentic-chat.ts`
+**模块路径**: packages/dashboard/src/
+**发现的问题**: Agentic 模式下 `toolCalls` 数组在 `chat-types.ts:41-46` 定义并在 `chat-sse-handlers.ts` 的 `onToolCall/onToolExecuting/onToolOutput/onToolResult` 中更新，但 `Chat.tsx` 和 `MessageListFooter` 中 `toolCalls` 状态从未被渲染。用户在 agentic 模式下只能看到 AI 的文本输出，看不到：(1) AI 执行了哪些命令 (2) 每个命令的状态（运行中/成功/失败） (3) 命令的输出内容。`streamingContent` 中虽然包含 AI 的文本描述，但如果 AI 不主动描述，用户对后台发生的操作一无所知。
+**改进方案**: 在 `MessageListFooter` 中当 `isAgenticMode && toolCalls.length > 0` 时渲染一个 `ToolCallList` 组件，显示每个工具调用的命令、状态图标、可折叠的输出。类似 Claude.ai 的"工具调用"展开面板。
+**验收标准**: (1) Agentic 模式下实时显示工具调用列表 (2) 每个调用显示命令/状态/耗时 (3) 输出可折叠展开 (4) 运行中的调用显示 spinner
+**影响范围**: `packages/dashboard/src/pages/Chat.tsx`, 新增 `packages/dashboard/src/components/chat/ToolCallList.tsx`
 **创建时间**: 2026-02-13
 **完成时间**: -
 

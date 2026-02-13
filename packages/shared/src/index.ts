@@ -24,3 +24,6 @@ export * from './rbac.js';
 
 // Skill schema exports
 export * from './skill-schema.js';
+
+// Auth exports
+export * from './auth/password-policy.js';

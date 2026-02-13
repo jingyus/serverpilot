@@ -20,6 +20,7 @@ import { MessageInput, type MessageInputHandle } from '@/components/chat/Message
 import { ExecutionLog } from '@/components/chat/ExecutionLog';
 import { StepConfirmBar } from '@/components/chat/StepConfirmBar';
 import { AgenticConfirmBar } from '@/components/chat/AgenticConfirmBar';
+import { ToolCallList } from '@/components/chat/ToolCallList';
 import { ChatHeader } from '@/components/chat/ChatHeader';
 import { ChatEmptyState } from '@/components/chat/ChatEmptyState';
 import { ChatErrorBoundary } from '@/components/chat/ChatErrorBoundary';
@@ -52,6 +53,7 @@ export function Chat() {
     sessionId,
     pendingConfirm,
     isReconnecting,
+    toolCalls,
     agenticConfirm,
     isAgenticMode,
     setServerId,
@@ -311,6 +313,7 @@ export function Chat() {
                         planStatus={planStatus}
                         execution={execution}
                         pendingConfirm={pendingConfirm}
+                        toolCalls={toolCalls}
                         agenticConfirm={agenticConfirm}
                         confirmPlan={confirmPlan}
                         rejectPlan={rejectPlan}
@@ -351,6 +354,7 @@ function MessageListFooter({
   planStatus,
   execution,
   pendingConfirm,
+  toolCalls,
   agenticConfirm,
   confirmPlan,
   rejectPlan,
@@ -367,6 +371,7 @@ function MessageListFooter({
   planStatus: string;
   execution: ReturnType<typeof useChatStore.getState>['execution'];
   pendingConfirm: ReturnType<typeof useChatStore.getState>['pendingConfirm'];
+  toolCalls: ReturnType<typeof useChatStore.getState>['toolCalls'];
   agenticConfirm: ReturnType<typeof useChatStore.getState>['agenticConfirm'];
   confirmPlan: () => void;
   rejectPlan: () => void;
@@ -461,6 +466,10 @@ function MessageListFooter({
           onAllowAll={() => respondToStep('allow_all')}
           onReject={() => respondToStep('reject')}
         />
+      )}
+
+      {isAgenticMode && toolCalls.length > 0 && (
+        <ToolCallList toolCalls={toolCalls} />
       )}
 
       {agenticConfirm && (
