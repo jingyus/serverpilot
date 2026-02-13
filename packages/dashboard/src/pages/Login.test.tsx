@@ -37,15 +37,15 @@ describe('Login Page', () => {
       renderLogin();
       expect(screen.getByText('ServerPilot')).toBeInTheDocument();
       expect(screen.getByText('Sign in to your account')).toBeInTheDocument();
-      expect(screen.getByLabelText('Email')).toBeInTheDocument();
-      expect(screen.getByLabelText('Password')).toBeInTheDocument();
+      expect(screen.getByLabelText(/Email/)).toBeInTheDocument();
+      expect(screen.getByLabelText(/Password/)).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Sign In' })).toBeInTheDocument();
     });
 
     it('does not show name or confirm password fields in login mode', () => {
       renderLogin();
-      expect(screen.queryByLabelText('Name')).not.toBeInTheDocument();
-      expect(screen.queryByLabelText('Confirm Password')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText(/^Name/)).not.toBeInTheDocument();
+      expect(screen.queryByLabelText(/Confirm Password/)).not.toBeInTheDocument();
     });
 
     it('shows register link', () => {
@@ -66,8 +66,8 @@ describe('Login Page', () => {
       );
 
       expect(screen.getByText('Create a new account')).toBeInTheDocument();
-      expect(screen.getByLabelText('Name')).toBeInTheDocument();
-      expect(screen.getByLabelText('Confirm Password')).toBeInTheDocument();
+      expect(screen.getByLabelText(/^Name/)).toBeInTheDocument();
+      expect(screen.getByLabelText(/^Confirm Password/)).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Create Account' })).toBeInTheDocument();
     });
 
@@ -79,7 +79,7 @@ describe('Login Page', () => {
       await user.click(screen.getByRole('button', { name: /Already have an account/i }));
 
       expect(screen.getByText('Sign in to your account')).toBeInTheDocument();
-      expect(screen.queryByLabelText('Name')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText(/^Name/)).not.toBeInTheDocument();
     });
 
     it('clears errors when toggling mode', async () => {
@@ -100,8 +100,8 @@ describe('Login Page', () => {
       const user = userEvent.setup();
       renderLogin();
 
-      await user.type(screen.getByLabelText('Email'), 'invalid');
-      await user.type(screen.getByLabelText('Password'), 'password123');
+      await user.type(screen.getByLabelText(/^Email/), 'invalid');
+      await user.type(screen.getByLabelText(/^Password/), 'password123');
       // Use fireEvent.submit to bypass native HTML5 email validation in jsdom
       fireEvent.submit(screen.getByRole('button', { name: 'Sign In' }).closest('form')!);
 
@@ -112,8 +112,8 @@ describe('Login Page', () => {
       const user = userEvent.setup();
       renderLogin();
 
-      await user.type(screen.getByLabelText('Email'), 'test@example.com');
-      await user.type(screen.getByLabelText('Password'), '12345');
+      await user.type(screen.getByLabelText(/^Email/), 'test@example.com');
+      await user.type(screen.getByLabelText(/^Password/), '12345');
       fireEvent.submit(screen.getByRole('button', { name: 'Sign In' }).closest('form')!);
 
       expect(
@@ -128,9 +128,9 @@ describe('Login Page', () => {
       renderLogin();
 
       await user.click(screen.getByRole('button', { name: /Don't have an account/i }));
-      await user.type(screen.getByLabelText('Email'), 'test@example.com');
-      await user.type(screen.getByLabelText('Password'), 'password123');
-      await user.type(screen.getByLabelText('Confirm Password'), 'password123');
+      await user.type(screen.getByLabelText(/^Email/), 'test@example.com');
+      await user.type(screen.getByLabelText(/^Password/), 'password123');
+      await user.type(screen.getByLabelText(/^Confirm Password/), 'password123');
       await user.click(screen.getByRole('button', { name: 'Create Account' }));
 
       expect(screen.getByText('Name is required')).toBeInTheDocument();
@@ -141,13 +141,71 @@ describe('Login Page', () => {
       renderLogin();
 
       await user.click(screen.getByRole('button', { name: /Don't have an account/i }));
-      await user.type(screen.getByLabelText('Name'), 'Test User');
-      await user.type(screen.getByLabelText('Email'), 'test@example.com');
-      await user.type(screen.getByLabelText('Password'), 'password123');
-      await user.type(screen.getByLabelText('Confirm Password'), 'different');
+      await user.type(screen.getByLabelText(/^Name/), 'Test User');
+      await user.type(screen.getByLabelText(/^Email/), 'test@example.com');
+      await user.type(screen.getByLabelText(/^Password/), 'password123');
+      await user.type(screen.getByLabelText(/^Confirm Password/), 'different');
       await user.click(screen.getByRole('button', { name: 'Create Account' }));
 
       expect(screen.getByText('Passwords do not match')).toBeInTheDocument();
+    });
+  });
+
+  describe('real-time validation', () => {
+    it('shows email error on blur with invalid value', async () => {
+      const user = userEvent.setup();
+      renderLogin();
+
+      const emailInput = screen.getByLabelText(/^Email/);
+      await user.type(emailInput, 'not-an-email');
+      await user.tab(); // trigger blur
+
+      expect(screen.getByText('Please enter a valid email address')).toBeInTheDocument();
+    });
+
+    it('shows password error on blur with short value', async () => {
+      const user = userEvent.setup();
+      renderLogin();
+
+      const passwordInput = screen.getByLabelText(/^Password/);
+      await user.type(passwordInput, '12345');
+      await user.tab();
+
+      expect(screen.getByText('Password must be at least 6 characters')).toBeInTheDocument();
+    });
+
+    it('clears field error when user starts typing', async () => {
+      const user = userEvent.setup();
+      renderLogin();
+
+      const emailInput = screen.getByLabelText(/^Email/);
+      await user.type(emailInput, 'bad');
+      await user.tab();
+      expect(screen.getByText('Please enter a valid email address')).toBeInTheDocument();
+
+      await user.click(emailInput);
+      await user.type(emailInput, '@example.com');
+      expect(screen.queryByText('Please enter a valid email address')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('required field indicators', () => {
+    it('shows required mark on email and password labels', () => {
+      renderLogin();
+      const labels = screen.getAllByText('*');
+      // In login mode: Email* and Password*
+      expect(labels.length).toBe(2);
+    });
+
+    it('shows required marks on all fields in register mode', async () => {
+      const user = userEvent.setup();
+      renderLogin();
+
+      await user.click(screen.getByRole('button', { name: /Don't have an account/i }));
+
+      const labels = screen.getAllByText('*');
+      // In register mode: Name*, Email*, Password*, Confirm Password*
+      expect(labels.length).toBe(4);
     });
   });
 
@@ -158,8 +216,8 @@ describe('Login Page', () => {
       useAuthStore.setState({ login: loginMock });
       renderLogin();
 
-      await user.type(screen.getByLabelText('Email'), 'test@example.com');
-      await user.type(screen.getByLabelText('Password'), 'password123');
+      await user.type(screen.getByLabelText(/^Email/), 'test@example.com');
+      await user.type(screen.getByLabelText(/^Password/), 'password123');
       await user.click(screen.getByRole('button', { name: 'Sign In' }));
 
       await waitFor(() => {
@@ -174,8 +232,8 @@ describe('Login Page', () => {
       useAuthStore.setState({ login: loginMock });
       renderLogin();
 
-      await user.type(screen.getByLabelText('Email'), 'test@example.com');
-      await user.type(screen.getByLabelText('Password'), 'password123');
+      await user.type(screen.getByLabelText(/^Email/), 'test@example.com');
+      await user.type(screen.getByLabelText(/^Password/), 'password123');
       await user.click(screen.getByRole('button', { name: 'Sign In' }));
 
       await waitFor(() => {
@@ -193,10 +251,10 @@ describe('Login Page', () => {
       renderLogin();
 
       await user.click(screen.getByRole('button', { name: /Don't have an account/i }));
-      await user.type(screen.getByLabelText('Name'), 'Test User');
-      await user.type(screen.getByLabelText('Email'), 'test@example.com');
-      await user.type(screen.getByLabelText('Password'), 'password123');
-      await user.type(screen.getByLabelText('Confirm Password'), 'password123');
+      await user.type(screen.getByLabelText(/^Name/), 'Test User');
+      await user.type(screen.getByLabelText(/^Email/), 'test@example.com');
+      await user.type(screen.getByLabelText(/^Password/), 'password123');
+      await user.type(screen.getByLabelText(/^Confirm Password/), 'password123');
       await user.click(screen.getByRole('button', { name: 'Create Account' }));
 
       await waitFor(() => {

@@ -234,13 +234,14 @@ export function Login() {
 
             {isRegisterMode && (
               <div className="space-y-2">
-                <Label htmlFor="name">{t('login.name')}</Label>
+                <Label htmlFor="name">{t('login.name')}<RequiredMark /></Label>
                 <Input
                   id="name"
                   type="text"
                   placeholder={t('login.namePlaceholder')}
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e) => handleFieldChange('name', e.target.value, setName)}
+                  onBlur={() => handleBlur('name', name)}
                   aria-invalid={!!fieldErrors.name}
                 />
                 {fieldErrors.name && (
@@ -250,13 +251,14 @@ export function Login() {
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="email">{t('login.email')}</Label>
+              <Label htmlFor="email">{t('login.email')}<RequiredMark /></Label>
               <Input
                 id="email"
                 type="email"
                 placeholder={t('login.emailPlaceholder')}
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => handleFieldChange('email', e.target.value, setEmail)}
+                onBlur={() => handleBlur('email', email)}
                 aria-invalid={!!fieldErrors.email}
               />
               {fieldErrors.email && (
@@ -267,13 +269,14 @@ export function Login() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password">{t('login.password')}</Label>
+              <Label htmlFor="password">{t('login.password')}<RequiredMark /></Label>
               <Input
                 id="password"
                 type="password"
                 placeholder="••••••••"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => handleFieldChange('password', e.target.value, setPassword)}
+                onBlur={() => handleBlur('password', password)}
                 aria-invalid={!!fieldErrors.password}
               />
               {fieldErrors.password && (
@@ -285,13 +288,14 @@ export function Login() {
 
             {isRegisterMode && (
               <div className="space-y-2">
-                <Label htmlFor="confirmPassword">{t('login.confirmPassword')}</Label>
+                <Label htmlFor="confirmPassword">{t('login.confirmPassword')}<RequiredMark /></Label>
                 <Input
                   id="confirmPassword"
                   type="password"
                   placeholder="••••••••"
                   value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  onChange={(e) => handleFieldChange('confirmPassword', e.target.value, setConfirmPassword)}
+                  onBlur={() => handleBlur('confirmPassword', confirmPassword)}
                   aria-invalid={!!fieldErrors.confirmPassword}
                 />
                 {fieldErrors.confirmPassword && (

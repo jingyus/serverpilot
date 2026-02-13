@@ -2,6 +2,7 @@
 // Copyright (c) 2024-2026 ServerPilot Contributors
 import { create } from 'zustand';
 import { apiRequest, ApiError } from '@/api/client';
+import { API_BASE_URL } from '@/utils/constants';
 import { createSkillExecutionSSE } from '@/api/sse';
 import type {
   InstalledSkill,
@@ -40,6 +41,8 @@ interface SkillsState {
   isLoadingStats: boolean;
   dryRunResult: SkillExecutionResult | null;
   isDryRunning: boolean;
+  isExporting: string | null;
+  isImporting: boolean;
 
   fetchSkills: () => Promise<void>;
   fetchAvailable: () => Promise<void>;
@@ -59,6 +62,8 @@ interface SkillsState {
   rejectExecution: (executionId: string) => Promise<void>;
   clearSelectedExecution: () => void;
   clearDryRunResult: () => void;
+  exportSkill: (id: string) => Promise<void>;
+  importSkill: (file: File) => Promise<void>;
   startExecutionStream: (executionId: string) => void;
   stopExecutionStream: () => void;
   clearError: () => void;
@@ -83,6 +88,8 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
   isLoadingStats: false,
   dryRunResult: null,
   isDryRunning: false,
+  isExporting: null,
+  isImporting: false,
 
   fetchStats: async () => {
     set({ isLoadingStats: true, error: null });
@@ -323,6 +330,78 @@ export const useSkillsStore = create<SkillsState>((set, get) => ({
   clearSelectedExecution: () => set({ selectedExecution: null }),
 
   clearDryRunResult: () => set({ dryRunResult: null }),
+
+  exportSkill: async (id) => {
+    set({ isExporting: id, error: null });
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await fetch(`${API_BASE_URL}/skills/${id}/export`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error?.message ?? `Export failed with status ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      const disposition = response.headers.get('Content-Disposition') ?? '';
+      const match = disposition.match(/filename="(.+?)"/);
+      const filename = match?.[1] ?? 'skill-export.tar.gz';
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      set({ isExporting: null });
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : (err instanceof Error ? err.message : 'Failed to export skill');
+      set({ error: message, isExporting: null });
+    }
+  },
+
+  importSkill: async (file) => {
+    set({ isImporting: true, error: null });
+    try {
+      const MAX_SIZE = 50 * 1024 * 1024; // 50MB
+      if (file.size > MAX_SIZE) {
+        throw new Error('File too large. Maximum size is 50MB.');
+      }
+      if (!file.name.endsWith('.tar.gz') && !file.name.endsWith('.tgz')) {
+        throw new Error('Invalid file format. Please upload a .tar.gz or .tgz file.');
+      }
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const token = localStorage.getItem('auth_token');
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const response = await fetch(`${API_BASE_URL}/skills/import`, {
+        method: 'POST',
+        headers,
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error?.message ?? `Import failed with status ${response.status}`);
+      }
+
+      const data = await response.json();
+      set({ skills: [...get().skills, data.skill], isImporting: false });
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : (err instanceof Error ? err.message : 'Failed to import skill');
+      set({ error: message, isImporting: false });
+      throw err;
+    }
+  },
 
   startExecutionStream: (executionId: string) => {
     // Stop any existing stream

@@ -3,13 +3,13 @@
 > 此队列专注于 Skill 插件系统的设计与实现
 > AI 自动扫描 → 发现缺失 → 设计实现 → 验证
 
-**最后更新**: 2026-02-13 12:08:12
+**最后更新**: 2026-02-13 12:08:43
 
 ## 📊 统计
 
 - **总任务数**: 67
-- **待完成** (pending): 1
-- **进行中** (in_progress): 0
+- **待完成** (pending): 0
+- **进行中** (in_progress): 1
 - **已完成** (completed): 66
 - **失败** (failed): 0
 
@@ -251,7 +251,7 @@
 
 ---
 
-### [pending] Dashboard Skill 导出/导入 UI
+### [in_progress] Dashboard Skill 导出/导入 UI
 
 **ID**: skill-100
 **优先级**: P2

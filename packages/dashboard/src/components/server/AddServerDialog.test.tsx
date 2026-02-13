@@ -43,7 +43,7 @@ describe('AddServerDialog', () => {
 
     it('renders server name input', () => {
       renderDialog();
-      expect(screen.getByLabelText('Server Name')).toBeInTheDocument();
+      expect(screen.getByLabelText(/^Server Name/)).toBeInTheDocument();
     });
 
     it('renders tags input', () => {
@@ -79,7 +79,7 @@ describe('AddServerDialog', () => {
       const user = userEvent.setup();
       renderDialog();
 
-      await user.type(screen.getByLabelText('Server Name'), '-invalid');
+      await user.type(screen.getByLabelText(/^Server Name/), '-invalid');
       await user.click(screen.getByRole('button', { name: /Add Server/i }));
 
       expect(screen.getByTestId('name-error')).toBeInTheDocument();
@@ -99,10 +99,55 @@ describe('AddServerDialog', () => {
       expect(screen.getByTestId('name-error')).toBeInTheDocument();
 
       // Now type a valid name and submit
-      await user.type(screen.getByLabelText('Server Name'), 'valid-server');
+      await user.type(screen.getByLabelText(/^Server Name/), 'valid-server');
       await user.click(screen.getByRole('button', { name: /Add Server/i }));
 
       expect(screen.queryByTestId('name-error')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('real-time validation', () => {
+    it('shows error on blur with empty name', async () => {
+      const user = userEvent.setup();
+      renderDialog();
+
+      const nameInput = screen.getByLabelText(/^Server Name/);
+      await user.click(nameInput);
+      await user.tab(); // trigger blur with empty value
+
+      expect(screen.getByTestId('name-error')).toHaveTextContent('Server name is required');
+    });
+
+    it('shows error on blur with invalid name', async () => {
+      const user = userEvent.setup();
+      renderDialog();
+
+      const nameInput = screen.getByLabelText(/^Server Name/);
+      await user.type(nameInput, '-invalid');
+      await user.tab();
+
+      expect(screen.getByTestId('name-error')).toBeInTheDocument();
+    });
+
+    it('clears error when user starts typing after blur error', async () => {
+      const user = userEvent.setup();
+      renderDialog();
+
+      const nameInput = screen.getByLabelText(/^Server Name/);
+      await user.click(nameInput);
+      await user.tab();
+      expect(screen.getByTestId('name-error')).toBeInTheDocument();
+
+      await user.type(nameInput, 'v');
+      expect(screen.queryByTestId('name-error')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('required field indicators', () => {
+    it('shows required mark on server name label', () => {
+      renderDialog();
+      const marks = screen.getAllByText('*');
+      expect(marks.length).toBe(1); // Only Server Name is required
     });
   });
 
@@ -171,7 +216,7 @@ describe('AddServerDialog', () => {
       });
       renderDialog();
 
-      await user.type(screen.getByLabelText('Server Name'), 'my-server');
+      await user.type(screen.getByLabelText(/^Server Name/), 'my-server');
       await user.click(screen.getByRole('button', { name: /Add Server/i }));
 
       expect(mockOnAdd).toHaveBeenCalledWith('my-server', undefined, undefined);
@@ -185,7 +230,7 @@ describe('AddServerDialog', () => {
       });
       renderDialog();
 
-      await user.type(screen.getByLabelText('Server Name'), 'my-server');
+      await user.type(screen.getByLabelText(/^Server Name/), 'my-server');
       await user.type(screen.getByLabelText('Tags (optional)'), 'production{Enter}');
       await user.click(screen.getByRole('button', { name: /Add Server/i }));
 
@@ -200,7 +245,7 @@ describe('AddServerDialog', () => {
       });
       renderDialog();
 
-      await user.type(screen.getByLabelText('Server Name'), 'my-server{Enter}');
+      await user.type(screen.getByLabelText(/^Server Name/), 'my-server{Enter}');
 
       expect(mockOnAdd).toHaveBeenCalledWith('my-server', undefined, undefined);
     });
@@ -213,7 +258,7 @@ describe('AddServerDialog', () => {
       });
       renderDialog({ availableGroups: ['production', 'staging'] });
 
-      await user.type(screen.getByLabelText('Server Name'), 'my-server');
+      await user.type(screen.getByLabelText(/^Server Name/), 'my-server');
       await user.type(screen.getByLabelText('Tags (optional)'), 'web{Enter}');
       await user.type(screen.getByLabelText('Group (optional)'), 'production');
       await user.click(screen.getByRole('button', { name: /Add Server/i }));
@@ -231,7 +276,7 @@ describe('AddServerDialog', () => {
       });
       renderDialog();
 
-      await user.type(screen.getByLabelText('Server Name'), 'my-server');
+      await user.type(screen.getByLabelText(/^Server Name/), 'my-server');
       await user.click(screen.getByRole('button', { name: /Add Server/i }));
 
       expect(screen.getByTestId('install-command')).toHaveTextContent(
@@ -247,7 +292,7 @@ describe('AddServerDialog', () => {
       });
       renderDialog();
 
-      await user.type(screen.getByLabelText('Server Name'), 'my-server');
+      await user.type(screen.getByLabelText(/^Server Name/), 'my-server');
       await user.click(screen.getByRole('button', { name: /Add Server/i }));
 
       expect(
@@ -263,7 +308,7 @@ describe('AddServerDialog', () => {
       });
       renderDialog();
 
-      await user.type(screen.getByLabelText('Server Name'), 'my-server');
+      await user.type(screen.getByLabelText(/^Server Name/), 'my-server');
       await user.click(screen.getByRole('button', { name: /Add Server/i }));
 
       expect(screen.getByRole('button', { name: 'Done' })).toBeInTheDocument();
@@ -277,7 +322,7 @@ describe('AddServerDialog', () => {
       });
       renderDialog();
 
-      await user.type(screen.getByLabelText('Server Name'), 'my-server');
+      await user.type(screen.getByLabelText(/^Server Name/), 'my-server');
       await user.click(screen.getByRole('button', { name: /Add Server/i }));
       await user.click(screen.getByRole('button', { name: 'Done' }));
 
@@ -291,12 +336,12 @@ describe('AddServerDialog', () => {
       mockOnAdd.mockRejectedValue(new Error('Network error'));
       renderDialog();
 
-      await user.type(screen.getByLabelText('Server Name'), 'my-server');
+      await user.type(screen.getByLabelText(/^Server Name/), 'my-server');
       await user.click(screen.getByRole('button', { name: /Add Server/i }));
 
       expect(screen.queryByTestId('install-command')).not.toBeInTheDocument();
       // Should still show name input
-      expect(screen.getByLabelText('Server Name')).toBeInTheDocument();
+      expect(screen.getByLabelText(/^Server Name/)).toBeInTheDocument();
     });
   });
 });

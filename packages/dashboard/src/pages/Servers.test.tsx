@@ -336,7 +336,7 @@ describe('Servers Page', () => {
       const addButtons = screen.getAllByRole('button', { name: /Add Server/i });
       await user.click(addButtons[0]);
 
-      expect(screen.getByLabelText('Server Name')).toBeInTheDocument();
+      expect(screen.getByLabelText(/^Server Name/)).toBeInTheDocument();
       expect(
         screen.getByText('Enter a name and optional tags for your new server.')
       ).toBeInTheDocument();
@@ -370,7 +370,7 @@ describe('Servers Page', () => {
       const addButtons = screen.getAllByRole('button', { name: /Add Server/i });
       await user.click(addButtons[0]);
 
-      await user.type(screen.getByLabelText('Server Name'), 'my-server');
+      await user.type(screen.getByLabelText(/^Server Name/), 'my-server');
       // Click the dialog's Add Server button (last one)
       const allAddBtns = screen.getAllByRole('button', { name: /Add Server/i });
       await user.click(allAddBtns[allAddBtns.length - 1]);
@@ -597,7 +597,7 @@ describe('Servers Page', () => {
       const addButtons = screen.getAllByRole('button', { name: /Add Server/i });
       await user.click(addButtons[0]);
 
-      await user.type(screen.getByLabelText('Server Name'), 'my-server');
+      await user.type(screen.getByLabelText(/^Server Name/), 'my-server');
       await user.type(screen.getByLabelText('Group (optional)'), 'production');
 
       const allAddBtns = screen.getAllByRole('button', { name: /Add Server/i });

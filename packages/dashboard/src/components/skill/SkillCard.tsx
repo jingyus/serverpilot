@@ -9,6 +9,7 @@ import {
   Zap,
   ArrowUpCircle,
   Loader2,
+  Download,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -54,6 +55,8 @@ export function SkillCard({
   onUninstall,
   onUpgrade,
   isUpgrading,
+  onExport,
+  isExporting,
 }: {
   skill: InstalledSkill;
   onToggle: () => void;
@@ -62,6 +65,8 @@ export function SkillCard({
   onUninstall: () => void;
   onUpgrade?: () => void;
   isUpgrading?: boolean;
+  onExport?: () => void;
+  isExporting?: boolean;
 }) {
   const { t } = useTranslation();
   const isEnabled = skill.status === 'enabled';
@@ -133,6 +138,21 @@ export function SkillCard({
           <Button variant="ghost" size="sm" onClick={onConfigure} title={t('skills.configure')}>
             <Settings className="h-4 w-4" />
           </Button>
+          {onExport && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onExport}
+              disabled={isExporting}
+              title={t('skills.export')}
+            >
+              {isExporting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="sm"

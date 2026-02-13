@@ -198,4 +198,51 @@ describe('SkillCard', () => {
 
     expect(screen.queryByTitle('Upgrade')).not.toBeInTheDocument();
   });
+
+  // --------------------------------------------------------------------------
+  // Export Button
+  // --------------------------------------------------------------------------
+
+  it('shows export button when onExport is provided', () => {
+    render(
+      <SkillCard
+        {...defaultProps}
+        onExport={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTitle('Export')).toBeInTheDocument();
+  });
+
+  it('hides export button when onExport is not provided', () => {
+    render(<SkillCard {...defaultProps} />);
+
+    expect(screen.queryByTitle('Export')).not.toBeInTheDocument();
+  });
+
+  it('calls onExport when export button is clicked', async () => {
+    const user = userEvent.setup();
+    const onExport = vi.fn();
+    render(
+      <SkillCard
+        {...defaultProps}
+        onExport={onExport}
+      />,
+    );
+
+    await user.click(screen.getByTitle('Export'));
+    expect(onExport).toHaveBeenCalledOnce();
+  });
+
+  it('disables export button when isExporting is true', () => {
+    render(
+      <SkillCard
+        {...defaultProps}
+        onExport={vi.fn()}
+        isExporting={true}
+      />,
+    );
+
+    expect(screen.getByTitle('Export')).toBeDisabled();
+  });
 });

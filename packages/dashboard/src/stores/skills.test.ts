@@ -938,4 +938,181 @@ describe('useSkillsStore', () => {
       expect(useSkillsStore.getState().error).toBeNull();
     });
   });
+
+  // --------------------------------------------------------------------------
+  // exportSkill
+  // --------------------------------------------------------------------------
+
+  describe('exportSkill', () => {
+    let originalCreateObjectURL: typeof URL.createObjectURL;
+    let originalRevokeObjectURL: typeof URL.revokeObjectURL;
+    let mockFetch: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      originalCreateObjectURL = URL.createObjectURL;
+      originalRevokeObjectURL = URL.revokeObjectURL;
+      URL.createObjectURL = vi.fn().mockReturnValue('blob:fake-url');
+      URL.revokeObjectURL = vi.fn();
+      mockFetch = vi.fn();
+      globalThis.fetch = mockFetch;
+    });
+
+    afterEach(() => {
+      URL.createObjectURL = originalCreateObjectURL;
+      URL.revokeObjectURL = originalRevokeObjectURL;
+    });
+
+    it('should download skill as file on successful export', async () => {
+      const mockBlob = new Blob(['test'], { type: 'application/gzip' });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        blob: () => Promise.resolve(mockBlob),
+        headers: new Headers({
+          'Content-Disposition': 'attachment; filename="nginx-setup-1.0.0.tar.gz"',
+        }),
+      });
+
+      const clickSpy = vi.fn();
+      vi.spyOn(document, 'createElement').mockReturnValueOnce({
+        set href(v: string) { /* noop */ },
+        set download(v: string) { /* noop */ },
+        click: clickSpy,
+      } as unknown as HTMLAnchorElement);
+
+      await useSkillsStore.getState().exportSkill('sk-1');
+
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/skills/sk-1/export', expect.any(Object));
+      expect(URL.createObjectURL).toHaveBeenCalledWith(mockBlob);
+      expect(clickSpy).toHaveBeenCalled();
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:fake-url');
+      expect(useSkillsStore.getState().isExporting).toBeNull();
+      expect(useSkillsStore.getState().error).toBeNull();
+    });
+
+    it('should set isExporting to skill id while exporting', async () => {
+      let resolveFetch: (v: unknown) => void;
+      const pending = new Promise((resolve) => { resolveFetch = resolve; });
+      mockFetch.mockReturnValueOnce(pending);
+
+      const exportPromise = useSkillsStore.getState().exportSkill('sk-1');
+      expect(useSkillsStore.getState().isExporting).toBe('sk-1');
+
+      resolveFetch!({
+        ok: true,
+        blob: () => Promise.resolve(new Blob()),
+        headers: new Headers(),
+      });
+
+      vi.spyOn(document, 'createElement').mockReturnValueOnce({
+        set href(_: string) { /* noop */ },
+        set download(_: string) { /* noop */ },
+        click: vi.fn(),
+      } as unknown as HTMLAnchorElement);
+
+      await exportPromise;
+      expect(useSkillsStore.getState().isExporting).toBeNull();
+    });
+
+    it('should handle export error and set error message', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        json: () => Promise.resolve({ error: { message: 'Skill not found' } }),
+      });
+
+      await useSkillsStore.getState().exportSkill('sk-missing');
+
+      expect(useSkillsStore.getState().error).toBe('Skill not found');
+      expect(useSkillsStore.getState().isExporting).toBeNull();
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // importSkill
+  // --------------------------------------------------------------------------
+
+  describe('importSkill', () => {
+    let mockFetch: ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      mockFetch = vi.fn();
+      globalThis.fetch = mockFetch;
+    });
+
+    it('should import skill and append to list', async () => {
+      const existing = makeSkill({ id: 'sk-existing' });
+      useSkillsStore.setState({ skills: [existing] });
+
+      const imported = makeSkill({ id: 'sk-imported', name: 'imported-skill' });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ skill: imported, warnings: [] }),
+      });
+
+      const file = new File(['test'], 'skill.tar.gz', { type: 'application/gzip' });
+      await useSkillsStore.getState().importSkill(file);
+
+      expect(useSkillsStore.getState().skills).toHaveLength(2);
+      expect(useSkillsStore.getState().skills[1]).toEqual(imported);
+      expect(useSkillsStore.getState().isImporting).toBe(false);
+    });
+
+    it('should reject file larger than 50MB', async () => {
+      const bigFile = new File(['x'], 'big.tar.gz', { type: 'application/gzip' });
+      Object.defineProperty(bigFile, 'size', { value: 51 * 1024 * 1024 });
+
+      await expect(
+        useSkillsStore.getState().importSkill(bigFile),
+      ).rejects.toThrow();
+
+      expect(useSkillsStore.getState().error).toBe('File too large. Maximum size is 50MB.');
+      expect(useSkillsStore.getState().isImporting).toBe(false);
+    });
+
+    it('should reject invalid file format', async () => {
+      const zipFile = new File(['x'], 'skill.zip', { type: 'application/zip' });
+
+      await expect(
+        useSkillsStore.getState().importSkill(zipFile),
+      ).rejects.toThrow();
+
+      expect(useSkillsStore.getState().error).toBe('Invalid file format. Please upload a .tar.gz or .tgz file.');
+      expect(useSkillsStore.getState().isImporting).toBe(false);
+    });
+
+    it('should handle server error on import', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 409,
+        json: () => Promise.resolve({ error: { message: 'Skill already installed' } }),
+      });
+
+      const file = new File(['test'], 'skill.tar.gz', { type: 'application/gzip' });
+      await expect(
+        useSkillsStore.getState().importSkill(file),
+      ).rejects.toThrow();
+
+      expect(useSkillsStore.getState().error).toBe('Skill already installed');
+      expect(useSkillsStore.getState().isImporting).toBe(false);
+    });
+
+    it('should set isImporting while request is in-flight', async () => {
+      let resolveFetch: (v: unknown) => void;
+      const pending = new Promise((resolve) => { resolveFetch = resolve; });
+      mockFetch.mockReturnValueOnce(pending);
+
+      const file = new File(['test'], 'skill.tar.gz', { type: 'application/gzip' });
+      const importPromise = useSkillsStore.getState().importSkill(file);
+
+      expect(useSkillsStore.getState().isImporting).toBe(true);
+
+      resolveFetch!({
+        ok: true,
+        json: () => Promise.resolve({ skill: makeSkill(), warnings: [] }),
+      });
+      await importPromise;
+
+      expect(useSkillsStore.getState().isImporting).toBe(false);
+    });
+  });
 });

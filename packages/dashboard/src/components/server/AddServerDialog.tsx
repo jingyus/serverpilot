@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Loader2 } from 'lucide-react';
 import { z } from 'zod';
 
@@ -19,14 +20,18 @@ import { TokenDisplay } from './TokenDisplay';
 
 const serverNameSchema = z
   .string()
-  .min(1, 'Server name is required')
-  .max(100, 'Server name must be 100 characters or less')
+  .min(1, 'servers.serverNameRequired')
+  .max(100, 'servers.serverNameTooLong')
   .regex(
     /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/,
-    'Name must start with a letter or number and contain only letters, numbers, dots, hyphens, or underscores'
+    'servers.serverNameInvalid'
   );
 
 const tagSchema = z.string().min(1).max(50);
+
+function RequiredMark() {
+  return <span className="text-destructive ml-0.5" aria-hidden="true">*</span>;
+}
 
 interface AddServerDialogProps {
   open: boolean;
@@ -36,6 +41,7 @@ interface AddServerDialogProps {
 }
 
 export function AddServerDialog({ open, onOpenChange, onAdd, availableGroups = [] }: AddServerDialogProps) {
+  const { t } = useTranslation();
   const [name, setName] = useState('');
   const [nameError, setNameError] = useState('');
   const [tagInput, setTagInput] = useState('');
@@ -77,17 +83,33 @@ export function AddServerDialog({ open, onOpenChange, onAdd, availableGroups = [
     setTags(tags.filter((t) => t !== tag));
   }
 
+  function validateName(value: string): string {
+    const parsed = serverNameSchema.safeParse(value);
+    if (!parsed.success) return t(parsed.error.issues[0].message);
+    return '';
+  }
+
+  function handleNameBlur() {
+    const error = validateName(name.trim());
+    setNameError(error);
+  }
+
+  function handleNameChange(value: string) {
+    setName(value);
+    if (nameError) setNameError('');
+  }
+
   async function handleSubmit() {
-    const parsed = serverNameSchema.safeParse(name.trim());
-    if (!parsed.success) {
-      setNameError(parsed.error.issues[0].message);
+    const error = validateName(name.trim());
+    if (error) {
+      setNameError(error);
       return;
     }
     setNameError('');
     setIsSubmitting(true);
     try {
       const trimmedGroup = group.trim() || undefined;
-      const data = await onAdd(parsed.data, tags.length > 0 ? tags : undefined, trimmedGroup);
+      const data = await onAdd(name.trim(), tags.length > 0 ? tags : undefined, trimmedGroup);
       setResult({ token: data.token, installCommand: data.installCommand });
     } catch {
       // error handled by store
@@ -100,11 +122,11 @@ export function AddServerDialog({ open, onOpenChange, onAdd, availableGroups = [
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Add Server</DialogTitle>
+          <DialogTitle>{t('servers.addServerTitle')}</DialogTitle>
           <DialogDescription>
             {result
-              ? 'Run this command on your server to install the agent.'
-              : 'Enter a name and optional tags for your new server.'}
+              ? t('servers.addServerInstallDesc')
+              : t('servers.addServerDesc')}
           </DialogDescription>
         </DialogHeader>
 
@@ -113,12 +135,13 @@ export function AddServerDialog({ open, onOpenChange, onAdd, availableGroups = [
         ) : (
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="server-name">Server Name</Label>
+              <Label htmlFor="server-name">{t('servers.serverName')}<RequiredMark /></Label>
               <Input
                 id="server-name"
-                placeholder="e.g. production-web-01"
+                placeholder={t('servers.serverNamePlaceholder')}
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => handleNameChange(e.target.value)}
+                onBlur={handleNameBlur}
                 aria-invalid={!!nameError}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
@@ -135,11 +158,11 @@ export function AddServerDialog({ open, onOpenChange, onAdd, availableGroups = [
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="server-tags">Tags (optional)</Label>
+              <Label htmlFor="server-tags">{t('servers.tagsOptional')}</Label>
               <div className="flex gap-2">
                 <Input
                   id="server-tags"
-                  placeholder="e.g. production"
+                  placeholder={t('servers.tagPlaceholder')}
                   value={tagInput}
                   onChange={(e) => setTagInput(e.target.value)}
                   onKeyDown={(e) => {
@@ -157,7 +180,7 @@ export function AddServerDialog({ open, onOpenChange, onAdd, availableGroups = [
                   disabled={!tagInput.trim()}
                   aria-label="Add tag"
                 >
-                  Add
+                  {t('servers.addTag')}
                 </Button>
               </div>
               {tags.length > 0 && (
@@ -183,11 +206,11 @@ export function AddServerDialog({ open, onOpenChange, onAdd, availableGroups = [
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="server-group">Group (optional)</Label>
+              <Label htmlFor="server-group">{t('servers.groupOptional')}</Label>
               <Input
                 id="server-group"
                 list="group-suggestions"
-                placeholder="e.g. production"
+                placeholder={t('servers.groupPlaceholder')}
                 value={group}
                 onChange={(e) => setGroup(e.target.value)}
                 maxLength={100}
@@ -205,11 +228,11 @@ export function AddServerDialog({ open, onOpenChange, onAdd, availableGroups = [
 
         <DialogFooter>
           {result ? (
-            <Button onClick={handleClose}>Done</Button>
+            <Button onClick={handleClose}>{t('servers.done')}</Button>
           ) : (
             <Button onClick={handleSubmit} disabled={isSubmitting}>
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Add Server
+              {t('servers.addServerBtn')}
             </Button>
           )}
         </DialogFooter>

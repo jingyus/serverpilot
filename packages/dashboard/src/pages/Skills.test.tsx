@@ -126,6 +126,10 @@ function setupStore(
     startExecutionStream: vi.fn(),
     stopExecutionStream: vi.fn(),
     clearError: vi.fn(),
+    exportSkill: vi.fn().mockResolvedValue(undefined),
+    importSkill: vi.fn().mockResolvedValue(undefined),
+    isExporting: null,
+    isImporting: false,
     ...overrides,
   });
 
@@ -778,5 +782,50 @@ describe('Skills Page', () => {
     const previewBtn = screen.getByTestId('preview-btn');
     expect(previewBtn).toBeDisabled();
     expect(previewBtn).toHaveTextContent('Previewing...');
+  });
+
+  // --------------------------------------------------------------------------
+  // Export / Import
+  // --------------------------------------------------------------------------
+
+  it('should show export button on skill cards and call exportSkill', async () => {
+    const exportSkill = vi.fn().mockResolvedValue(undefined);
+    setupStore({ exportSkill });
+    const user = userEvent.setup();
+    renderSkills();
+
+    const exportButtons = screen.getAllByTitle('Export');
+    expect(exportButtons.length).toBeGreaterThanOrEqual(1);
+    await user.click(exportButtons[0]);
+
+    expect(exportSkill).toHaveBeenCalledWith('sk-1');
+  });
+
+  it('should show import skill button on installed tab', () => {
+    renderSkills();
+
+    const importBtn = screen.getByTestId('import-skill-btn');
+    expect(importBtn).toBeInTheDocument();
+    expect(importBtn).toHaveTextContent('Import Skill');
+  });
+
+  it('should call importSkill when a file is selected via import input', async () => {
+    const importSkill = vi.fn().mockResolvedValue(undefined);
+    setupStore({ importSkill });
+    renderSkills();
+
+    const fileInput = screen.getByTestId('import-file-input') as HTMLInputElement;
+    const file = new File(['test-content'], 'my-skill.tar.gz', { type: 'application/gzip' });
+    await userEvent.upload(fileInput, file);
+
+    expect(importSkill).toHaveBeenCalledWith(file);
+  });
+
+  it('should disable import button when isImporting is true', () => {
+    setupStore({ isImporting: true });
+    renderSkills();
+
+    const importBtn = screen.getByTestId('import-skill-btn');
+    expect(importBtn).toBeDisabled();
   });
 });

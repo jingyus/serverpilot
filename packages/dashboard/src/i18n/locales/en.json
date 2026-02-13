@@ -125,7 +125,22 @@
     "group": "Group",
     "serverAdded": "Server added",
     "serverDeleted": "Server deleted",
-    "deleteFailed": "Failed to delete server"
+    "deleteFailed": "Failed to delete server",
+    "addServerTitle": "Add Server",
+    "addServerDesc": "Enter a name and optional tags for your new server.",
+    "addServerInstallDesc": "Run this command on your server to install the agent.",
+    "serverName": "Server Name",
+    "serverNamePlaceholder": "e.g. production-web-01",
+    "serverNameRequired": "Server name is required",
+    "serverNameTooLong": "Server name must be 100 characters or less",
+    "serverNameInvalid": "Name must start with a letter or number and contain only letters, numbers, dots, hyphens, or underscores",
+    "tagsOptional": "Tags (optional)",
+    "tagPlaceholder": "e.g. production",
+    "addTag": "Add",
+    "groupOptional": "Group (optional)",
+    "groupPlaceholder": "e.g. production",
+    "addServerBtn": "Add Server",
+    "done": "Done"
   },
   "serverDetail": {
     "chatWithAi": "Chat with AI",
@@ -569,7 +584,9 @@
     "executions": "executions",
     "successCount": "{{count}} succeeded",
     "upgrade": "Upgrade",
-    "cancelExecution": "Cancel"
+    "cancelExecution": "Cancel",
+    "export": "Export",
+    "importSkill": "Import Skill"
   },
   "theme": {
     "toggle": "Toggle theme",
