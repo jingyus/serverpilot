@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { useSkillsStore } from './skills';
 import type { SkillSource, InstalledSkill, AvailableSkill, SkillExecution } from '@/types/skill';
 

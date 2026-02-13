@@ -1053,7 +1053,7 @@ describe('chat-execution (via useChatStore)', () => {
         currentPlan: {
           planId: 'p1',
           description: 'Test',
-          steps: [{ id: 's1', command: 'find /', description: 'Find all', riskLevel: 'green' }],
+          steps: [{ id: 's1', command: 'find /', description: 'Find all', riskLevel: 'green', timeout: 30000, canRollback: false }],
           totalRisk: 'green',
           requiresConfirmation: false,
         },

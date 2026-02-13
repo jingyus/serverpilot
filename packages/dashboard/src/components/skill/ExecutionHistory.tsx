@@ -16,6 +16,8 @@ const EXEC_STATUS_VARIANT: Record<SkillExecutionStatus, 'default' | 'secondary' 
   failed: 'destructive',
   running: 'secondary',
   timeout: 'outline',
+  cancelled: 'outline',
+  pending_confirmation: 'secondary',
 };
 
 // ============================================================================

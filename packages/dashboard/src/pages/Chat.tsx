@@ -368,7 +368,7 @@ function MessageListFooter({
   confirmPlan: () => void;
   rejectPlan: () => void;
   emergencyStop: () => void;
-  respondToStep: (action: string) => void;
+  respondToStep: (action: 'allow' | 'allow_all' | 'reject') => void;
   respondToAgenticConfirm: (approved: boolean) => void;
   t: (key: string) => string;
 }) {

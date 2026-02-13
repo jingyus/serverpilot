@@ -1,12 +1,12 @@
-### [pending] agentic-prompts.ts 零测试覆盖 — buildFullSystemPrompt 的 RAG/Profile 集成逻辑无验证
+### [pending] 删除会话未检查活跃执行 — 用户删除正在执行的会话导致悬挂资源
 
-**ID**: chat-087
+**ID**: chat-088
 **优先级**: P1
-**模块路径**: packages/server/src/ai/
-**发现的问题**: `agentic-prompts.ts`（91 行）完全没有测试文件。该文件包含 `buildAgenticSystemPrompt()`（系统提示词）和 `buildFullSystemPrompt()`（组合 profile + RAG + 基础提示词），后者在 `agentic-chat.ts:136` 被调用，是 agentic 模式的核心入口。`buildFullSystemPrompt` 中有 RAG 搜索（行 64-77）和 profile 上下文构建（行 51-60），错误时静默降级，这些分支完全没有测试覆盖。`serverProfile` 的 `as Parameters<typeof buildProfileContext>[0]` 类型断言（行 53, 58）也没有运行时验证。
-**改进方案**: 新增 `agentic-prompts.test.ts`，覆盖：(1) 无 profile 无 RAG 时返回基础提示词 (2) 有 profile 时包含 profile 上下文 (3) 有 RAG 结果时包含知识上下文 (4) RAG 异常时降级到无知识上下文 (5) 组合场景 profile + caveats + knowledge
-**验收标准**: (1) 新增测试文件覆盖 5+ 个场景 (2) 行覆盖率达到 90%+ (3) mock RAG pipeline 和 profile builder
-**影响范围**: 新增 `packages/server/src/ai/agentic-prompts.test.ts`
+**模块路径**: packages/server/src/api/routes/
+**发现的问题**: DELETE `/chat/:serverId/sessions/:sessionId` (chat.ts:655-676) 直接调用 `sessionMgr.deleteSession()` 删除会话，不检查该会话是否有正在运行的 agentic 循环或 plan 执行。`deleteSession` (manager.ts:329-337) 会从缓存中删除会话（包括 plans Map），但服务端的 agentic 循环、`pendingConfirmations`、`activePlanExecutions` 等状态不会被清理。会话删除后：(1) 正在运行的 `agenticEngine.run()` 继续执行但无法写入消息 (2) pendingConfirmations 中该 session 的确认不会被 cleanup (3) 用户无法取消已删除会话的执行。
+**改进方案**: 在 DELETE 路由中先检查 `session.plans.size > 0` 或 `hasActiveExecution()`，如果有活跃执行返回 409 Conflict 并提示用户先取消执行。或者自动触发 `cleanupSessionConfirmations(sessionId)` 和取消所有活跃执行。
+**验收标准**: (1) 删除有活跃执行的会话时返回 409 或自动取消 (2) 确认和执行状态被正确清理 (3) 新增测试覆盖此场景
+**影响范围**: `packages/server/src/api/routes/chat.ts`, `packages/server/src/api/routes/chat.test.ts`
 **创建时间**: 2026-02-13
 **完成时间**: -
 

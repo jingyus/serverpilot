@@ -345,8 +345,8 @@ export function Dashboard() {
                     <XAxis dataKey="label" tick={{ fontSize: 11 }} />
                     <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
                     <Tooltip
-                      formatter={(value: number) => [value, t('dashboard.operations')]}
-                      labelFormatter={(label: string) => label}
+                      formatter={(value: number | undefined) => [value ?? 0, t('dashboard.operations')]}
+                      labelFormatter={(label: unknown) => String(label)}
                     />
                     <Line
                       type="monotone"
