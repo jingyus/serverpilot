@@ -453,6 +453,10 @@ export class SkillToolExecutor {
           const entries = await store.list(skillId);
           return { result: JSON.stringify(entries), success: true };
         }
+        case 'clear': {
+          const count = await store.deleteAll(skillId);
+          return { result: `Cleared ${count} key(s)`, success: true };
+        }
         default:
           return { result: `Unknown store action: ${action}`, success: false };
       }

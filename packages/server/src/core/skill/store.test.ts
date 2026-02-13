@@ -135,6 +135,67 @@ describe('InMemorySkillKVStore', () => {
 });
 
 // ============================================================================
+// deleteAll — batch clear all keys for a skill
+// ============================================================================
+
+describe('InMemorySkillKVStore.deleteAll', () => {
+  let store: InMemorySkillKVStore;
+
+  beforeEach(() => {
+    store = new InMemorySkillKVStore();
+  });
+
+  it('deletes all keys for a skill and returns the count', async () => {
+    await store.set('skill-1', 'a', '1');
+    await store.set('skill-1', 'b', '2');
+    await store.set('skill-1', 'c', '3');
+
+    const count = await store.deleteAll('skill-1');
+    expect(count).toBe(3);
+
+    const entries = await store.list('skill-1');
+    expect(entries).toEqual({});
+  });
+
+  it('returns 0 for a skill with no stored keys', async () => {
+    const count = await store.deleteAll('non-existent');
+    expect(count).toBe(0);
+  });
+
+  it('does not affect other skills', async () => {
+    await store.set('skill-a', 'x', '1');
+    await store.set('skill-b', 'y', '2');
+
+    await store.deleteAll('skill-a');
+
+    expect(await store.get('skill-a', 'x')).toBeNull();
+    expect(await store.get('skill-b', 'y')).toBe('2');
+  });
+
+  it('allows new keys after deleteAll', async () => {
+    await store.set('skill-1', 'a', '1');
+    await store.deleteAll('skill-1');
+
+    await store.set('skill-1', 'b', '2');
+    expect(await store.get('skill-1', 'b')).toBe('2');
+  });
+
+  it('frees quota after deleteAll', async () => {
+    // Fill to key count limit
+    for (let i = 0; i < MAX_KEYS_PER_SKILL; i++) {
+      await store.set('skill-1', `key-${i}`, 'v');
+    }
+    // At limit — new key would fail
+    await expect(store.set('skill-1', 'overflow', 'v')).rejects.toThrow(SkillStoreQuotaError);
+
+    await store.deleteAll('skill-1');
+
+    // Now a new key should succeed
+    await expect(store.set('skill-1', 'fresh', 'v')).resolves.toBeUndefined();
+  });
+});
+
+// ============================================================================
 // Quota enforcement — key count limit
 // ============================================================================
 

@@ -217,13 +217,17 @@ describe('E2E: Complete Installation Flow', () => {
     expect(server.getSessionCount()).toBe(1);
 
     // Step 4: Client sends ENV_REPORT → server generates fallback plan
+    // Without an AI agent, the handler sends AI_STREAM_ERROR first, then PLAN_RECEIVE
     const envMsg = createMessage(MessageType.ENV_REPORT, makeEnvInfo());
-    const planPromise = waitForMessage(ws);
+    const envResponses = collectMessages(ws, 2);
     ws.send(JSON.stringify(envMsg));
 
-    // Step 5: Server responds with fallback install plan
-    const planStr = await planPromise;
-    const planResponse = JSON.parse(planStr);
+    // Step 5: Server responds with AI error notification + fallback install plan
+    const envMsgs = await envResponses;
+    const errorNotification = JSON.parse(envMsgs[0]);
+    expect(errorNotification.type).toBe(MessageType.AI_STREAM_ERROR);
+
+    const planResponse = JSON.parse(envMsgs[1]);
     expect(planResponse.type).toBe(MessageType.PLAN_RECEIVE);
     expect(planResponse.payload.steps.length).toBeGreaterThanOrEqual(2);
 

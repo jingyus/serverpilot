@@ -3,13 +3,13 @@
 > 此队列专注于 Skill 插件系统的设计与实现
 > AI 自动扫描 → 发现缺失 → 设计实现 → 验证
 
-**最后更新**: 2026-02-13 13:13:54
+**最后更新**: 2026-02-13 13:14:25
 
 ## 📊 统计
 
 - **总任务数**: 77
-- **待完成** (pending): 4
-- **进行中** (in_progress): 0
+- **待完成** (pending): 3
+- **进行中** (in_progress): 1
 - **已完成** (completed): 73
 - **失败** (failed): 0
 
@@ -158,7 +158,7 @@
 
 ---
 
-### [pending] SkillKVStore 批量清除接口 — 支持按 skillId 清除所有 KV 条目
+### [in_progress] SkillKVStore 批量清除接口 — 支持按 skillId 清除所有 KV 条目
 
 **ID**: skill-104
 **优先级**: P1

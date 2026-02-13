@@ -46,6 +46,7 @@ export interface SkillKVStoreInterface {
   get(skillId: string, key: string): Promise<string | null>;
   set(skillId: string, key: string, value: string): Promise<void>;
   delete(skillId: string, key: string): Promise<void>;
+  deleteAll(skillId: string): Promise<number>;
   list(skillId: string): Promise<Record<string, string>>;
 }
 
@@ -138,6 +139,16 @@ export class SkillKVStore implements SkillKVStoreInterface {
     logger.debug({ skillId, key }, 'KV store delete');
   }
 
+  async deleteAll(skillId: string): Promise<number> {
+    const result = this.db
+      .delete(skillStore)
+      .where(eq(skillStore.skillId, skillId))
+      .run();
+    const count = result.changes;
+    logger.debug({ skillId, count }, 'KV store deleteAll');
+    return count;
+  }
+
   async list(skillId: string): Promise<Record<string, string>> {
     const rows = this.db
       .select({ key: skillStore.key, value: skillStore.value })
@@ -205,6 +216,14 @@ export class InMemorySkillKVStore implements SkillKVStoreInterface {
 
   async delete(skillId: string, key: string): Promise<void> {
     this.data.get(skillId)?.delete(key);
+  }
+
+  async deleteAll(skillId: string): Promise<number> {
+    const skillMap = this.data.get(skillId);
+    if (!skillMap) return 0;
+    const count = skillMap.size;
+    this.data.delete(skillId);
+    return count;
   }
 
   async list(skillId: string): Promise<Record<string, string>> {

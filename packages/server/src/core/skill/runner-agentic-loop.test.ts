@@ -69,6 +69,7 @@ vi.mock('./store.js', () => {
     get: vi.fn().mockResolvedValue(null),
     set: vi.fn().mockResolvedValue(undefined),
     delete: vi.fn().mockResolvedValue(undefined),
+    deleteAll: vi.fn().mockResolvedValue(0),
     list: vi.fn().mockResolvedValue({}),
   };
   return {

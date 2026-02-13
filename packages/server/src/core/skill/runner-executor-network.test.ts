@@ -53,6 +53,7 @@ vi.mock('./store.js', () => {
     get: vi.fn().mockResolvedValue(null),
     set: vi.fn().mockResolvedValue(undefined),
     delete: vi.fn().mockResolvedValue(undefined),
+    deleteAll: vi.fn().mockResolvedValue(0),
     list: vi.fn().mockResolvedValue({}),
   };
   return {
@@ -75,6 +76,7 @@ function getMockStore() {
     get: ReturnType<typeof vi.fn>;
     set: ReturnType<typeof vi.fn>;
     delete: ReturnType<typeof vi.fn>;
+    deleteAll: ReturnType<typeof vi.fn>;
     list: ReturnType<typeof vi.fn>;
   };
 }
@@ -134,6 +136,7 @@ beforeEach(() => {
   getMockStore().get.mockResolvedValue(null);
   getMockStore().set.mockResolvedValue(undefined);
   getMockStore().delete.mockResolvedValue(undefined);
+  getMockStore().deleteAll.mockResolvedValue(0);
   getMockStore().list.mockResolvedValue({});
 });
 

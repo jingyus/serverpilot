@@ -14,6 +14,7 @@ export * from './protocol/messages.js';
 export * from './protocol/types.js';
 export * from './protocol/schemas.js';
 export * from './protocol/version.js';
+export * from './protocol/conversation-export.js';
 
 // Security exports
 export * from './security/index.js';

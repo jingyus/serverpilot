@@ -190,7 +190,7 @@ describe('buildToolDefinitions', () => {
     // Verify enum values for action
     const actionProp = (defs[0].input_schema as Record<string, Record<string, unknown>>)
       .properties['action'] as Record<string, unknown>;
-    expect(actionProp.enum).toEqual(['get', 'set', 'delete', 'list']);
+    expect(actionProp.enum).toEqual(['get', 'set', 'delete', 'list', 'clear']);
   });
 
   it('builds multiple tool definitions preserving order', () => {

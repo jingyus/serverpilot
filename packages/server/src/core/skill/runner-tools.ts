@@ -223,8 +223,8 @@ export function buildToolDefinitions(tools: SkillToolType[]): ToolDefinition[] {
         properties: {
           action: {
             type: 'string',
-            enum: ['get', 'set', 'delete', 'list'],
-            description: 'Store operation: get/set/delete require a key; list returns all key-value pairs for this skill',
+            enum: ['get', 'set', 'delete', 'list', 'clear'],
+            description: 'Store operation: get/set/delete require a key; list returns all key-value pairs; clear removes all keys for this skill',
           },
           key: {
             type: 'string',
