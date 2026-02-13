@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { useState, useRef, useCallback, useImperativeHandle, forwardRef } from 'react';
+import { useState, useRef, useCallback, useImperativeHandle, forwardRef, useEffect } from 'react';
 import { Send, Square, Loader2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -22,20 +22,34 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
   function MessageInput({ onSend, onCancel, isStreaming, disabled = false }, ref) {
   const [input, setInput] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const rafRef = useRef(0);
 
   useImperativeHandle(ref, () => ({
     focus: () => textareaRef.current?.focus(),
   }), []);
+
+  useEffect(() => {
+    return () => cancelAnimationFrame(rafRef.current);
+  }, []);
 
   const trimmed = input.trim();
   const charCount = trimmed.length;
   const isOverLimit = charCount > MAX_MESSAGE_LENGTH;
   const canSend = charCount > 0 && !isOverLimit && !isStreaming && !disabled;
 
+  const adjustHeight = useCallback((el: HTMLTextAreaElement) => {
+    cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(() => {
+      el.style.height = 'auto';
+      el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+    });
+  }, []);
+
   const handleSend = useCallback(() => {
     if (!canSend) return;
     onSend(trimmed);
     setInput('');
+    cancelAnimationFrame(rafRef.current);
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
@@ -59,11 +73,9 @@ export const MessageInput = forwardRef<MessageInputHandle, MessageInputProps>(
   const handleInput = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       setInput(e.target.value);
-      const el = e.target;
-      el.style.height = 'auto';
-      el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+      adjustHeight(e.target);
     },
-    []
+    [adjustHeight]
   );
 
   return (

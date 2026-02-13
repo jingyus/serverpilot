@@ -146,6 +146,63 @@ describe('MessageInput', () => {
     });
   });
 
+  describe('auto-resize with rAF batching', () => {
+    it('defers height adjustment to requestAnimationFrame', async () => {
+      const rafSpy = vi.spyOn(window, 'requestAnimationFrame');
+      const user = userEvent.setup();
+      render(<MessageInput {...defaultProps} />);
+
+      const textarea = screen.getByTestId('message-textarea');
+      await user.type(textarea, 'A');
+
+      expect(rafSpy).toHaveBeenCalled();
+      rafSpy.mockRestore();
+    });
+
+    it('cancels pending rAF on send to avoid stale updates', async () => {
+      const cancelSpy = vi.spyOn(window, 'cancelAnimationFrame');
+      const user = userEvent.setup();
+      render(<MessageInput {...defaultProps} onSend={vi.fn()} />);
+
+      const textarea = screen.getByTestId('message-textarea');
+      await user.type(textarea, 'Hello{Enter}');
+
+      // cancelAnimationFrame is called both by adjustHeight (to cancel previous)
+      // and by handleSend (to cancel the pending resize)
+      expect(cancelSpy).toHaveBeenCalled();
+      cancelSpy.mockRestore();
+    });
+
+    it('cancels pending rAF on unmount', async () => {
+      const cancelSpy = vi.spyOn(window, 'cancelAnimationFrame');
+      const user = userEvent.setup();
+      const { unmount } = render(<MessageInput {...defaultProps} />);
+
+      const textarea = screen.getByTestId('message-textarea');
+      await user.type(textarea, 'A');
+
+      cancelSpy.mockClear();
+      unmount();
+
+      expect(cancelSpy).toHaveBeenCalled();
+      cancelSpy.mockRestore();
+    });
+
+    it('cancels previous rAF before scheduling a new one on rapid input', async () => {
+      const cancelSpy = vi.spyOn(window, 'cancelAnimationFrame');
+      const user = userEvent.setup();
+      render(<MessageInput {...defaultProps} />);
+
+      const textarea = screen.getByTestId('message-textarea');
+      await user.type(textarea, 'ABC');
+
+      // Each keystroke cancels the previous pending rAF
+      // 'A' cancels initial (0), 'B' cancels A's rAF, 'C' cancels B's rAF
+      expect(cancelSpy.mock.calls.length).toBeGreaterThanOrEqual(3);
+      cancelSpy.mockRestore();
+    });
+  });
+
   describe('accessibility', () => {
     it('textarea has aria-keyshortcuts attribute', () => {
       render(<MessageInput {...defaultProps} />);
