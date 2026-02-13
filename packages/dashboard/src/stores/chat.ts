@@ -16,7 +16,7 @@ export type {
 } from './chat-types.js';
 export { generateId, stripJsonPlan } from './chat-types.js';
 
-import type { ChatState } from './chat-types.js';
+import type { ChatState, ToolCallEntry } from './chat-types.js';
 import { INITIAL_EXECUTION, generateId } from './chat-types.js';
 
 import {
@@ -194,6 +194,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
     getActiveHandle()?.abort();
     setActiveHandle(null);
     const { streamingContent } = get();
+    const resetFields = {
+      isStreaming: false,
+      streamingContent: '',
+      executionMode: 'none' as const,
+      pendingConfirm: null,
+      toolCalls: [] as ToolCallEntry[],
+      agenticConfirm: null,
+      isAgenticMode: false,
+      sseParseErrors: 0,
+      currentPlan: null,
+      planStatus: 'none' as const,
+      execution: { ...INITIAL_EXECUTION },
+    };
     if (streamingContent) {
       const partialMsg: ChatMessage = {
         id: generateId(),
@@ -202,12 +215,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
         timestamp: new Date().toISOString(),
       };
       set((state) => ({
+        ...resetFields,
         messages: [...state.messages, partialMsg],
-        isStreaming: false,
-        streamingContent: '',
       }));
     } else {
-      set({ isStreaming: false, streamingContent: '' });
+      set(resetFields);
     }
   },
 
@@ -221,6 +233,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
       executionMode: 'none',
       pendingConfirm: null,
       agenticConfirm: null,
+      toolCalls: [],
+      isAgenticMode: false,
+      sseParseErrors: 0,
+      currentPlan: null,
+      planStatus: 'none',
+      execution: { ...INITIAL_EXECUTION },
     });
   },
 

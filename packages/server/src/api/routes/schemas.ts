@@ -240,6 +240,11 @@ export const RenameSessionBodySchema = z.object({
 });
 export type RenameSessionBody = z.infer<typeof RenameSessionBodySchema>;
 
+export const ExportSessionQuerySchema = z.object({
+  format: z.enum(['json', 'markdown']).default('json'),
+});
+export type ExportSessionQuery = z.infer<typeof ExportSessionQuerySchema>;
+
 // ============================================================================
 // Task Schemas
 // ============================================================================

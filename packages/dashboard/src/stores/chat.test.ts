@@ -312,6 +312,128 @@ describe('useChatStore', () => {
       expect(state.isStreaming).toBe(false);
       expect(state.messages).toHaveLength(0);
     });
+
+    it('resets all execution-related state (chat-090)', () => {
+      useChatStore.setState({
+        isStreaming: true,
+        streamingContent: '',
+        executionMode: 'inline',
+        pendingConfirm: {
+          stepId: 's1',
+          command: 'apt install nginx',
+          description: 'Install nginx',
+          riskLevel: 'yellow',
+        },
+        toolCalls: [
+          {
+            id: 'tc1',
+            tool: 'execute_command',
+            command: 'ls',
+            status: 'running',
+            output: '',
+          },
+        ],
+        agenticConfirm: {
+          confirmId: 'session:c1',
+          command: 'rm -rf /tmp',
+          description: 'Remove temp',
+          riskLevel: 'red',
+        },
+        isAgenticMode: true,
+        sseParseErrors: 3,
+        currentPlan: {
+          planId: 'p1',
+          description: 'Test plan',
+          steps: [],
+          totalRisk: 'green',
+          requiresConfirmation: false,
+        },
+        planStatus: 'executing',
+        execution: {
+          activeStepId: 'step-1',
+          outputs: { 'step-1': 'some output' },
+          completedSteps: {},
+          success: null,
+          operationId: 'op-1',
+          startTime: Date.now(),
+          cancelled: false,
+        },
+      });
+
+      useChatStore.getState().cancelStream();
+
+      const state = useChatStore.getState();
+      expect(state.isStreaming).toBe(false);
+      expect(state.executionMode).toBe('none');
+      expect(state.pendingConfirm).toBeNull();
+      expect(state.toolCalls).toEqual([]);
+      expect(state.agenticConfirm).toBeNull();
+      expect(state.isAgenticMode).toBe(false);
+      expect(state.sseParseErrors).toBe(0);
+      expect(state.currentPlan).toBeNull();
+      expect(state.planStatus).toBe('none');
+      expect(state.execution).toEqual({
+        activeStepId: null,
+        outputs: {},
+        completedSteps: {},
+        success: null,
+        operationId: null,
+        startTime: null,
+        cancelled: false,
+      });
+    });
+
+    it('resets execution state while preserving partial message (chat-090)', () => {
+      useChatStore.setState({
+        isStreaming: true,
+        streamingContent: 'AI was typing...',
+        agenticConfirm: {
+          confirmId: 'session:c1',
+          command: 'dangerous-cmd',
+          description: 'Dangerous',
+          riskLevel: 'red',
+        },
+        toolCalls: [
+          { id: 'tc1', tool: 'exec', status: 'running', output: '' },
+        ],
+        executionMode: 'log',
+        isAgenticMode: true,
+      });
+
+      useChatStore.getState().cancelStream();
+
+      const state = useChatStore.getState();
+      // Partial message preserved
+      expect(state.messages).toHaveLength(1);
+      expect(state.messages[0].content).toContain('[Cancelled]');
+      // All execution state cleared
+      expect(state.agenticConfirm).toBeNull();
+      expect(state.toolCalls).toEqual([]);
+      expect(state.executionMode).toBe('none');
+      expect(state.isAgenticMode).toBe(false);
+    });
+
+    it('preserves session, serverId, and existing messages (chat-090)', () => {
+      useChatStore.setState({
+        serverId: 'srv-1',
+        sessionId: 'sess-1',
+        messages: [
+          { id: 'u1', role: 'user', content: 'hi', timestamp: '' },
+          { id: 'a1', role: 'assistant', content: 'hello', timestamp: '' },
+        ],
+        isStreaming: true,
+        streamingContent: '',
+        toolCalls: [{ id: 'tc1', tool: 'exec', status: 'running', output: '' }],
+      });
+
+      useChatStore.getState().cancelStream();
+
+      const state = useChatStore.getState();
+      expect(state.serverId).toBe('srv-1');
+      expect(state.sessionId).toBe('sess-1');
+      expect(state.messages).toHaveLength(2);
+      expect(state.toolCalls).toEqual([]);
+    });
   });
 
   describe('fetchSessions', () => {
@@ -696,6 +818,28 @@ describe('useChatStore', () => {
           description: 'danger',
           riskLevel: 'critical',
         },
+        toolCalls: [
+          { id: 'tc1', tool: 'exec', status: 'running', output: 'partial' },
+        ],
+        isAgenticMode: true,
+        sseParseErrors: 5,
+        currentPlan: {
+          planId: 'p1',
+          description: 'Test',
+          steps: [],
+          totalRisk: 'green',
+          requiresConfirmation: false,
+        },
+        planStatus: 'executing',
+        execution: {
+          activeStepId: 'step-1',
+          outputs: { 'step-1': 'data' },
+          completedSteps: {},
+          success: null,
+          operationId: 'op-1',
+          startTime: Date.now(),
+          cancelled: false,
+        },
       });
 
       useChatStore.getState().cleanup();
@@ -708,6 +852,21 @@ describe('useChatStore', () => {
       expect(state.executionMode).toBe('none');
       expect(state.pendingConfirm).toBeNull();
       expect(state.agenticConfirm).toBeNull();
+      // Newly-reset fields (chat-090)
+      expect(state.toolCalls).toEqual([]);
+      expect(state.isAgenticMode).toBe(false);
+      expect(state.sseParseErrors).toBe(0);
+      expect(state.currentPlan).toBeNull();
+      expect(state.planStatus).toBe('none');
+      expect(state.execution).toEqual({
+        activeStepId: null,
+        outputs: {},
+        completedSteps: {},
+        success: null,
+        operationId: null,
+        startTime: null,
+        cancelled: false,
+      });
       // Messages and session preserved
       expect(state.messages).toHaveLength(1);
       expect(state.sessionId).toBe('sess-1');
