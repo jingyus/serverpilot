@@ -1,23 +1,23 @@
-### [pending] MessageInput 无 Escape 取消流式和 Ctrl+K 搜索快捷键 — 键盘操作效率低
+### [pending] chat-execution.ts 超过 500 行软限制（652 行）— SSE 回调构建器可提取
 
-**ID**: chat-077
-**优先级**: P2
-**模块路径**: packages/dashboard/src/components/chat/
-**发现的问题**: `MessageInput.tsx:40-48` 仅处理 `Enter`/`Shift+Enter` 键盘事件。缺少：(1) `Escape` 键取消流式输出——当前必须用鼠标点击"停止"按钮（行 95-107），频繁使用 Chat 时效率低下；(2) 无任何全局快捷键支持。对比 Claude.ai：Escape 取消生成，`/` 聚焦输入框。当前 `onCancel` prop 已存在（行 13），只需在 keydown 事件中调用即可。
+**ID**: chat-078
+**优先级**: P3
+**模块路径**: packages/dashboard/src/stores/
+**发现的问题**: `chat-execution.ts` 当前 652 行，超过项目 500 行软限制。主要体积来自 `buildStreamingCallbacks` 函数（约 300 行），其中包含 14+ 个 SSE 事件处理器。每个处理器逻辑独立（JSON.parse → Zod validate → set state），适合提取到独立模块。此外 `createConfirmPlan` 和 `createEmergencyStop` 也各约 80 行，与 streaming 回调逻辑无关。
 **改进方案**:
-1. 在 `handleKeyDown` 中添加 `Escape` 处理：当 `isStreaming` 时调用 `onCancel()`
-2. 添加全局 keydown listener（在 Chat.tsx 中）：
-   - `Escape`：取消流式 / 关闭确认对话框
-   - `/`：聚焦输入框（当前无焦点在输入框时）
-3. 添加 `aria-keyshortcuts` 属性提升可访问性
+1. 提取 `buildStreamingCallbacks` 到新文件 `chat-sse-handlers.ts`
+2. 每个 SSE 事件处理器作为独立的命名函数导出
+3. `chat-execution.ts` 只保留 `createConfirmPlan`、`createRespondToStep`、`createEmergencyStop` 等高层流程
+4. 保持 `get()`/`set()` 通过参数注入（避免循环依赖）
 **验收标准**:
-- 按 Escape 可取消正在进行的流式输出
-- 快捷键不与系统/浏览器快捷键冲突
-- 添加 testid + 键盘事件测试
+- `chat-execution.ts` 降到 400 行以下
+- `chat-sse-handlers.ts` < 350 行
+- 所有现有 chat-execution 测试通过
+- 无循环依赖
 **影响范围**:
-- `packages/dashboard/src/components/chat/MessageInput.tsx` — Escape 键处理
-- `packages/dashboard/src/pages/Chat.tsx` — 全局快捷键 listener
-- `packages/dashboard/src/components/chat/MessageInput.test.tsx` — 新增测试
+- `packages/dashboard/src/stores/chat-execution.ts` — 拆分
+- `packages/dashboard/src/stores/chat-sse-handlers.ts` — 新文件
+- `packages/dashboard/src/stores/chat-execution.test.ts` — 调整 import
 **创建时间**: 2026-02-13
 **完成时间**: -
 
