@@ -42,7 +42,7 @@ import {
   removeActiveExecution,
 } from './chat-execution.js';
 import type { StoredPlan } from './chat-execution.js';
-import type { ChatMessageBody, ExecutePlanBody, CancelExecutionBody, StepDecisionBody, ConfirmBody } from './schemas.js';
+import type { ChatMessageBody, ExecutePlanBody, CancelExecutionBody, StepDecisionBody, ConfirmBody, RenameSessionBody } from './schemas.js';
 import type { ApiEnv } from './types.js';
 import { getTaskExecutor } from '../../core/task/executor.js';
 
@@ -613,7 +613,7 @@ chat.get('/:serverId/sessions/:sessionId', requirePermission('chat:use'), async 
 chat.patch('/:serverId/sessions/:sessionId', requirePermission('chat:use'), validateBody(RenameSessionBodySchema), async (c) => {
   const { serverId, sessionId } = c.req.param();
   const userId = c.get('userId');
-  const { name } = c.req.valid('json' as never);
+  const { name } = c.get('validatedBody') as RenameSessionBody;
 
   const repo = getServerRepository();
   const server = await repo.findById(serverId, userId);

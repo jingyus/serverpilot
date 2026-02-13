@@ -1093,6 +1093,125 @@ describe('POST /api/v1/chat/:serverId/confirm', () => {
 });
 
 // ============================================================================
+// PATCH /chat/:serverId/sessions/:sessionId — Rename Session
+// ============================================================================
+
+function jsonPatch(path: string, body: unknown, token: string): Promise<Response> {
+  return req(path, token, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+describe('PATCH /api/v1/chat/:serverId/sessions/:sessionId', () => {
+  it('should rename a session', async () => {
+    const server = await createServer('web-01', tokenA);
+    const session = await getSessionManager().getOrCreate(server.id, USER_A);
+
+    const res = await jsonPatch(
+      `/api/v1/chat/${server.id}/sessions/${session.id}`,
+      { name: 'My Custom Name' },
+      tokenA,
+    );
+    if (res.status !== 200) {
+      const errBody = await res.text();
+      console.error('PATCH response:', res.status, errBody);
+    }
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+
+    // Verify persistence via session list
+    const listRes = await req(`/api/v1/chat/${server.id}/sessions`, tokenA);
+    const listBody = await listRes.json();
+    expect(listBody.sessions[0].name).toBe('My Custom Name');
+  });
+
+  it('should return 404 for non-existent server', async () => {
+    const res = await jsonPatch(
+      '/api/v1/chat/550e8400-e29b-41d4-a716-446655440000/sessions/some-session',
+      { name: 'New Name' },
+      tokenA,
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it('should return 404 for non-existent session', async () => {
+    const server = await createServer('web-01', tokenA);
+    const res = await jsonPatch(
+      `/api/v1/chat/${server.id}/sessions/nonexistent-id`,
+      { name: 'New Name' },
+      tokenA,
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it('should return 404 for another user\'s server', async () => {
+    const server = await createServer('web-01', tokenA);
+    const session = await getSessionManager().getOrCreate(server.id, USER_A);
+
+    const res = await jsonPatch(
+      `/api/v1/chat/${server.id}/sessions/${session.id}`,
+      { name: 'Hijack' },
+      tokenB,
+    );
+    expect(res.status).toBe(404);
+  });
+
+  it('should reject empty name', async () => {
+    const server = await createServer('web-01', tokenA);
+    const session = await getSessionManager().getOrCreate(server.id, USER_A);
+
+    const res = await jsonPatch(
+      `/api/v1/chat/${server.id}/sessions/${session.id}`,
+      { name: '' },
+      tokenA,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('should reject name exceeding 200 characters', async () => {
+    const server = await createServer('web-01', tokenA);
+    const session = await getSessionManager().getOrCreate(server.id, USER_A);
+
+    const res = await jsonPatch(
+      `/api/v1/chat/${server.id}/sessions/${session.id}`,
+      { name: 'x'.repeat(201) },
+      tokenA,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('should reject missing name field', async () => {
+    const server = await createServer('web-01', tokenA);
+    const session = await getSessionManager().getOrCreate(server.id, USER_A);
+
+    const res = await jsonPatch(
+      `/api/v1/chat/${server.id}/sessions/${session.id}`,
+      {},
+      tokenA,
+    );
+    expect(res.status).toBe(400);
+  });
+
+  it('should accept name at max length (200 chars)', async () => {
+    const server = await createServer('web-01', tokenA);
+    const session = await getSessionManager().getOrCreate(server.id, USER_A);
+
+    const longName = 'a'.repeat(200);
+    const res = await jsonPatch(
+      `/api/v1/chat/${server.id}/sessions/${session.id}`,
+      { name: longName },
+      tokenA,
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+  });
+});
+
+// ============================================================================
 // DELETE /chat/:serverId/sessions/:sessionId — Delete Session
 // ============================================================================
 
