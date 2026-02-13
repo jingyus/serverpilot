@@ -169,7 +169,7 @@ describe('buildFullSystemPrompt', () => {
   });
 
   it('includes caveats when profile generates them', async () => {
-    const fakeProfile = { osInfo: { platform: 'Ubuntu' } };
+    const fakeProfile = { osInfo: { platform: 'Ubuntu' } } as unknown as FullServerProfile;
     const result = await buildFullSystemPrompt('hello', fakeProfile);
     expect(result).toContain('Important Caveats');
     expect(result).toContain('Disk usage above 80%');
@@ -240,7 +240,7 @@ describe('buildFullSystemPrompt', () => {
     const { buildProfileCaveats } = await import('./profile-context.js');
     vi.mocked(buildProfileCaveats).mockReturnValue([]);
 
-    const fakeProfile = { osInfo: { platform: 'Ubuntu' } };
+    const fakeProfile = { osInfo: { platform: 'Ubuntu' } } as unknown as FullServerProfile;
     const result = await buildFullSystemPrompt('hello', fakeProfile);
     expect(result).toContain('Server Profile');
     expect(result).not.toContain('Important Caveats');
@@ -248,7 +248,7 @@ describe('buildFullSystemPrompt', () => {
 
   it('uses default server name when serverName is not provided', async () => {
     const { buildProfileContext } = await import('./profile-context.js');
-    const fakeProfile = { osInfo: { platform: 'Ubuntu' } };
+    const fakeProfile = { osInfo: { platform: 'Ubuntu' } } as unknown as FullServerProfile;
     await buildFullSystemPrompt('hello', fakeProfile);
     expect(buildProfileContext).toHaveBeenCalledWith(fakeProfile, 'server');
   });
@@ -267,7 +267,7 @@ describe('buildFullSystemPrompt', () => {
       }),
     } as never);
 
-    const fakeProfile = { osInfo: { platform: 'Ubuntu' } };
+    const fakeProfile = { osInfo: { platform: 'Ubuntu' } } as unknown as FullServerProfile;
     const result = await buildFullSystemPrompt('query', fakeProfile, 'srv');
     // Base prompt, profile, caveats, and knowledge should all be present
     expect(result).toContain('ServerPilot');
