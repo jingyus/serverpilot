@@ -1,13 +1,11 @@
-### [pending] ExecutionSummary duration 是静态快照 — 不显示实时计时器
+### [pending] 并发 401 响应触发多次 auth:logout 事件 — 可能导致多次路由跳转
 
-**ID**: chat-099
+**ID**: chat-100
 **优先级**: P3
-**模块路径**: packages/dashboard/src/components/chat/
-**发现的问题**: `ExecutionLog.tsx` 中 `ExecutionSummary` 组件（约行 257）的 `totalDuration = startTime ? Date.now() - startTime : 0` 只在组件渲染时计算一次，不是实时更新的。用户在执行过程中看到的耗时数字是静态的（只有在有新渲染触发时才更新，比如收到新的步骤输出）。对于长时间运行的命令（如软件安装 5 分钟），显示的时间不变直到下一次渲染。
-**改进方案**: 在执行期间（`isExecuting=true`）使用 `useEffect` + `setInterval` 每秒更新 duration 显示。执行完成后停止计时器并显示最终时间。
-**验收标准**: (1) 执行中实时显示耗时 (2) 每秒更新一次 (3) 完成后显示最终耗时 (4) 计时器正确清理
-**影响范围**: `packages/dashboard/src/components/chat/ExecutionLog.tsx`
+**模块路径**: packages/dashboard/src/api/
+**发现的问题**: `apiRequest()` (client.ts:83-88) 在持久化 401 时清除 token 并 dispatch `auth:logout` CustomEvent。如果多个请求同时收到 401（例如 token 过期后页面初始化时并发发出 fetchServers + fetchSessions + fetchNotifications），每个请求都会独立执行 `localStorage.removeItem` 和 `dispatchEvent(new CustomEvent('auth:logout'))`。多个 logout 事件可能导致：(1) React Router `navigate('/login')` 被多次调用 (2) 已清除的 token 被第二个请求再次尝试刷新（浪费请求）。虽然目前没有可观察的 bug，但是资源浪费。
+**改进方案**: 使用模块级 flag 如 `let logoutDispatched = false`，确保只 dispatch 一次 logout 事件。在 `refreshAccessToken` 成功后重置 flag。或者用 `requestIdleCallback` 去重。
+**验收标准**: (1) 并发 401 只触发一次 logout (2) token 刷新成功后恢复正常 (3) 现有测试通过
+**影响范围**: `packages/dashboard/src/api/client.ts`
 **创建时间**: 2026-02-13
 **完成时间**: -
-
----

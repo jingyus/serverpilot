@@ -6,6 +6,18 @@ import { getToken, clearToken, refreshAccessToken } from "./auth";
 // Re-export token helpers so existing consumers don't break
 export { setToken, clearToken } from "./auth";
 
+/**
+ * Module-level flag to deduplicate auth:logout dispatch.
+ * When multiple concurrent requests all receive 401, only the first one
+ * dispatches the logout event — subsequent ones skip the redundant dispatch.
+ */
+let logoutDispatched = false;
+
+/** @internal — reset logout flag (for testing) */
+export function _resetLogoutFlag(): void {
+  logoutDispatched = false;
+}
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -86,6 +98,7 @@ export async function apiRequest<T>(
   if (response.status === 401 && !path.startsWith("/auth/")) {
     const newToken = await refreshAccessToken();
     if (newToken) {
+      logoutDispatched = false; // refresh succeeded — allow future logout dispatch
       headers["Authorization"] = `Bearer ${newToken}`;
       response = await fetchWithTimeout(
         `${API_BASE_URL}${path}`,
@@ -106,12 +119,15 @@ export async function apiRequest<T>(
     const message =
       error.message ?? `Request failed with status ${response.status}`;
 
-    // Force logout on persistent auth failure
+    // Force logout on persistent auth failure — deduplicate across concurrent requests
     if (response.status === 401 && !path.startsWith("/auth/")) {
       clearToken();
       localStorage.removeItem("refresh_token");
       localStorage.removeItem("auth_user");
-      window.dispatchEvent(new CustomEvent("auth:logout"));
+      if (!logoutDispatched) {
+        logoutDispatched = true;
+        window.dispatchEvent(new CustomEvent("auth:logout"));
+      }
     }
 
     throw new ApiError(

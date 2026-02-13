@@ -7,6 +7,7 @@ import {
   ApiTimeoutError,
   setToken,
   clearToken,
+  _resetLogoutFlag,
 } from "./client";
 
 const fetchMock = vi.fn();
@@ -24,6 +25,7 @@ describe("apiRequest", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    _resetLogoutFlag();
   });
 
   afterEach(() => {
@@ -164,6 +166,74 @@ describe("apiRequest", () => {
 
     expect(listener).toHaveBeenCalled();
     expect(localStorage.getItem("auth_token")).toBeNull();
+
+    window.removeEventListener("auth:logout", listener);
+  });
+
+  it("dispatches auth:logout only once for concurrent 401 responses", async () => {
+    setToken("expired-token");
+    const listener = vi.fn();
+    window.addEventListener("auth:logout", listener);
+
+    // All requests return 401, no refresh token available
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(
+        mockFetchResponse(401, {
+          error: { code: "UNAUTHORIZED", message: "Expired" },
+        }),
+      ),
+    );
+
+    // Fire 3 concurrent requests that all hit persistent 401
+    const results = await Promise.allSettled([
+      apiRequest("/servers"),
+      apiRequest("/sessions"),
+      apiRequest("/notifications"),
+    ]);
+
+    expect(results.every((r) => r.status === "rejected")).toBe(true);
+    // Only ONE logout event despite 3 concurrent 401s
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    window.removeEventListener("auth:logout", listener);
+  });
+
+  it("resets logout flag after successful token refresh", async () => {
+    setToken("expired-token");
+    localStorage.setItem("refresh_token", "my-refresh");
+    const listener = vi.fn();
+    window.addEventListener("auth:logout", listener);
+
+    // First request: 401 → refresh succeeds → retry succeeds
+    fetchMock
+      .mockResolvedValueOnce(
+        mockFetchResponse(401, {
+          error: { code: "UNAUTHORIZED", message: "Expired" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        mockFetchResponse(200, {
+          accessToken: "new-access",
+          refreshToken: "new-refresh",
+        }),
+      )
+      .mockResolvedValueOnce(mockFetchResponse(200, { ok: true }));
+
+    await apiRequest("/servers");
+    expect(listener).not.toHaveBeenCalled();
+
+    // Second request: 401 again, this time refresh fails → should dispatch logout
+    fetchMock.mockResolvedValueOnce(
+      mockFetchResponse(401, {
+        error: { code: "UNAUTHORIZED", message: "Expired again" },
+      }),
+    );
+    // No refresh token (already cleared by first flow setting new one, but let's remove it)
+    localStorage.removeItem("refresh_token");
+
+    await expect(apiRequest("/sessions")).rejects.toThrow(ApiError);
+    // Flag was reset by the successful refresh, so this new failure dispatches logout
+    expect(listener).toHaveBeenCalledTimes(1);
 
     window.removeEventListener("auth:logout", listener);
   });
