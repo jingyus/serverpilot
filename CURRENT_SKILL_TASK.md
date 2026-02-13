@@ -1,23 +1,23 @@
-### [pending] Dashboard Skill 升级按钮 + 取消按钮 UI
+### [pending] Skill 执行日志持久化 — 步骤级别日志写入 DB
 
-**ID**: skill-078
+**ID**: skill-079
 **优先级**: P1
-**模块路径**: packages/dashboard/src/
-**当前状态**: Dashboard 无升级和取消执行的 UI 入口。前端 `stores/skills.ts` 无 `upgradeSkill()` 和 `cancelExecution()` 方法。
+**模块路径**: packages/server/src/
+**当前状态**: SSE 事件（step/log/error）仅通过内存 EventEmitter 传输，不持久化。断连后无法回看历史执行的详细步骤日志。虽然 `result.toolResults[]` 保存了工具调用记录，但 AI 的中间推理文本和 log 类事件丢失。
 **实现方案**: 
-1. 在 `stores/skills.ts` 添加:
-   - `upgradeSkill(id: string): Promise<void>` — PUT `/api/v1/skills/${id}/upgrade`
-   - `cancelExecution(eid: string): Promise<void>` — POST `/api/v1/skills/executions/${eid}/cancel`
-2. 在 `components/skill/SkillCard.tsx` 添加升级按钮 (仅 git source 的 skill 显示)
-3. 在 `components/skill/ExecutionStream.tsx` 添加取消按钮 (仅 status=running 时显示)
-4. 在 `types/skill.ts` 添加 `cancelled` 到 `SkillExecutionStatus` 枚举
-5. 对应测试
+1. 在 `db/schema.ts` 添加 `skill_execution_logs` 表:
+   - `id`, `executionId`, `eventType` (step|log|error), `data` (JSON), `createdAt`
+2. 创建 migration `0012_skill_execution_logs.sql`
+3. 在 `skill-repository.ts` 添加 `appendLog(executionId, eventType, data)` 和 `getLogs(executionId)` 方法
+4. 在 `skill-event-bus.ts` 的 `publish()` 中，对每个事件同时写入 DB (异步，不阻塞 SSE)
+5. 在 API `GET /skills/:id/executions/:eid` 响应中包含 logs 数组
+6. 对应测试
 **验收标准**: 
-- Git 来源的 Skill 卡片显示「升级」按钮
-- 运行中的执行流显示「取消」按钮
-- 取消后 UI 立即更新状态
-- 测试覆盖: ≥6 个测试用例
-**影响范围**: packages/dashboard/src/stores/skills.ts, packages/dashboard/src/components/skill/SkillCard.tsx, packages/dashboard/src/components/skill/ExecutionStream.tsx, packages/dashboard/src/types/skill.ts
+- 所有 SSE 事件同时写入 `skill_execution_logs` 表
+- 执行详情 API 返回完整日志列表
+- DB 写入异步执行，不影响 SSE 延迟
+- 测试覆盖: ≥10 个测试用例
+**影响范围**: packages/server/src/db/schema.ts, packages/server/src/core/skill/skill-event-bus.ts, packages/server/src/db/repositories/skill-repository.ts
 **创建时间**: 2026-02-13
 **完成时间**: -
 

@@ -8,8 +8,8 @@
 
 - **总任务数**: 86
 - **待完成** (pending): 2
-- **进行中** (in_progress): 1
-- **已完成** (completed): 83
+- **进行中** (in_progress): 0
+- **已完成** (completed): 84
 - **失败** (failed): 0
 
 ---
@@ -137,20 +137,20 @@
 
 ---
 
-### [in_progress] Docker Compose 预构建镜像支持 — 降低部署门槛
+### [completed] Docker Compose 预构建镜像支持 — 降低部署门槛 ✅
 
 **ID**: task-065
 **优先级**: P1
 **模块路径**: docker-compose.yml, .github/workflows/docker-publish.yml
 **任务描述**: 当前 `docker-compose.yml` 默认从源码构建镜像（`build: context: .`），首次部署需要完整 monorepo 和数分钟构建时间。开源用户更期望 `docker compose pull && docker compose up -d` 即可运行。需要: 1) 创建 `docker-compose.yml` 使用预构建镜像（ghcr.io/serverpilot/server:latest）；2) 保留 `docker-compose.build.yml` 供开发者从源码构建；3) 添加 GitHub Actions workflow 在 tag 推送时自动构建并推送 Docker 镜像到 GHCR；4) 更新 README 快速开始文档。
 **产品需求**: 产品方案 12.1 MVP — `docker compose up` 一键自部署
-**验收标准**: 
+**验收标准**:
 - `docker-compose.yml` 默认使用 ghcr.io 镜像
 - `docker-compose.build.yml` 保留源码构建能力（override）
 - GitHub Actions workflow 自动构建 + 推送多架构镜像（amd64 + arm64）
 - README 快速开始使用预构建镜像命令
 **创建时间**: 2026-02-12 14:00:00
-**完成时间**: -
+**完成时间**: 2026-02-13 08:56:00
 
 ---
 
@@ -1873,4 +1873,4 @@ ID: task-001
 
 ---
 
-**最后更新**: 2026-02-13 08:52:30
+**最后更新**: 2026-02-13 08:57:54

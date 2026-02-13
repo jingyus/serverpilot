@@ -766,6 +766,24 @@ describe('GET /skills/:id/executions/:eid', () => {
     expect(body.execution.status).toBe('success');
   });
 
+  it('should include logs array in execution detail', async () => {
+    const execution = makeExecution();
+    mockEngine.getExecution.mockResolvedValue(execution);
+    mockSkillRepo.getLogs.mockResolvedValue([
+      { id: 'log-1', executionId: 'exec-1', eventType: 'log', data: { text: 'Starting...' }, createdAt: '2026-02-13T00:00:00.000Z' },
+      { id: 'log-2', executionId: 'exec-1', eventType: 'step', data: { tool: 'shell', phase: 'complete', success: true }, createdAt: '2026-02-13T00:00:01.000Z' },
+    ]);
+
+    const res = await app.request('/skills/skill-1/executions/exec-1');
+    expect(res.status).toBe(200);
+
+    const body = await res.json();
+    expect(body.logs).toHaveLength(2);
+    expect(body.logs[0].eventType).toBe('log');
+    expect(body.logs[1].eventType).toBe('step');
+    expect(mockSkillRepo.getLogs).toHaveBeenCalledWith('exec-1');
+  });
+
   it('should return 404 for nonexistent execution', async () => {
     mockEngine.getExecution.mockResolvedValue(null);
 

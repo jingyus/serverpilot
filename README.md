@@ -134,6 +134,7 @@ docker pull serverpilot/dashboard:latest
 
 ```bash
 docker pull ghcr.io/jingjinbao/serverpilot/server:latest
+docker pull ghcr.io/jingjinbao/serverpilot/agent:latest
 docker pull ghcr.io/jingjinbao/serverpilot/dashboard:latest
 ```
 

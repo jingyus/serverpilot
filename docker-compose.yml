@@ -14,15 +14,16 @@
 # Dashboard accessible at http://localhost:${DASHBOARD_PORT:-3001}
 # Server API/WebSocket at http://localhost:${SERVER_PORT:-3000}
 # ==============================================================================
-# Image sources (Docker Hub):
+# Image sources (GHCR - default):
+#   ghcr.io/jingjinbao/serverpilot/server:latest
+#   ghcr.io/jingjinbao/serverpilot/agent:latest
+#   ghcr.io/jingjinbao/serverpilot/dashboard:latest
+# Or Docker Hub:
 #   serverpilot/server:latest
 #   serverpilot/agent:latest
 #   serverpilot/dashboard:latest
-# Or GHCR:
-#   ghcr.io/jingjinbao/serverpilot/server:latest
-#   ghcr.io/jingjinbao/serverpilot/dashboard:latest
 # Pinned versions (recommended for production):
-#   serverpilot/server:0.3.0   serverpilot/dashboard:0.3.0
+#   ghcr.io/jingjinbao/serverpilot/server:0.3.0
 # ==============================================================================
 
 services:
@@ -30,7 +31,7 @@ services:
   # ServerPilot Server (REST API + WebSocket + SQLite)
   # ==============================================================================
   server:
-    image: serverpilot/server:latest
+    image: ghcr.io/jingjinbao/serverpilot/server:latest
     container_name: serverpilot-server
     restart: unless-stopped
     stop_grace_period: 15s
@@ -82,7 +83,7 @@ services:
   # ServerPilot Agent (Daemon Mode — co-located server management)
   # ==============================================================================
   agent:
-    image: serverpilot/agent:latest
+    image: ghcr.io/jingjinbao/serverpilot/agent:latest
     container_name: serverpilot-agent
     restart: unless-stopped
     stop_grace_period: 10s
@@ -106,7 +107,7 @@ services:
   # ServerPilot Dashboard (Nginx + Static Frontend)
   # ==============================================================================
   dashboard:
-    image: serverpilot/dashboard:latest
+    image: ghcr.io/jingjinbao/serverpilot/dashboard:latest
     container_name: serverpilot-dashboard
     restart: unless-stopped
     stop_grace_period: 10s

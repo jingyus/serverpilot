@@ -59,7 +59,7 @@ describe('Dockerfile ↔ docker-compose.yml consistency', () => {
   });
 
   it('compose should use pre-built image (no build section)', () => {
-    expect(compose).toContain('image: serverpilot/server:latest');
+    expect(compose).toContain('image: ghcr.io/jingjinbao/serverpilot/server:latest');
   });
 
   it('exposed port in Dockerfile should match compose port mapping', () => {

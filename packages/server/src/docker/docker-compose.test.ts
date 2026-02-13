@@ -72,7 +72,7 @@ describe('server service', () => {
 
 describe('image configuration', () => {
   it('should use pre-built server image (no build section)', () => {
-    expect(composeContent).toMatch(/image:\s*serverpilot\/server:latest/);
+    expect(composeContent).toMatch(/image:\s*ghcr\.io\/jingjinbao\/serverpilot\/server:latest/);
     expect(composeContent).not.toMatch(/^\s+build:/m);
   });
 });
