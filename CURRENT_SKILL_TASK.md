@@ -1,20 +1,33 @@
-### [pending] SkillRunner AI 提供者不可用时的优雅降级
+### [pending] Skill 模块已 100% 完成 — 无待开发任务
 
-**ID**: skill-107
-**优先级**: P2
-**模块路径**: packages/server/src/core/skill/
-**当前状态**: `runner.ts` 构造函数在 AI 提供者不可用时直接 `throw new Error()`，导致 Skill 模块完全不可用。Skill 列表查看、配置管理、执行历史等功能不依赖 AI 提供者，不应受影响。`SkillRunner` 仅在实际执行 `run()` 时才需要提供者。
-**实现方案**: 
-1. 将 `SkillRunner` 构造函数中的提供者检查延迟到 `run()` 方法调用时
-2. 构造函数改为: `this.provider = provider ?? null;`
-3. `run()` 方法开头: `if (!this.provider) { this.provider = getActiveProvider(); }` + 检查
-4. 如果仍无提供者: 返回明确的 `SkillRunResult` 错误 (status: 'failed', errors: ['No AI provider...'])
-5. 不再在构造函数抛异常，让 engine 可以正常启动和响应查询
-**验收标准**: 
-- AI 提供者不可用时，Skill 列表/配置/历史 API 正常工作
-- AI 提供者不可用时，执行返回明确错误而非未捕获异常
-- 提供者恢复后，执行自动恢复
-- ≥3 个测试用例
-**影响范围**: packages/server/src/core/skill/runner.ts, packages/server/src/core/skill/runner.test.ts
-**创建时间**: 2026-02-13
-**完成时间**: -
+经过全面扫描，Skill 模块的所有功能均已实现完毕：
+
+**扫描结果汇总：**
+
+| 维度 | 状态 | 详情 |
+|------|------|------|
+| P0 引擎核心 | ✅ 完成 | engine.ts (411行) + 7个拆分模块, loader.ts (381行), runner.ts (415行) + runner-executor.ts (489行) |
+| P0 DB Schema | ✅ 完成 | 4张表 (installedSkills, skillExecutions, skillExecutionLogs, skillStore) + 3个迁移文件 |
+| P0 Repository | ✅ 完成 | Drizzle (459行) + InMemory (258行) + Stats (94行) |
+| P1 AI 执行层 | ✅ 完成 | SkillRunner agentic loop, classifyCommand 安全检查, audit_log 集成, 超时/步数限制 |
+| P1 安全增强 | ✅ 完成 | zip-slip防护, 风险确认流程, 熔断器机制 |
+| P2 触发系统 | ✅ 完成 | trigger-manager.ts (498行) + trigger-evaluators.ts (66行), cron/event/threshold/manual 全支持 |
+| P3 REST API | ✅ 完成 | skills.ts (230行) + skills-execution.ts (266行) + skills-archive-routes.ts (95行), 已挂载到路由 |
+| P3 RBAC | ✅ 完成 | skill:view, skill:execute, skill:manage 三个权限已添加到 shared/src/rbac.ts |
+| P3 Dashboard | ✅ 完成 | Skills.tsx (428行) + stores/skills.ts (451行) + types/skill.ts (255行) + 11个组件 (~3,326行) |
+| 服务注册 | ✅ 完成 | index.ts 中 createServer()/startServer()/stopServer() 均已集成 |
+| 测试覆盖 | ✅ 完成 | 32个 server 测试文件 + 9个 dashboard 测试文件 = 41个测试文件 |
+| 官方 Skill | ✅ 完成 | 3个示例: log-auditor, intrusion-detector, auto-backup |
+| 任务队列 | ✅ 完成 | SKILL_TASK_QUEUE.md: 77/77 任务已完成 (100%) |
+
+**已实现的高级特性：**
+- SSE 实时执行流 + 事件持久化 (断线重连)
+- Skill 导出/导入 (tar.gz) + zip-slip 安全防护
+- Git 远程安装 + 版本升级
+- 批量执行 (多服务器)
+- AI Provider 不可用时优雅降级
+- 用户确认流程 (高风险操作)
+- 分析面板 (执行统计/趋势/触发分布)
+- Webhook 集成 (skill.completed 事件)
+
+**结论：Skill 模块开发已全部完成，无新任务需要生成。**

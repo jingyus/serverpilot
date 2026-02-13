@@ -40,7 +40,7 @@ skillsArchiveRoute.get('/:id/export', requirePermission('skill:manage'), async (
     c.header('Content-Disposition', `attachment; filename="${filename}"`);
     c.header('Content-Length', String(buffer.length));
 
-    return c.body(buffer);
+    return c.body(new Uint8Array(buffer));
   } catch (err) {
     const msg = (err as Error).message;
     if (msg.includes('not found')) {

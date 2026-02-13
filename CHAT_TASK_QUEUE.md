@@ -3,13 +3,13 @@
 > 此队列专注于 Chat 和 AI 对话系统的质量改进
 > AI 自动发现问题 → 生成任务 → 实现 → 验证
 
-**最后更新**: 2026-02-13 13:51:35
+**最后更新**: 2026-02-13 13:52:06
 
 ## 📊 统计
 
 - **总任务数**: 100
-- **待完成** (pending): 14
-- **进行中** (in_progress): 0
+- **待完成** (pending): 13
+- **进行中** (in_progress): 1
 - **已完成** (completed): 86
 - **失败** (failed): 0
 
@@ -100,7 +100,7 @@
 
 ---
 
-### [pending] agentic-prompts.ts 零测试覆盖 — buildFullSystemPrompt 的 RAG/Profile 集成逻辑无验证
+### [in_progress] agentic-prompts.ts 零测试覆盖 — buildFullSystemPrompt 的 RAG/Profile 集成逻辑无验证
 
 **ID**: chat-087
 **优先级**: P1

@@ -138,7 +138,7 @@ export class SkillToolExecutor {
     // Escalate risk level when run_as is "root" (yellow → red, green → yellow)
     let effectiveRiskLevel = classification.riskLevel;
     if (runAs === 'root' && !isForbidden(effectiveRiskLevel)) {
-      effectiveRiskLevel = escalateRiskLevel(effectiveRiskLevel);
+      effectiveRiskLevel = escalateRiskLevel(effectiveRiskLevel) as RiskLevel;
       if (effectiveRiskLevel !== classification.riskLevel) {
         logger.info(
           { command, runAs, original: classification.riskLevel, escalated: effectiveRiskLevel },

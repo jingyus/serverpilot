@@ -26,7 +26,7 @@ export function estimateMessagesTokens(messages: Anthropic.MessageParam[]): numb
       tokens += estimateTokens(msg.content);
     } else if (Array.isArray(msg.content)) {
       for (const block of msg.content) {
-        const text = extractBlockText(block as Record<string, unknown>);
+        const text = extractBlockText(block as unknown as Record<string, unknown>);
         tokens += estimateTokens(text);
       }
     }
@@ -69,7 +69,7 @@ function truncateArrayContent(
   // Remove blocks from the front until we've freed enough tokens
   while (result.length > 1 && remaining > 0) {
     const block = result[0];
-    const text = extractBlockText(block as Record<string, unknown>);
+    const text = extractBlockText(block as unknown as Record<string, unknown>);
     const blockTokens = estimateTokens(text);
     result.shift();
     remaining -= blockTokens;
@@ -77,7 +77,7 @@ function truncateArrayContent(
 
   // If still over budget and there's a text block, truncate it
   if (remaining > 0 && result.length > 0) {
-    const first = result[0] as Record<string, unknown>;
+    const first = result[0] as unknown as Record<string, unknown>;
     if ('text' in first && typeof first.text === 'string') {
       const charsPerToken = getCharsPerToken(first.text);
       const charsToRemove = Math.ceil(remaining * charsPerToken);

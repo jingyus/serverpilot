@@ -1,12 +1,12 @@
-### [pending] 知识库 token 估算使用简单 4 chars/token — 中文知识库内容 token 严重低估
+### [pending] agentic-prompts.ts 零测试覆盖 — buildFullSystemPrompt 的 RAG/Profile 集成逻辑无验证
 
-**ID**: chat-086
+**ID**: chat-087
 **优先级**: P1
-**模块路径**: packages/server/src/knowledge/
-**发现的问题**: `context-enhancer.ts:267-270` 和 `context-window-manager.ts` 中的 `estimateTokenCount()` 使用固定 `Math.ceil(text.length / 4)` 估算 token，不区分中英文。而 `profile-context.ts:81-103` 已有 CJK 感知的 `estimateTokens()` 函数（中文 1.5 chars/token、ASCII 4 chars/token）。context-window-manager 将知识库 token 预算设为 `remainingBudget * 0.4`（行 244），但对中文知识库结果低估约 2.7 倍（4/1.5），实际注入的 token 可能远超预算，挤压对话历史空间甚至导致上下文溢出。
-**改进方案**: 将 `context-enhancer.ts` 和 `context-window-manager.ts` 中的 `estimateTokenCount` 替换为 `profile-context.ts` 导出的 `estimateTokens`（CJK 感知版本）。删除 `context-enhancer.ts` 中的重复函数。
-**验收标准**: (1) 只保留一个 token 估算函数（CJK 感知版） (2) context-window-manager 使用统一的估算 (3) 现有 context-window-manager 测试更新适配 (4) 中文内容的 token 估算偏差小于 50%
-**影响范围**: `packages/server/src/knowledge/context-enhancer.ts`, `packages/server/src/knowledge/context-window-manager.ts`, `packages/server/src/knowledge/context-window-manager.test.ts`
+**模块路径**: packages/server/src/ai/
+**发现的问题**: `agentic-prompts.ts`（91 行）完全没有测试文件。该文件包含 `buildAgenticSystemPrompt()`（系统提示词）和 `buildFullSystemPrompt()`（组合 profile + RAG + 基础提示词），后者在 `agentic-chat.ts:136` 被调用，是 agentic 模式的核心入口。`buildFullSystemPrompt` 中有 RAG 搜索（行 64-77）和 profile 上下文构建（行 51-60），错误时静默降级，这些分支完全没有测试覆盖。`serverProfile` 的 `as Parameters<typeof buildProfileContext>[0]` 类型断言（行 53, 58）也没有运行时验证。
+**改进方案**: 新增 `agentic-prompts.test.ts`，覆盖：(1) 无 profile 无 RAG 时返回基础提示词 (2) 有 profile 时包含 profile 上下文 (3) 有 RAG 结果时包含知识上下文 (4) RAG 异常时降级到无知识上下文 (5) 组合场景 profile + caveats + knowledge
+**验收标准**: (1) 新增测试文件覆盖 5+ 个场景 (2) 行覆盖率达到 90%+ (3) mock RAG pipeline 和 profile builder
+**影响范围**: 新增 `packages/server/src/ai/agentic-prompts.test.ts`
 **创建时间**: 2026-02-13
 **完成时间**: -
 

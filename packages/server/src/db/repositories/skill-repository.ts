@@ -400,7 +400,7 @@ export class DrizzleSkillRepository implements SkillRepository {
       skillPath: row.skillPath,
       status: row.status as SkillStatus,
       config: row.config as Record<string, unknown> | null,
-      manifestInputs: (row.manifestInputs as unknown[] | null) ?? null,
+      manifestInputs: (row.manifestInputs as InstalledSkill['manifestInputs']) ?? null,
       createdAt: row.createdAt!.toISOString(),
       updatedAt: row.updatedAt!.toISOString(),
     };
