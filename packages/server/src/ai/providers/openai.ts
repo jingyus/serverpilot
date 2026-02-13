@@ -1,20 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-/**
- * OpenAI AI Provider for GPT-4 and other OpenAI models.
- *
- * Integrates with the OpenAI API to provide AI capabilities.
- * Tier 2 provider — requires API key from OPENAI_API_KEY environment variable.
- *
- * Supports:
- * - GPT-4o, GPT-4 Turbo, GPT-4, GPT-3.5 Turbo
- * - Chat completions with streaming
- * - Token usage tracking and cost estimation
- * - Request retry with exponential backoff
- * - Structured JSON output parsing
- *
- * @module ai/providers/openai
- */
+/** OpenAI AI Provider — Tier 2, supports GPT-4o/4/3.5-turbo with function calling. */
 
 import { z } from 'zod';
 import type {
@@ -23,12 +9,10 @@ import type {
   ChatResponse,
   ProviderStreamCallbacks,
   StreamResponse,
+  ToolDefinition,
+  ToolUseBlock,
   TokenUsage,
 } from './base.js';
-
-// ============================================================================
-// Cost Estimation
-// ============================================================================
 
 /** Per-token pricing in USD (per 1M tokens) by model */
 const MODEL_PRICING: Record<string, { input: number; output: number }> = {
@@ -47,13 +31,6 @@ export interface CostEstimate {
   currency: 'USD';
 }
 
-/**
- * Estimate the cost of a request based on token usage and model.
- *
- * @param usage - Token usage from the response
- * @param model - Model name used for the request
- * @returns Cost estimate in USD, or null if pricing is unknown
- */
 export function estimateCost(usage: TokenUsage, model: string): CostEstimate | null {
   const pricing = MODEL_PRICING[model];
   if (!pricing) return null;
@@ -69,21 +46,7 @@ export function estimateCost(usage: TokenUsage, model: string): CostEstimate | n
   };
 }
 
-// ============================================================================
-// Structured Output Parsing
-// ============================================================================
-
-/**
- * Parse a structured JSON response from AI output.
- *
- * Strips markdown code fences if the model wraps the response,
- * then parses and validates the JSON against the provided Zod schema.
- *
- * @param text - Raw text output from the AI model
- * @param schema - Zod schema to validate against
- * @returns The validated data
- * @throws {Error} If JSON parsing or schema validation fails
- */
+/** Parse structured JSON from AI output, stripping code fences if present. */
 export function parseStructuredOutput<T>(text: string, schema: z.ZodType<T>): T {
   let cleaned = text.trim();
   if (cleaned.startsWith('```')) {
@@ -93,23 +56,13 @@ export function parseStructuredOutput<T>(text: string, schema: z.ZodType<T>): T 
   return schema.parse(parsed);
 }
 
-// ============================================================================
-// Retry Types
-// ============================================================================
-
-/** Configuration for retry behavior */
 export interface OpenAIRetryOptions {
-  /** Maximum number of retry attempts (default: 3) */
   maxRetries?: number;
-  /** Initial delay between retries in ms (default: 1000) */
   initialDelayMs?: number;
-  /** Maximum delay between retries in ms (default: 30000) */
   maxDelayMs?: number;
-  /** Backoff multiplier (default: 2) */
   backoffMultiplier?: number;
 }
 
-/** Result of a retried operation */
 export interface OpenAIRetryResult<T> {
   success: boolean;
   data?: T;
@@ -124,11 +77,6 @@ const DEFAULT_RETRY: Required<OpenAIRetryOptions> = {
   backoffMultiplier: 2,
 };
 
-// ============================================================================
-// Configuration
-// ============================================================================
-
-/** Default OpenAI configuration values */
 const DEFAULTS = {
   baseUrl: 'https://api.openai.com',
   model: 'gpt-4o',
@@ -136,19 +84,13 @@ const DEFAULTS = {
   maxTokens: 4096,
 } as const;
 
-/** Configuration specific to the OpenAI provider */
 export interface OpenAIConfig {
-  /** Base URL for the OpenAI API (default: https://api.openai.com) */
   baseUrl?: string;
-  /** API key for authentication (required, or set OPENAI_API_KEY env var) */
   apiKey?: string;
-  /** Model name to use (default: gpt-4o) */
   model?: string;
-  /** Request timeout in milliseconds (default: 60000) */
   timeoutMs?: number;
 }
 
-/** Zod schema for OpenAI provider configuration */
 export const OpenAIConfigSchema = z.object({
   baseUrl: z.string().url().default(DEFAULTS.baseUrl),
   apiKey: z.string().min(1, 'OpenAI API key is required'),
@@ -156,14 +98,25 @@ export const OpenAIConfigSchema = z.object({
   timeoutMs: z.number().int().positive().default(DEFAULTS.timeoutMs),
 });
 
-// ============================================================================
 // OpenAI API Types
-// ============================================================================
-
-/** Message format for OpenAI /v1/chat/completions */
 interface OpenAIMessage {
-  role: 'user' | 'assistant' | 'system';
-  content: string;
+  role: 'user' | 'assistant' | 'system' | 'tool';
+  content: string | null;
+  tool_calls?: Array<{
+    id: string;
+    type: 'function';
+    function: { name: string; arguments: string };
+  }>;
+  tool_call_id?: string;
+}
+
+interface OpenAIToolDefinition {
+  type: 'function';
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  };
 }
 
 /** Request body for OpenAI /v1/chat/completions */
@@ -175,9 +128,18 @@ interface OpenAIChatRequest {
   stream_options?: {
     include_usage: boolean;
   };
+  tools?: OpenAIToolDefinition[];
 }
 
-/** Non-streaming response from OpenAI /v1/chat/completions */
+const OpenAIToolCallSchema = z.object({
+  id: z.string(),
+  type: z.literal('function'),
+  function: z.object({
+    name: z.string(),
+    arguments: z.string(),
+  }),
+});
+
 const OpenAIChatResponseSchema = z.object({
   id: z.string(),
   choices: z.array(z.object({
@@ -185,6 +147,7 @@ const OpenAIChatResponseSchema = z.object({
     message: z.object({
       role: z.string(),
       content: z.string().nullable(),
+      tool_calls: z.array(OpenAIToolCallSchema).optional(),
     }),
     finish_reason: z.string().nullable(),
   })).min(1),
@@ -195,7 +158,16 @@ const OpenAIChatResponseSchema = z.object({
   }),
 });
 
-/** SSE streaming chunk from OpenAI */
+const OpenAIStreamToolCallDeltaSchema = z.object({
+  index: z.number(),
+  id: z.string().optional(),
+  type: z.literal('function').optional(),
+  function: z.object({
+    name: z.string().optional(),
+    arguments: z.string().optional(),
+  }).optional(),
+});
+
 const OpenAIStreamChunkSchema = z.object({
   id: z.string(),
   choices: z.array(z.object({
@@ -203,6 +175,7 @@ const OpenAIStreamChunkSchema = z.object({
     delta: z.object({
       role: z.string().optional(),
       content: z.string().nullable().optional(),
+      tool_calls: z.array(OpenAIStreamToolCallDeltaSchema).optional(),
     }),
     finish_reason: z.string().nullable(),
   })),
@@ -215,7 +188,6 @@ const OpenAIStreamChunkSchema = z.object({
 
 type OpenAIStreamChunk = z.infer<typeof OpenAIStreamChunkSchema>;
 
-/** Error response from OpenAI API */
 const OpenAIErrorResponseSchema = z.object({
   error: z.object({
     message: z.string(),
@@ -225,27 +197,6 @@ const OpenAIErrorResponseSchema = z.object({
   }),
 });
 
-// ============================================================================
-// OpenAI Provider
-// ============================================================================
-
-/**
- * OpenAI AI Provider — Tier 2 for GPT-4 and other OpenAI models.
- *
- * Connects to the OpenAI API to provide AI capabilities.
- * Supports both synchronous and streaming chat.
- *
- * @example
- * ```ts
- * const openai = new OpenAIProvider({ apiKey: 'sk-...' });
- * if (await openai.isAvailable()) {
- *   const response = await openai.chat({
- *     messages: [{ role: 'user', content: 'Analyze this environment...' }],
- *     system: 'You are a DevOps expert.',
- *   });
- * }
- * ```
- */
 export class OpenAIProvider implements AIProviderInterface {
   readonly name = 'openai';
   readonly tier = 2 as const;
@@ -267,16 +218,6 @@ export class OpenAIProvider implements AIProviderInterface {
     this.timeoutMs = validated.timeoutMs;
   }
 
-  // --------------------------------------------------------------------------
-  // Public API
-  // --------------------------------------------------------------------------
-
-  /**
-   * Send a non-streaming chat request to OpenAI.
-   *
-   * @param options - Chat request options
-   * @returns The chat response with content and usage
-   */
   async chat(options: ChatOptions): Promise<ChatResponse> {
     const messages = this.buildMessages(options);
     const body: OpenAIChatRequest = {
@@ -285,6 +226,10 @@ export class OpenAIProvider implements AIProviderInterface {
       max_tokens: options.maxTokens ?? DEFAULTS.maxTokens,
       stream: false,
     };
+
+    if (options.tools?.length) {
+      body.tools = this.convertTools(options.tools);
+    }
 
     const response = await this.fetchWithTimeout(
       `${this.baseUrl}/v1/chat/completions`,
@@ -306,26 +251,23 @@ export class OpenAIProvider implements AIProviderInterface {
     const raw: unknown = await response.json();
     const data = OpenAIChatResponseSchema.parse(raw);
 
+    const choice = data.choices[0];
+    const toolCalls = this.extractToolCalls(choice.message.tool_calls);
+    const stopReason = this.mapStopReason(choice.finish_reason);
+
     return {
-      content: data.choices[0].message.content ?? '',
+      content: choice.message.content ?? '',
       usage: {
         inputTokens: data.usage.prompt_tokens,
         outputTokens: data.usage.completion_tokens,
         cacheCreationInputTokens: 0,
         cacheReadInputTokens: 0,
       },
+      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+      stopReason,
     };
   }
 
-  /**
-   * Send a streaming chat request to OpenAI.
-   *
-   * OpenAI uses SSE (Server-Sent Events) format for streaming.
-   *
-   * @param options - Chat request options
-   * @param callbacks - Optional streaming event callbacks
-   * @returns The complete stream response
-   */
   async stream(
     options: ChatOptions,
     callbacks?: ProviderStreamCallbacks,
@@ -341,8 +283,15 @@ export class OpenAIProvider implements AIProviderInterface {
       },
     };
 
+    if (options.tools?.length) {
+      body.tools = this.convertTools(options.tools);
+    }
+
     let accumulated = '';
     let usage: TokenUsage = { inputTokens: 0, outputTokens: 0, cacheCreationInputTokens: 0, cacheReadInputTokens: 0 };
+    // Accumulate streaming tool calls: index → { id, name, arguments }
+    const toolCallAccumulators = new Map<number, { id: string; name: string; arguments: string }>();
+    let finishReason: string | null = null;
 
     try {
       const response = await this.fetchWithTimeout(
@@ -378,27 +327,35 @@ export class OpenAIProvider implements AIProviderInterface {
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
-        // Keep the last potentially incomplete line in the buffer
         buffer = lines.pop() ?? '';
 
         for (const line of lines) {
           const trimmed = line.trim();
           if (!trimmed || trimmed === 'data: [DONE]') continue;
-
-          // SSE format: "data: {...json...}"
           if (!trimmed.startsWith('data: ')) continue;
 
           const jsonStr = trimmed.slice(6);
           const chunk = this.parseStreamChunk(jsonStr);
           if (!chunk) continue;
 
-          const delta = chunk.choices[0]?.delta;
+          const choice = chunk.choices[0];
+          if (!choice) continue;
+
+          const delta = choice.delta;
           if (delta?.content) {
             accumulated += delta.content;
             callbacks?.onToken?.(delta.content, accumulated);
           }
 
-          // Extract usage from the final chunk if provided
+          // Accumulate streaming tool call deltas
+          if (delta?.tool_calls) {
+            this.accumulateToolCallDeltas(delta.tool_calls, toolCallAccumulators);
+          }
+
+          if (choice.finish_reason) {
+            finishReason = choice.finish_reason;
+          }
+
           if (chunk.usage) {
             usage = {
               inputTokens: chunk.usage.prompt_tokens,
@@ -417,10 +374,18 @@ export class OpenAIProvider implements AIProviderInterface {
           const jsonStr = trimmed.slice(6);
           const chunk = this.parseStreamChunk(jsonStr);
           if (chunk) {
-            const delta = chunk.choices[0]?.delta;
-            if (delta?.content) {
-              accumulated += delta.content;
-              callbacks?.onToken?.(delta.content, accumulated);
+            const choice = chunk.choices[0];
+            if (choice) {
+              if (choice.delta?.content) {
+                accumulated += choice.delta.content;
+                callbacks?.onToken?.(choice.delta.content, accumulated);
+              }
+              if (choice.delta?.tool_calls) {
+                this.accumulateToolCallDeltas(choice.delta.tool_calls, toolCallAccumulators);
+              }
+              if (choice.finish_reason) {
+                finishReason = choice.finish_reason;
+              }
             }
             if (chunk.usage) {
               usage = {
@@ -434,7 +399,16 @@ export class OpenAIProvider implements AIProviderInterface {
 
       callbacks?.onComplete?.(accumulated, usage);
 
-      return { content: accumulated, usage, success: true };
+      const toolCalls = this.buildToolCallsFromAccumulators(toolCallAccumulators);
+      const stopReason = this.mapStopReason(finishReason);
+
+      return {
+        content: accumulated,
+        usage,
+        success: true,
+        toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+        stopReason,
+      };
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
       callbacks?.onError?.(error);
@@ -447,13 +421,6 @@ export class OpenAIProvider implements AIProviderInterface {
     }
   }
 
-  /**
-   * Check if the OpenAI API is available and configured.
-   *
-   * Sends a minimal request to verify the API key is valid.
-   *
-   * @returns true if the API is reachable and the key is valid
-   */
   async isAvailable(): Promise<boolean> {
     try {
       const response = await this.fetchWithTimeout(
@@ -473,33 +440,14 @@ export class OpenAIProvider implements AIProviderInterface {
     }
   }
 
-  /**
-   * Get the configured model name.
-   */
   getModel(): string {
     return this.model;
   }
 
-  /**
-   * Estimate the cost of a token usage for the configured model.
-   *
-   * @param usage - Token usage from a response
-   * @returns Cost estimate in USD, or null if pricing is unavailable
-   */
   estimateCost(usage: TokenUsage): CostEstimate | null {
     return estimateCost(usage, this.model);
   }
 
-  /**
-   * Send a chat request with automatic retry on transient failures.
-   *
-   * Retries on server errors (5xx), rate limits (429), network errors,
-   * and timeouts. Does not retry on auth (401) or bad request (400/404).
-   *
-   * @param options - Chat request options
-   * @param retryOpts - Retry configuration
-   * @returns Retry result wrapping the chat response
-   */
   async chatWithRetry(
     options: ChatOptions,
     retryOpts?: OpenAIRetryOptions,
@@ -536,17 +484,6 @@ export class OpenAIProvider implements AIProviderInterface {
     };
   }
 
-  /**
-   * Send a streaming chat request with automatic retry on transient failures.
-   *
-   * Only retries if the error occurs before streaming starts (connection phase).
-   * Once streaming begins, errors are not retried.
-   *
-   * @param options - Chat request options
-   * @param callbacks - Optional streaming event callbacks
-   * @param retryOpts - Retry configuration
-   * @returns Retry result wrapping the stream response
-   */
   async streamWithRetry(
     options: ChatOptions,
     callbacks?: ProviderStreamCallbacks,
@@ -584,16 +521,6 @@ export class OpenAIProvider implements AIProviderInterface {
     };
   }
 
-  /**
-   * Send a chat request and parse the response as structured JSON.
-   *
-   * Combines chat() with parseStructuredOutput() for convenience.
-   * Strips markdown code fences and validates against the provided schema.
-   *
-   * @param options - Chat request options
-   * @param schema - Zod schema to validate the response against
-   * @returns The validated structured data
-   */
   async chatStructured<T>(
     options: ChatOptions,
     schema: z.ZodType<T>,
@@ -603,14 +530,77 @@ export class OpenAIProvider implements AIProviderInterface {
     return { data, usage: response.usage };
   }
 
-  // --------------------------------------------------------------------------
-  // Helpers
-  // --------------------------------------------------------------------------
+  /** Convert ToolDefinition[] to OpenAI function calling format. */
+  private convertTools(tools: ToolDefinition[]): OpenAIToolDefinition[] {
+    return tools.map((t) => ({
+      type: 'function' as const,
+      function: {
+        name: t.name,
+        description: t.description,
+        parameters: t.input_schema,
+      },
+    }));
+  }
 
-  /**
-   * Build the OpenAI message array from ChatOptions.
-   * Prepends a system message if `options.system` is provided.
-   */
+  private extractToolCalls(
+    toolCalls?: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }>,
+  ): ToolUseBlock[] {
+    if (!toolCalls?.length) return [];
+
+    return toolCalls.map((tc) => ({
+      type: 'tool_use' as const,
+      id: tc.id,
+      name: tc.function.name,
+      input: JSON.parse(tc.function.arguments) as Record<string, unknown>,
+    }));
+  }
+
+  /** Accumulate incremental tool call deltas from streaming chunks. */
+  private accumulateToolCallDeltas(
+    deltas: Array<{ index: number; id?: string; function?: { name?: string; arguments?: string } }>,
+    accumulators: Map<number, { id: string; name: string; arguments: string }>,
+  ): void {
+    for (const delta of deltas) {
+      const existing = accumulators.get(delta.index);
+      if (existing) {
+        if (delta.function?.arguments) {
+          existing.arguments += delta.function.arguments;
+        }
+      } else {
+        accumulators.set(delta.index, {
+          id: delta.id ?? '',
+          name: delta.function?.name ?? '',
+          arguments: delta.function?.arguments ?? '',
+        });
+      }
+    }
+  }
+
+  private buildToolCallsFromAccumulators(
+    accumulators: Map<number, { id: string; name: string; arguments: string }>,
+  ): ToolUseBlock[] {
+    if (accumulators.size === 0) return [];
+
+    const sorted = [...accumulators.entries()].sort((a, b) => a[0] - b[0]);
+    return sorted.map(([, acc]) => ({
+      type: 'tool_use' as const,
+      id: acc.id,
+      name: acc.name,
+      input: JSON.parse(acc.arguments) as Record<string, unknown>,
+    }));
+  }
+
+  /** Map OpenAI finish_reason → unified stop reason. */
+  private mapStopReason(finishReason: string | null | undefined): string | undefined {
+    if (!finishReason) return undefined;
+    switch (finishReason) {
+      case 'stop': return 'end_turn';
+      case 'tool_calls': return 'tool_use';
+      case 'length': return 'max_tokens';
+      default: return finishReason;
+    }
+  }
+
   private buildMessages(options: ChatOptions): OpenAIMessage[] {
     const messages: OpenAIMessage[] = [];
 
@@ -628,10 +618,6 @@ export class OpenAIProvider implements AIProviderInterface {
     return messages;
   }
 
-  /**
-   * Parse a single SSE JSON chunk from the stream.
-   * Returns null for unparseable chunks instead of throwing.
-   */
   private parseStreamChunk(json: string): OpenAIStreamChunk | null {
     try {
       const parsed: unknown = JSON.parse(json);
@@ -641,10 +627,6 @@ export class OpenAIProvider implements AIProviderInterface {
     }
   }
 
-  /**
-   * Handle an error response from the OpenAI API.
-   * Attempts to parse the structured error; falls back to status text.
-   */
   private async handleErrorResponse(response: Response): Promise<never> {
     let errorMessage: string;
 
@@ -692,11 +674,6 @@ export class OpenAIProvider implements AIProviderInterface {
     );
   }
 
-  /**
-   * Determine if an error is retryable (transient).
-   * Non-retryable: auth (401), bad request (400), not found (404).
-   * Retryable: server errors (5xx), rate limits (429), network errors, timeouts.
-   */
   private isRetryableError(err: unknown): boolean {
     if (err instanceof OpenAIError) {
       const code = err.statusCode;
@@ -710,9 +687,6 @@ export class OpenAIProvider implements AIProviderInterface {
     return false;
   }
 
-  /**
-   * Check if an error message indicates a retryable failure.
-   */
   private isRetryableErrorMessage(msg: string): boolean {
     const lower = msg.toLowerCase();
     if (lower.includes('authentication') || lower.includes('bad request') ||
@@ -727,9 +701,6 @@ export class OpenAIProvider implements AIProviderInterface {
       lower.includes('504') || lower.includes('not readable');
   }
 
-  /**
-   * Fetch with an AbortController-based timeout.
-   */
   private async fetchWithTimeout(
     url: string,
     init: RequestInit,
@@ -754,14 +725,6 @@ export class OpenAIProvider implements AIProviderInterface {
   }
 }
 
-// ============================================================================
-// Error Type
-// ============================================================================
-
-/**
- * Custom error for OpenAI provider failures.
- * Includes the HTTP status code for error classification.
- */
 export class OpenAIError extends Error {
   constructor(
     message: string,
@@ -771,10 +734,6 @@ export class OpenAIError extends Error {
     this.name = 'OpenAIError';
   }
 }
-
-// ============================================================================
-// Internal Utilities
-// ============================================================================
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
