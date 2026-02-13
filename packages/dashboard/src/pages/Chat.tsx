@@ -33,7 +33,6 @@ export function Chat() {
   const { serverId } = useParams<{ serverId: string }>();
   const navigate = useNavigate();
   const virtuosoRef = useRef<VirtuosoHandle>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
@@ -94,31 +93,14 @@ export function Chat() {
     return () => cleanup();
   }, [cleanup]);
 
-  // Scroll to bottom when messages change (smooth for new messages)
-  useEffect(() => {
-    const el = messagesEndRef.current;
-    if (el?.scrollIntoView) el.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  // Throttled auto-scroll during streaming content updates
-  const lastScrollTime = useRef(0);
-  useEffect(() => {
-    if (!isStreaming || !streamingContent) return;
-    const el = messagesEndRef.current;
-    if (!el?.scrollIntoView) return;
-    const now = Date.now();
-    const elapsed = now - lastScrollTime.current;
-    if (elapsed >= 100) {
-      el.scrollIntoView({ behavior: 'auto' });
-      lastScrollTime.current = now;
-    } else {
-      const timer = setTimeout(() => {
-        el.scrollIntoView({ behavior: 'auto' });
-        lastScrollTime.current = Date.now();
-      }, 100 - elapsed);
-      return () => clearTimeout(timer);
-    }
-  }, [isStreaming, streamingContent]);
+  // Virtuoso followOutput: auto-scroll when new messages arrive or streaming updates
+  const followOutput = useCallback(
+    (isAtBottom: boolean) => {
+      if (isAtBottom || isStreaming) return 'smooth';
+      return false;
+    },
+    [isStreaming]
+  );
 
   const prevPlanStatus = useRef(planStatus);
   useEffect(() => {
@@ -153,7 +135,7 @@ export function Chat() {
     if (!error || isStreaming) return null;
     for (let i = messages.length - 1; i >= 0; i--) {
       const msg = messages[i];
-      if (msg.role === 'assistant') return null; // assistant replied — not failed
+      if (msg.role === 'assistant') return null;
       if (msg.role === 'user') return msg.id;
     }
     return null;
@@ -224,7 +206,7 @@ export function Chat() {
 
       {/* Main content */}
       <div className="flex flex-1 gap-2 overflow-hidden p-2 sm:gap-4 sm:p-4">
-        {/* Session sidebar — desktop always visible, mobile overlay */}
+        {/* Session sidebar */}
         <SessionSidebar
           sessions={sessions}
           activeSessionId={sessionId}
@@ -243,15 +225,16 @@ export function Chat() {
         {/* Chat area */}
         <div className="flex flex-1 flex-col overflow-hidden rounded-lg border">
           {/* Messages */}
-          <div
-            className="flex-1 overflow-y-auto"
-            data-testid="message-list"
-          >
+          <div className="flex-1 overflow-hidden" data-testid="message-list">
             {messages.length === 0 && !isStreaming ? (
               <ChatEmptyState serverName={serverName} onSuggestionClick={handleSend} disabled={isStreaming} />
             ) : (
-              <div className="space-y-1 py-4">
-                {messages.map((msg) => (
+              <Virtuoso
+                ref={virtuosoRef}
+                data={messages}
+                initialTopMostItemIndex={Math.max(0, messages.length - 1)}
+                followOutput={followOutput}
+                itemContent={(_index, msg) => (
                   <ChatMessage
                     key={msg.id}
                     message={msg}
@@ -260,113 +243,30 @@ export function Chat() {
                     isLastAssistant={msg.id === lastAssistantId}
                     onRegenerate={handleRegenerate}
                   />
-                ))}
-
-                {/* Streaming indicator */}
-                {isStreaming && streamingContent && (() => {
-                  const displayText = stripJsonPlan(streamingContent);
-                  if (!displayText) return null;
-
-                  // Agentic mode: AI thinking + tool call output (interleaved)
-                  if (isAgenticMode) {
-                    return (
-                      <div className="flex gap-2 px-2 py-2 sm:gap-3 sm:px-4 sm:py-3" data-testid="streaming-message">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600 dark:bg-blue-900/50 dark:text-blue-400">
-                          <Bot className="h-4 w-4" />
-                        </div>
-                        <div className="max-w-[90%] rounded-2xl bg-muted px-3 py-2 text-sm sm:max-w-[85%] sm:px-4 sm:py-2.5">
-                          <MarkdownRenderer content={displayText} />
-                          <Loader2 className="mt-1 h-3 w-3 animate-spin text-muted-foreground" />
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  // Inline execution mode: terminal-style output
-                  if (executionMode === 'inline') {
-                    return (
-                      <div className="flex gap-2 px-2 py-2 sm:gap-3 sm:px-4 sm:py-3" data-testid="streaming-message">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-800 text-green-400 dark:bg-gray-900">
-                          <Server className="h-4 w-4" />
-                        </div>
-                        <div className="max-w-[90%] rounded-lg bg-gray-900 px-3 py-2 text-sm sm:max-w-[85%] sm:px-4 sm:py-3">
-                          <pre className="whitespace-pre-wrap break-all font-mono text-xs text-green-400 sm:text-sm">{displayText}</pre>
-                          <Loader2 className="mt-1 h-3 w-3 animate-spin text-green-600" />
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  // Normal chat streaming
-                  return (
-                    <div className="flex gap-2 px-2 py-2 sm:gap-3 sm:px-4 sm:py-3" data-testid="streaming-message">
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600 dark:bg-blue-900/50 dark:text-blue-400">
-                        <Bot className="h-4 w-4" />
-                      </div>
-                      <div className="max-w-[85%] rounded-2xl bg-muted px-3 py-2 text-sm sm:max-w-[75%] sm:px-4 sm:py-2.5">
-                        <MarkdownRenderer content={displayText} />
-                        <Loader2 className="mt-1 h-3 w-3 animate-spin text-muted-foreground" />
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                {isStreaming && !streamingContent && (
-                  <div className="flex items-center gap-2 px-4 py-3 text-sm text-muted-foreground" data-testid="thinking-indicator">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    {t('chat.aiThinking')}
-                  </div>
                 )}
-
-                {/* Plan Preview */}
-                {currentPlan && planStatus === 'preview' && (
-                  <PlanPreview
-                    plan={currentPlan}
-                    onConfirm={confirmPlan}
-                    onReject={rejectPlan}
-                    isExecuting={false}
-                  />
-                )}
-
-                {/* Execution Log — only shown in 'log' mode (non-GREEN commands) */}
-                {currentPlan &&
-                  executionMode === 'log' &&
-                  (planStatus === 'executing' ||
-                    planStatus === 'completed') && (
-                    <ExecutionLog
-                      plan={currentPlan}
-                      activeStepId={execution.activeStepId}
-                      outputs={execution.outputs}
-                      completedSteps={execution.completedSteps}
-                      success={execution.success}
-                      onEmergencyStop={emergencyStop}
-                      isExecuting={planStatus === 'executing'}
-                      startTime={execution.startTime}
-                      cancelled={execution.cancelled}
+                components={{
+                  Footer: () => (
+                    <MessageListFooter
+                      isStreaming={isStreaming}
+                      streamingContent={streamingContent}
+                      isAgenticMode={isAgenticMode}
+                      executionMode={executionMode}
+                      currentPlan={currentPlan}
+                      planStatus={planStatus}
+                      execution={execution}
+                      pendingConfirm={pendingConfirm}
+                      agenticConfirm={agenticConfirm}
+                      confirmPlan={confirmPlan}
+                      rejectPlan={rejectPlan}
+                      emergencyStop={emergencyStop}
+                      respondToStep={respondToStep}
+                      respondToAgenticConfirm={respondToAgenticConfirm}
+                      t={t}
                     />
-                  )}
-
-                {/* Step Confirmation Bar — only shown in 'log' mode */}
-                {pendingConfirm && executionMode === 'log' && planStatus === 'executing' && (
-                  <StepConfirmBar
-                    step={pendingConfirm}
-                    onAllow={() => respondToStep('allow')}
-                    onAllowAll={() => respondToStep('allow_all')}
-                    onReject={() => respondToStep('reject')}
-                  />
-                )}
-
-                {/* Agentic mode confirmation for risky commands */}
-                {agenticConfirm && (
-                  <AgenticConfirmBar
-                    confirm={agenticConfirm}
-                    onApprove={() => respondToAgenticConfirm(true)}
-                    onReject={() => respondToAgenticConfirm(false)}
-                  />
-                )}
-
-                <div ref={messagesEndRef} />
-              </div>
+                  ),
+                }}
+                className="h-full"
+              />
             )}
           </div>
 
@@ -380,5 +280,138 @@ export function Chat() {
         </div>
       </div>
     </div>
+  );
+}
+
+/** Footer rendered below the virtualized message list */
+function MessageListFooter({
+  isStreaming,
+  streamingContent,
+  isAgenticMode,
+  executionMode,
+  currentPlan,
+  planStatus,
+  execution,
+  pendingConfirm,
+  agenticConfirm,
+  confirmPlan,
+  rejectPlan,
+  emergencyStop,
+  respondToStep,
+  respondToAgenticConfirm,
+  t,
+}: {
+  isStreaming: boolean;
+  streamingContent: string;
+  isAgenticMode: boolean;
+  executionMode: string;
+  currentPlan: ReturnType<typeof useChatStore.getState>['currentPlan'];
+  planStatus: string;
+  execution: ReturnType<typeof useChatStore.getState>['execution'];
+  pendingConfirm: ReturnType<typeof useChatStore.getState>['pendingConfirm'];
+  agenticConfirm: ReturnType<typeof useChatStore.getState>['agenticConfirm'];
+  confirmPlan: () => void;
+  rejectPlan: () => void;
+  emergencyStop: () => void;
+  respondToStep: (action: string) => void;
+  respondToAgenticConfirm: (approved: boolean) => void;
+  t: (key: string) => string;
+}) {
+  return (
+    <>
+      {isStreaming && streamingContent && (() => {
+        const displayText = stripJsonPlan(streamingContent);
+        if (!displayText) return null;
+
+        if (isAgenticMode) {
+          return (
+            <div className="flex gap-2 px-2 py-2 sm:gap-3 sm:px-4 sm:py-3" data-testid="streaming-message">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600 dark:bg-blue-900/50 dark:text-blue-400">
+                <Bot className="h-4 w-4" />
+              </div>
+              <div className="max-w-[90%] rounded-2xl bg-muted px-3 py-2 text-sm sm:max-w-[85%] sm:px-4 sm:py-2.5">
+                <MarkdownRenderer content={displayText} />
+                <Loader2 className="mt-1 h-3 w-3 animate-spin text-muted-foreground" />
+              </div>
+            </div>
+          );
+        }
+
+        if (executionMode === 'inline') {
+          return (
+            <div className="flex gap-2 px-2 py-2 sm:gap-3 sm:px-4 sm:py-3" data-testid="streaming-message">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-800 text-green-400 dark:bg-gray-900">
+                <Server className="h-4 w-4" />
+              </div>
+              <div className="max-w-[90%] rounded-lg bg-gray-900 px-3 py-2 text-sm sm:max-w-[85%] sm:px-4 sm:py-3">
+                <pre className="whitespace-pre-wrap break-all font-mono text-xs text-green-400 sm:text-sm">{displayText}</pre>
+                <Loader2 className="mt-1 h-3 w-3 animate-spin text-green-600" />
+              </div>
+            </div>
+          );
+        }
+
+        return (
+          <div className="flex gap-2 px-2 py-2 sm:gap-3 sm:px-4 sm:py-3" data-testid="streaming-message">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600 dark:bg-blue-900/50 dark:text-blue-400">
+              <Bot className="h-4 w-4" />
+            </div>
+            <div className="max-w-[85%] rounded-2xl bg-muted px-3 py-2 text-sm sm:max-w-[75%] sm:px-4 sm:py-2.5">
+              <MarkdownRenderer content={displayText} />
+              <Loader2 className="mt-1 h-3 w-3 animate-spin text-muted-foreground" />
+            </div>
+          </div>
+        );
+      })()}
+
+      {isStreaming && !streamingContent && (
+        <div className="flex items-center gap-2 px-4 py-3 text-sm text-muted-foreground" data-testid="thinking-indicator">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          {t('chat.aiThinking')}
+        </div>
+      )}
+
+      {currentPlan && planStatus === 'preview' && (
+        <PlanPreview
+          plan={currentPlan}
+          onConfirm={confirmPlan}
+          onReject={rejectPlan}
+          isExecuting={false}
+        />
+      )}
+
+      {currentPlan &&
+        executionMode === 'log' &&
+        (planStatus === 'executing' || planStatus === 'completed') && (
+          <ExecutionLog
+            plan={currentPlan}
+            activeStepId={execution.activeStepId}
+            outputs={execution.outputs}
+            completedSteps={execution.completedSteps}
+            success={execution.success}
+            onEmergencyStop={emergencyStop}
+            isExecuting={planStatus === 'executing'}
+            startTime={execution.startTime}
+            cancelled={execution.cancelled}
+          />
+        )}
+
+      {pendingConfirm && executionMode === 'log' && planStatus === 'executing' && (
+        <StepConfirmBar
+          step={pendingConfirm}
+          onAllow={() => respondToStep('allow')}
+          onAllowAll={() => respondToStep('allow_all')}
+          onReject={() => respondToStep('reject')}
+        />
+      )}
+
+      {agenticConfirm && (
+        <AgenticConfirmBar
+          confirm={agenticConfirm}
+          onApprove={() => respondToAgenticConfirm(true)}
+          onReject={() => respondToAgenticConfirm(false)}
+        />
+      )}
+    </>
   );
 }
