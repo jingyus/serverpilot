@@ -220,7 +220,43 @@ describe('buildFullSystemPrompt', () => {
     expect(result).toContain('ServerPilot');
   });
 
+  it('excludes knowledge context when RAG search returns no results', async () => {
+    const { getRagPipeline } = await import('../knowledge/rag-pipeline.js');
+    vi.mocked(getRagPipeline).mockReturnValue({
+      isReady: () => true,
+      search: vi.fn().mockResolvedValue({
+        hasResults: false,
+        contextText: '',
+      }),
+    } as never);
+
+    const result = await buildFullSystemPrompt('obscure query');
+    expect(result).toContain('ServerPilot');
+    expect(result).not.toContain('Knowledge');
+  });
+
+  it('omits caveats section when profile produces empty caveats array', async () => {
+    const { buildProfileCaveats } = await import('./profile-context.js');
+    vi.mocked(buildProfileCaveats).mockReturnValue([]);
+
+    const fakeProfile = { osInfo: { platform: 'Ubuntu' } };
+    const result = await buildFullSystemPrompt('hello', fakeProfile);
+    expect(result).toContain('Server Profile');
+    expect(result).not.toContain('Important Caveats');
+  });
+
+  it('uses default server name when serverName is not provided', async () => {
+    const { buildProfileContext } = await import('./profile-context.js');
+    const fakeProfile = { osInfo: { platform: 'Ubuntu' } };
+    await buildFullSystemPrompt('hello', fakeProfile);
+    expect(buildProfileContext).toHaveBeenCalledWith(fakeProfile, 'server');
+  });
+
   it('combines all sections with double newline separator', async () => {
+    // Restore caveats mock (may have been overridden by prior test)
+    const { buildProfileCaveats } = await import('./profile-context.js');
+    vi.mocked(buildProfileCaveats).mockReturnValue(['Disk usage above 80%']);
+
     const { getRagPipeline } = await import('../knowledge/rag-pipeline.js');
     vi.mocked(getRagPipeline).mockReturnValue({
       isReady: () => true,
