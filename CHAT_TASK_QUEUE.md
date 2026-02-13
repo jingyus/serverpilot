@@ -3,19 +3,199 @@
 > 此队列专注于 Chat 和 AI 对话系统的质量改进
 > AI 自动发现问题 → 生成任务 → 实现 → 验证
 
-**最后更新**: 2026-02-13 15:17:29
+**最后更新**: 2026-02-13 15:24:47
 
 ## 📊 统计
 
-- **总任务数**: 100
-- **待完成** (pending): 0
-- **进行中** (in_progress): 0
+- **总任务数**: 113
+- **待完成** (pending): 12
+- **进行中** (in_progress): 1
 - **已完成** (completed): 100
 - **失败** (failed): 0
 
 ## 📋 任务列表
 
 ### [completed] 聊天会话持久化到 SQLite — 消除服务器重启丢失对话的致命问题 ✅
+### [in_progress] agentic-chat.ts 超出 800 行硬限制（911 行）— 工具实现方法需提取到独立模块
+
+**ID**: chat-090
+**优先级**: P0
+**模块路径**: packages/server/src/ai/
+**发现的问题**: `agentic-chat.ts` 当前 911 行，严重超出 800 行硬限制。主要体积来自三个工具实现方法 `toolExecuteCommand`（572-767 行，约 196 行）、`toolReadFile`（772-795 行）、`toolListFiles`（800-823 行），加上 `handleValidationError`（538-567 行）。这些方法与 AgenticChatEngine 的核心循环逻辑（`run`/`streamAnthropicCall`）职责不同，属于工具执行层，应独立为模块。
+**改进方案**: 创建 `agentic-tool-executors.ts`，将 `toolExecuteCommand`、`toolReadFile`、`toolListFiles`、`handleValidationError` 提取为独立函数或类。每个函数接收必要参数（serverId, userId, sessionId, clientId, stream, abort 等），不再需要作为 AgenticChatEngine 的私有方法。`shellEscape` 工具函数一并迁移。`AgenticChatEngine.executeToolCall` 保留为路由方法，调用提取后的执行器。
+**验收标准**: `agentic-chat.ts` 行数 ≤ 500；`agentic-tool-executors.ts` 行数 ≤ 400；所有现有 agentic-chat 测试通过；新模块有独立测试文件
+**影响范围**: `packages/server/src/ai/agentic-chat.ts`、新建 `packages/server/src/ai/agentic-tool-executors.ts`
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] chat.ts 路由文件超出 800 行硬限制（809 行）— test helpers 需提取
+
+**ID**: chat-091
+**优先级**: P0
+**模块路径**: packages/server/src/api/routes/
+**发现的问题**: `chat.ts` 当前 809 行，超出 800 行硬限制。755-809 行（约 55 行）全部是 `@internal` test helper 函数：`_setPendingConfirmation`、`_resetPendingConfirmations`、`_hasPendingConfirmation`、`_addRecentlyExpired`、`_hasRecentlyExpired`、`_resetSessionLocks`、`_hasSessionLock`、`_getSessionLock`。这些测试辅助函数占据了超限的全部行数。另外 `pendingConfirmations` Map、`recentlyExpired` Set、`sessionLocks` Map 及其相关函数（`acquireSessionLock`、`cleanupSessionConfirmations`、`hasActiveSessionWork`，共约 130 行）也可以提取为独立的确认管理模块。
+**改进方案**: 创建 `chat-confirmations.ts`，提取 `pendingConfirmations` Map、`recentlyExpired` Set、`CONFIRM_TIMEOUT_MS`、`RECENTLY_EXPIRED_TTL_MS`、`cleanupSessionConfirmations`、`hasActiveSessionWork` 及所有 test helper 函数。`sessionLocks` Map 和 `acquireSessionLock` 提取到 `chat-session-lock.ts`。路由文件只保留 HTTP handler 逻辑。
+**验收标准**: `chat.ts` 行数 ≤ 600；所有现有路由测试通过；新模块有独立测试
+**影响范围**: `packages/server/src/api/routes/chat.ts`、新建 `packages/server/src/api/routes/chat-confirmations.ts`、新建 `packages/server/src/api/routes/chat-session-lock.ts`
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] createGetSSE 无重连次数上限 — GET SSE 连接可能无限重连
+
+**ID**: chat-092
+**优先级**: P1
+**模块路径**: packages/dashboard/src/api/
+**发现的问题**: `sse.ts:371-379` 中 `createGetSSE` 的 `scheduleReconnect` 函数没有检查重连次数上限。`reconnectAttempt` 持续递增但从不与 `MAX_RECONNECT_ATTEMPTS` 比较，只在 `stopped` 和 `shouldReconnect` 条件下退出。而 `createSSEConnection`（用于 POST Chat SSE）在 220 行明确检查 `reconnectAttempt >= MAX_RECONNECT_ATTEMPTS`。这意味着 metrics/status 等 GET SSE 流在服务端长时间不可用时会无限指数退避重连。虽然 `computeReconnectDelay` 会封顶到 30 秒，但仍会在后台持续消耗资源、产生网络请求和错误日志。
+**改进方案**: 在 `createGetSSE` 的 `scheduleReconnect` 中添加 `MAX_RECONNECT_ATTEMPTS` 检查。可复用现有的 `MAX_RECONNECT_ATTEMPTS = 5` 常量，或允许通过 `GetSSEConfig` 传入自定义值。超过上限时调用 `onError` 回调通知上层并停止重连。
+**验收标准**: GET SSE 重连有上限（默认 5 次）；超过上限后触发 onError 并停止；现有 metrics/status SSE 功能不受影响；有新增测试覆盖此行为
+**影响范围**: `packages/dashboard/src/api/sse.ts`
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] chat-sse-handlers.ts 零测试覆盖 — SSE 事件分发逻辑无验证
+
+**ID**: chat-093
+**优先级**: P1
+**模块路径**: packages/dashboard/src/stores/
+**发现的问题**: `chat-sse-handlers.ts`（365 行）是从 `chat-execution.ts` 提取的 SSE 流式回调构建器，包含 `buildStreamingCallbacks` 函数，处理 17 种 SSE 事件（message、plan、auto_execute、step_start、output、step_complete、step_confirm、step_decision_timeout、diagnosis、complete、tool_call、tool_executing、tool_output、tool_result、confirm_required、confirm_id、error）。但搜索 `packages/dashboard/src` 发现不存在 `chat-sse-handlers.test.ts`。所有事件解析和状态更新逻辑（包括 agentic 模式的 tool_call → tool_executing → tool_output → tool_result 完整生命周期、max_turns_reached 检测、inline/log 执行模式切换等）完全没有直接测试覆盖。
+**改进方案**: 创建 `chat-sse-handlers.test.ts`，为 `buildStreamingCallbacks` 的每个事件处理器编写测试。重点覆盖：1）message 事件的 sessionId 设置和 content 追加；2）complete 事件在三种模式（non-executing、inline、log）下的状态转换；3）tool_call → tool_result 完整生命周期；4）error 事件保存 partial streaming content；5）auto_execute 的 inline/log 模式切换。mock `set`/`get` 函数验证状态更新。
+**验收标准**: 17 种 SSE 事件处理器各至少 1 个测试用例；complete 事件的 3 种模式各有测试；error 事件的 2 种路径（有/无 streamingContent）有测试；总计 ≥ 25 个测试用例
+**影响范围**: 新建 `packages/dashboard/src/stores/chat-sse-handlers.test.ts`
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] agentic-message-utils.ts 零独立测试 — 提取模块未建立独立测试文件
+
+**ID**: chat-094
+**优先级**: P1
+**模块路径**: packages/server/src/ai/
+**发现的问题**: `agentic-message-utils.ts`（180 行）从 `agentic-chat.ts` 提取了 `estimateMessagesTokens`、`trimMessagesIfNeeded`、`TrimResult` 类型以及内部辅助函数 `truncateStringContent`、`truncateArrayContent`、`extractBlockText`。虽然 `agentic-chat.test.ts` 中有针对 `trimMessagesIfNeeded` 和 `estimateMessagesTokens` 的测试（第 111-841 行，约 730 行测试代码），但这些测试仍然通过 `agentic-chat.ts` 的 re-export 导入，没有独立的 `agentic-message-utils.test.ts`。这违反了模块提取后应有独立测试的原则，且内部函数 `truncateStringContent` 和 `truncateArrayContent` 的边界场景（targetChars=0、单 block 数组、空 text block）未覆盖。
+**改进方案**: 创建 `agentic-message-utils.test.ts`，将 `agentic-chat.test.ts` 中相关的 describe blocks（`estimateMessagesTokens`、`trimMessagesIfNeeded` 的所有 5 个 describe）迁移过来，直接从 `agentic-message-utils.js` 导入。补充 `truncateStringContent` 和 `truncateArrayContent` 的边界测试。`agentic-chat.test.ts` 中移除迁移的测试代码，减少其行数。
+**验收标准**: `agentic-message-utils.test.ts` 存在且包含所有 trimming/estimation 测试；`agentic-chat.test.ts` 行数减少 ≥ 700 行；所有测试通过
+**影响范围**: 新建 `packages/server/src/ai/agentic-message-utils.test.ts`、修改 `packages/server/src/ai/agentic-chat.test.ts`
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] Legacy 模式 post-execution AI summary 无超时保护 — 慢速 AI 响应可能无限阻塞 SSE 流
+
+**ID**: chat-095
+**优先级**: P1
+**模块路径**: packages/server/src/api/routes/
+**发现的问题**: `chat-execution.ts:603-635` 中，计划执行完成后会调用 `agent.chat()` 生成执行摘要。这个 AI 调用没有任何超时保护或取消机制。如果 AI Provider 响应极慢（比如 Ollama 在低配机器上），SSE 流会一直保持打开状态。虽然 agent.chat() 内部有重试机制（最多 4 次尝试，含指数退避），但最坏情况下可能需要 1000+2000+4000+8000=15 秒重试延迟加上 4 次实际请求时间，总计可能超过 1 分钟。在此期间客户端的 SSE 连接保持打开，session lock 也不会释放（因为 SSE stream 还在运行），阻塞同一 session 的后续请求。
+**改进方案**: 用 `Promise.race` 给 summary AI 调用添加 30 秒超时。超时后 log 一条 debug 级别的日志并继续关闭 SSE 流。可以封装为 `withTimeout(promise, ms)` 工具函数。同时检查 `streamAborted` 标志——如果客户端在等待 summary 时断连，应该立即跳过。
+**验收标准**: AI summary 调用有 30 秒超时；超时后正常关闭 SSE 流；客户端断连时立即跳过 summary；有测试覆盖超时路径
+**影响范围**: `packages/server/src/api/routes/chat-execution.ts`
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] Agentic 模式 streamAnthropicCall 无超时保护 — finalMessage() 挂起可能冻结循环
+
+**ID**: chat-096
+**优先级**: P1
+**模块路径**: packages/server/src/ai/
+**发现的问题**: `agentic-chat.ts:394` 中 `const finalMessage = await response.finalMessage()` 调用等待 Anthropic 流完成。虽然 abort 状态会触发 `response.abort()` 来中断流，但如果 Anthropic SDK 的流式响应在某些网络条件下挂起（例如 TCP 连接保持但不发送数据），`finalMessage()` 可能永远不返回。abort 机制仅在 `text` 和 `inputJson` 事件回调中检查，如果流卡在两个事件之间，abort 无法生效。SDK 的 `MessageStream` 没有内建超时参数。每个 turn 可能占用整个 AI 调用时间，25 turns 的最坏情况下可能导致请求挂起数小时。
+**改进方案**: 在 `streamAnthropicCall` 中用 `Promise.race` 结合 `awaitAbort` 和一个 120 秒（或可配置的）超时 Promise。如果 abort 或超时先触发，调用 `response.abort()` 并抛出超时错误。同时确保 `response` 对象在超时后被正确清理。
+**验收标准**: `streamAnthropicCall` 有超时保护（默认 120 秒）；超时时正确 abort SDK stream；abort 状态变化时立即中断等待；有测试覆盖超时路径
+**影响范围**: `packages/server/src/ai/agentic-chat.ts`
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] 前端 deleteSession 未触发会话列表刷新 — 其他标签页会话数量不同步
+
+**ID**: chat-097
+**优先级**: P2
+**模块路径**: packages/dashboard/src/stores/
+**发现的问题**: `chat-sessions.ts:118-135` 中 `createDeleteSession` 删除会话后，只在本地 state 中 filter 掉被删除的会话和重置当前会话状态，但没有更新 `sessionsTotal` 计数器。这会导致：1）`sessionsTotal` 不递减，`loadMoreSessions` 的 `sessions.length >= sessionsTotal` 检查失效，可能多发一次无意义的分页请求；2）如果用户在接近分页边界处删除多个会话，`sessionsTotal` 与实际列表长度的差距会越来越大。类似地，`createRenameSession`（98-116 行）在 API 请求失败时设置 error 但不回滚本地的乐观更新。
+**改进方案**: 在 `createDeleteSession` 的 set 回调中添加 `sessionsTotal: state.sessionsTotal - 1` 递减。对 `createRenameSession`，在 catch 块中回滚 sessions 列表中该会话的 name 到原值（需在 try 前保存原 name）。
+**验收标准**: 删除会话后 `sessionsTotal` 正确递减；重命名失败后名称回滚；有测试覆盖这两个场景
+**影响范围**: `packages/dashboard/src/stores/chat-sessions.ts`
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] sse.ts 超 500 行软限制（614 行）— createGetSSE 重连逻辑与 createSSEConnection 重复
+
+**ID**: chat-098
+**优先级**: P2
+**模块路径**: packages/dashboard/src/api/
+**发现的问题**: `sse.ts` 当前 614 行，超出 500 行软限制。`createSSEConnection`（191-325 行，约 135 行）和 `createGetSSE`（350-448 行，约 99 行）包含大量重复的模式：pool registration、cleanup 函数、scheduleReconnect、401 重试、parseSSEStream 调用。两者主要区别是 POST vs GET、body 参数、和 reconnect body 处理。此外还有 4 个 wrapper 函数（createMetricsSSE、createServerStatusSSE、createSkillExecutionSSE）各约 20-30 行。
+**改进方案**: 提取通用的 SSE 连接基础设施到 `sse-connection.ts`：包含 `SSEConnectionPool` 类、`parseSSEStream` 函数、`isRetriableError`、`computeReconnectDelay`、`SSEHttpError` 类。`sse.ts` 保留具体的 `createSSEConnection`、`createGetSSE` 和所有 wrapper 函数。或者进一步将 POST/GET 的共同逻辑提取为 `createBaseSSEConnection` 内部函数。
+**验收标准**: `sse.ts` 行数 ≤ 500；提取的模块有完整导出；现有所有 SSE 相关测试通过
+**影响范围**: `packages/dashboard/src/api/sse.ts`、新建 `packages/dashboard/src/api/sse-connection.ts`
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] 前端 retryMessage 和 regenerateLastResponse 不更新 sessions 列表 — 侧边栏 lastMessage 过时
+
+**ID**: chat-099
+**优先级**: P2
+**模块路径**: packages/dashboard/src/stores/
+**发现的问题**: `chat.ts:104-114` 中 `retryMessage` 先移除失败消息 `messages.slice(0, idx)`，然后调用 `sendMessage` 重发。`regenerateLastResponse`（117-141 行）类似地移除 assistant 消息后重发。但这两个操作改变了消息列表（移除了消息），服务端也会生成新的 AI 响应。然而 `SessionSidebar` 显示的 `lastMessage` 来自 `sessions` 数组中的快照数据（`fetchSessions` 加载时获取），重试/重新生成后 `sessions` 数组不会更新。用户在侧边栏看到的会话预览仍然显示旧的 lastMessage，直到下次刷新 sessions 列表。
+**改进方案**: 在 `sendMessage` 的 `onComplete` 回调中（即 `chat-sse-handlers.ts` 的 complete handler），用当前 messages 列表的最后一条消息更新 `sessions` 中对应 session 的 `lastMessage` 字段。可以在 `ChatState` 中添加一个 `updateSessionPreview(sessionId, lastMessage)` 内部方法。
+**验收标准**: 发送消息/重试/重新生成后，侧边栏的 lastMessage 预览实时更新；无需手动刷新会话列表；有测试覆盖
+**影响范围**: `packages/dashboard/src/stores/chat-sse-handlers.ts`、`packages/dashboard/src/stores/chat-types.ts`
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] Agentic 模式 toolReadFile 直接拼接用户输入到 shell 命令 — 路径遍历风险
+
+**ID**: chat-100
+**优先级**: P1
+**模块路径**: packages/server/src/ai/
+**发现的问题**: `agentic-chat.ts:783` 中 `toolReadFile` 构造命令 `head -n ${maxLines} ${this.shellEscape(input.path)}`，然后调用 `toolExecuteCommand` 执行。虽然使用了 `shellEscape`（单引号转义），但 `input.path` 来自 AI 模型的 tool_use 返回值，可能包含路径遍历如 `/etc/shadow`、`/root/.ssh/id_rsa` 等敏感文件路径。`toolExecuteCommand` 会经过 `validateCommand` 安全检查，但 `head` 命令本身是 GREEN 级别（只读命令），不会触发任何阻断。同样 `toolListFiles`（810-811 行）的 `ls` 命令也是 GREEN 级别。这意味着 AI 模型如果被 prompt injection 诱导，可以读取服务器上的任何文件，将内容返回到对话中。
+**改进方案**: 在 `toolReadFile` 和 `toolListFiles` 中添加路径白名单/黑名单验证。至少应该拒绝：1）`/etc/shadow`、`/etc/gshadow`；2）`~/.ssh/` 目录下的私钥文件；3）`/proc/*/environ` 等包含环境变量（可能含密码）的路径。可以在 `agentic-tools.ts` 中定义 `BLOCKED_READ_PATHS` 模式列表，在执行前检查。
+**验收标准**: 读取敏感路径时返回错误而非文件内容；黑名单至少覆盖 10 种常见敏感路径；有测试覆盖黑名单路径；不影响正常文件读取
+**影响范围**: `packages/server/src/ai/agentic-chat.ts`、`packages/server/src/ai/agentic-tools.ts`
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] ExecutionLog.tsx 超 500 行软限制（528 行）— LiveDuration 和 AnsiOutput 可提取
+
+**ID**: chat-101
+**优先级**: P3
+**模块路径**: packages/dashboard/src/components/chat/
+**发现的问题**: `ExecutionLog.tsx` 当前 528 行，超出 500 行软限制。包含多个可独立的子组件：`LiveDuration`（使用 `useElapsedTimer` 自定义 hook，约 40 行）、`AnsiOutput`（带截断逻辑，约 30 行）、`ProgressBar`（约 25 行）、`ExecutionSummary`（约 50 行）、以及工具函数 `countLines`、`formatCountdown`。这些子组件无外部依赖，可独立测试和复用。
+**改进方案**: 将 `LiveDuration`、`useElapsedTimer`、`formatCountdown` 提取到 `ExecutionLogUtils.tsx`。`AnsiOutput` 和 `countLines` 提取到 `AnsiOutput.tsx`。`ProgressBar` 和 `ExecutionSummary` 保留在主文件中（它们与执行上下文紧密耦合）。
+**验收标准**: `ExecutionLog.tsx` 行数 ≤ 400；提取的组件可独立导入使用；所有现有测试通过
+**影响范围**: `packages/dashboard/src/components/chat/ExecutionLog.tsx`、新建 `packages/dashboard/src/components/chat/ExecutionLogUtils.tsx`、新建 `packages/dashboard/src/components/chat/AnsiOutput.tsx`
+**创建时间**: (自动填充)
+**完成时间**: -
+
+---
+
+### [pending] SessionSidebar.tsx 超 500 行软限制（504 行）— SearchInput 和 LoadMoreSentinel 可提取
+
+**ID**: chat-102
+**优先级**: P3
+**模块路径**: packages/dashboard/src/components/chat/
+**发现的问题**: `SessionSidebar.tsx` 当前 504 行，刚超出 500 行软限制。包含 7 个子组件/函数：`SearchInput`（带 300ms debounce，约 35 行）、`HighlightedText`（regex 高亮，约 25 行）、`SessionItemRow`（会话行带重命名 UI，约 60 行）、`LoadMoreSentinel`（IntersectionObserver 无限滚动，约 25 行）、`SidebarContent`（分组渲染，约 80 行）、以及工具函数 `getSessionDateGroup`、`filterSessions`、`highlightText`。
+**改进方案**: 将 `SearchInput`、`HighlightedText`、`highlightText` 工具函数提取到 `SessionSearchInput.tsx`（通用搜索组件）。`LoadMoreSentinel` 提取到 `LoadMoreSentinel.tsx`（可在其他列表页面复用）。
+**验收标准**: `SessionSidebar.tsx` 行数 ≤ 450；提取的组件有 data-testid 和基本测试；所有现有测试通过
+**影响范围**: `packages/dashboard/src/components/chat/SessionSidebar.tsx`、新建 `packages/dashboard/src/components/chat/SessionSearchInput.tsx`、新建 `packages/dashboard/src/components/chat/LoadMoreSentinel.tsx`
+**创建时间**: (自动填充)
+**完成时间**: -
+
 ### [completed] addMessage 全量读写消息数组 — 每次追加消息读取并重写全部历史导致 O(n) 性能退化 ✅
 
 **ID**: chat-081

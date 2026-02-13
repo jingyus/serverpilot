@@ -9,16 +9,17 @@
  * @module api/routes/schemas
  */
 
-import { z } from 'zod';
-import { CronExpressionParser } from 'cron-parser';
+import { z } from "zod";
+import { CronExpressionParser } from "cron-parser";
 
 // ============================================================================
 // Common
 // ============================================================================
 
 /** UUID string format (v4) */
-const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const uuid = z.string().regex(uuidRegex, 'Invalid UUID format');
+const uuidRegex =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const uuid = z.string().regex(uuidRegex, "Invalid UUID format");
 
 /** Pagination query parameters */
 export const PaginationQuerySchema = z.object({
@@ -32,40 +33,40 @@ export type PaginationQuery = z.infer<typeof PaginationQuerySchema>;
 // ============================================================================
 
 export const LoginBodySchema = z.object({
-  email: z.string().email('Invalid email format'),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
+  email: z.string().email("Invalid email format"),
+  password: z.string().min(8, "Password must be at least 8 characters"),
 });
 export type LoginBody = z.infer<typeof LoginBodySchema>;
 
 export const RegisterBodySchema = z.object({
-  email: z.string().email('Invalid email format'),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
-  name: z.string().min(1, 'Name is required').max(100),
+  email: z.string().email("Invalid email format"),
+  password: z.string().min(8, "Password must be at least 8 characters"),
+  name: z.string().min(1, "Name is required").max(100),
 });
 export type RegisterBody = z.infer<typeof RegisterBodySchema>;
 
 export const RefreshTokenBodySchema = z.object({
-  refreshToken: z.string().min(1, 'Refresh token is required'),
+  refreshToken: z.string().min(1, "Refresh token is required"),
 });
 export type RefreshTokenBody = z.infer<typeof RefreshTokenBodySchema>;
 
 /** Password strength: ≥8 chars, at least one uppercase, one lowercase, one digit */
 const strongPassword = z
   .string()
-  .min(8, 'Password must be at least 8 characters')
-  .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
-  .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
-  .regex(/[0-9]/, 'Password must contain at least one digit');
+  .min(8, "Password must be at least 8 characters")
+  .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
+  .regex(/[a-z]/, "Password must contain at least one lowercase letter")
+  .regex(/[0-9]/, "Password must contain at least one digit");
 
 export const ChangePasswordBodySchema = z
   .object({
-    currentPassword: z.string().min(1, 'Current password is required'),
+    currentPassword: z.string().min(1, "Current password is required"),
     newPassword: strongPassword,
-    confirmPassword: z.string().min(1, 'Password confirmation is required'),
+    confirmPassword: z.string().min(1, "Password confirmation is required"),
   })
   .refine((data) => data.newPassword === data.confirmPassword, {
-    message: 'New password and confirmation do not match',
-    path: ['confirmPassword'],
+    message: "New password and confirmation do not match",
+    path: ["confirmPassword"],
   });
 export type ChangePasswordBody = z.infer<typeof ChangePasswordBodySchema>;
 
@@ -74,7 +75,7 @@ export type ChangePasswordBody = z.infer<typeof ChangePasswordBodySchema>;
 // ============================================================================
 
 export const CreateServerBodySchema = z.object({
-  name: z.string().min(1, 'Server name is required').max(100),
+  name: z.string().min(1, "Server name is required").max(100),
   tags: z.array(z.string().max(50)).max(10).optional(),
   group: z.string().min(1).max(100).optional(),
 });
@@ -98,26 +99,29 @@ export const ServerIdParamSchema = z.object({
 });
 
 export const ServerMetricsQuerySchema = z.object({
-  range: z.enum(['1h', '24h', '7d']).default('1h'),
+  range: z.enum(["1h", "24h", "7d"]).default("1h"),
 });
 export type ServerMetricsQuery = z.infer<typeof ServerMetricsQuerySchema>;
 
 /** Add a note to server profile */
 export const AddNoteBodySchema = z.object({
-  note: z.string().min(1, 'Note is required').max(500, 'Note too long (max 500)'),
+  note: z
+    .string()
+    .min(1, "Note is required")
+    .max(500, "Note too long (max 500)"),
 });
 export type AddNoteBody = z.infer<typeof AddNoteBodySchema>;
 
 /** Remove a note from server profile */
 export const RemoveNoteBodySchema = z.object({
-  index: z.number().int().min(0, 'Index must be non-negative'),
+  index: z.number().int().min(0, "Index must be non-negative"),
 });
 export type RemoveNoteBody = z.infer<typeof RemoveNoteBodySchema>;
 
 /** Update server profile preferences */
 export const UpdatePreferencesBodySchema = z.object({
-  packageManager: z.enum(['apt', 'yum', 'brew', 'apk']).optional(),
-  deploymentStyle: z.enum(['docker', 'bare-metal', 'pm2']).optional(),
+  packageManager: z.enum(["apt", "yum", "brew", "apk"]).optional(),
+  deploymentStyle: z.enum(["docker", "bare-metal", "pm2"]).optional(),
   shell: z.string().max(50).optional(),
   timezone: z.string().max(100).optional(),
 });
@@ -125,14 +129,20 @@ export type UpdatePreferencesBody = z.infer<typeof UpdatePreferencesBodySchema>;
 
 /** Set history summary for server profile */
 export const SetHistorySummaryBodySchema = z.object({
-  summary: z.string().min(1, 'Summary is required').max(5000, 'Summary too long (max 5000)'),
+  summary: z
+    .string()
+    .min(1, "Summary is required")
+    .max(5000, "Summary too long (max 5000)"),
   keepRecentCount: z.number().int().min(0).max(200).default(20),
 });
 export type SetHistorySummaryBody = z.infer<typeof SetHistorySummaryBodySchema>;
 
 /** Record an operation in profile history */
 export const RecordOperationBodySchema = z.object({
-  summary: z.string().min(1, 'Summary is required').max(300, 'Summary too long (max 300)'),
+  summary: z
+    .string()
+    .min(1, "Summary is required")
+    .max(300, "Summary too long (max 300)"),
 });
 export type RecordOperationBody = z.infer<typeof RecordOperationBodySchema>;
 
@@ -145,9 +155,13 @@ export const OperationQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
   offset: z.coerce.number().int().min(0).default(0),
   serverId: z.string().optional(),
-  type: z.enum(['install', 'config', 'restart', 'execute', 'backup']).optional(),
-  status: z.enum(['pending', 'running', 'success', 'failed', 'rolled_back']).optional(),
-  riskLevel: z.enum(['green', 'yellow', 'red', 'critical']).optional(),
+  type: z
+    .enum(["install", "config", "restart", "execute", "backup"])
+    .optional(),
+  status: z
+    .enum(["pending", "running", "success", "failed", "rolled_back"])
+    .optional(),
+  riskLevel: z.enum(["green", "yellow", "red", "critical"]).optional(),
   search: z.string().max(200).optional(),
   startDate: z.string().datetime().optional(),
   endDate: z.string().datetime().optional(),
@@ -162,67 +176,74 @@ export type OperationStatsQuery = z.infer<typeof OperationStatsQuerySchema>;
 
 /** Create a new operation record */
 export const CreateOperationBodySchema = z.object({
-  serverId: z.string().min(1, 'Server ID is required'),
+  serverId: z.string().min(1, "Server ID is required"),
   sessionId: z.string().optional(),
-  type: z.enum(['install', 'config', 'restart', 'execute', 'backup']),
-  description: z.string().min(1, 'Description is required').max(500),
-  commands: z.array(z.string().max(2000)).min(1, 'At least one command is required').max(50),
-  riskLevel: z.enum(['green', 'yellow', 'red', 'critical']),
+  type: z.enum(["install", "config", "restart", "execute", "backup"]),
+  description: z.string().min(1, "Description is required").max(500),
+  commands: z
+    .array(z.string().max(2000))
+    .min(1, "At least one command is required")
+    .max(50),
+  riskLevel: z.enum(["green", "yellow", "red", "critical"]),
   snapshotId: z.string().optional(),
 });
 export type CreateOperationBody = z.infer<typeof CreateOperationBodySchema>;
 
 /** Update operation status */
 export const UpdateOperationStatusBodySchema = z.object({
-  status: z.enum(['running', 'success', 'failed', 'rolled_back']),
+  status: z.enum(["running", "success", "failed", "rolled_back"]),
   output: z.string().max(100000).optional(),
   duration: z.number().int().min(0).optional(),
 });
-export type UpdateOperationStatusBody = z.infer<typeof UpdateOperationStatusBodySchema>;
+export type UpdateOperationStatusBody = z.infer<
+  typeof UpdateOperationStatusBodySchema
+>;
 
 // ============================================================================
 // Chat Schemas
 // ============================================================================
 
-export const ChatMessageBodySchema = z.object({
-  message: z.string().max(4000).optional(),
-  sessionId: z.string().optional(),
-  reconnect: z.boolean().optional(),
-}).superRefine((data, ctx) => {
-  // message is required for normal requests, optional for reconnect
-  if (!data.reconnect && (!data.message || data.message.length < 1)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'Message is required',
-      path: ['message'],
-    });
-  }
-});
+export const ChatMessageBodySchema = z
+  .object({
+    message: z.string().max(4000).optional(),
+    sessionId: z.string().optional(),
+    reconnect: z.boolean().optional(),
+  })
+  .superRefine((data, ctx) => {
+    // message is required for normal requests, optional for reconnect
+    if (!data.reconnect && (!data.message || data.message.length < 1)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Message is required",
+        path: ["message"],
+      });
+    }
+  });
 export type ChatMessageBody = z.infer<typeof ChatMessageBodySchema>;
 
 export const ExecutePlanBodySchema = z.object({
-  planId: z.string().min(1, 'Plan ID is required'),
-  sessionId: z.string().min(1, 'Session ID is required'),
+  planId: z.string().min(1, "Plan ID is required"),
+  sessionId: z.string().min(1, "Session ID is required"),
 });
 export type ExecutePlanBody = z.infer<typeof ExecutePlanBodySchema>;
 
 export const CancelExecutionBodySchema = z.object({
-  planId: z.string().min(1, 'Plan ID is required'),
-  sessionId: z.string().min(1, 'Session ID is required'),
+  planId: z.string().min(1, "Plan ID is required"),
+  sessionId: z.string().min(1, "Session ID is required"),
 });
 export type CancelExecutionBody = z.infer<typeof CancelExecutionBodySchema>;
 
 export const StepDecisionBodySchema = z.object({
-  planId: z.string().min(1, 'Plan ID is required'),
-  sessionId: z.string().min(1, 'Session ID is required'),
-  stepId: z.string().min(1, 'Step ID is required'),
-  decision: z.enum(['allow', 'allow_all', 'reject']),
+  planId: z.string().min(1, "Plan ID is required"),
+  sessionId: z.string().min(1, "Session ID is required"),
+  stepId: z.string().min(1, "Step ID is required"),
+  decision: z.enum(["allow", "allow_all", "reject"]),
 });
 export type StepDecisionBody = z.infer<typeof StepDecisionBodySchema>;
 
 export const ConfirmBodySchema = z.object({
-  confirmId: z.string().min(1, 'Confirm ID is required'),
-  approved: z.boolean({ required_error: 'Approved field is required' }),
+  confirmId: z.string().min(1, "Confirm ID is required"),
+  approved: z.boolean({ required_error: "Approved field is required" }),
 });
 export type ConfirmBody = z.infer<typeof ConfirmBodySchema>;
 
@@ -236,12 +257,15 @@ export const ChatSessionParamSchema = z.object({
 });
 
 export const RenameSessionBodySchema = z.object({
-  name: z.string().min(1, 'Session name is required').max(200, 'Session name too long'),
+  name: z
+    .string()
+    .min(1, "Session name is required")
+    .max(200, "Session name too long"),
 });
 export type RenameSessionBody = z.infer<typeof RenameSessionBodySchema>;
 
 export const ExportSessionQuerySchema = z.object({
-  format: z.enum(['json', 'markdown']).default('json'),
+  format: z.enum(["json", "markdown"]).default("json"),
 });
 export type ExportSessionQuery = z.infer<typeof ExportSessionQuerySchema>;
 
@@ -250,23 +274,27 @@ export type ExportSessionQuery = z.infer<typeof ExportSessionQuerySchema>;
 // ============================================================================
 
 /** Validate a cron expression string using cron-parser. */
-const cronExpression = z.string().min(1, 'Cron expression is required').max(100).refine(
-  (val) => {
-    try {
-      CronExpressionParser.parse(val);
-      return true;
-    } catch {
-      return false;
-    }
-  },
-  { message: 'Invalid cron expression' },
-);
+const cronExpression = z
+  .string()
+  .min(1, "Cron expression is required")
+  .max(100)
+  .refine(
+    (val) => {
+      try {
+        CronExpressionParser.parse(val);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    { message: "Invalid cron expression" },
+  );
 
 export const CreateTaskBodySchema = z.object({
   serverId: uuid,
-  name: z.string().min(1, 'Task name is required').max(200),
+  name: z.string().min(1, "Task name is required").max(200),
   cron: cronExpression,
-  command: z.string().min(1, 'Command is required').max(1000),
+  command: z.string().min(1, "Command is required").max(1000),
   description: z.string().max(500).optional(),
 });
 export type CreateTaskBody = z.infer<typeof CreateTaskBodySchema>;
@@ -276,13 +304,13 @@ export const UpdateTaskBodySchema = z.object({
   cron: cronExpression.optional(),
   command: z.string().min(1).max(1000).optional(),
   description: z.string().max(500).optional(),
-  status: z.enum(['active', 'paused']).optional(),
+  status: z.enum(["active", "paused"]).optional(),
 });
 export type UpdateTaskBody = z.infer<typeof UpdateTaskBodySchema>;
 
 export const TaskQuerySchema = z.object({
   serverId: uuid.optional(),
-  status: z.enum(['active', 'paused']).optional(),
+  status: z.enum(["active", "paused"]).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
   offset: z.coerce.number().int().min(0).default(0),
 });
@@ -310,13 +338,13 @@ export const AlertIdParamSchema = z.object({
 // Alert Rule Schemas
 // ============================================================================
 
-const metricType = z.enum(['cpu', 'memory', 'disk']);
-const comparisonOperator = z.enum(['gt', 'lt', 'gte', 'lte']);
-const ruleSeverity = z.enum(['info', 'warning', 'critical']);
+const metricType = z.enum(["cpu", "memory", "disk"]);
+const comparisonOperator = z.enum(["gt", "lt", "gte", "lte"]);
+const ruleSeverity = z.enum(["info", "warning", "critical"]);
 
 export const CreateAlertRuleBodySchema = z.object({
   serverId: uuid,
-  name: z.string().min(1, 'Rule name is required').max(200),
+  name: z.string().min(1, "Rule name is required").max(200),
   metricType,
   operator: comparisonOperator,
   threshold: z.number().int().min(0).max(100),
@@ -363,7 +391,7 @@ export type ScrapeGitHubBody = z.infer<typeof ScrapeGitHubBodySchema>;
 
 /** Trigger a website documentation scrape */
 export const ScrapeWebsiteBodySchema = z.object({
-  baseUrl: z.string().url('Invalid URL'),
+  baseUrl: z.string().url("Invalid URL"),
   software: z.string().min(1).max(100),
   pages: z.array(z.string().url()).max(50).optional(),
   maxDepth: z.number().int().min(0).max(5).optional(),
@@ -374,13 +402,13 @@ export const ScrapeWebsiteBodySchema = z.object({
 export type ScrapeWebsiteBody = z.infer<typeof ScrapeWebsiteBodySchema>;
 
 /** Generic scrape request (discriminated by type) */
-export const ScrapeDocBodySchema = z.discriminatedUnion('type', [
+export const ScrapeDocBodySchema = z.discriminatedUnion("type", [
   z.object({
-    type: z.literal('github'),
+    type: z.literal("github"),
     source: ScrapeGitHubBodySchema,
   }),
   z.object({
-    type: z.literal('website'),
+    type: z.literal("website"),
     source: ScrapeWebsiteBodySchema,
   }),
 ]);
@@ -391,21 +419,27 @@ export type ScrapeDocBody = z.infer<typeof ScrapeDocBodySchema>;
 // ============================================================================
 
 /** AI Provider type */
-const aiProvider = z.enum(['claude', 'openai', 'ollama', 'deepseek', 'custom-openai']);
+const aiProvider = z.enum([
+  "claude",
+  "openai",
+  "ollama",
+  "deepseek",
+  "custom-openai",
+]);
 
 /** Update AI Provider configuration */
 export const UpdateAIProviderBodySchema = z.object({
   provider: aiProvider,
   apiKey: z.string().min(1).max(500).optional(),
   model: z.string().min(1).max(200).optional(),
-  baseUrl: z.string().url('Invalid URL').max(500).optional(),
+  baseUrl: z.string().url("Invalid URL").max(500).optional(),
 });
 export type UpdateAIProviderBody = z.infer<typeof UpdateAIProviderBodySchema>;
 
 /** Update user profile */
 export const UpdateUserProfileBodySchema = z.object({
   name: z.string().min(1).max(100),
-  email: z.string().email('Invalid email format'),
+  email: z.string().email("Invalid email format"),
   timezone: z.string().min(1).max(100),
 });
 export type UpdateUserProfileBody = z.infer<typeof UpdateUserProfileBodySchema>;
@@ -417,39 +451,50 @@ export const UpdateNotificationsBodySchema = z.object({
   systemAlerts: z.boolean(),
   operationReports: z.boolean(),
 });
-export type UpdateNotificationsBody = z.infer<typeof UpdateNotificationsBodySchema>;
+export type UpdateNotificationsBody = z.infer<
+  typeof UpdateNotificationsBodySchema
+>;
 
 /** Update knowledge base configuration */
 export const UpdateKnowledgeBaseBodySchema = z.object({
   autoLearning: z.boolean(),
   documentSources: z.array(z.string().max(500)).max(50),
 });
-export type UpdateKnowledgeBaseBody = z.infer<typeof UpdateKnowledgeBaseBodySchema>;
+export type UpdateKnowledgeBaseBody = z.infer<
+  typeof UpdateKnowledgeBaseBodySchema
+>;
 
 // ============================================================================
 // Webhook Schemas
 // ============================================================================
 
 const webhookEventType = z.enum([
-  'task.completed',
-  'alert.triggered',
-  'server.offline',
-  'operation.failed',
-  'agent.disconnected',
+  "task.completed",
+  "alert.triggered",
+  "server.offline",
+  "operation.failed",
+  "agent.disconnected",
 ]);
 
 export const CreateWebhookBodySchema = z.object({
-  name: z.string().min(1, 'Webhook name is required').max(200),
-  url: z.string().url('Invalid URL').max(2048),
-  events: z.array(webhookEventType).min(1, 'At least one event type required').max(10),
-  secret: z.string().min(16, 'Secret must be at least 16 characters').max(256).optional(),
+  name: z.string().min(1, "Webhook name is required").max(200),
+  url: z.string().url("Invalid URL").max(2048),
+  events: z
+    .array(webhookEventType)
+    .min(1, "At least one event type required")
+    .max(10),
+  secret: z
+    .string()
+    .min(16, "Secret must be at least 16 characters")
+    .max(256)
+    .optional(),
   maxRetries: z.number().int().min(0).max(10).optional(),
 });
 export type CreateWebhookBody = z.infer<typeof CreateWebhookBodySchema>;
 
 export const UpdateWebhookBodySchema = z.object({
   name: z.string().min(1).max(200).optional(),
-  url: z.string().url('Invalid URL').max(2048).optional(),
+  url: z.string().url("Invalid URL").max(2048).optional(),
   events: z.array(webhookEventType).min(1).max(10).optional(),
   secret: z.string().min(16).max(256).optional(),
   enabled: z.boolean().optional(),
@@ -464,7 +509,7 @@ export const WebhookQuerySchema = z.object({
 export type WebhookQuery = z.infer<typeof WebhookQuerySchema>;
 
 export const WebhookTestBodySchema = z.object({
-  eventType: webhookEventType.default('task.completed'),
+  eventType: webhookEventType.default("task.completed"),
 });
 export type WebhookTestBody = z.infer<typeof WebhookTestBodySchema>;
 
@@ -473,33 +518,69 @@ export type WebhookTestBody = z.infer<typeof WebhookTestBodySchema>;
 // ============================================================================
 
 export const CreateInvitationBodySchema = z.object({
-  email: z.string().email('Invalid email format'),
-  role: z.enum(['admin', 'member']).default('member'),
+  email: z.string().email("Invalid email format"),
+  role: z.enum(["admin", "member"]).default("member"),
 });
 export type CreateInvitationBody = z.infer<typeof CreateInvitationBodySchema>;
 
 export const AcceptInvitationBodySchema = z.object({
-  name: z.string().min(1, 'Name is required').max(100),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
+  name: z.string().min(1, "Name is required").max(100),
+  password: z.string().min(8, "Password must be at least 8 characters"),
 });
 export type AcceptInvitationBody = z.infer<typeof AcceptInvitationBodySchema>;
+
+// ============================================================================
+// Batch Server Action Schemas
+// ============================================================================
+
+/** Supported batch actions */
+const batchAction = z.enum(["restart", "stop", "delete", "update-tags"]);
+
+/** Batch action request — operates on multiple servers at once */
+export const BatchServerActionBodySchema = z
+  .object({
+    serverIds: z
+      .array(uuid)
+      .min(1, "At least one server ID is required")
+      .max(50, "Maximum 50 servers per batch"),
+    action: batchAction,
+    params: z
+      .object({
+        tags: z.array(z.string().max(50)).max(10).optional(),
+      })
+      .optional(),
+  })
+  .refine(
+    (data) => {
+      if (data.action === "update-tags" && !data.params?.tags) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: "params.tags is required for update-tags action",
+      path: ["params"],
+    },
+  );
+export type BatchServerActionBody = z.infer<typeof BatchServerActionBodySchema>;
 
 // ============================================================================
 // Skill Schemas
 // ============================================================================
 
 /** Install a skill from a local directory or a Git HTTPS URL */
-export const InstallSkillBodySchema = z.object({
-  skillDir: z.string().min(1).max(1000).optional(),
-  source: z.enum(['official', 'community', 'local']),
-  gitUrl: z.string().url().max(2000).optional(),
-}).refine(
-  (data) => data.skillDir || data.gitUrl,
-  { message: 'Either skillDir or gitUrl is required' },
-).refine(
-  (data) => !(data.skillDir && data.gitUrl),
-  { message: 'Cannot specify both skillDir and gitUrl' },
-);
+export const InstallSkillBodySchema = z
+  .object({
+    skillDir: z.string().min(1).max(1000).optional(),
+    source: z.enum(["official", "community", "local"]),
+    gitUrl: z.string().url().max(2000).optional(),
+  })
+  .refine((data) => data.skillDir || data.gitUrl, {
+    message: "Either skillDir or gitUrl is required",
+  })
+  .refine((data) => !(data.skillDir && data.gitUrl), {
+    message: "Cannot specify both skillDir and gitUrl",
+  });
 export type InstallSkillBody = z.infer<typeof InstallSkillBodySchema>;
 
 /** Configure a skill's user-facing inputs */
@@ -510,13 +591,13 @@ export type ConfigureSkillBody = z.infer<typeof ConfigureSkillBodySchema>;
 
 /** Update a skill's status (enable / pause) */
 export const UpdateSkillStatusBodySchema = z.object({
-  status: z.enum(['enabled', 'paused']),
+  status: z.enum(["enabled", "paused"]),
 });
 export type UpdateSkillStatusBody = z.infer<typeof UpdateSkillStatusBodySchema>;
 
 /** Execute a skill manually on a target server */
 export const ExecuteSkillBodySchema = z.object({
-  serverId: z.string().min(1, 'Server ID is required'),
+  serverId: z.string().min(1, "Server ID is required"),
   config: z.record(z.string(), z.unknown()).optional(),
   /** When true, AI outputs planned commands without executing side-effect tools. */
   dryRun: z.boolean().optional(),
@@ -525,7 +606,7 @@ export type ExecuteSkillBody = z.infer<typeof ExecuteSkillBodySchema>;
 
 /** Dry-run a skill — preview execution plan without side effects */
 export const DryRunSkillBodySchema = z.object({
-  serverId: z.string().min(1, 'Server ID is required'),
+  serverId: z.string().min(1, "Server ID is required"),
   config: z.record(z.string(), z.unknown()).optional(),
 });
 export type DryRunSkillBody = z.infer<typeof DryRunSkillBodySchema>;

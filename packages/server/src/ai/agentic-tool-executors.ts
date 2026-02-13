@@ -1,0 +1,427 @@
+// SPDX-License-Identifier: AGPL-3.0
+// Copyright (c) 2024-2026 ServerPilot Contributors
+/** Tool executor functions for the Agentic Chat Engine. */
+
+import type { SSEStreamingApi } from "hono/streaming";
+import { RiskLevel } from "@aiinstaller/shared";
+import { getTaskExecutor } from "../core/task/executor.js";
+import { validateCommand } from "../core/security/command-validator.js";
+import { getAuditLogger } from "../core/security/audit-logger.js";
+import { logger } from "../utils/logger.js";
+import {
+  ExecuteCommandInputSchema,
+  ReadFileInputSchema,
+  ListFilesInputSchema,
+} from "./agentic-tools.js";
+
+/** Shared abort flag interface — mirrors AbortState in agentic-chat.ts */
+export interface AbortStateInterface {
+  aborted: boolean;
+  onAbort(cb: () => void): () => void;
+}
+
+/** Common context passed to all tool executors */
+export interface ToolExecutorContext {
+  serverId: string;
+  userId: string;
+  sessionId: string;
+  clientId: string;
+  stream: SSEStreamingApi;
+  abort: AbortStateInterface;
+}
+
+/** Confirmation callback type */
+export type OnConfirmRequired = (
+  command: string,
+  riskLevel: string,
+  description: string,
+) => {
+  confirmId: string;
+  approved: Promise<boolean>;
+};
+
+/** Escape a string for safe shell usage */
+export function shellEscape(s: string): string {
+  return `'${s.replace(/'/g, "'\\''")}'`;
+}
+
+/** Write SSE event; on failure sets abort.aborted immediately. */
+export async function writeSSE(
+  stream: SSEStreamingApi,
+  event: string,
+  data: Record<string, unknown>,
+  abort?: AbortStateInterface,
+): Promise<void> {
+  try {
+    await stream.writeSSE({ event, data: JSON.stringify(data) });
+  } catch {
+    if (abort) abort.aborted = true;
+  }
+}
+
+/**
+ * Returns a Promise that resolves to `false` once abort.aborted becomes true,
+ * plus an `unsubscribe` function to clean up the listener.
+ */
+export function awaitAbort(abort: AbortStateInterface): {
+  promise: Promise<false>;
+  unsubscribe: () => void;
+} {
+  if (abort.aborted) {
+    return {
+      promise: Promise.resolve(false as const),
+      unsubscribe: () => {},
+    };
+  }
+  let unsubscribe: () => void = () => {};
+  const promise = new Promise<false>((resolve) => {
+    unsubscribe = abort.onAbort(() => resolve(false as const));
+  });
+  return { promise, unsubscribe };
+}
+
+/**
+ * Handle Zod validation failure for tool input.
+ * Sends a tool_result SSE event and logs a warning.
+ */
+export async function handleValidationError(
+  toolName: string,
+  toolCallId: string,
+  issues: Array<{ message: string; path: Array<string | number> }>,
+  rawInput: unknown,
+  stream: SSEStreamingApi,
+  abort: AbortStateInterface,
+): Promise<string> {
+  const errorDetail = issues.map((i) => i.message).join("; ");
+  const errorMsg = `Error: Invalid tool input for ${toolName}: ${errorDetail}`;
+
+  logger.warn(
+    { operation: "tool_validation", tool: toolName, issues, rawInput },
+    `Tool input validation failed for ${toolName}`,
+  );
+
+  await writeSSE(
+    stream,
+    "tool_result",
+    {
+      id: toolCallId,
+      tool: toolName,
+      status: "validation_error",
+      error: errorDetail,
+    },
+    abort,
+  );
+
+  return errorMsg;
+}
+
+/**
+ * Tool: execute_command — Run a shell command on the server.
+ */
+export async function toolExecuteCommand(
+  input: { command: string; description: string; timeout_seconds?: number },
+  ctx: ToolExecutorContext,
+  toolCallId: string,
+  onConfirmRequired?: OnConfirmRequired,
+): Promise<string> {
+  const { command, description } = input;
+  const { serverId, userId, sessionId, clientId, stream, abort } = ctx;
+  const timeoutMs = Math.min((input.timeout_seconds ?? 30) * 1000, 600_000);
+
+  // Security classification
+  const validation = validateCommand(command);
+  const riskLevel = validation.classification.riskLevel;
+
+  // Audit log
+  const auditLogger = getAuditLogger();
+  const auditEntry = await auditLogger.log({
+    serverId,
+    userId,
+    sessionId,
+    command,
+    validation,
+  });
+
+  // FORBIDDEN → block immediately
+  if (validation.action === "blocked") {
+    const msg = `命令被安全策略阻止: ${validation.classification.reason}`;
+    await writeSSE(
+      stream,
+      "tool_result",
+      {
+        id: toolCallId,
+        tool: "execute_command",
+        status: "blocked",
+        output: msg,
+      },
+      abort,
+    );
+    return msg;
+  }
+
+  // YELLOW/RED/CRITICAL → ask user for confirmation
+  if (riskLevel !== RiskLevel.GREEN && onConfirmRequired) {
+    const confirmation = onConfirmRequired(command, riskLevel, description);
+
+    await writeSSE(
+      stream,
+      "confirm_required",
+      {
+        id: toolCallId,
+        command,
+        description,
+        riskLevel,
+        confirmId: confirmation.confirmId,
+      },
+      abort,
+    );
+
+    // Race confirmation against abort to avoid hanging when client disconnects
+    const abortHandle = awaitAbort(abort);
+    let approved: boolean;
+    try {
+      approved = await Promise.race([
+        confirmation.approved,
+        abortHandle.promise,
+      ]);
+    } finally {
+      abortHandle.unsubscribe();
+    }
+
+    if (!approved) {
+      const msg = `用户拒绝执行: ${command}`;
+      await writeSSE(
+        stream,
+        "tool_result",
+        {
+          id: toolCallId,
+          tool: "execute_command",
+          status: "rejected",
+          output: msg,
+        },
+        abort,
+      );
+      await auditLogger.updateExecutionResult(auditEntry.id, "skipped");
+      return msg;
+    }
+  }
+
+  // Check abort before dispatching command to agent
+  if (abort.aborted) {
+    return "Error: Client disconnected, skipping command execution";
+  }
+
+  // Execute the command
+  await writeSSE(
+    stream,
+    "tool_executing",
+    {
+      id: toolCallId,
+      tool: "execute_command",
+      command,
+    },
+    abort,
+  );
+
+  const executor = getTaskExecutor();
+
+  let hasStreamedOutput = false;
+  executor.addProgressListener(toolCallId, (_executionId, _status, output) => {
+    if (output) {
+      hasStreamedOutput = true;
+      void writeSSE(
+        stream,
+        "tool_output",
+        {
+          id: toolCallId,
+          content: output,
+        },
+        abort,
+      );
+    }
+  });
+
+  const validatedRiskLevel = riskLevel as
+    | "green"
+    | "yellow"
+    | "red"
+    | "critical";
+
+  let result;
+  try {
+    result = await executor.executeCommand({
+      serverId,
+      userId,
+      clientId,
+      command,
+      description,
+      riskLevel: validatedRiskLevel,
+      type: "execute",
+      timeoutMs,
+    });
+  } finally {
+    executor.removeProgressListener(toolCallId);
+  }
+
+  // Build result string for AI
+  let output = "";
+  if (result.stdout) output += result.stdout;
+  if (result.stderr) output += (output ? "\n" : "") + result.stderr;
+  if (!output)
+    output = result.success
+      ? "(命令执行成功，无输出)"
+      : "(命令执行失败，无输出)";
+
+  // Send tool result to frontend
+  await writeSSE(
+    stream,
+    "tool_result",
+    {
+      id: toolCallId,
+      tool: "execute_command",
+      status: result.success ? "completed" : "failed",
+      exitCode: result.exitCode,
+      output: hasStreamedOutput ? undefined : output,
+      duration: result.duration,
+    },
+    abort,
+  );
+
+  await auditLogger.updateExecutionResult(
+    auditEntry.id,
+    result.success ? "success" : "failed",
+    result.operationId,
+  );
+
+  // Return result to AI for reasoning
+  const statusLine = result.success
+    ? `[Exit code: ${result.exitCode}, Duration: ${result.duration}ms]`
+    : `[FAILED - Exit code: ${result.exitCode}, Duration: ${result.duration}ms]`;
+
+  return `${statusLine}\n${output}`;
+}
+
+/**
+ * Tool: read_file — Read file contents via head command.
+ */
+export async function toolReadFile(
+  input: { path: string; max_lines?: number },
+  ctx: ToolExecutorContext,
+  toolCallId: string,
+): Promise<string> {
+  const maxLines = input.max_lines ?? 200;
+  const command = `head -n ${maxLines} ${shellEscape(input.path)}`;
+
+  return toolExecuteCommand(
+    { command, description: `Read file: ${input.path}` },
+    ctx,
+    toolCallId,
+  );
+}
+
+/**
+ * Tool: list_files — List directory via ls command.
+ */
+export async function toolListFiles(
+  input: { path: string; show_hidden?: boolean },
+  ctx: ToolExecutorContext,
+  toolCallId: string,
+): Promise<string> {
+  const flags = input.show_hidden ? "-lah" : "-lh";
+  const command = `ls ${flags} ${shellEscape(input.path)}`;
+
+  return toolExecuteCommand(
+    { command, description: `List files: ${input.path}` },
+    ctx,
+    toolCallId,
+  );
+}
+
+/**
+ * Execute a single tool call and return the result string.
+ * This is the router function that dispatches to specific tool executors.
+ */
+export async function executeToolCall(
+  toolCall: { id: string; name: string; input: unknown },
+  ctx: ToolExecutorContext,
+  onConfirmRequired?: OnConfirmRequired,
+): Promise<string> {
+  const { name, input } = toolCall;
+  const { stream, abort } = ctx;
+
+  // Early exit if client already disconnected
+  if (abort.aborted) {
+    return "Error: Client disconnected, skipping tool execution";
+  }
+
+  try {
+    switch (name) {
+      case "execute_command": {
+        const parsed = ExecuteCommandInputSchema.safeParse(input);
+        if (!parsed.success) {
+          return await handleValidationError(
+            name,
+            toolCall.id,
+            parsed.error.issues,
+            input,
+            stream,
+            abort,
+          );
+        }
+        return await toolExecuteCommand(
+          parsed.data,
+          ctx,
+          toolCall.id,
+          onConfirmRequired,
+        );
+      }
+
+      case "read_file": {
+        const parsed = ReadFileInputSchema.safeParse(input);
+        if (!parsed.success) {
+          return await handleValidationError(
+            name,
+            toolCall.id,
+            parsed.error.issues,
+            input,
+            stream,
+            abort,
+          );
+        }
+        return await toolReadFile(parsed.data, ctx, toolCall.id);
+      }
+
+      case "list_files": {
+        const parsed = ListFilesInputSchema.safeParse(input);
+        if (!parsed.success) {
+          return await handleValidationError(
+            name,
+            toolCall.id,
+            parsed.error.issues,
+            input,
+            stream,
+            abort,
+          );
+        }
+        return await toolListFiles(parsed.data, ctx, toolCall.id);
+      }
+
+      default:
+        return `Error: Unknown tool "${name}"`;
+    }
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    await writeSSE(
+      stream,
+      "tool_result",
+      {
+        id: toolCall.id,
+        tool: name,
+        status: "failed",
+        error: errMsg,
+      },
+      abort,
+    );
+    return `Error executing ${name}: ${errMsg}`;
+  }
+}

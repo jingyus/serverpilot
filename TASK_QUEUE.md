@@ -6,10 +6,10 @@
 
 ## 📊 统计信息
 
-- **总任务数**: 116
-- **待完成** (pending): 0
+- **总任务数**: 126
+- **待完成** (pending): 9
 - **进行中** (in_progress): 0
-- **已完成** (completed): 116
+- **已完成** (completed): 117
 - **失败** (failed): 0
 
 ---
@@ -17,6 +17,134 @@
 ## 📋 任务列表
 
 <!-- 任务将由 AI 自动生成和更新 -->
+### [completed] Server 端服务器批量操作 API — 补全 Dashboard 批量 UI 缺失的后端接口 ✅
+
+**ID**: task-070
+**优先级**: P0
+**模块路径**: packages/server/src/api/routes/
+**任务描述**: Dashboard 已实现批量操作 UI（选择多台服务器 → 批量重启/停止/删除/打标签），但 Server 端缺少对应的批量 API 端点。需要在 `servers.ts` 路由中新增：`POST /api/v1/servers/batch/action`（支持 restart/stop/delete/update-tags 操作），接收 `{ serverIds: string[], action: string, params?: object }` 请求体。每个操作通过 WebSocket 下发到对应 Agent，返回逐服务器执行结果。
+**产品需求**: MVP 核心功能 — 服务器管理（批量操作为 Dashboard 已有 UI 的后端配套）
+**验收标准**: (1) POST /servers/batch/action 接口正常工作 (2) 支持 restart/stop/delete/update-tags 四种操作 (3) 对每台服务器独立执行、独立返回成功/失败 (4) 权限校验：delete 需 admin+，其他需 member+ (5) 新增 15+ 路由测试
+**创建时间**: 2026-02-13
+**完成时间**: 2026-02-13 15:29:48
+
+---
+
+### [pending] Server 启动环境预检 — 生产环境配置错误提前告警
+
+**ID**: task-071
+**优先级**: P0
+**模块路径**: packages/server/src/
+**任务描述**: 当前 Server 启动时不验证关键配置，生产环境误配会导致运行时崩溃或安全风险。需要在 `index.ts` 的 `startServer()` 前新增 `validateEnvironment()` 函数：(1) `NODE_ENV=production` 时检查 JWT_SECRET 不是默认值 (2) 检查 AI_PROVIDER 对应的 API_KEY 是否设置（缺失则 warn 而非 crash）(3) 检查 DATABASE_PATH 目录可写 (4) 检查 CORS_ORIGIN 不是 `*`（生产环境 warn）(5) 检查端口是否被占用。所有检查用 logger.warn，不阻止启动。
+**产品需求**: 开源发布准备 — 降低用户首次部署的配置错误率
+**验收标准**: (1) 生产环境默认 JWT_SECRET 打 warn (2) AI key 缺失打 warn (3) 数据目录不可写打 error 并退出 (4) 端口占用打 error 并退出 (5) 新增 10+ 单元测试 (6) 不影响 dev 模式启动速度
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] SQLite 数据库自动维护 — 定期 VACUUM 与 WAL 检查点
+
+**ID**: task-072
+**优先级**: P1
+**模块路径**: packages/server/src/db/
+**任务描述**: 当前 SQLite 数据库无任何自动维护机制，长期运行后 WAL 文件膨胀、碎片堆积会导致性能下降。需要新增 `db/maintenance.ts` 模块：(1) 每 24 小时执行 `PRAGMA wal_checkpoint(TRUNCATE)` 清理 WAL (2) 每 7 天执行 `PRAGMA optimize` 更新统计信息 (3) 提供手动 `VACUUM` API（`POST /api/v1/admin/db/vacuum`，仅 owner）(4) 记录维护日志（最后一次维护时间、数据库大小）。使用 `setInterval().unref()` 避免阻止进程退出，在 graceful shutdown 时停止定时器。
+**产品需求**: 开源版稳定性 — 自部署用户无需手动维护数据库
+**验收标准**: (1) WAL checkpoint 每 24h 自动执行 (2) PRAGMA optimize 每 7 天执行 (3) 手动 VACUUM API 正常工作且需 owner 权限 (4) 启动时记录数据库大小 (5) 新增 8+ 测试 (6) graceful shutdown 正确停止定时器
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Dashboard 无障碍访问增强 — ARIA 标签与键盘导航
+
+**ID**: task-073
+**优先级**: P1
+**模块路径**: packages/dashboard/src/components/
+**任务描述**: 当前 Dashboard 缺少系统性的无障碍支持：icon-only 按钮无 `aria-label`、侧边栏无 `role="navigation"`、模态框无焦点陷阱。需要对核心组件进行无障碍增强：(1) `Sidebar.tsx`：添加 `role="navigation"` 和 `aria-label="Main navigation"` (2) `Header.tsx`：icon 按钮添加 `aria-label` (3) `AddServerDialog` 等对话框：添加 `role="dialog"` 和 `aria-modal="true"` (4) 所有 icon-only 按钮补充 `aria-label`。不改变任何视觉样式，只增强语义标签。
+**产品需求**: 开源发布准备 — WCAG 2.1 AA 基本合规（开源社区期望）
+**验收标准**: (1) 所有 icon-only 按钮有 `aria-label` (2) 导航栏有 `role="navigation"` (3) 对话框有 `role="dialog"` + `aria-modal` (4) 表格有 `role="table"` 或使用语义 HTML (5) 现有测试不受影响 (6) 新增 5+ 无障碍相关测试
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Shared 包导出 token 估算函数 — 统一中英文 token 计算
+
+**ID**: task-074
+**优先级**: P1
+**模块路径**: packages/shared/src/
+**任务描述**: 当前项目中存在多个重复的 token 估算函数：`profile-context.ts` 有 CJK 感知版（中文 1.5 chars/token、ASCII 4 chars/token），`context-enhancer.ts` 和 `context-window-manager.ts` 使用简单的 `text.length / 4`。chat-086 已修复了 server 内部的重复，但函数仍在 server 包内。应将 `estimateTokens()` 提取到 `packages/shared/src/utils/token.ts` 作为单一来源，供 server 和未来的 dashboard（显示 token 计数）共用。
+**产品需求**: 代码质量 — 消除跨模块的重复逻辑，shared 包作为单一真相源
+**验收标准**: (1) `shared/src/utils/token.ts` 导出 `estimateTokens(text: string): number` (2) 支持 CJK 字符检测 (3) server 包 import 自 shared（移除本地实现）(4) shared 包 build 成功 (5) 新增 10+ 测试覆盖中文/英文/混合文本 (6) 不修改 server 包
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Server 包引用 shared 的 estimateTokens — 移除本地重复实现
+
+**ID**: task-075
+**优先级**: P1
+**模块路径**: packages/server/src/
+**任务描述**: 依赖 task-074 完成后，将 server 包中所有 `estimateTokens` / `estimateTokenCount` 本地实现替换为 `import { estimateTokens } from '@aiinstaller/shared'`。涉及文件：`ai/profile-context.ts`（定义处）、`knowledge/context-enhancer.ts`（使用处）、`knowledge/context-window-manager.ts`（使用处）、`ai/chat-ai.ts`（可能使用处）。删除本地定义，更新 import，确保所有现有测试通过。
+**产品需求**: 代码质量 — 完成 token 估算函数的统一迁移
+**验收标准**: (1) server 包无本地 estimateTokens 定义 (2) 所有引用改为 shared 包导入 (3) 现有 context-window-manager、profile-context、context-enhancer 测试全部通过 (4) pnpm typecheck 通过 (5) 不改变任何函数行为
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Dashboard ExecutionSummary 实时计时器 — 执行中动态显示耗时
+
+**ID**: task-076
+**优先级**: P1
+**模块路径**: packages/dashboard/src/components/chat/
+**任务描述**: `ExecutionLog.tsx` 中 `ExecutionSummary` 组件的 `totalDuration` 只在渲染时计算一次，执行过程中耗时数字是静态的（仅在新步骤输出触发重渲染时更新）。对于 5 分钟+的长时间安装操作，用户看到的时间不会变化，体验较差。需要在执行期间（`isExecuting=true`）使用 `useEffect` + `setInterval` 每秒更新 duration。执行完成后停止计时器并固定显示最终耗时。
+**产品需求**: 用户体验 — 实时反馈执行进度
+**验收标准**: (1) 执行中每秒更新耗时显示 (2) 完成后固定显示最终耗时 (3) 计时器在组件卸载时正确清理 (4) 不影响非执行状态的渲染 (5) 新增 3+ 测试
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Server 端 Chat 会话自动清理 — 过期会话与孤儿数据回收
+
+**ID**: task-077
+**优先级**: P1
+**模块路径**: packages/server/src/core/session/
+**任务描述**: 当前会话（sessions）和关联的 session_messages 无自动清理机制。长期运行的实例会积累大量过期会话数据，增加数据库体积和查询延迟。需要新增 `session-cleanup.ts`：(1) 定期清理超过 90 天未访问的会话（可配置 `SESSION_RETENTION_DAYS` 环境变量）(2) 清理关联的 session_messages (3) 使用 `setInterval` 每 24 小时检查一次 (4) 清理前记录将要删除的数量（dry-run 日志）(5) 在 graceful shutdown 时停止。不删除有收藏标记的会话（如果未来加收藏功能）。
+**产品需求**: 开源版稳定性 — 长期运行不需要手动清理数据
+**验收标准**: (1) 超过 retention 天数的会话被自动删除 (2) session_messages 级联清理 (3) 清理前打日志记录数量 (4) SESSION_RETENTION_DAYS 可配置 (5) 新增 8+ 测试 (6) shutdown 时停止定时器
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Dashboard 服务器分组管理 UI — 创建/重命名/筛选分组
+
+**ID**: task-078
+**优先级**: P2
+**模块路径**: packages/dashboard/src/pages/
+**任务描述**: 服务器表已有 `group` 和 `tags` 字段（schema.ts），API 支持在创建/更新服务器时设置分组，但 Dashboard 缺少分组管理 UI。需要在 `Servers.tsx` 页面增加：(1) 侧边栏或顶部 Tab 显示所有分组（从已有服务器中提取 distinct groups）(2) 点击分组名筛选服务器列表 (3) 在 AddServerDialog 中增加分组选择/新建 (4) 服务器卡片上显示分组标签。不新增 API 端点，仅用现有 PATCH /servers/:id 更新分组。
+**产品需求**: 用户体验 — 多服务器用户按项目/环境分组管理
+**验收标准**: (1) 分组列表从服务器数据中动态提取 (2) 点击分组筛选服务器 (3) 支持"全部"视图 (4) AddServerDialog 可选择分组 (5) 分组为空时显示"未分组" (6) 新增 5+ 测试
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Dashboard 全局键盘快捷键 — Cmd+K 搜索与常用操作
+
+**ID**: task-079
+**优先级**: P2
+**模块路径**: packages/dashboard/src/
+**任务描述**: 当前 Dashboard 无全局键盘快捷键支持。需要新增 `hooks/useGlobalShortcuts.ts`：(1) `Cmd/Ctrl+K`：打开全局搜索面板（跳转到 Search 页或弹出搜索对话框）(2) `Cmd/Ctrl+N`：新建对话（在当前服务器上创建新 Chat session）(3) `Escape`：关闭当前对话框/面板。在 `App.tsx` 中挂载全局事件监听，避免在 input/textarea 聚焦时触发。
+**产品需求**: 用户体验 — 高级用户期望的键盘操作效率
+**验收标准**: (1) Cmd/Ctrl+K 打开搜索 (2) Cmd/Ctrl+N 新建对话 (3) Escape 关闭面板 (4) 输入框聚焦时不触发 (5) 快捷键在 Settings 页可查看 (6) 新增 5+ 测试
+**创建时间**: 2026-02-13
+**完成时间**: -
+
 ### [completed] Server 端 TypeScript 编译错误修复 ✅
 
 **ID**: task-060
@@ -2354,4 +2482,4 @@ ID: task-001
 
 ---
 
-**最后更新**: 2026-02-13 15:11:21
+**最后更新**: 2026-02-13 15:29:48

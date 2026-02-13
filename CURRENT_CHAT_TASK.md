@@ -1,11 +1,13 @@
-### [pending] 并发 401 响应触发多次 auth:logout 事件 — 可能导致多次路由跳转
+### [pending] agentic-chat.ts 超出 800 行硬限制（911 行）— 工具实现方法需提取到独立模块
 
-**ID**: chat-100
-**优先级**: P3
-**模块路径**: packages/dashboard/src/api/
-**发现的问题**: `apiRequest()` (client.ts:83-88) 在持久化 401 时清除 token 并 dispatch `auth:logout` CustomEvent。如果多个请求同时收到 401（例如 token 过期后页面初始化时并发发出 fetchServers + fetchSessions + fetchNotifications），每个请求都会独立执行 `localStorage.removeItem` 和 `dispatchEvent(new CustomEvent('auth:logout'))`。多个 logout 事件可能导致：(1) React Router `navigate('/login')` 被多次调用 (2) 已清除的 token 被第二个请求再次尝试刷新（浪费请求）。虽然目前没有可观察的 bug，但是资源浪费。
-**改进方案**: 使用模块级 flag 如 `let logoutDispatched = false`，确保只 dispatch 一次 logout 事件。在 `refreshAccessToken` 成功后重置 flag。或者用 `requestIdleCallback` 去重。
-**验收标准**: (1) 并发 401 只触发一次 logout (2) token 刷新成功后恢复正常 (3) 现有测试通过
-**影响范围**: `packages/dashboard/src/api/client.ts`
-**创建时间**: 2026-02-13
+**ID**: chat-090
+**优先级**: P0
+**模块路径**: packages/server/src/ai/
+**发现的问题**: `agentic-chat.ts` 当前 911 行，严重超出 800 行硬限制。主要体积来自三个工具实现方法 `toolExecuteCommand`（572-767 行，约 196 行）、`toolReadFile`（772-795 行）、`toolListFiles`（800-823 行），加上 `handleValidationError`（538-567 行）。这些方法与 AgenticChatEngine 的核心循环逻辑（`run`/`streamAnthropicCall`）职责不同，属于工具执行层，应独立为模块。
+**改进方案**: 创建 `agentic-tool-executors.ts`，将 `toolExecuteCommand`、`toolReadFile`、`toolListFiles`、`handleValidationError` 提取为独立函数或类。每个函数接收必要参数（serverId, userId, sessionId, clientId, stream, abort 等），不再需要作为 AgenticChatEngine 的私有方法。`shellEscape` 工具函数一并迁移。`AgenticChatEngine.executeToolCall` 保留为路由方法，调用提取后的执行器。
+**验收标准**: `agentic-chat.ts` 行数 ≤ 500；`agentic-tool-executors.ts` 行数 ≤ 400；所有现有 agentic-chat 测试通过；新模块有独立测试文件
+**影响范围**: `packages/server/src/ai/agentic-chat.ts`、新建 `packages/server/src/ai/agentic-tool-executors.ts`
+**创建时间**: (自动填充)
 **完成时间**: -
+
+---
