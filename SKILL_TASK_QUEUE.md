@@ -3,13 +3,13 @@
 > 此队列专注于 Skill 插件系统的设计与实现
 > AI 自动扫描 → 发现缺失 → 设计实现 → 验证
 
-**最后更新**: 2026-02-13 09:49:25
+**最后更新**: 2026-02-13 09:49:56
 
 ## 📊 统计
 
 - **总任务数**: 67
-- **待完成** (pending): 9
-- **进行中** (in_progress): 0
+- **待完成** (pending): 8
+- **进行中** (in_progress): 1
 - **已完成** (completed): 58
 - **失败** (failed): 0
 
@@ -65,7 +65,7 @@
 
 ---
 
-### [pending] skill-repository.ts 拆分 — InMemory 实现移至独立文件
+### [in_progress] skill-repository.ts 拆分 — InMemory 实现移至独立文件
 
 **ID**: skill-092
 **优先级**: P1

@@ -6,9 +6,9 @@
 
 ## 📊 统计信息
 
-- **总任务数**: 86
-- **待完成** (pending): 0
-- **进行中** (in_progress): 0
+- **总任务数**: 96
+- **待完成** (pending): 9
+- **进行中** (in_progress): 1
 - **已完成** (completed): 86
 - **失败** (failed): 0
 
@@ -17,6 +17,173 @@
 ## 📋 任务列表
 
 <!-- 任务将由 AI 自动生成和更新 -->
+### [in_progress] Cron 触发熔断机制 — 防止失败 Skill 无限重试
+
+**ID**: task-091
+**优先级**: P0
+**模块路径**: packages/server/src/core/skill/
+**任务描述**: `trigger-manager.ts` 对 cron 触发的 Skill 无失败跟踪。持续失败的 Skill 会每 60s 不断重试，无退避、无熔断、无自动禁用。需添加 `failureCounters: Map<skillId, { consecutive, lastFailure }>` 计数器，连续失败 5 次时自动设为 error 状态，成功时重置，手动恢复时重置。
+**产品需求**: 安全架构 — 系统自我保护、资源浪费防护
+**验收标准**:
+- trigger-manager.ts 新增 failureCounters 和相关方法
+- 连续 5 次失败自动暂停，成功后归零
+- 手动恢复（updateStatus('enabled')）后归零
+- 测试覆盖 ≥8 个用例
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] skill-repository.ts 拆分 — InMemory 实现移至独立文件
+
+**ID**: task-092
+**优先级**: P1
+**模块路径**: packages/server/src/db/repositories/
+**任务描述**: `skill-repository.ts` 已达 740 行（92% 容量），包含 Interface + DrizzleSkillRepository + InMemorySkillRepository + Stats 计算 + 单例管理。需拆分：1) InMemorySkillRepository → `skill-repository-memory.ts` (~220 行)；2) computeStats() → `skill-repository-stats.ts` (~70 行)；3) 主文件保留 Interface + Drizzle + 单例 (~450 行)。更新测试 import 路径。
+**产品需求**: 开发标准 — 文件不超过 500 行（硬限制 800 行）
+**验收标准**:
+- skill-repository.ts ≤500 行
+- InMemorySkillRepository 可从新文件独立导入
+- 所有 repository 测试通过
+- 公共 API 不变
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Dashboard 首次使用引导 — Welcome Wizard 组件
+
+**ID**: task-093
+**优先级**: P0
+**模块路径**: packages/dashboard/src/components/
+**任务描述**: 新用户注册后直接跳转空白 Dashboard，缺少引导。需创建 `components/onboarding/WelcomeWizard.tsx` 组件，在用户首次登录时展示 3 步引导：1) 配置 AI Provider（链接到 Settings）；2) 添加第一台服务器（链接到 Servers 页面的 Add 流程）；3) 开始第一次对话。通过 localStorage 标记 `onboarding_completed` 控制显示。在 Dashboard.tsx 主页有条件渲染。
+**产品需求**: MVP Dashboard — 首次使用流程；用户旅程 5.1 — 首次使用流程
+**验收标准**:
+- 新用户首次登录看到 Welcome Wizard 引导
+- 3 步引导流程清晰，每步有操作链接
+- 点击"跳过"或完成后不再显示
+- 组件测试 ≥5 个用例
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Dashboard 首次使用引导 — 状态管理与 Dashboard 集成
+
+**ID**: task-094
+**优先级**: P0
+**模块路径**: packages/dashboard/src/pages/
+**任务描述**: 将 WelcomeWizard 组件（task-093）集成到 Dashboard.tsx 主页。在 `stores/ui.ts` 添加 `isFirstRun` 状态检测逻辑（检查 localStorage + 服务器数量为 0）。Dashboard 页面在 `isFirstRun=true` 时渲染 WelcomeWizard 替代空白主页。完成引导后切换到正常 Dashboard 视图。
+**产品需求**: 用户旅程 5.1 — 首次使用流程
+**验收标准**:
+- Dashboard.tsx 条件渲染 WelcomeWizard
+- ui store 正确检测首次使用状态
+- 引导完成后正常显示 Dashboard
+- 页面测试覆盖引导/非引导两种场景
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Server 健康状态聚合 API — AI Provider + DB + Agent 连接检查
+
+**ID**: task-095
+**优先级**: P0
+**模块路径**: packages/server/src/api/routes/
+**任务描述**: 当前 `/health` 端点只返回 `{ status: 'ok' }`，不包含子系统健康状态。需增强为 `GET /api/v1/health/detail`（需认证），返回各子系统状态：1) AI Provider 可用性（调用 provider.isAvailable()）；2) 数据库连接状态（SQLite 文件存在 + 可查询）；3) WebSocket 服务器状态（活跃连接数）；4) RAG Pipeline 状态（是否已初始化）。聚合为 overall status = healthy/degraded/unhealthy。
+**产品需求**: 产品方案 4.5 — 断线容错；部署指南 — 健康检查
+**验收标准**:
+- GET /api/v1/health/detail 返回各子系统状态
+- overall 状态正确聚合（任一子系统 unhealthy → degraded）
+- 无认证的 /health 仍返回简单 ok（Docker healthcheck 用）
+- 测试覆盖 ≥8 个用例
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Dashboard 系统状态面板 — Settings 页展示健康检查结果
+
+**ID**: task-096
+**优先级**: P1
+**模块路径**: packages/dashboard/src/pages/
+**任务描述**: 在 Settings.tsx 页面添加"系统状态"标签页，调用 `GET /api/v1/health/detail`（task-095）展示各子系统运行状态。每个子系统一行：状态图标（绿色/黄色/红色圆点）+ 名称 + 描述 + 延迟。AI Provider 不可用时显示配置提示链接。添加"刷新"按钮手动触发检查。在 `stores/settings.ts` 添加 `fetchHealthDetail()` 方法。
+**产品需求**: 用户体验 — 错误提示改善；Dashboard 基础功能
+**验收标准**:
+- Settings 页有"系统状态"标签页
+- 各子系统状态正确显示
+- AI Provider 异常时提供配置引导
+- 组件测试 ≥5 个用例
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] TODO.md 状态同步 — 已完成任务标记更新
+
+**ID**: task-097
+**优先级**: P1
+**模块路径**: docs/
+**任务描述**: `docs/TODO.md` 的 Phase 3 所有任务仍标记为 `⬜ 待开发`，但实际已完成大部分：README 完善、安装指南、贡献指南、安全白皮书、CI/CD 流水线、Docker 发布、一键安装脚本、知识库贡献指南。需要：1) 更新 Phase 1/2 进度条为 100%；2) 将 Phase 3 已完成的 7 个任务标为 ✅；3) 标注剩余未完成项；4) 更新 Phase 3 进度为 80%；5) 确保与实际代码状态一致。
+**产品需求**: 开发标准 10.1 — TODO.md 任务清单需保持准确
+**验收标准**:
+- TODO.md Phase 1 = 100%、Phase 2 = 100%、Phase 3 ≥ 80%
+- 已完成任务正确标记为 ✅
+- 最后更新时间正确
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Skill Dry-Run 预览模式 — Server 端不执行命令的模拟运行
+
+**ID**: task-098
+**优先级**: P1
+**模块路径**: packages/server/src/core/skill/
+**任务描述**: Skill 执行后立即调用 AI 自主循环并向 Agent 发送真实命令，无法安全预览。需添加 dry-run 模式：1) `SkillRunParams` 添加 `dryRun?: boolean`；2) `runner.ts` 在 dryRun=true 时修改 system prompt 要求 AI 只输出计划不调用工具；3) 从 tool_definitions 中移除副作用工具（shell/write_file）；4) `runner-executor.ts` 增加保底：dryRun 模式下所有副作用工具返回 `"[DRY RUN] Would execute: ..."`。
+**产品需求**: 安全架构 — 操作前预览；用户确认机制
+**验收标准**:
+- dryRun=true 时不向 Agent 发送任何真实命令
+- AI 输出包含计划执行的步骤列表
+- 保底机制阻止任何副作用
+- 测试覆盖 ≥6 个用例
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Skill Dry-Run API 端点 — REST 接口暴露预览功能
+
+**ID**: task-099
+**优先级**: P1
+**模块路径**: packages/server/src/api/routes/
+**任务描述**: 基于 task-098 的 dry-run 核心逻辑，添加 REST API 端点。新增 `POST /api/v1/skills/:id/dry-run` 端点，接受与 execute 相同的参数但附加 `dryRun: true`。返回 AI 生成的执行计划预览（不实际执行）。复用现有 skill routes 文件，添加路由处理。需要 `skill:execute` 权限。
+**产品需求**: 安全架构 — 操作前预览
+**验收标准**:
+- POST /api/v1/skills/:id/dry-run 端点可用
+- 返回格式化的执行计划预览
+- 需要认证和 skill:execute 权限
+- 路由测试 ≥5 个用例
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Dashboard Skill 执行对话框添加 Dry-Run 预览按钮
+
+**ID**: task-100
+**优先级**: P1
+**模块路径**: packages/dashboard/src/pages/
+**任务描述**: 在 Skills.tsx 页面的执行确认对话框中添加"预览"按钮，调用 `POST /api/v1/skills/:id/dry-run`（task-099）。用户点击预览后展示 AI 生成的执行计划，确认无误后再点"执行"实际运行。在 `stores/skills.ts` 添加 `dryRunSkill()` 方法。预览结果展示在对话框内，格式化显示每个步骤的命令和描述。
+**产品需求**: 用户体验 — 安全执行流程优化
+**验收标准**:
+- 执行对话框有"预览"按钮
+- 预览调用 dry-run API 并展示结果
+- 预览后可确认执行或取消
+- 组件测试 ≥4 个用例
+**创建时间**: 2026-02-13
+**完成时间**: -
+
 ### [completed] 修复 Dashboard 构建失败 — webhooks.test.ts 类型错误 ✅
 
 **ID**: task-058
@@ -1873,4 +2040,4 @@ ID: task-001
 
 ---
 
-**最后更新**: 2026-02-13 09:43:11
+**最后更新**: 2026-02-13 09:50:11
