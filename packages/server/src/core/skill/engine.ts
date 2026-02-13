@@ -56,6 +56,12 @@ const MAX_CHAIN_DEPTH = 5;
 /** Interval for cleaning up expired pending confirmations (10 minutes). */
 const CONFIRMATION_CLEANUP_INTERVAL_MS = 10 * 60 * 1000;
 
+/** Interval for cleaning up old execution history (24 hours). */
+const EXECUTION_CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+/** Default retention period for execution history (90 days). */
+const EXECUTION_RETENTION_DAYS = 90;
+
 const STATUS_TRANSITIONS: Record<SkillStatus, SkillStatus[]> = {
   installed:  ['configured', 'enabled', 'error'],
   configured: ['enabled', 'paused', 'error'],
@@ -70,6 +76,7 @@ export class SkillEngine {
   private running = false;
   private triggerManager: TriggerManager | null = null;
   private confirmationCleanupTimer: NodeJS.Timeout | null = null;
+  private executionCleanupTimer: NodeJS.Timeout | null = null;
   private confirmationManager: SkillConfirmationManager;
   /** Map of running execution IDs to their AbortControllers for cancellation support. */
   private runningExecutions = new Map<string, AbortController>();

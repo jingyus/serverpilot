@@ -49,6 +49,7 @@ import { getServerRepository } from './db/repositories/server-repository.js';
 import { getServerStatusBus } from './core/server-status-bus.js';
 import { getSkillEngine } from './core/skill/engine.js';
 import { getTriggerManager } from './core/skill/trigger-manager.js';
+import { shutdownExecutionTracking, startExecutionSweep } from './api/routes/chat-execution.js';
 
 // ============================================================================
 // Constants
@@ -406,6 +407,7 @@ export function registerShutdownHandlers(server: InstallServer, httpServer?: Htt
       getTaskScheduler().stop();
       getWebhookDispatcher().stop();
       getSkillEngine().stop();
+      shutdownExecutionTracking();
       stopMetricsCleanupScheduler();
       if (_docAutoFetcher) {
         _docAutoFetcher.stop();
@@ -593,6 +595,10 @@ export async function startServer(): Promise<InstallServer> {
   // Start the metrics cleanup scheduler
   startMetricsCleanupScheduler();
   logger.info({ operation: 'startup' }, 'Metrics cleanup scheduler started');
+
+  // Start execution TTL sweep (cleans orphaned activePlanExecutions entries)
+  startExecutionSweep();
+  logger.info({ operation: 'startup' }, 'Execution TTL sweep started');
 
   logger.info({
     operation: 'startup',

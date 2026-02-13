@@ -67,13 +67,21 @@ import {
   getActiveExecution,
   hasActiveExecution,
   removeActiveExecution,
+  getActiveExecutionCount,
   _setActiveExecution,
+  _setActiveExecutionWithTime,
   _resetActiveExecutions,
   _setPendingDecision,
   _resetPendingDecisions,
   _hasPendingDecision,
   executePlanSteps,
   STEP_DECISION_TIMEOUT_MS,
+  EXECUTION_TTL_MS,
+  EXECUTION_SWEEP_INTERVAL_MS,
+  sweepExpiredExecutions,
+  startExecutionSweep,
+  stopExecutionSweep,
+  shutdownExecutionTracking,
   resolveStepDecision,
   type StoredPlan,
   type ExecutePlanStepsOptions,
@@ -1157,5 +1165,182 @@ describe('executePlanSteps — auto-diagnosis on step failure', () => {
     expect(prevSteps).toHaveLength(1);
     expect(prevSteps[0].stepId).toBe('step-1');
     expect(prevSteps[0].success).toBe(true);
+  });
+});
+
+// ============================================================================
+// Execution TTL + Sweep — memory leak prevention (task-062)
+// ============================================================================
+
+describe('EXECUTION_TTL_MS / EXECUTION_SWEEP_INTERVAL_MS constants', () => {
+  it('should export EXECUTION_TTL_MS as 30 minutes', () => {
+    expect(EXECUTION_TTL_MS).toBe(30 * 60 * 1000);
+  });
+
+  it('should export EXECUTION_SWEEP_INTERVAL_MS as 5 minutes', () => {
+    expect(EXECUTION_SWEEP_INTERVAL_MS).toBe(5 * 60 * 1000);
+  });
+});
+
+describe('getActiveExecutionCount', () => {
+  it('should return 0 when no executions are tracked', () => {
+    expect(getActiveExecutionCount()).toBe(0);
+  });
+
+  it('should return the number of tracked executions', () => {
+    _setActiveExecution('plan-a', 'exec-1');
+    _setActiveExecution('plan-b', 'exec-2');
+    expect(getActiveExecutionCount()).toBe(2);
+  });
+});
+
+describe('sweepExpiredExecutions', () => {
+  it('should remove entries older than TTL', () => {
+    const thirtyOneMinAgo = Date.now() - (31 * 60 * 1000);
+    _setActiveExecutionWithTime('plan-old', 'exec-1', thirtyOneMinAgo);
+    _setActiveExecution('plan-new', 'exec-2');
+
+    const swept = sweepExpiredExecutions();
+
+    expect(swept).toBe(1);
+    expect(hasActiveExecution('plan-old')).toBe(false);
+    expect(hasActiveExecution('plan-new')).toBe(true);
+  });
+
+  it('should keep entries within TTL', () => {
+    _setActiveExecution('plan-recent', 'exec-1');
+
+    const swept = sweepExpiredExecutions();
+
+    expect(swept).toBe(0);
+    expect(hasActiveExecution('plan-recent')).toBe(true);
+  });
+
+  it('should sweep all expired entries at once', () => {
+    const oldTime = Date.now() - (35 * 60 * 1000);
+    _setActiveExecutionWithTime('plan-a', 'exec-1', oldTime);
+    _setActiveExecutionWithTime('plan-b', 'exec-2', oldTime);
+    _setActiveExecutionWithTime('plan-c', 'exec-3', oldTime);
+
+    const swept = sweepExpiredExecutions();
+
+    expect(swept).toBe(3);
+    expect(getActiveExecutionCount()).toBe(0);
+  });
+
+  it('should accept custom TTL parameter', () => {
+    const fiveMinAgo = Date.now() - (5 * 60 * 1000);
+    _setActiveExecutionWithTime('plan-short', 'exec-1', fiveMinAgo);
+
+    // Custom 1-minute TTL
+    const swept = sweepExpiredExecutions(60 * 1000);
+
+    expect(swept).toBe(1);
+    expect(hasActiveExecution('plan-short')).toBe(false);
+  });
+
+  it('should return 0 when map is empty', () => {
+    const swept = sweepExpiredExecutions();
+    expect(swept).toBe(0);
+  });
+});
+
+describe('startExecutionSweep / stopExecutionSweep', () => {
+  it('should start and stop without errors', () => {
+    startExecutionSweep(60000);
+    stopExecutionSweep();
+  });
+
+  it('should stop idempotently (safe to call multiple times)', () => {
+    stopExecutionSweep();
+    stopExecutionSweep();
+  });
+
+  it('should replace the timer when called twice', () => {
+    startExecutionSweep(60000);
+    startExecutionSweep(60000);
+    stopExecutionSweep();
+  });
+
+  it('should use unref so timer does not block process exit', () => {
+    const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
+
+    startExecutionSweep(60000);
+
+    expect(setIntervalSpy).toHaveBeenCalled();
+    // The return value should have had .unref() called
+    const timer = setIntervalSpy.mock.results[0].value as NodeJS.Timeout;
+    expect(timer.hasRef()).toBe(false);
+
+    stopExecutionSweep();
+    setIntervalSpy.mockRestore();
+  });
+
+  it('should periodically sweep expired executions', async () => {
+    vi.useFakeTimers();
+
+    const oldTime = Date.now() - (31 * 60 * 1000);
+    _setActiveExecutionWithTime('plan-stale', 'exec-1', oldTime);
+
+    startExecutionSweep(100); // 100ms interval for fast test
+
+    vi.advanceTimersByTime(150);
+
+    expect(hasActiveExecution('plan-stale')).toBe(false);
+
+    stopExecutionSweep();
+    vi.useRealTimers();
+  });
+});
+
+describe('shutdownExecutionTracking', () => {
+  it('should clear all active executions', () => {
+    _setActiveExecution('plan-1', 'exec-1');
+    _setActiveExecution('plan-2', 'exec-2');
+
+    shutdownExecutionTracking();
+
+    expect(getActiveExecutionCount()).toBe(0);
+  });
+
+  it('should clear all pending decisions and resolve with reject', () => {
+    let resolved1: string | undefined;
+    let resolved2: string | undefined;
+
+    _setPendingDecision('plan-1', 'step-1', (d) => { resolved1 = d; }, setTimeout(() => {}, 60000));
+    _setPendingDecision('plan-2', 'step-1', (d) => { resolved2 = d; }, setTimeout(() => {}, 60000));
+
+    shutdownExecutionTracking();
+
+    expect(resolved1).toBe('reject');
+    expect(resolved2).toBe('reject');
+    expect(_hasPendingDecision('plan-1', 'step-1')).toBe(false);
+    expect(_hasPendingDecision('plan-2', 'step-1')).toBe(false);
+  });
+
+  it('should stop the sweep timer', () => {
+    startExecutionSweep(60000);
+
+    shutdownExecutionTracking();
+
+    // Starting a new sweep should work (proving the old one was stopped)
+    startExecutionSweep(60000);
+    stopExecutionSweep();
+  });
+
+  it('should be safe to call when nothing is tracked', () => {
+    shutdownExecutionTracking();
+    expect(getActiveExecutionCount()).toBe(0);
+  });
+
+  it('should clear decision timers to prevent leaks', () => {
+    const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
+    const timer = setTimeout(() => {}, 60000);
+    _setPendingDecision('plan-z', 'step-z', () => {}, timer);
+
+    shutdownExecutionTracking();
+
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(timer);
+    clearTimeoutSpy.mockRestore();
   });
 });

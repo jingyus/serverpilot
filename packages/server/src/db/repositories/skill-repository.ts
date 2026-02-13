@@ -9,7 +9,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, lt, not, inArray, count as drizzleCount } from 'drizzle-orm';
 
 import { getDatabase } from '../connection.js';
 import { installedSkills, skillExecutions, skillStore } from '../schema.js';
@@ -84,6 +84,11 @@ export interface SkillRepository {
   findExecutionById(id: string): Promise<SkillExecution | null>;
   listPendingConfirmations(userId: string): Promise<SkillExecution[]>;
   expirePendingConfirmations(cutoff: Date): Promise<number>;
+
+  /** Delete completed/failed/cancelled/timeout executions started before `cutoff`. Skips running/pending. */
+  deleteExecutionsBefore(cutoff: Date): Promise<number>;
+  /** Count total execution records, optionally filtered by skillId. */
+  countExecutions(skillId?: string): Promise<number>;
 
   getStats(userId: string, from?: Date, to?: Date): Promise<SkillStats>;
 }
@@ -277,6 +282,36 @@ export class DrizzleSkillRepository implements SkillRepository {
       }
     }
     return expired;
+  }
+
+  async deleteExecutionsBefore(cutoff: Date): Promise<number> {
+    // Only delete terminal statuses — never running or pending_confirmation
+    const terminalStatuses = ['success', 'failed', 'timeout', 'cancelled'] as const;
+    const rows = this.db
+      .select({ id: skillExecutions.id })
+      .from(skillExecutions)
+      .where(
+        and(
+          lt(skillExecutions.startedAt, cutoff),
+          inArray(skillExecutions.status, [...terminalStatuses]),
+        ),
+      )
+      .all();
+
+    for (const row of rows) {
+      this.db.delete(skillExecutions).where(eq(skillExecutions.id, row.id)).run();
+    }
+    return rows.length;
+  }
+
+  async countExecutions(skillId?: string): Promise<number> {
+    const condition = skillId ? eq(skillExecutions.skillId, skillId) : undefined;
+    const rows = this.db
+      .select({ value: drizzleCount() })
+      .from(skillExecutions)
+      .where(condition)
+      .all();
+    return rows[0]?.value ?? 0;
   }
 
   async getStats(userId: string, from?: Date, to?: Date): Promise<SkillStats> {
@@ -493,6 +528,23 @@ export class InMemorySkillRepository implements SkillRepository {
       }
     }
     return expired;
+  }
+
+  async deleteExecutionsBefore(cutoff: Date): Promise<number> {
+    const cutoffStr = cutoff.toISOString();
+    const terminalStatuses = new Set(['success', 'failed', 'timeout', 'cancelled']);
+    const before = this.executions.length;
+    this.executions = this.executions.filter(
+      (e) => !(e.startedAt < cutoffStr && terminalStatuses.has(e.status)),
+    );
+    return before - this.executions.length;
+  }
+
+  async countExecutions(skillId?: string): Promise<number> {
+    if (skillId) {
+      return this.executions.filter((e) => e.skillId === skillId).length;
+    }
+    return this.executions.length;
   }
 
   async getStats(userId: string, from?: Date, to?: Date): Promise<SkillStats> {
