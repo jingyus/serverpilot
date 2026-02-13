@@ -431,3 +431,66 @@ describe('SkillEngine.updateStatus', () => {
     );
   });
 });
+
+// ============================================================================
+// Execution Cleanup
+// ============================================================================
+
+describe('SkillEngine.cleanupOldExecutions', () => {
+  it('should delete old completed executions via cleanupOldExecutions', async () => {
+    const skillDir = await createTempDir('skill-');
+    await writeSkillYaml(skillDir);
+    const skill = await engine.install('user-1', skillDir, 'local');
+    await engine.updateStatus(skill.id, 'enabled');
+
+    // Execute the skill to create an execution record
+    await engine.execute({
+      skillId: skill.id, serverId: 'server-1', userId: 'user-1', triggerType: 'manual',
+    });
+
+    const before = await engine.getExecutions(skill.id);
+    expect(before).toHaveLength(1);
+
+    // Mock deleteExecutionsBefore to simulate deletion
+    const deleteSpy = vi.spyOn(repo, 'deleteExecutionsBefore').mockResolvedValue(1);
+
+    const deleted = await engine.cleanupOldExecutions();
+    expect(deleted).toBe(1);
+    expect(deleteSpy).toHaveBeenCalledTimes(1);
+
+    // Verify the cutoff is approximately 90 days ago
+    const cutoffArg = deleteSpy.mock.calls[0][0];
+    const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
+    const diff = Math.abs(Date.now() - ninetyDaysMs - cutoffArg.getTime());
+    expect(diff).toBeLessThan(5000); // within 5 seconds
+  });
+
+  it('should return 0 when no old executions exist', async () => {
+    const deleted = await engine.cleanupOldExecutions();
+    expect(deleted).toBe(0);
+  });
+
+  it('should start execution cleanup timer on start and clear on stop', async () => {
+    vi.useFakeTimers();
+    try {
+      const cleanupSpy = vi.spyOn(engine, 'cleanupOldExecutions').mockResolvedValue(0);
+
+      await engine.start();
+
+      // Initial cleanup fires immediately on start
+      expect(cleanupSpy).toHaveBeenCalledTimes(1);
+
+      // Advance 24 hours — timer should fire again
+      await vi.advanceTimersByTimeAsync(24 * 60 * 60 * 1000);
+      expect(cleanupSpy).toHaveBeenCalledTimes(2);
+
+      engine.stop();
+
+      // After stop, no more calls
+      await vi.advanceTimersByTimeAsync(24 * 60 * 60 * 1000);
+      expect(cleanupSpy).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

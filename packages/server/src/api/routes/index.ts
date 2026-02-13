@@ -14,6 +14,7 @@ import { cors } from 'hono/cors';
 import { requestId } from 'hono/request-id';
 
 import { parseCorsOrigins, buildCorsOrigin } from '../middleware/cors-config.js';
+import { createSecurityHeadersMiddleware } from '../middleware/security-headers.js';
 import { optionalAuth } from '../middleware/auth.js';
 
 import { auth } from './auth.js';
@@ -69,6 +70,7 @@ export function createApiApp(): Hono<ApiEnv> {
   }));
 
   app.use('*', requestId());
+  app.use('*', createSecurityHeadersMiddleware());
 
   app.use('/api/v1/*', optionalAuth);
   app.use('/api/v1/*', createRateLimitMiddleware());

@@ -7,8 +7,8 @@
 ## 📊 统计信息
 
 - **总任务数**: 86
-- **待完成** (pending): 5
-- **进行中** (in_progress): 1
+- **待完成** (pending): 4
+- **进行中** (in_progress): 2
 - **已完成** (completed): 80
 - **失败** (failed): 0
 
@@ -102,7 +102,7 @@
 
 ---
 
-### [pending] Content-Security-Policy 安全头 + Nginx 配置加固
+### [in_progress] Content-Security-Policy 安全头 + Nginx 配置加固
 
 **ID**: task-063
 **优先级**: P1
@@ -1873,4 +1873,4 @@ ID: task-001
 
 ---
 
-**最后更新**: 2026-02-13 08:22:32
+**最后更新**: 2026-02-13 08:23:04

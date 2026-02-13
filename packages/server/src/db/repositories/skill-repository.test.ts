@@ -349,3 +349,167 @@ describe('InMemorySkillRepository.getStats', () => {
     expect(stats2.totalExecutions).toBe(1);
   });
 });
+
+// ============================================================================
+// InMemorySkillRepository — deleteExecutionsBefore
+// ============================================================================
+
+describe('InMemorySkillRepository.deleteExecutionsBefore', () => {
+  let repo: InMemorySkillRepository;
+
+  beforeEach(() => {
+    repo = new InMemorySkillRepository();
+  });
+
+  it('should delete completed executions older than cutoff', async () => {
+    const skill = await repo.install(makeInstallInput({ name: 'cleanup-skill' }));
+    const e1 = await repo.createExecution({ skillId: skill.id, serverId: 's1', userId: 'user-1', triggerType: 'manual' as SkillTriggerType });
+    await repo.completeExecution(e1.id, 'success', null, 2, 500);
+
+    // Cutoff in the future — should delete the execution
+    const futureCutoff = new Date(Date.now() + 100_000);
+    const deleted = await repo.deleteExecutionsBefore(futureCutoff);
+    expect(deleted).toBe(1);
+    expect(await repo.countExecutions()).toBe(0);
+  });
+
+  it('should not delete running or pending_confirmation executions', async () => {
+    const skill = await repo.install(makeInstallInput({ name: 'running-skill' }));
+    // Create a running execution
+    await repo.createExecution({ skillId: skill.id, serverId: 's1', userId: 'user-1', triggerType: 'manual' as SkillTriggerType });
+
+    const futureCutoff = new Date(Date.now() + 100_000);
+    const deleted = await repo.deleteExecutionsBefore(futureCutoff);
+    expect(deleted).toBe(0);
+    expect(await repo.countExecutions()).toBe(1);
+  });
+
+  it('should not delete executions newer than cutoff', async () => {
+    const skill = await repo.install(makeInstallInput({ name: 'recent-skill' }));
+    const e1 = await repo.createExecution({ skillId: skill.id, serverId: 's1', userId: 'user-1', triggerType: 'manual' as SkillTriggerType });
+    await repo.completeExecution(e1.id, 'success', null, 1, 100);
+
+    // Cutoff in the past — should NOT delete
+    const pastCutoff = new Date(Date.now() - 100_000);
+    const deleted = await repo.deleteExecutionsBefore(pastCutoff);
+    expect(deleted).toBe(0);
+    expect(await repo.countExecutions()).toBe(1);
+  });
+
+  it('should delete failed/timeout/cancelled but not running', async () => {
+    const skill = await repo.install(makeInstallInput({ name: 'mixed-skill' }));
+
+    const e1 = await repo.createExecution({ skillId: skill.id, serverId: 's1', userId: 'user-1', triggerType: 'manual' as SkillTriggerType });
+    await repo.completeExecution(e1.id, 'failed', null, 0, 100);
+    const e2 = await repo.createExecution({ skillId: skill.id, serverId: 's1', userId: 'user-1', triggerType: 'manual' as SkillTriggerType });
+    await repo.completeExecution(e2.id, 'timeout', null, 1, 200);
+    const e3 = await repo.createExecution({ skillId: skill.id, serverId: 's1', userId: 'user-1', triggerType: 'manual' as SkillTriggerType });
+    await repo.completeExecution(e3.id, 'cancelled', null, 0, 50);
+    // This one stays running
+    await repo.createExecution({ skillId: skill.id, serverId: 's1', userId: 'user-1', triggerType: 'manual' as SkillTriggerType });
+
+    const futureCutoff = new Date(Date.now() + 100_000);
+    const deleted = await repo.deleteExecutionsBefore(futureCutoff);
+    expect(deleted).toBe(3); // failed + timeout + cancelled
+    expect(await repo.countExecutions()).toBe(1); // running remains
+  });
+
+  it('should return 0 when no executions exist', async () => {
+    const deleted = await repo.deleteExecutionsBefore(new Date());
+    expect(deleted).toBe(0);
+  });
+});
+
+// ============================================================================
+// InMemorySkillRepository — countExecutions
+// ============================================================================
+
+describe('InMemorySkillRepository.countExecutions', () => {
+  let repo: InMemorySkillRepository;
+
+  beforeEach(() => {
+    repo = new InMemorySkillRepository();
+  });
+
+  it('should return 0 when no executions exist', async () => {
+    expect(await repo.countExecutions()).toBe(0);
+  });
+
+  it('should count all executions without filter', async () => {
+    const skill = await repo.install(makeInstallInput({ name: 'count-skill' }));
+    await repo.createExecution({ skillId: skill.id, serverId: 's1', userId: 'user-1', triggerType: 'manual' as SkillTriggerType });
+    await repo.createExecution({ skillId: skill.id, serverId: 's1', userId: 'user-1', triggerType: 'cron' as SkillTriggerType });
+    expect(await repo.countExecutions()).toBe(2);
+  });
+
+  it('should count executions filtered by skillId', async () => {
+    const s1 = await repo.install(makeInstallInput({ name: 'skill-a' }));
+    const s2 = await repo.install(makeInstallInput({ name: 'skill-b' }));
+    await repo.createExecution({ skillId: s1.id, serverId: 's1', userId: 'user-1', triggerType: 'manual' as SkillTriggerType });
+    await repo.createExecution({ skillId: s1.id, serverId: 's1', userId: 'user-1', triggerType: 'manual' as SkillTriggerType });
+    await repo.createExecution({ skillId: s2.id, serverId: 's1', userId: 'user-1', triggerType: 'manual' as SkillTriggerType });
+
+    expect(await repo.countExecutions(s1.id)).toBe(2);
+    expect(await repo.countExecutions(s2.id)).toBe(1);
+    expect(await repo.countExecutions()).toBe(3);
+  });
+});
+
+// ============================================================================
+// DrizzleSkillRepository — deleteExecutionsBefore
+// ============================================================================
+
+describe('DrizzleSkillRepository.deleteExecutionsBefore', () => {
+  let db: DrizzleDB;
+  let repo: DrizzleSkillRepository;
+
+  beforeEach(() => {
+    db = initDatabase(':memory:');
+    createTables();
+    repo = new DrizzleSkillRepository(db);
+    seedUser(db, 'user-1', 'a@test.com');
+    // Seed a server for FK constraint
+    const sqlite = (db as unknown as { session: { client: { exec: (s: string) => void } } })
+      .session.client;
+    sqlite.exec(
+      `INSERT INTO servers (id, name, user_id, status, created_at, updated_at)
+       VALUES ('s1', 'test-srv', 'user-1', 'online', ${Date.now()}, ${Date.now()})`,
+    );
+  });
+
+  afterEach(() => {
+    closeDatabase();
+  });
+
+  it('should delete old completed executions', async () => {
+    const skill = await repo.install(makeInstallInput({ name: 'drizzle-cleanup' }));
+    const e1 = await repo.createExecution({ skillId: skill.id, serverId: 's1', userId: 'user-1', triggerType: 'manual' as SkillTriggerType });
+    await repo.completeExecution(e1.id, 'success', null, 1, 100);
+
+    const futureCutoff = new Date(Date.now() + 100_000);
+    const deleted = await repo.deleteExecutionsBefore(futureCutoff);
+    expect(deleted).toBe(1);
+    expect(await repo.countExecutions()).toBe(0);
+  });
+
+  it('should not delete running executions', async () => {
+    const skill = await repo.install(makeInstallInput({ name: 'drizzle-running' }));
+    await repo.createExecution({ skillId: skill.id, serverId: 's1', userId: 'user-1', triggerType: 'manual' as SkillTriggerType });
+
+    const futureCutoff = new Date(Date.now() + 100_000);
+    const deleted = await repo.deleteExecutionsBefore(futureCutoff);
+    expect(deleted).toBe(0);
+    expect(await repo.countExecutions()).toBe(1);
+  });
+
+  it('should count executions with and without skillId filter', async () => {
+    const s1 = await repo.install(makeInstallInput({ name: 'skill-x' }));
+    const s2 = await repo.install(makeInstallInput({ name: 'skill-y' }));
+    await repo.createExecution({ skillId: s1.id, serverId: 's1', userId: 'user-1', triggerType: 'manual' as SkillTriggerType });
+    await repo.createExecution({ skillId: s2.id, serverId: 's1', userId: 'user-1', triggerType: 'manual' as SkillTriggerType });
+
+    expect(await repo.countExecutions(s1.id)).toBe(1);
+    expect(await repo.countExecutions(s2.id)).toBe(1);
+    expect(await repo.countExecutions()).toBe(2);
+  });
+});
