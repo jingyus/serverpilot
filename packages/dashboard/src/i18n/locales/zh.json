@@ -178,6 +178,8 @@
     "copyMessage": "复制消息",
     "regenerate": "重新生成",
     "toggleSessions": "切换会话列表",
+    "searchSessions": "搜索会话...",
+    "noSearchResults": "没有匹配的会话",
     "sessionGroup": {
       "today": "今天",
       "yesterday": "昨天",
@@ -594,5 +596,10 @@
     "step3Title": "开始对话",
     "step3Desc": "与 AI 助手对话，安装软件、配置服务或排查问题。",
     "step3Action": "开始聊天"
+  },
+  "notFound": {
+    "title": "页面未找到",
+    "description": "您访问的页面不存在或已被移动。",
+    "backHome": "返回仪表盘"
   }
 }

@@ -1,23 +1,23 @@
-### [pending] chat-execution.ts 超过 500 行软限制（652 行）— SSE 回调构建器可提取
+### [pending] SessionSidebar 无历史会话搜索 — 会话多时无法快速定位目标对话
 
-**ID**: chat-078
+**ID**: chat-079
 **优先级**: P3
-**模块路径**: packages/dashboard/src/stores/
-**发现的问题**: `chat-execution.ts` 当前 652 行，超过项目 500 行软限制。主要体积来自 `buildStreamingCallbacks` 函数（约 300 行），其中包含 14+ 个 SSE 事件处理器。每个处理器逻辑独立（JSON.parse → Zod validate → set state），适合提取到独立模块。此外 `createConfirmPlan` 和 `createEmergencyStop` 也各约 80 行，与 streaming 回调逻辑无关。
+**模块路径**: packages/dashboard/src/components/chat/
+**发现的问题**: `SessionSidebar.tsx` 整个组件无搜索/过滤功能。会话列表按日期分组（today/yesterday/thisWeek/older），但当用户积累 50+ 会话后，只能逐个展开分组查找。每个 session 仅显示 `lastMessage` 截断预览（行 112-113），无法按消息内容、命令、服务器等维度搜索。对比 ChatGPT 和 Claude.ai 的侧边栏都有搜索框支持全文搜索。
 **改进方案**:
-1. 提取 `buildStreamingCallbacks` 到新文件 `chat-sse-handlers.ts`
-2. 每个 SSE 事件处理器作为独立的命名函数导出
-3. `chat-execution.ts` 只保留 `createConfirmPlan`、`createRespondToStep`、`createEmergencyStop` 等高层流程
-4. 保持 `get()`/`set()` 通过参数注入（避免循环依赖）
+1. 在 SessionSidebar 顶部（行 71 后）添加搜索输入框
+2. 搜索逻辑：客户端过滤 `sessions` 数组，匹配 `lastMessage` 和 `title`（如果有）
+3. 搜索使用 debounce（300ms）避免频繁过滤
+4. 匹配结果高亮显示关键词
+5. 无匹配时显示空状态提示
 **验收标准**:
-- `chat-execution.ts` 降到 400 行以下
-- `chat-sse-handlers.ts` < 350 行
-- 所有现有 chat-execution 测试通过
-- 无循环依赖
+- 搜索框输入后实时过滤会话列表
+- 支持中英文搜索
+- 清空搜索恢复完整列表
+- data-testid + 测试覆盖
 **影响范围**:
-- `packages/dashboard/src/stores/chat-execution.ts` — 拆分
-- `packages/dashboard/src/stores/chat-sse-handlers.ts` — 新文件
-- `packages/dashboard/src/stores/chat-execution.test.ts` — 调整 import
+- `packages/dashboard/src/components/chat/SessionSidebar.tsx` — 添加搜索 UI + 过滤逻辑
+- `packages/dashboard/src/components/chat/SessionSidebar.test.tsx` — 新增测试
 **创建时间**: 2026-02-13
 **完成时间**: -
 

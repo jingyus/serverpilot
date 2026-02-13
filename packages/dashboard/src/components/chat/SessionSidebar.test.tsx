@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
-import { SessionSidebar, getSessionDateGroup } from './SessionSidebar';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, act } from '@testing-library/react';
+import { SessionSidebar, getSessionDateGroup, filterSessions, highlightText } from './SessionSidebar';
 import type { SessionItem } from './SessionSidebar';
 
 function makeSessions(overrides?: Partial<SessionItem>[]): SessionItem[] {
@@ -27,6 +27,14 @@ const baseProps = {
 };
 
 describe('SessionSidebar', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('returns null when no sessions and not loading', () => {
     const { container } = render(
       <SessionSidebar {...baseProps} sessions={[]} />
@@ -38,6 +46,12 @@ describe('SessionSidebar', () => {
     render(<SessionSidebar {...baseProps} sessions={makeSessions()} />);
     expect(screen.getByTestId('session-sidebar')).toBeInTheDocument();
     expect(screen.getByText('Hello')).toBeInTheDocument();
+  });
+
+  it('renders search input', () => {
+    render(<SessionSidebar {...baseProps} sessions={makeSessions()} />);
+    expect(screen.getByTestId('session-search-input')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Search sessions...')).toBeInTheDocument();
   });
 
   describe('mobile overlay', () => {
@@ -201,6 +215,129 @@ describe('SessionSidebar', () => {
       expect(screen.queryByTestId('rename-input-sess-1')).not.toBeInTheDocument();
     });
   });
+
+  describe('session search', () => {
+    const searchSessions = makeSessions([
+      { id: 'sess-nginx', lastMessage: 'Install nginx server', messageCount: 5, createdAt: new Date().toISOString() },
+      { id: 'sess-docker', lastMessage: 'Setup docker containers', messageCount: 3, createdAt: new Date().toISOString() },
+      { id: 'sess-named', name: 'Database Backup', lastMessage: 'Configure MySQL', messageCount: 2, createdAt: new Date().toISOString() },
+    ]);
+
+    it('filters sessions by lastMessage after debounce', () => {
+      render(<SessionSidebar {...baseProps} sessions={searchSessions} />);
+      const input = screen.getByTestId('session-search-input');
+
+      fireEvent.change(input, { target: { value: 'nginx' } });
+
+      // Before debounce — all sessions still visible
+      expect(screen.getByTestId('session-item-sess-nginx')).toBeInTheDocument();
+      expect(screen.getByTestId('session-item-sess-docker')).toBeInTheDocument();
+
+      // After debounce
+      act(() => { vi.advanceTimersByTime(300); });
+
+      expect(screen.getByTestId('session-item-sess-nginx')).toBeInTheDocument();
+      expect(screen.queryByTestId('session-item-sess-docker')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('session-item-sess-named')).not.toBeInTheDocument();
+    });
+
+    it('filters sessions by name', () => {
+      render(<SessionSidebar {...baseProps} sessions={searchSessions} />);
+      const input = screen.getByTestId('session-search-input');
+
+      fireEvent.change(input, { target: { value: 'Database' } });
+      act(() => { vi.advanceTimersByTime(300); });
+
+      expect(screen.getByTestId('session-item-sess-named')).toBeInTheDocument();
+      expect(screen.queryByTestId('session-item-sess-nginx')).not.toBeInTheDocument();
+    });
+
+    it('is case-insensitive', () => {
+      render(<SessionSidebar {...baseProps} sessions={searchSessions} />);
+      const input = screen.getByTestId('session-search-input');
+
+      fireEvent.change(input, { target: { value: 'DOCKER' } });
+      act(() => { vi.advanceTimersByTime(300); });
+
+      expect(screen.getByTestId('session-item-sess-docker')).toBeInTheDocument();
+      expect(screen.queryByTestId('session-item-sess-nginx')).not.toBeInTheDocument();
+    });
+
+    it('shows empty state when no sessions match', () => {
+      render(<SessionSidebar {...baseProps} sessions={searchSessions} />);
+      const input = screen.getByTestId('session-search-input');
+
+      fireEvent.change(input, { target: { value: 'nonexistent' } });
+      act(() => { vi.advanceTimersByTime(300); });
+
+      expect(screen.getByTestId('session-search-empty')).toBeInTheDocument();
+      expect(screen.getByText('No sessions match your search')).toBeInTheDocument();
+    });
+
+    it('restores full list when search is cleared', () => {
+      render(<SessionSidebar {...baseProps} sessions={searchSessions} />);
+      const input = screen.getByTestId('session-search-input');
+
+      // Search
+      fireEvent.change(input, { target: { value: 'nginx' } });
+      act(() => { vi.advanceTimersByTime(300); });
+      expect(screen.queryByTestId('session-item-sess-docker')).not.toBeInTheDocument();
+
+      // Clear
+      fireEvent.change(input, { target: { value: '' } });
+      act(() => { vi.advanceTimersByTime(300); });
+
+      expect(screen.getByTestId('session-item-sess-nginx')).toBeInTheDocument();
+      expect(screen.getByTestId('session-item-sess-docker')).toBeInTheDocument();
+      expect(screen.getByTestId('session-item-sess-named')).toBeInTheDocument();
+    });
+
+    it('shows clear button when search has value and clears on click', () => {
+      render(<SessionSidebar {...baseProps} sessions={searchSessions} />);
+      const input = screen.getByTestId('session-search-input');
+
+      // No clear button initially
+      expect(screen.queryByTestId('session-search-clear')).not.toBeInTheDocument();
+
+      // Type to show clear button
+      fireEvent.change(input, { target: { value: 'nginx' } });
+      expect(screen.getByTestId('session-search-clear')).toBeInTheDocument();
+
+      // Click clear
+      fireEvent.click(screen.getByTestId('session-search-clear'));
+      act(() => { vi.advanceTimersByTime(300); });
+
+      expect(screen.getByTestId('session-item-sess-nginx')).toBeInTheDocument();
+      expect(screen.getByTestId('session-item-sess-docker')).toBeInTheDocument();
+    });
+
+    it('highlights matching text in session titles', () => {
+      render(<SessionSidebar {...baseProps} sessions={searchSessions} />);
+      const input = screen.getByTestId('session-search-input');
+
+      fireEvent.change(input, { target: { value: 'nginx' } });
+      act(() => { vi.advanceTimersByTime(300); });
+
+      const highlights = screen.getAllByTestId('search-highlight');
+      expect(highlights.length).toBeGreaterThanOrEqual(1);
+      expect(highlights[0].textContent).toBe('nginx');
+    });
+
+    it('supports Chinese search queries', () => {
+      const zhSessions = makeSessions([
+        { id: 'sess-zh', lastMessage: '安装 nginx 服务器', messageCount: 1, createdAt: new Date().toISOString() },
+        { id: 'sess-en', lastMessage: 'Hello world', messageCount: 1, createdAt: new Date().toISOString() },
+      ]);
+      render(<SessionSidebar {...baseProps} sessions={zhSessions} />);
+      const input = screen.getByTestId('session-search-input');
+
+      fireEvent.change(input, { target: { value: '安装' } });
+      act(() => { vi.advanceTimersByTime(300); });
+
+      expect(screen.getByTestId('session-item-sess-zh')).toBeInTheDocument();
+      expect(screen.queryByTestId('session-item-sess-en')).not.toBeInTheDocument();
+    });
+  });
 });
 
 describe('getSessionDateGroup', () => {
@@ -210,5 +347,90 @@ describe('getSessionDateGroup', () => {
 
   it('returns older for very old date', () => {
     expect(getSessionDateGroup('2020-01-01T00:00:00Z')).toBe('older');
+  });
+});
+
+describe('filterSessions', () => {
+  const sessions: SessionItem[] = [
+    { id: '1', createdAt: '2026-01-01', lastMessage: 'Install nginx', messageCount: 1 },
+    { id: '2', createdAt: '2026-01-01', lastMessage: 'Setup docker', messageCount: 1 },
+    { id: '3', createdAt: '2026-01-01', lastMessage: 'Hello', messageCount: 1, name: 'My Backup Task' },
+  ];
+
+  it('returns all sessions for empty query', () => {
+    expect(filterSessions(sessions, '')).toEqual(sessions);
+  });
+
+  it('returns all sessions for whitespace query', () => {
+    expect(filterSessions(sessions, '   ')).toEqual(sessions);
+  });
+
+  it('filters by lastMessage', () => {
+    const result = filterSessions(sessions, 'nginx');
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe('1');
+  });
+
+  it('filters by name', () => {
+    const result = filterSessions(sessions, 'Backup');
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe('3');
+  });
+
+  it('is case-insensitive', () => {
+    expect(filterSessions(sessions, 'DOCKER')).toHaveLength(1);
+    expect(filterSessions(sessions, 'docker')).toHaveLength(1);
+  });
+
+  it('returns empty array when nothing matches', () => {
+    expect(filterSessions(sessions, 'nonexistent')).toHaveLength(0);
+  });
+
+  it('handles sessions with no name or lastMessage', () => {
+    const sparse: SessionItem[] = [
+      { id: '1', createdAt: '2026-01-01', messageCount: 0 },
+    ];
+    expect(filterSessions(sparse, 'test')).toHaveLength(0);
+    expect(filterSessions(sparse, '')).toHaveLength(1);
+  });
+});
+
+describe('highlightText', () => {
+  it('returns original text for empty query', () => {
+    expect(highlightText('Hello world', '')).toEqual(['Hello world']);
+  });
+
+  it('returns original text for whitespace query', () => {
+    expect(highlightText('Hello world', '   ')).toEqual(['Hello world']);
+  });
+
+  it('highlights matching substring', () => {
+    const result = highlightText('Install nginx server', 'nginx');
+    expect(result).toEqual(['Install ', { highlight: 'nginx' }, ' server']);
+  });
+
+  it('highlights case-insensitively', () => {
+    const result = highlightText('Install Nginx server', 'nginx');
+    expect(result).toEqual(['Install ', { highlight: 'Nginx' }, ' server']);
+  });
+
+  it('highlights multiple occurrences', () => {
+    const result = highlightText('test this test case', 'test');
+    expect(result).toEqual([{ highlight: 'test' }, ' this ', { highlight: 'test' }, ' case']);
+  });
+
+  it('escapes regex special characters', () => {
+    const result = highlightText('file (copy).txt', '(copy)');
+    expect(result).toEqual(['file ', { highlight: '(copy)' }, '.txt']);
+  });
+
+  it('handles query at start of text', () => {
+    const result = highlightText('nginx config', 'nginx');
+    expect(result).toEqual([{ highlight: 'nginx' }, ' config']);
+  });
+
+  it('handles query at end of text', () => {
+    const result = highlightText('install nginx', 'nginx');
+    expect(result).toEqual(['install ', { highlight: 'nginx' }]);
   });
 });

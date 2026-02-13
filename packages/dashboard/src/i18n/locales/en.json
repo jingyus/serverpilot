@@ -178,6 +178,8 @@
     "copyMessage": "Copy message",
     "regenerate": "Regenerate response",
     "toggleSessions": "Toggle sessions",
+    "searchSessions": "Search sessions...",
+    "noSearchResults": "No sessions match your search",
     "sessionGroup": {
       "today": "Today",
       "yesterday": "Yesterday",
@@ -594,5 +596,10 @@
     "step3Title": "Start a Conversation",
     "step3Desc": "Chat with the AI assistant to install software, configure services, or troubleshoot issues.",
     "step3Action": "Start Chat"
+  },
+  "notFound": {
+    "title": "Page Not Found",
+    "description": "The page you are looking for does not exist or has been moved.",
+    "backHome": "Back to Dashboard"
   }
 }
