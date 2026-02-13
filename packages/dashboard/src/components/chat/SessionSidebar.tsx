@@ -24,6 +24,9 @@ export interface SessionSidebarProps {
   isLoading: boolean;
   mobileOpen?: boolean;
   onMobileClose?: () => void;
+  onLoadMore?: () => void;
+  isLoadingMore?: boolean;
+  hasMore?: boolean;
 }
 
 export function getSessionDateGroup(dateStr: string): string {
@@ -249,6 +252,44 @@ function SessionItemRow({
   );
 }
 
+function LoadMoreSentinel({
+  onLoadMore,
+  isLoadingMore,
+  hasMore,
+}: {
+  onLoadMore: () => void;
+  isLoadingMore: boolean;
+  hasMore: boolean;
+}) {
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!hasMore || isLoadingMore) return;
+    const el = sentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          onLoadMore();
+        }
+      },
+      { threshold: 0.1 },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore, isLoadingMore, onLoadMore]);
+
+  if (!hasMore && !isLoadingMore) return null;
+
+  return (
+    <div ref={sentinelRef} className="flex justify-center py-2" data-testid="load-more-sentinel">
+      {isLoadingMore && (
+        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" data-testid="load-more-spinner" />
+      )}
+    </div>
+  );
+}
+
 function SidebarContent({
   sessions,
   activeSessionId,
@@ -260,6 +301,9 @@ function SidebarContent({
   toggleGroup,
   searchQuery,
   noResultsText,
+  onLoadMore,
+  isLoadingMore,
+  hasMore,
   t,
 }: {
   sessions: SessionItem[];
@@ -272,6 +316,9 @@ function SidebarContent({
   toggleGroup: (group: string) => void;
   searchQuery: string;
   noResultsText: string;
+  onLoadMore?: () => void;
+  isLoadingMore?: boolean;
+  hasMore?: boolean;
   t: (key: string) => string;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -337,6 +384,13 @@ function SidebarContent({
           )}
         </div>
       ))}
+      {onLoadMore && (
+        <LoadMoreSentinel
+          onLoadMore={onLoadMore}
+          isLoadingMore={isLoadingMore ?? false}
+          hasMore={hasMore ?? false}
+        />
+      )}
     </div>
   );
 }
@@ -351,6 +405,9 @@ export function SessionSidebar({
   isLoading,
   mobileOpen = false,
   onMobileClose,
+  onLoadMore,
+  isLoadingMore = false,
+  hasMore = false,
 }: SessionSidebarProps) {
   const { t } = useTranslation();
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
@@ -377,6 +434,9 @@ export function SessionSidebar({
     toggleGroup,
     searchQuery,
     noResultsText,
+    onLoadMore,
+    isLoadingMore,
+    hasMore,
     t,
   };
 

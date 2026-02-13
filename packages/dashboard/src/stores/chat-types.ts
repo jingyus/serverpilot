@@ -129,6 +129,8 @@ export interface ChatState {
   sessionId: string | null;
   messages: ChatMessage[];
   sessions: SessionSummary[];
+  sessionsTotal: number;
+  isLoadingMore: boolean;
   isLoading: boolean;
   isStreaming: boolean;
   isReconnecting: boolean;
@@ -154,6 +156,7 @@ export interface ChatState {
   respondToAgenticConfirm: (approved: boolean) => Promise<void>;
   emergencyStop: () => Promise<void>;
   fetchSessions: (serverId: string) => Promise<void>;
+  loadMoreSessions: (serverId: string) => Promise<void>;
   loadSession: (serverId: string, sessionId: string) => Promise<void>;
   deleteSession: (serverId: string, sessionId: string) => Promise<void>;
   renameSession: (serverId: string, sessionId: string, name: string) => Promise<void>;

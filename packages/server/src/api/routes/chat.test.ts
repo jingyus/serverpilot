@@ -311,17 +311,69 @@ describe('POST /api/v1/chat/:serverId', () => {
     const firstData = JSON.parse(firstEvent!.data);
     expect(firstData.sessionId).toBeDefined();
 
-    // Should have a message about AI not configured
+    // Should have an error SSE event with reason
+    const errorEvent = events.find(e => e.event === 'error');
+    expect(errorEvent).toBeDefined();
+    const errorData = JSON.parse(errorEvent!.data);
+    expect(errorData.reason).toBe('ai_not_configured');
+    expect(errorData.error).toBe('AI service is not configured');
+
+    // Should have a message with fallback install template (matches "Install Redis")
     const aiMessage = events.find(e =>
       e.event === 'message' && e.data.includes('AI service is not configured'),
     );
     expect(aiMessage).toBeDefined();
+    const msgData = JSON.parse(aiMessage!.data);
+    expect(msgData.content).toContain('Redis');
+    expect(msgData.content).toContain('apt');
 
     // Should end with complete event
     const completeEvent = events.find(e => e.event === 'complete');
     expect(completeEvent).toBeDefined();
     const completeData = JSON.parse(completeEvent!.data);
     expect(completeData.success).toBe(false);
+  });
+
+  it('should include restart template in fallback when AI not configured', async () => {
+    const server = await createServer('web-01', tokenA);
+
+    const res = await jsonPost(
+      `/api/v1/chat/${server.id}`,
+      { message: 'restart nginx' },
+      tokenA,
+    );
+
+    expect(res.status).toBe(200);
+    const events = await parseSSEEvents(res);
+
+    const errorEvent = events.find(e => e.event === 'error');
+    expect(errorEvent).toBeDefined();
+    expect(JSON.parse(errorEvent!.data).reason).toBe('ai_not_configured');
+
+    const aiMessage = events.find(e =>
+      e.event === 'message' && e.data.includes('systemctl restart nginx'),
+    );
+    expect(aiMessage).toBeDefined();
+  });
+
+  it('should include generic fallback when AI not configured and message unmatched', async () => {
+    const server = await createServer('web-01', tokenA);
+
+    const res = await jsonPost(
+      `/api/v1/chat/${server.id}`,
+      { message: 'explain how DNS works' },
+      tokenA,
+    );
+
+    expect(res.status).toBe(200);
+    const events = await parseSSEEvents(res);
+
+    const aiMessage = events.find(e =>
+      e.event === 'message' && e.data.includes('API Key'),
+    );
+    expect(aiMessage).toBeDefined();
+    const msgData = JSON.parse(aiMessage!.data);
+    expect(msgData.content).toContain('AI Provider');
   });
 
   it('should stream AI response with plan', async () => {
@@ -465,15 +517,50 @@ describe('POST /api/v1/chat/:serverId', () => {
     expect(res.status).toBe(200);
     const events = await parseSSEEvents(res);
 
-    // Should have error message
-    const errorEvent = events.find(e =>
+    // Should have error SSE event with reason
+    const sseError = events.find(e => e.event === 'error');
+    expect(sseError).toBeDefined();
+    const errData = JSON.parse(sseError!.data);
+    expect(errData.reason).toBe('ai_unavailable');
+    expect(errData.error).toContain('API rate limited');
+
+    // Should have message with error + fallback guidance
+    const errorMessage = events.find(e =>
       e.event === 'message' && e.data.includes('API rate limited'),
     );
-    expect(errorEvent).toBeDefined();
+    expect(errorMessage).toBeDefined();
+    const msgData = JSON.parse(errorMessage!.data);
+    expect(msgData.content).toContain('AI 服务暂不可用');
+    expect(msgData.content).toContain('AI Provider');
 
     // Should complete with success: false
     const completeEvent = events.find(e => e.event === 'complete');
     expect(JSON.parse(completeEvent!.data).success).toBe(false);
+  });
+
+  it('should match install fallback template when AI error and install message', async () => {
+    const server = await createServer('web-01', tokenA);
+    _setMockAgent({
+      chat: vi.fn().mockRejectedValue(new Error('quota exceeded')),
+    });
+
+    const res = await jsonPost(
+      `/api/v1/chat/${server.id}`,
+      { message: 'install docker' },
+      tokenA,
+    );
+
+    expect(res.status).toBe(200);
+    const events = await parseSSEEvents(res);
+
+    const errorMessage = events.find(e =>
+      e.event === 'message' && e.data.includes('docker'),
+    );
+    expect(errorMessage).toBeDefined();
+    const msgData = JSON.parse(errorMessage!.data);
+    expect(msgData.content).toContain('apt');
+    expect(msgData.content).toContain('yum');
+    expect(msgData.content).toContain('brew');
   });
 
   it('should store messages in session', async () => {

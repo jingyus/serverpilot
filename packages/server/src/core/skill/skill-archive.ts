@@ -10,7 +10,7 @@
  */
 
 import { exec, spawn } from 'node:child_process';
-import { join, basename } from 'node:path';
+import { join, basename, resolve, normalize } from 'node:path';
 import { access, mkdir, rm, readdir, stat, rename } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
@@ -219,11 +219,103 @@ export async function importSkill(
 // ============================================================================
 
 /**
- * Extract a tar.gz buffer to a target directory by piping to `tar xzf -` via stdin.
+ * Validate that all archive entry paths are safely contained within targetDir.
+ *
+ * Rejects archives containing:
+ * - Path traversal (`../`) components
+ * - Absolute paths (`/etc/passwd`)
+ * - Entries that resolve outside the target directory
+ *
+ * @throws Error if any entry escapes the target directory
  */
-function extractTarGz(buffer: Buffer, cwd: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const child = spawn('tar', ['xzf', '-'], { cwd, stdio: ['pipe', 'ignore', 'pipe'] });
+export function validateArchivePaths(entries: string[], targetDir: string): void {
+  const resolvedTarget = resolve(targetDir);
+
+  for (const entry of entries) {
+    // Strip trailing slashes for directory entries
+    const cleaned = entry.replace(/\/+$/, '');
+    if (cleaned.length === 0) continue;
+
+    // Reject absolute paths
+    if (cleaned.startsWith('/')) {
+      throw new Error(
+        `Archive path traversal detected: absolute path '${entry}'`,
+      );
+    }
+
+    // Reject entries containing .. components
+    const normalized = normalize(cleaned);
+    if (normalized.startsWith('..') || normalized.includes('/..') || normalized.includes('\\..')) {
+      throw new Error(
+        `Archive path traversal detected: '${entry}' escapes target directory`,
+      );
+    }
+
+    // Final check: resolved path must be under targetDir
+    const resolvedEntry = resolve(resolvedTarget, cleaned);
+    if (!resolvedEntry.startsWith(resolvedTarget + '/') && resolvedEntry !== resolvedTarget) {
+      throw new Error(
+        `Archive path traversal detected: '${entry}' resolves outside target directory`,
+      );
+    }
+  }
+}
+
+/**
+ * List entries in a tar.gz archive by piping the buffer to `tar -tzf -`.
+ */
+function listArchiveEntries(buffer: Buffer): Promise<string[]> {
+  return new Promise((resolvePromise, reject) => {
+    const child = spawn('tar', ['-tzf', '-'], { stdio: ['pipe', 'pipe', 'pipe'] });
+
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
+    child.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
+
+    const timer = setTimeout(() => {
+      child.kill('SIGTERM');
+      reject(new Error('tar listing timed out'));
+    }, TAR_TIMEOUT_MS);
+
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (code === 0) {
+        const entries = stdout.split('\n').filter((line) => line.length > 0);
+        resolvePromise(entries);
+      } else {
+        reject(new Error(`tar listing failed (exit ${code}): ${stderr.trim()}`));
+      }
+    });
+
+    child.on('error', (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+
+    child.stdin.write(buffer);
+    child.stdin.end();
+  });
+}
+
+/**
+ * Extract a tar.gz buffer to a target directory.
+ *
+ * Security: pre-scans archive entries for path traversal before extracting.
+ * Uses `--no-same-owner --no-same-permissions` to prevent privilege escalation.
+ */
+async function extractTarGz(buffer: Buffer, cwd: string): Promise<void> {
+  // Pre-scan: list entries and validate paths
+  const entries = await listArchiveEntries(buffer);
+  validateArchivePaths(entries, cwd);
+
+  // Extract with security flags
+  return new Promise((resolvePromise, reject) => {
+    const child = spawn(
+      'tar',
+      ['xzf', '-', '--no-same-owner', '--no-same-permissions'],
+      { cwd, stdio: ['pipe', 'ignore', 'pipe'] },
+    );
 
     let stderr = '';
     child.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
@@ -236,7 +328,7 @@ function extractTarGz(buffer: Buffer, cwd: string): Promise<void> {
     child.on('close', (code) => {
       clearTimeout(timer);
       if (code === 0) {
-        resolve();
+        resolvePromise();
       } else {
         reject(new Error(`tar extraction failed (exit ${code}): ${stderr.trim()}`));
       }

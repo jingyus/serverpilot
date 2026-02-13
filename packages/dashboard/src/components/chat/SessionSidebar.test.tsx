@@ -395,6 +395,130 @@ describe('filterSessions', () => {
   });
 });
 
+describe('SessionSidebar infinite scroll', () => {
+  let observeCallback: ((entries: Array<{ isIntersecting: boolean }>) => void) | null = null;
+  const mockObserve = vi.fn();
+  const mockDisconnect = vi.fn();
+
+  beforeEach(() => {
+    observeCallback = null;
+    mockObserve.mockClear();
+    mockDisconnect.mockClear();
+
+    // @ts-expect-error — mock IntersectionObserver
+    globalThis.IntersectionObserver = vi.fn((cb) => {
+      observeCallback = cb;
+      return { observe: mockObserve, disconnect: mockDisconnect, unobserve: vi.fn() };
+    });
+  });
+
+  afterEach(() => {
+    // @ts-expect-error — restore
+    delete globalThis.IntersectionObserver;
+  });
+
+  it('renders load-more sentinel when hasMore is true', () => {
+    render(
+      <SessionSidebar
+        {...baseProps}
+        sessions={makeSessions()}
+        hasMore={true}
+        isLoadingMore={false}
+        onLoadMore={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId('load-more-sentinel')).toBeInTheDocument();
+  });
+
+  it('does not render sentinel when hasMore is false', () => {
+    render(
+      <SessionSidebar
+        {...baseProps}
+        sessions={makeSessions()}
+        hasMore={false}
+        isLoadingMore={false}
+        onLoadMore={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId('load-more-sentinel')).not.toBeInTheDocument();
+  });
+
+  it('shows spinner when isLoadingMore is true', () => {
+    render(
+      <SessionSidebar
+        {...baseProps}
+        sessions={makeSessions()}
+        hasMore={true}
+        isLoadingMore={true}
+        onLoadMore={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId('load-more-spinner')).toBeInTheDocument();
+  });
+
+  it('does not show spinner when isLoadingMore is false', () => {
+    render(
+      <SessionSidebar
+        {...baseProps}
+        sessions={makeSessions()}
+        hasMore={true}
+        isLoadingMore={false}
+        onLoadMore={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId('load-more-spinner')).not.toBeInTheDocument();
+  });
+
+  it('calls onLoadMore when sentinel intersects', () => {
+    const onLoadMore = vi.fn();
+    render(
+      <SessionSidebar
+        {...baseProps}
+        sessions={makeSessions()}
+        hasMore={true}
+        isLoadingMore={false}
+        onLoadMore={onLoadMore}
+      />,
+    );
+    expect(mockObserve).toHaveBeenCalled();
+
+    // Simulate intersection
+    act(() => {
+      observeCallback?.([{ isIntersecting: true }]);
+    });
+    expect(onLoadMore).toHaveBeenCalledOnce();
+  });
+
+  it('does not call onLoadMore when sentinel is not intersecting', () => {
+    const onLoadMore = vi.fn();
+    render(
+      <SessionSidebar
+        {...baseProps}
+        sessions={makeSessions()}
+        hasMore={true}
+        isLoadingMore={false}
+        onLoadMore={onLoadMore}
+      />,
+    );
+    act(() => {
+      observeCallback?.([{ isIntersecting: false }]);
+    });
+    expect(onLoadMore).not.toHaveBeenCalled();
+  });
+
+  it('does not render sentinel when onLoadMore is not provided', () => {
+    render(
+      <SessionSidebar
+        {...baseProps}
+        sessions={makeSessions()}
+        hasMore={true}
+        isLoadingMore={false}
+      />,
+    );
+    expect(screen.queryByTestId('load-more-sentinel')).not.toBeInTheDocument();
+  });
+});
+
 describe('highlightText', () => {
   it('returns original text for empty query', () => {
     expect(highlightText('Hello world', '')).toEqual(['Hello world']);

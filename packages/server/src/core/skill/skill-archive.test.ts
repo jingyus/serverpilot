@@ -11,7 +11,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { join } from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
 
-import { exportSkill, importSkill } from './skill-archive.js';
+import { exportSkill, importSkill, validateArchivePaths } from './skill-archive.js';
 import {
   InMemorySkillRepository,
   setSkillRepository,
@@ -397,5 +397,160 @@ prompt: |
     expect(imported.skill.displayName).toBe('Integrity Test Skill');
     expect(imported.skill.version).toBe('3.2.1');
     expect(imported.skill.source).toBe('community');
+  });
+});
+
+// ============================================================================
+// Path traversal protection (zip-slip / tar-slip)
+// ============================================================================
+
+describe('validateArchivePaths', () => {
+  const targetDir = '/tmp/extract-target';
+
+  it('should accept normal relative paths', () => {
+    const entries = [
+      'my-skill/',
+      'my-skill/skill.yaml',
+      'my-skill/src/',
+      'my-skill/src/handler.ts',
+      'my-skill/README.md',
+    ];
+    expect(() => validateArchivePaths(entries, targetDir)).not.toThrow();
+  });
+
+  it('should accept deeply nested relative paths', () => {
+    const entries = [
+      'skill/a/b/c/d/e/f/deep-file.ts',
+      'skill/level1/level2/level3/data.json',
+    ];
+    expect(() => validateArchivePaths(entries, targetDir)).not.toThrow();
+  });
+
+  it('should accept entries with trailing slashes (directories)', () => {
+    const entries = ['skill/', 'skill/src/', 'skill/src/lib/'];
+    expect(() => validateArchivePaths(entries, targetDir)).not.toThrow();
+  });
+
+  it('should skip empty entries', () => {
+    const entries = ['', '/', 'skill/file.ts'];
+    expect(() => validateArchivePaths(entries, targetDir)).not.toThrow();
+  });
+
+  it('should reject paths with ../ traversal', () => {
+    const entries = ['../../../etc/passwd'];
+    expect(() => validateArchivePaths(entries, targetDir)).toThrow(
+      'Archive path traversal detected',
+    );
+  });
+
+  it('should reject paths with mid-path ../ traversal', () => {
+    const entries = ['skill/../../etc/shadow'];
+    expect(() => validateArchivePaths(entries, targetDir)).toThrow(
+      'Archive path traversal detected',
+    );
+  });
+
+  it('should reject absolute paths', () => {
+    const entries = ['/etc/passwd'];
+    expect(() => validateArchivePaths(entries, targetDir)).toThrow(
+      "absolute path '/etc/passwd'",
+    );
+  });
+
+  it('should reject absolute paths to sensitive locations', () => {
+    const entries = ['/root/.ssh/authorized_keys'];
+    expect(() => validateArchivePaths(entries, targetDir)).toThrow(
+      'absolute path',
+    );
+  });
+
+  it('should reject sneaky traversal disguised as normal path', () => {
+    // Looks innocent but resolves outside target
+    const entries = ['skill/sub/../../../outside'];
+    expect(() => validateArchivePaths(entries, targetDir)).toThrow(
+      'Archive path traversal detected',
+    );
+  });
+
+  it('should reject on first offending entry', () => {
+    const entries = [
+      'safe/file.ts',
+      '../escape.sh',
+      'another/safe.ts',
+    ];
+    expect(() => validateArchivePaths(entries, targetDir)).toThrow(
+      'Archive path traversal detected',
+    );
+  });
+});
+
+describe('importSkill — path traversal rejection', () => {
+  it('should reject archive with ../ path traversal entries', async () => {
+    // Create a malicious tar.gz by crafting raw tar headers with path traversal.
+    // A tar entry header is 512 bytes: name at offset 0 (100 bytes), then metadata.
+    // We build a minimal valid tar with a single entry whose name contains "../".
+    const { gzipSync } = await import('node:zlib');
+
+    const maliciousPath = '../../etc/evil.sh';
+    const fileContent = '#!/bin/sh\necho pwned';
+
+    // Build tar entry: 512-byte header + content padded to 512-byte boundary
+    const header = Buffer.alloc(512, 0);
+    // Name field (0..100)
+    header.write(maliciousPath, 0, 'utf-8');
+    // Mode field (100..108) — 0644
+    header.write('0000644\0', 100, 'utf-8');
+    // UID (108..116)
+    header.write('0001000\0', 108, 'utf-8');
+    // GID (116..124)
+    header.write('0001000\0', 116, 'utf-8');
+    // Size (124..136) — octal of content length
+    header.write(fileContent.length.toString(8).padStart(11, '0') + '\0', 124, 'utf-8');
+    // Mtime (136..148)
+    header.write('00000000000\0', 136, 'utf-8');
+    // Typeflag (156) — '0' = regular file
+    header.write('0', 156, 'utf-8');
+    // Magic (257..263) — "ustar\0"
+    header.write('ustar\0', 257, 'utf-8');
+    // Version (263..265)
+    header.write('00', 263, 'utf-8');
+
+    // Compute checksum: sum of all unsigned bytes, with checksum field (148..156) as spaces
+    header.fill(' ', 148, 156);
+    let checksum = 0;
+    for (let i = 0; i < 512; i++) { checksum += header[i]; }
+    header.write(checksum.toString(8).padStart(6, '0') + '\0 ', 148, 'utf-8');
+
+    // Content block (padded to 512)
+    const contentBuf = Buffer.alloc(512, 0);
+    contentBuf.write(fileContent, 0, 'utf-8');
+
+    // End-of-archive: two 512-byte zero blocks
+    const endBlock = Buffer.alloc(1024, 0);
+
+    const tarData = Buffer.concat([header, contentBuf, endBlock]);
+    const gzipped = gzipSync(tarData);
+
+    const communityDir = join(projectRoot, 'skills', 'community');
+
+    await expect(
+      importSkill(gzipped, 'user-1', communityDir),
+    ).rejects.toThrow('Archive path traversal detected');
+  });
+
+  it('should still import legitimate archives after security check', async () => {
+    // Verify that normal archives still work with the new validation
+    const skillDir = await createTempDir('legit-after-check-');
+    await writeSkillYaml(skillDir, { name: 'legit-skill' });
+    const original = await engine.install('user-1', skillDir, 'community');
+    const exported = await exportSkill(original.id);
+
+    await engine.uninstall(original.id);
+
+    const communityDir = join(projectRoot, 'skills', 'community');
+    const result = await importSkill(exported.buffer, 'user-1', communityDir);
+
+    expect(result.skill.name).toBe('legit-skill');
+    expect(result.skill.status).toBe('installed');
   });
 });

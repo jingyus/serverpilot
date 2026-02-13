@@ -25,6 +25,7 @@ vi.mock('@/api/sse', () => ({
 
 import { apiRequest } from '@/api/client';
 import { setActiveHandle } from './chat-execution';
+import { SESSIONS_PAGE_SIZE } from './chat-sessions';
 
 describe('chat-sessions (via useChatStore)', () => {
   beforeEach(() => {
@@ -33,6 +34,8 @@ describe('chat-sessions (via useChatStore)', () => {
       sessionId: null,
       messages: [],
       sessions: [],
+      sessionsTotal: 0,
+      isLoadingMore: false,
       isLoading: false,
       isStreaming: false,
       isReconnecting: false,
@@ -60,18 +63,29 @@ describe('chat-sessions (via useChatStore)', () => {
   });
 
   describe('fetchSessions', () => {
-    it('fetches and stores sessions', async () => {
+    it('fetches first page and stores sessions with total', async () => {
       const sessions = [
         { id: 'sess-1', serverId: 'srv-1', messageCount: 3, createdAt: '2025-01-01', updatedAt: '2025-01-01' },
       ];
-      (apiRequest as Mock).mockResolvedValueOnce({ sessions });
+      (apiRequest as Mock).mockResolvedValueOnce({ sessions, total: 120 });
 
       await useChatStore.getState().fetchSessions('srv-1');
 
       const state = useChatStore.getState();
       expect(state.sessions).toEqual(sessions);
+      expect(state.sessionsTotal).toBe(120);
       expect(state.isLoading).toBe(false);
       expect(state.error).toBeNull();
+    });
+
+    it('sends limit and offset=0 as query params', async () => {
+      (apiRequest as Mock).mockResolvedValueOnce({ sessions: [], total: 0 });
+
+      await useChatStore.getState().fetchSessions('srv-1');
+
+      expect(apiRequest).toHaveBeenCalledWith(
+        `/chat/srv-1/sessions?limit=${SESSIONS_PAGE_SIZE}&offset=0`,
+      );
     });
 
     it('sets isLoading while fetching', async () => {
@@ -83,7 +97,7 @@ describe('chat-sessions (via useChatStore)', () => {
       const promise = useChatStore.getState().fetchSessions('srv-1');
       expect(useChatStore.getState().isLoading).toBe(true);
 
-      resolveRequest!({ sessions: [] });
+      resolveRequest!({ sessions: [], total: 0 });
       await promise;
       expect(useChatStore.getState().isLoading).toBe(false);
     });
@@ -295,6 +309,116 @@ describe('chat-sessions (via useChatStore)', () => {
       await useChatStore.getState().renameSession('srv-1', 'sess-1', 'New Name');
 
       expect(useChatStore.getState().error).toBe('Session not found');
+    });
+  });
+
+  describe('loadMoreSessions', () => {
+    it('appends next page of sessions', async () => {
+      const existing = [
+        { id: 'sess-1', serverId: 'srv-1', messageCount: 1, createdAt: '2025-01-01', updatedAt: '2025-01-01' },
+      ];
+      useChatStore.setState({ sessions: existing, sessionsTotal: 3 });
+
+      const nextPage = [
+        { id: 'sess-2', serverId: 'srv-1', messageCount: 2, createdAt: '2025-01-02', updatedAt: '2025-01-02' },
+        { id: 'sess-3', serverId: 'srv-1', messageCount: 1, createdAt: '2025-01-03', updatedAt: '2025-01-03' },
+      ];
+      (apiRequest as Mock).mockResolvedValueOnce({ sessions: nextPage, total: 3 });
+
+      await useChatStore.getState().loadMoreSessions('srv-1');
+
+      const state = useChatStore.getState();
+      expect(state.sessions).toHaveLength(3);
+      expect(state.sessions[0].id).toBe('sess-1');
+      expect(state.sessions[1].id).toBe('sess-2');
+      expect(state.sessions[2].id).toBe('sess-3');
+      expect(state.sessionsTotal).toBe(3);
+      expect(state.isLoadingMore).toBe(false);
+    });
+
+    it('sends correct offset based on current sessions count', async () => {
+      const existing = Array.from({ length: 50 }, (_, i) => ({
+        id: `sess-${i}`, serverId: 'srv-1', messageCount: 1, createdAt: '2025-01-01', updatedAt: '2025-01-01',
+      }));
+      useChatStore.setState({ sessions: existing, sessionsTotal: 120 });
+
+      (apiRequest as Mock).mockResolvedValueOnce({ sessions: [], total: 120 });
+
+      await useChatStore.getState().loadMoreSessions('srv-1');
+
+      expect(apiRequest).toHaveBeenCalledWith(
+        `/chat/srv-1/sessions?limit=${SESSIONS_PAGE_SIZE}&offset=50`,
+      );
+    });
+
+    it('sets isLoadingMore while fetching', async () => {
+      useChatStore.setState({
+        sessions: [{ id: 'sess-1', serverId: 'srv-1', messageCount: 1, createdAt: '', updatedAt: '' }],
+        sessionsTotal: 10,
+      });
+
+      let resolveRequest: (v: unknown) => void;
+      (apiRequest as Mock).mockReturnValueOnce(
+        new Promise((r) => { resolveRequest = r; }),
+      );
+
+      const promise = useChatStore.getState().loadMoreSessions('srv-1');
+      expect(useChatStore.getState().isLoadingMore).toBe(true);
+
+      resolveRequest!({ sessions: [], total: 10 });
+      await promise;
+      expect(useChatStore.getState().isLoadingMore).toBe(false);
+    });
+
+    it('skips fetch if already loading more', async () => {
+      useChatStore.setState({
+        sessions: [{ id: 'sess-1', serverId: 'srv-1', messageCount: 1, createdAt: '', updatedAt: '' }],
+        sessionsTotal: 10,
+        isLoadingMore: true,
+      });
+
+      await useChatStore.getState().loadMoreSessions('srv-1');
+
+      expect(apiRequest).not.toHaveBeenCalled();
+    });
+
+    it('skips fetch if all sessions are loaded', async () => {
+      const sessions = [
+        { id: 'sess-1', serverId: 'srv-1', messageCount: 1, createdAt: '', updatedAt: '' },
+        { id: 'sess-2', serverId: 'srv-1', messageCount: 1, createdAt: '', updatedAt: '' },
+      ];
+      useChatStore.setState({ sessions, sessionsTotal: 2 });
+
+      await useChatStore.getState().loadMoreSessions('srv-1');
+
+      expect(apiRequest).not.toHaveBeenCalled();
+    });
+
+    it('sets error on failure', async () => {
+      useChatStore.setState({
+        sessions: [{ id: 'sess-1', serverId: 'srv-1', messageCount: 1, createdAt: '', updatedAt: '' }],
+        sessionsTotal: 10,
+      });
+      (apiRequest as Mock).mockRejectedValueOnce(new Error('network'));
+
+      await useChatStore.getState().loadMoreSessions('srv-1');
+
+      const state = useChatStore.getState();
+      expect(state.error).toBe('Failed to load more sessions');
+      expect(state.isLoadingMore).toBe(false);
+    });
+
+    it('handles ApiError with its message', async () => {
+      const { ApiError } = await import('@/api/client');
+      useChatStore.setState({
+        sessions: [{ id: 'sess-1', serverId: 'srv-1', messageCount: 1, createdAt: '', updatedAt: '' }],
+        sessionsTotal: 10,
+      });
+      (apiRequest as Mock).mockRejectedValueOnce(new ApiError(500, 'INTERNAL', 'DB error'));
+
+      await useChatStore.getState().loadMoreSessions('srv-1');
+
+      expect(useChatStore.getState().error).toBe('DB error');
     });
   });
 });

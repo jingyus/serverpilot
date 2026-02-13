@@ -31,6 +31,7 @@ import {
 
 import {
   createFetchSessions,
+  createLoadMoreSessions,
   createLoadSession,
   createDeleteSession,
   createRenameSession,
@@ -41,6 +42,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   sessionId: null,
   messages: [],
   sessions: [],
+  sessionsTotal: 0,
+  isLoadingMore: false,
   isLoading: false,
   isStreaming: false,
   isReconnecting: false,
@@ -161,6 +164,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   fetchSessions: createFetchSessions(set, get),
+  loadMoreSessions: createLoadMoreSessions(set, get),
   loadSession: createLoadSession(set, get),
   deleteSession: createDeleteSession(set, get),
   renameSession: createRenameSession(set, get),

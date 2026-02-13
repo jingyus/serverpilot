@@ -1,20 +1,24 @@
-### [pending] trigger-manager.ts 拆分 — 从 530 行降至 ≤500 行
+### [done] Skill Archive 导入路径遍历防护 — 修复 zip-slip 安全漏洞
 
-**ID**: skill-099
+**ID**: skill-100
 **优先级**: P0
 **模块路径**: packages/server/src/core/skill/
-**当前状态**: trigger-manager.ts 当前 530 行，超过 500 行软限制。文件包含 cron 调度、event 匹配、threshold 评估、熔断器逻辑四种不同职责混合在一个文件中。
+**当前状态**: `skill-archive.ts` 的 `extractTarGz()` 函数直接调用 `tar xzf -` 解压到目标目录，没有对解压后的文件路径做任何校验。恶意构造的 tar.gz 归档可以包含 `../../etc/passwd` 等路径遍历条目，在解压时写入任意位置 (zip-slip / tar-slip 攻击)。
 **实现方案**: 
-1. 提取 threshold 评估逻辑 (`evaluateThreshold()`, `checkThresholdTrigger()`, debounce 管理) 到 `trigger-evaluators.ts` (~100 行)
-2. trigger-manager.ts 保留: TriggerManager 类、cron 计算、event 匹配、熔断器、单例管理 (~430 行)
-3. `trigger-evaluators.ts` 导出纯函数，TriggerManager 调用它们
+1. 在 `extractTarGz()` 中添加 `--strip-components=0` 并使用 `tar --list` 预扫描归档内容
+2. 实现 `validateArchivePaths(entries: string[], targetDir: string)` 函数:
+   - 使用 `path.resolve()` 解析每个条目的绝对路径
+   - 验证 `resolvedPath.startsWith(targetDir)` — 任何路径逃逸则抛出错误
+   - 拒绝包含 `..` 的路径、绝对路径 (`/etc/...`)、符号链接
+3. 在实际解压前先调用 `validateArchivePaths()`，不通过则拒绝导入
+4. 添加 `--no-same-owner --no-same-permissions` 标志到 tar 命令防止权限提升
 **验收标准**: 
-- trigger-manager.ts ≤ 500 行
-- trigger-evaluators.ts ≤ 150 行
-- 所有 trigger-manager 相关测试继续通过
-- 新文件有对应单元测试 trigger-evaluators.test.ts (≥5 个测试)
-**影响范围**: packages/server/src/core/skill/trigger-manager.ts (拆分), 新建 trigger-evaluators.ts, trigger-evaluators.test.ts
+- 包含 `../` 路径的 tar.gz 归档被拒绝导入
+- 包含绝对路径的 tar.gz 归档被拒绝导入
+- 正常归档不受影响
+- 测试覆盖: ≥6 个测试 (正常路径 + 路径遍历 + 绝对路径 + 符号链接 + 深层嵌套)
+**影响范围**: packages/server/src/core/skill/skill-archive.ts, packages/server/src/core/skill/skill-archive.test.ts
 **创建时间**: 2026-02-13
-**完成时间**: -
+**完成时间**: 2026-02-13
 
 ---

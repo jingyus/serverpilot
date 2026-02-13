@@ -3,14 +3,14 @@
 > 此队列专注于 Skill 插件系统的设计与实现
 > AI 自动扫描 → 发现缺失 → 设计实现 → 验证
 
-**最后更新**: 2026-02-13 12:59:30
+**最后更新**: 2026-02-13 13:03:59
 
 ## 📊 统计
 
 - **总任务数**: 77
-- **待完成** (pending): 8
+- **待完成** (pending): 7
 - **进行中** (in_progress): 0
-- **已完成** (completed): 69
+- **已完成** (completed): 70
 - **失败** (failed): 0
 
 ## 📋 任务列表
@@ -60,7 +60,7 @@
 
 ---
 
-### [pending] Skill Archive 导入路径遍历防护 — 修复 zip-slip 安全漏洞
+### [completed] Skill Archive 导入路径遍历防护 — 修复 zip-slip 安全漏洞 ✅
 
 **ID**: skill-100
 **优先级**: P0
@@ -81,7 +81,7 @@
 - 测试覆盖: ≥6 个测试 (正常路径 + 路径遍历 + 绝对路径 + 符号链接 + 深层嵌套)
 **影响范围**: packages/server/src/core/skill/skill-archive.ts, packages/server/src/core/skill/skill-archive.test.ts
 **创建时间**: 2026-02-13
-**完成时间**: -
+**完成时间**: 2026-02-13 13:03:59
 
 ---
 

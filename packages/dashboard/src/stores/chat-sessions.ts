@@ -17,18 +17,47 @@ type SetFn = (
 ) => void;
 type GetFn = () => ChatState;
 
+export const SESSIONS_PAGE_SIZE = 50;
+
 export function createFetchSessions(set: SetFn, _get: GetFn) {
   return async (serverId: string): Promise<void> => {
     set({ isLoading: true, error: null });
     try {
-      const data = await apiRequest<{ sessions: SessionSummary[] }>(
-        `/chat/${serverId}/sessions`,
+      const data = await apiRequest<{ sessions: SessionSummary[]; total: number }>(
+        `/chat/${serverId}/sessions?limit=${SESSIONS_PAGE_SIZE}&offset=0`,
       );
-      set({ sessions: data.sessions, isLoading: false });
+      set({
+        sessions: data.sessions,
+        sessionsTotal: data.total,
+        isLoading: false,
+      });
     } catch (err) {
       const message =
         err instanceof ApiError ? err.message : 'Failed to load sessions';
       set({ error: message, isLoading: false });
+    }
+  };
+}
+
+export function createLoadMoreSessions(set: SetFn, get: GetFn) {
+  return async (serverId: string): Promise<void> => {
+    const { sessions, sessionsTotal, isLoadingMore } = get();
+    if (isLoadingMore || sessions.length >= sessionsTotal) return;
+
+    set({ isLoadingMore: true });
+    try {
+      const data = await apiRequest<{ sessions: SessionSummary[]; total: number }>(
+        `/chat/${serverId}/sessions?limit=${SESSIONS_PAGE_SIZE}&offset=${sessions.length}`,
+      );
+      set((state) => ({
+        sessions: [...state.sessions, ...data.sessions],
+        sessionsTotal: data.total,
+        isLoadingMore: false,
+      }));
+    } catch (err) {
+      const message =
+        err instanceof ApiError ? err.message : 'Failed to load more sessions';
+      set({ error: message, isLoadingMore: false });
     }
   };
 }

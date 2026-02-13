@@ -62,7 +62,10 @@ export function Chat() {
     respondToStep,
     respondToAgenticConfirm,
     emergencyStop,
+    sessionsTotal,
+    isLoadingMore,
     fetchSessions,
+    loadMoreSessions,
     loadSession,
     deleteSession,
     renameSession,
@@ -268,6 +271,9 @@ export function Chat() {
           isLoading={isLoading}
           mobileOpen={mobileSidebarOpen}
           onMobileClose={() => setMobileSidebarOpen(false)}
+          onLoadMore={() => loadMoreSessions(serverId)}
+          isLoadingMore={isLoadingMore}
+          hasMore={sessions.length < sessionsTotal}
         />
 
         {/* Chat area */}
