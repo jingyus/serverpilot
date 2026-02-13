@@ -1,21 +1,19 @@
-### [pending] engine.ts 二次拆分 — 从 722 行降至 ≤500 行
+### [pending] trigger-manager.ts 拆分 — 从 530 行降至 ≤500 行
 
-**ID**: skill-098
+**ID**: skill-099
 **优先级**: P0
 **模块路径**: packages/server/src/core/skill/
-**当前状态**: engine.ts 当前 722 行，虽然之前已拆分出 5 个子模块（engine-queries/template-vars/cleanup/health/confirmation），但仍远超 500 行软限制。`executeSingle()` 方法单独就有 158 行，加上 lifecycle 管理、upgrade 流程、webhook 分发等，文件仍然臃肿。
+**当前状态**: trigger-manager.ts 当前 530 行，超过 500 行软限制。文件包含 cron 调度、event 匹配、threshold 评估、熔断器逻辑四种不同职责混合在一个文件中。
 **实现方案**: 
-1. 提取 `executeSingle()` + `emitTriggerEvent()` + `dispatchWebhookEvent()` 到 `engine-execute.ts` (~180 行)
-2. 提取 `upgrade()` + `upgradeGitSkill()` + `checkSkillRequirements()` 到 `engine-upgrade.ts` (~120 行)
-3. 提取 `cancel()` + `isExecutionRunning()` + `getRunningExecutionIds()` + `runningExecutions` Map 到 `engine-cancellation.ts` (~50 行)
-4. engine.ts 保留: 构造函数、install/uninstall/updateConfig/updateStatus + start/stop 生命周期 + 单例管理 + 查询委托 (~370 行)
-5. 新文件通过参数注入 `repo`/`triggerManager` 等依赖，不直接依赖 engine 实例
+1. 提取 threshold 评估逻辑 (`evaluateThreshold()`, `checkThresholdTrigger()`, debounce 管理) 到 `trigger-evaluators.ts` (~100 行)
+2. trigger-manager.ts 保留: TriggerManager 类、cron 计算、event 匹配、熔断器、单例管理 (~430 行)
+3. `trigger-evaluators.ts` 导出纯函数，TriggerManager 调用它们
 **验收标准**: 
-- engine.ts ≤ 500 行
-- 每个新文件 ≤ 200 行
-- 所有现有 engine 相关测试继续通过 (engine.test.ts + engine-*.test.ts)
-- 公共 API (getSkillEngine() 等) 不变
-**影响范围**: packages/server/src/core/skill/engine.ts (拆分), 新建 engine-execute.ts, engine-upgrade.ts, engine-cancellation.ts
+- trigger-manager.ts ≤ 500 行
+- trigger-evaluators.ts ≤ 150 行
+- 所有 trigger-manager 相关测试继续通过
+- 新文件有对应单元测试 trigger-evaluators.test.ts (≥5 个测试)
+**影响范围**: packages/server/src/core/skill/trigger-manager.ts (拆分), 新建 trigger-evaluators.ts, trigger-evaluators.test.ts
 **创建时间**: 2026-02-13
 **完成时间**: -
 

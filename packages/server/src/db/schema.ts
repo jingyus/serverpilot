@@ -289,6 +289,7 @@ export const sessions = sqliteTable(
       .references(() => servers.id, { onDelete: 'cascade' })
       .notNull(),
     name: text('name'),
+    /** @deprecated Kept for backward compat; new messages go to session_messages table. */
     messages: text('messages', { mode: 'json' })
       .$type<SessionMessage[]>()
       .default([]),
@@ -299,6 +300,28 @@ export const sessions = sqliteTable(
   (table) => [
     index('sessions_user_id_idx').on(table.userId),
     index('sessions_server_id_idx').on(table.serverId),
+  ],
+);
+
+// ============================================================================
+// Session Messages (normalized message storage — replaces JSON array)
+// ============================================================================
+
+export const sessionMessages = sqliteTable(
+  'session_messages',
+  {
+    id: text('id').primaryKey(),
+    sessionId: text('session_id')
+      .references(() => sessions.id, { onDelete: 'cascade' })
+      .notNull(),
+    role: text('role', { enum: ['user', 'assistant', 'system'] }).notNull(),
+    content: text('content').notNull(),
+    timestamp: integer('timestamp').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  },
+  (table) => [
+    index('session_messages_session_id_idx').on(table.sessionId),
+    index('session_messages_session_timestamp_idx').on(table.sessionId, table.timestamp),
   ],
 );
 

@@ -200,7 +200,10 @@
       "yesterday": "昨天",
       "thisWeek": "本周",
       "older": "更早"
-    }
+    },
+    "export": "导出对话",
+    "exportMarkdown": "导出为 Markdown",
+    "exportJson": "导出为 JSON"
   },
   "search": {
     "title": "知识库",

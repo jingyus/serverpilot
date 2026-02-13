@@ -71,4 +71,84 @@ describe('ChatHeader', () => {
       expect(screen.queryByTestId('mobile-sidebar-toggle')).not.toBeInTheDocument();
     });
   });
+
+  describe('export button', () => {
+    it('shows export button when hasMessages and onExport are provided', () => {
+      render(
+        <ChatHeader
+          {...baseProps}
+          hasMessages={true}
+          onExport={vi.fn()}
+        />
+      );
+      expect(screen.getByTestId('export-chat-btn')).toBeInTheDocument();
+    });
+
+    it('hides export button when hasMessages is false', () => {
+      render(
+        <ChatHeader
+          {...baseProps}
+          hasMessages={false}
+          onExport={vi.fn()}
+        />
+      );
+      expect(screen.queryByTestId('export-chat-btn')).not.toBeInTheDocument();
+    });
+
+    it('opens dropdown menu on click and shows format options', () => {
+      render(
+        <ChatHeader
+          {...baseProps}
+          hasMessages={true}
+          onExport={vi.fn()}
+        />
+      );
+      fireEvent.click(screen.getByTestId('export-chat-btn'));
+      expect(screen.getByTestId('export-menu')).toBeInTheDocument();
+      expect(screen.getByTestId('export-markdown-btn')).toBeInTheDocument();
+      expect(screen.getByTestId('export-json-btn')).toBeInTheDocument();
+    });
+
+    it('calls onExport with "markdown" when markdown option clicked', () => {
+      const onExport = vi.fn();
+      render(
+        <ChatHeader
+          {...baseProps}
+          hasMessages={true}
+          onExport={onExport}
+        />
+      );
+      fireEvent.click(screen.getByTestId('export-chat-btn'));
+      fireEvent.click(screen.getByTestId('export-markdown-btn'));
+      expect(onExport).toHaveBeenCalledWith('markdown');
+    });
+
+    it('calls onExport with "json" when JSON option clicked', () => {
+      const onExport = vi.fn();
+      render(
+        <ChatHeader
+          {...baseProps}
+          hasMessages={true}
+          onExport={onExport}
+        />
+      );
+      fireEvent.click(screen.getByTestId('export-chat-btn'));
+      fireEvent.click(screen.getByTestId('export-json-btn'));
+      expect(onExport).toHaveBeenCalledWith('json');
+    });
+
+    it('closes dropdown after selecting an option', () => {
+      render(
+        <ChatHeader
+          {...baseProps}
+          hasMessages={true}
+          onExport={vi.fn()}
+        />
+      );
+      fireEvent.click(screen.getByTestId('export-chat-btn'));
+      expect(screen.getByTestId('export-menu')).toBeInTheDocument();
+      fireEvent.click(screen.getByTestId('export-markdown-btn'));
+      expect(screen.queryByTestId('export-menu')).not.toBeInTheDocument();
+    });
+  });
 });

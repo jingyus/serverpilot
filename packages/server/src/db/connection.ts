@@ -174,6 +174,17 @@ export function createTables(db?: DrizzleDB): void {
     CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions(user_id);
     CREATE INDEX IF NOT EXISTS sessions_server_id_idx ON sessions(server_id);
 
+    CREATE TABLE IF NOT EXISTS session_messages (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+      role TEXT NOT NULL CHECK(role IN ('user', 'assistant', 'system')),
+      content TEXT NOT NULL,
+      timestamp INTEGER NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS session_messages_session_id_idx ON session_messages(session_id);
+    CREATE INDEX IF NOT EXISTS session_messages_session_timestamp_idx ON session_messages(session_id, timestamp);
+
     CREATE TABLE IF NOT EXISTS operations (
       id TEXT PRIMARY KEY,
       server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,

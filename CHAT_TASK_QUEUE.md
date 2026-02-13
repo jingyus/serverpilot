@@ -3,19 +3,297 @@
 > 此队列专注于 Chat 和 AI 对话系统的质量改进
 > AI 自动发现问题 → 生成任务 → 实现 → 验证
 
-**最后更新**: 2026-02-13 12:14:33
+**最后更新**: 2026-02-13 12:32:27
 
 ## 📊 统计
 
-- **总任务数**: 80
-- **待完成** (pending): 0
-- **进行中** (in_progress): 0
+- **总任务数**: 100
+- **待完成** (pending): 19
+- **进行中** (in_progress): 1
 - **已完成** (completed): 80
 - **失败** (failed): 0
 
 ## 📋 任务列表
 
 ### [completed] 聊天会话持久化到 SQLite — 消除服务器重启丢失对话的致命问题 ✅
+### [in_progress] addMessage 全量读写消息数组 — 每次追加消息读取并重写全部历史导致 O(n) 性能退化
+
+**ID**: chat-081
+**优先级**: P0
+**模块路径**: packages/server/src/db/repositories/session-repository.ts
+**发现的问题**: `DrizzleSessionRepository.addMessage()` (行 239-255) 每次追加一条消息时先调用 `this.getById(id, userId)` 加载整个 session（包含所有历史消息的 JSON 数组），然后 `[...existing.messages, message]` 构造新数组并整体覆盖写回。对于 1000 条消息的会话，每次追加都需要解析和序列化整个 JSON 数组。`updateContext`、`updateName`、`delete` 也使用同样的 `getById` 前置查询模式（行 262、275、288）。这对高频对话场景（agentic 模式每轮 2-3 条消息）性能极差。
+**改进方案**: 将 messages 从 JSON 列拆分为独立的 `session_messages` 表（id, session_id, role, content, timestamp, persisted），`addMessage` 变为简单的 INSERT。`getById` 通过 JOIN 或子查询加载消息。需要新建 migration 文件创建表并迁移现有数据。
+**验收标准**: (1) addMessage 为 O(1) INSERT 操作 (2) getById 仍返回完整消息列表 (3) 现有测试全部通过 (4) 新增 migration 可正确迁移旧数据
+**影响范围**: `packages/server/src/db/repositories/session-repository.ts`, `packages/server/src/db/schema.ts`, 新 migration SQL 文件
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] listSessions 硬编码 limit=100 无分页 — 超过 100 个会话的服务器丢失历史
+
+**ID**: chat-082
+**优先级**: P0
+**模块路径**: packages/server/src/core/session/
+**发现的问题**: `SessionManager.listSessions()` (manager.ts:287-301) 硬编码 `limit: 100, offset: 0`，无法获取第 100 个之后的会话。前端 `SessionSidebar` 会话列表不支持加载更多（chat-sessions.ts:20-34 的 `createFetchSessions` 无分页参数）。活跃用户在同一服务器上长期使用后会积累超过 100 个会话，旧会话永远无法在 UI 中显示。
+**改进方案**: `listSessions` 增加 `limit` 和 `offset` 参数（保持向后兼容的默认值）。API 响应增加 `total` 字段。前端暂不改（下一个任务处理）。
+**验收标准**: (1) `listSessions(serverId, userId, { limit, offset })` 支持分页 (2) 返回值增加 `total` 字段 (3) GET /sessions API 支持 `?limit=&offset=` 查询参数 (4) 默认值保持 100 以兼容现有前端
+**影响范围**: `packages/server/src/core/session/manager.ts`, `packages/server/src/api/routes/chat.ts`
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] 前端会话列表无分页 — SessionSidebar 无法加载超过 100 个历史会话
+
+**ID**: chat-083
+**优先级**: P0
+**模块路径**: packages/dashboard/src/
+**发现的问题**: `createFetchSessions()` (chat-sessions.ts:20-34) 只发一次 GET 请求无分页参数，`SessionSidebar.tsx` 没有"加载更多"或滚动加载机制。依赖 chat-082 完成后的分页 API。
+**改进方案**: `fetchSessions` 改为支持分页，首次加载最近 50 个，滚动到底部触发 `loadMoreSessions`。`sessions` 数组采用追加模式（不覆盖已加载的）。`SessionSidebar` 底部增加 `IntersectionObserver` 触发加载。
+**验收标准**: (1) 初次加载 50 个会话 (2) 滚动到底部自动加载下一批 (3) 全部加载完毕后不再请求 (4) 加载中显示 spinner
+**影响范围**: `packages/dashboard/src/stores/chat-sessions.ts`, `packages/dashboard/src/components/chat/SessionSidebar.tsx`
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] RetryQueue 无队列上限 — DB 长时间故障时内存无限增长
+
+**ID**: chat-084
+**优先级**: P0
+**模块路径**: packages/server/src/core/session/
+**发现的问题**: `RetryQueue.enqueue()` (session-retry-queue.ts:65-67) 直接 `this.queue.push(entry)` 无任何上限检查。当 SQLite 数据库不可用时（磁盘满、文件锁等），所有异步消息持久化都会失败并入队。按每条消息 ~500 字节估算，如果 DB 故障持续 1 小时、100 msg/s 的场景下，队列将积累 360,000 条目（~180MB）。目前唯一的保护是 `maxRetryAttempts=5`（每 5 秒处理一次），但在 DB 完全不可用时 5 次重试都会失败，清除旧条目的同时新条目持续涌入。
+**改进方案**: 在 `RetryQueueOptions` 增加 `maxQueueSize`（默认 10,000）。`enqueue` 超限时丢弃最旧条目并触发 `_onPersistenceFailure` 回调。添加 `queueFullCount` 指标用于监控。
+**验收标准**: (1) 队列大小永远不超过 maxQueueSize (2) 超限时触发 onPersistenceFailure 回调并打日志 (3) 新增单元测试验证上限行为 (4) 现有测试不受影响
+**影响范围**: `packages/server/src/core/session/session-retry-queue.ts`, `packages/server/src/core/session/session-retry-queue.test.ts`
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] sessionLocks 超时后残留 — 30s 超时不清理 Map 条目导致后续请求永远等待
+
+**ID**: chat-085
+**优先级**: P0
+**模块路径**: packages/server/src/api/routes/
+**发现的问题**: `acquireSessionLock()` (chat.ts:87-109) 中 `Promise.race([currentLock, timeout])` 超时后只是 resolve，不会从 `sessionLocks` Map 中删除旧条目（行 106 的 `sessionLocks.delete(sessionId)` 只在 release 函数中调用）。如果请求 A 挂起超过 30s 且永远不释放锁（例如 SSE 流因网络问题卡住），请求 B 超时后继续执行并设置新锁，但请求 A 的旧锁仍在 Map 中指向的 Promise 永远不会 resolve。虽然请求 B 覆盖了 Map 中的值（行 100），但如果请求 A 最终释放，它会删除请求 B 的锁条目（行 106），导致请求 C 不等待请求 B 就直接执行。
+**改进方案**: 超时时主动 `sessionLocks.delete(sessionId)` 清理旧条目，并用 `logger.warn` 记录超时事件。同时在 `releaseFn` 中检查当前 Map 中的值是否仍然是自己的 Promise（避免删除他人的锁）。
+**验收标准**: (1) 超时后旧锁条目被清理 (2) release 不会误删其他请求的锁 (3) 超时事件被日志记录 (4) 新增测试验证超时场景
+**影响范围**: `packages/server/src/api/routes/chat.ts`, `packages/server/src/api/routes/chat.test.ts`
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] 知识库 token 估算使用简单 4 chars/token — 中文知识库内容 token 严重低估
+
+**ID**: chat-086
+**优先级**: P1
+**模块路径**: packages/server/src/knowledge/
+**发现的问题**: `context-enhancer.ts:267-270` 和 `context-window-manager.ts` 中的 `estimateTokenCount()` 使用固定 `Math.ceil(text.length / 4)` 估算 token，不区分中英文。而 `profile-context.ts:81-103` 已有 CJK 感知的 `estimateTokens()` 函数（中文 1.5 chars/token、ASCII 4 chars/token）。context-window-manager 将知识库 token 预算设为 `remainingBudget * 0.4`（行 244），但对中文知识库结果低估约 2.7 倍（4/1.5），实际注入的 token 可能远超预算，挤压对话历史空间甚至导致上下文溢出。
+**改进方案**: 将 `context-enhancer.ts` 和 `context-window-manager.ts` 中的 `estimateTokenCount` 替换为 `profile-context.ts` 导出的 `estimateTokens`（CJK 感知版本）。删除 `context-enhancer.ts` 中的重复函数。
+**验收标准**: (1) 只保留一个 token 估算函数（CJK 感知版） (2) context-window-manager 使用统一的估算 (3) 现有 context-window-manager 测试更新适配 (4) 中文内容的 token 估算偏差小于 50%
+**影响范围**: `packages/server/src/knowledge/context-enhancer.ts`, `packages/server/src/knowledge/context-window-manager.ts`, `packages/server/src/knowledge/context-window-manager.test.ts`
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] agentic-prompts.ts 零测试覆盖 — buildFullSystemPrompt 的 RAG/Profile 集成逻辑无验证
+
+**ID**: chat-087
+**优先级**: P1
+**模块路径**: packages/server/src/ai/
+**发现的问题**: `agentic-prompts.ts`（91 行）完全没有测试文件。该文件包含 `buildAgenticSystemPrompt()`（系统提示词）和 `buildFullSystemPrompt()`（组合 profile + RAG + 基础提示词），后者在 `agentic-chat.ts:136` 被调用，是 agentic 模式的核心入口。`buildFullSystemPrompt` 中有 RAG 搜索（行 64-77）和 profile 上下文构建（行 51-60），错误时静默降级，这些分支完全没有测试覆盖。`serverProfile` 的 `as Parameters<typeof buildProfileContext>[0]` 类型断言（行 53, 58）也没有运行时验证。
+**改进方案**: 新增 `agentic-prompts.test.ts`，覆盖：(1) 无 profile 无 RAG 时返回基础提示词 (2) 有 profile 时包含 profile 上下文 (3) 有 RAG 结果时包含知识上下文 (4) RAG 异常时降级到无知识上下文 (5) 组合场景 profile + caveats + knowledge
+**验收标准**: (1) 新增测试文件覆盖 5+ 个场景 (2) 行覆盖率达到 90%+ (3) mock RAG pipeline 和 profile builder
+**影响范围**: 新增 `packages/server/src/ai/agentic-prompts.test.ts`
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] 删除会话未检查活跃执行 — 用户删除正在执行的会话导致悬挂资源
+
+**ID**: chat-088
+**优先级**: P1
+**模块路径**: packages/server/src/api/routes/
+**发现的问题**: DELETE `/chat/:serverId/sessions/:sessionId` (chat.ts:655-676) 直接调用 `sessionMgr.deleteSession()` 删除会话，不检查该会话是否有正在运行的 agentic 循环或 plan 执行。`deleteSession` (manager.ts:329-337) 会从缓存中删除会话（包括 plans Map），但服务端的 agentic 循环、`pendingConfirmations`、`activePlanExecutions` 等状态不会被清理。会话删除后：(1) 正在运行的 `agenticEngine.run()` 继续执行但无法写入消息 (2) pendingConfirmations 中该 session 的确认不会被 cleanup (3) 用户无法取消已删除会话的执行。
+**改进方案**: 在 DELETE 路由中先检查 `session.plans.size > 0` 或 `hasActiveExecution()`，如果有活跃执行返回 409 Conflict 并提示用户先取消执行。或者自动触发 `cleanupSessionConfirmations(sessionId)` 和取消所有活跃执行。
+**验收标准**: (1) 删除有活跃执行的会话时返回 409 或自动取消 (2) 确认和执行状态被正确清理 (3) 新增测试覆盖此场景
+**影响范围**: `packages/server/src/api/routes/chat.ts`, `packages/server/src/api/routes/chat.test.ts`
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Chat 页面无 ErrorBoundary — 消息数据异常导致整页崩溃
+
+**ID**: chat-089
+**优先级**: P1
+**模块路径**: packages/dashboard/src/pages/
+**发现的问题**: `Chat.tsx` 中的 Virtuoso 消息列表（行 263-300）没有 React ErrorBoundary 保护。如果某条消息的 `content` 为 null/undefined（虽然 Zod schema 定义为 string，但从服务器加载历史消息可能出现数据不一致），或 `MarkdownRenderer` 遇到无法解析的 markdown（react-markdown 内部抛出），整个 Chat 页面会白屏。`MessageListFooter` 中的 `stripJsonPlan` (行 355) 对 null 输入也没有防御。用户只能刷新页面重试。
+**改进方案**: 在 Virtuoso 外层包裹一个 `ChatErrorBoundary` 组件，捕获渲染错误后显示友好的错误提示（"对话加载出错，请刷新重试"），并提供"新建会话"按钮。
+**验收标准**: (1) 消息渲染错误被 ErrorBoundary 捕获 (2) 显示友好错误提示而非白屏 (3) 提供刷新/新建会话操作 (4) 新增测试验证错误恢复
+**影响范围**: `packages/dashboard/src/pages/Chat.tsx`, 可选新增 `packages/dashboard/src/components/chat/ChatErrorBoundary.tsx`
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] cancelStream 未重置执行相关状态 — 取消流式后 UI 可能显示旧的执行进度
+
+**ID**: chat-090
+**优先级**: P1
+**模块路径**: packages/dashboard/src/stores/
+**发现的问题**: `cancelStream()` (chat.ts:189-208) 只重置 `isStreaming` 和 `streamingContent`，不重置 `execution`、`executionMode`、`pendingConfirm`、`agenticConfirm`、`currentPlan`、`planStatus`、`toolCalls` 等状态。如果用户在 agentic 模式执行命令时按 Escape 取消：(1) `agenticConfirm` 可能残留，显示一个无法操作的确认栏 (2) `toolCalls` 列表不清除，显示过时的工具调用记录 (3) `executionMode` 仍为 `'inline'` 或 `'log'`，下次对话可能误显示执行日志。`cleanup()` (行 210-221) 也遗漏了 `toolCalls`、`currentPlan`、`planStatus`、`execution`。
+**改进方案**: `cancelStream` 中增加执行状态重置。对比 `newSession()` (行 168-187) 的完整重置列表，确保 `cancelStream` 也重置 `executionMode`、`pendingConfirm`、`agenticConfirm`、`toolCalls`。`cleanup` 同步更新。
+**验收标准**: (1) Escape 取消后所有执行相关 UI 清除 (2) 不影响已持久化的消息 (3) 现有测试通过 (4) 新增测试验证取消后状态清洁
+**影响范围**: `packages/dashboard/src/stores/chat.ts`
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Legacy 模式 conversationContext 不扣除 knowledge/profile token — 总 prompt 可能超出上下文窗口
+
+**ID**: chat-091
+**优先级**: P1
+**模块路径**: packages/server/src/api/routes/
+**发现的问题**: Legacy 模式（chat.ts:319-377）中，`buildContextWithLimit(session.id, 8000)` (行 322) 固定使用 8000 token 预算，与 `profileCtx` 和 `knowledgeContext` 的大小完全独立。最终 `userPrompt` 包含 `serverLabel + conversationContext + message`，`systemPrompt` 包含 `BASE_SYSTEM_PROMPT + profileContext + caveats + knowledgeContext`。如果 profile 占 5000 token、knowledge 占 3000 token、base prompt 占 2000 token，加上 conversation 8000 token，总计 ~18000 token。虽然大多数模型有 128K+ 上下文窗口所以不会溢出，但 ollama 本地模型可能只有 4K-8K 上下文，此时必定溢出。且 8000 token 的固定预算对短对话浪费、对长对话不够。
+**改进方案**: `buildContextWithLimit` 的 `maxTokens` 参数应根据模型的上下文窗口和已分配的 system prompt + knowledge token 动态计算：`availableTokens = modelContextWindow - systemPromptTokens - knowledgeTokens - reservedOutputTokens`。可从 provider 接口获取 `contextWindowSize`。
+**验收标准**: (1) conversation history 预算动态计算 (2) 不超过模型上下文窗口 (3) 对 ollama 等小上下文模型安全 (4) 默认行为向后兼容
+**影响范围**: `packages/server/src/api/routes/chat.ts`, `packages/server/src/core/session/manager.ts`
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Agentic 循环 MAX_TURNS=25 时无用户感知 — AI 静默停止不解释原因
+
+**ID**: chat-092
+**优先级**: P2
+**模块路径**: packages/server/src/ai/
+**发现的问题**: `AgenticChatEngine.run()` (agentic-chat.ts:162) 中 `for (let turn = 0; turn < MAX_TURNS; turn++)` 循环达到 25 轮上限后直接 break 并发送 `complete` 事件（行 222-224），AI 的最后输出可能是一个工具调用结果，用户看到的是 AI 突然停止而没有总结性回复。前端也没有显示"已达到最大轮次"的提示。用户可能误以为任务已完成或连接断开。
+**改进方案**: 达到 MAX_TURNS 时在 `complete` 事件中增加 `reason: 'max_turns_reached'` 字段，并在最后一轮结束后发送一条消息提示用户："已达到最大执行轮次（25 轮）。如需继续，请发送新消息。"前端在 `onComplete` 中检查 reason 并显示提示。
+**验收标准**: (1) 达到 MAX_TURNS 时用户看到明确提示 (2) complete 事件包含 reason 字段 (3) 前端显示友好提示
+**影响范围**: `packages/server/src/ai/agentic-chat.ts`
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] 前端 Agentic 模式无工具调用摘要 — 用户看不到 AI 执行了哪些命令及结果
+
+**ID**: chat-093
+**优先级**: P2
+**模块路径**: packages/dashboard/src/
+**发现的问题**: Agentic 模式下 `toolCalls` 数组在 `chat-types.ts:41-46` 定义并在 `chat-sse-handlers.ts` 的 `onToolCall/onToolExecuting/onToolOutput/onToolResult` 中更新，但 `Chat.tsx` 和 `MessageListFooter` 中 `toolCalls` 状态从未被渲染。用户在 agentic 模式下只能看到 AI 的文本输出，看不到：(1) AI 执行了哪些命令 (2) 每个命令的状态（运行中/成功/失败） (3) 命令的输出内容。`streamingContent` 中虽然包含 AI 的文本描述，但如果 AI 不主动描述，用户对后台发生的操作一无所知。
+**改进方案**: 在 `MessageListFooter` 中当 `isAgenticMode && toolCalls.length > 0` 时渲染一个 `ToolCallList` 组件，显示每个工具调用的命令、状态图标、可折叠的输出。类似 Claude.ai 的"工具调用"展开面板。
+**验收标准**: (1) Agentic 模式下实时显示工具调用列表 (2) 每个调用显示命令/状态/耗时 (3) 输出可折叠展开 (4) 运行中的调用显示 spinner
+**影响范围**: `packages/dashboard/src/pages/Chat.tsx`, 新增 `packages/dashboard/src/components/chat/ToolCallList.tsx`
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] MessageInput 输入框每次按键触发 layout thrash — 长文本输入时可能卡顿
+
+**ID**: chat-094
+**优先级**: P2
+**模块路径**: packages/dashboard/src/components/chat/
+**发现的问题**: `MessageInput.tsx` 中 textarea 自动调高逻辑（通过 `el.style.height = 'auto'` 然后 `el.style.height = el.scrollHeight + 'px'`）在每次 `onChange` 时执行，导致每次按键产生两次 layout/reflow：第一次设 auto 触发收缩计算，第二次设 scrollHeight 触发扩展计算。对于慢速设备或超长消息（接近 4000 字符限制），累积的 layout thrash 可能导致明显卡顿。
+**改进方案**: 使用 `requestAnimationFrame` 合并高度调整，或用 CSS `field-sizing: content`（现代浏览器支持）替代 JS 计算。或者用 `ResizeObserver` 代替每次按键的高度重算。
+**验收标准**: (1) 长文本输入无明显卡顿 (2) 自动调高功能保持正常 (3) 不影响现有测试
+**影响范围**: `packages/dashboard/src/components/chat/MessageInput.tsx`
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] ExecutionLog AnsiOutput 对超长输出无虚拟化 — 500K 字符 ANSI 解析可能冻结 UI
+
+**ID**: chat-095
+**优先级**: P2
+**模块路径**: packages/dashboard/src/components/chat/
+**发现的问题**: `ExecutionLog.tsx` 中 `AnsiOutput` 组件（行 41-54）对步骤输出调用 `parseAnsi(text)` 并用 `useMemo` 缓存。`chat-execution.ts:35-43` 中 `appendOutput` 限制了单步输出上限为 500,000 字符（`MAX_OUTPUT_CHARS`）。对 500K 字符的文本进行 ANSI 解析和 DOM 渲染会：(1) `parseAnsi()` 正则解析 500K 文本可能耗时 100ms+ (2) 生成的 DOM 节点数可能达数万个 (3) 滚动性能极差。虽然大多数命令输出远小于此上限，但如 `find /` 或 `journalctl` 等命令确实可能产生大量输出。
+**改进方案**: 对超过阈值（如 50K 字符）的输出只渲染尾部 N 行，顶部显示"输出已截断，共 X 行"的提示。或使用虚拟化文本渲染（如按行虚拟滚动）。
+**验收标准**: (1) 500K 字符输出不冻结 UI (2) 用户可看到最新输出 (3) 显示截断提示
+**影响范围**: `packages/dashboard/src/components/chat/ExecutionLog.tsx`
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Agentic 模式 serverProfile 类型为 unknown — 3 处 `as` 断言无运行时验证
+
+**ID**: chat-096
+**优先级**: P2
+**模块路径**: packages/server/src/ai/
+**发现的问题**: `AgenticRunOptions.serverProfile` (agentic-chat.ts:74) 类型为 `unknown`。在 `agentic-prompts.ts:53` 和 `58` 中通过 `as Parameters<typeof buildProfileContext>[0]` 断言使用，没有运行时类型检查。如果 `profileMgr.getProfile()` 返回了意外结构（例如 profile 版本升级后字段变化），`buildProfileContext` 可能在深层属性访问时抛出 TypeError，而此时已在 `buildFullSystemPrompt` 内部，错误消息不明确。profile 相关的 `as` 断言还出现在 `chat.ts:320` 的 legacy 模式中。
+**改进方案**: 将 `serverProfile` 参数类型改为 `ServerProfile | null`（从 profile manager 导入具体类型），消除 `unknown` 和 `as` 断言。在 `agentic-prompts.ts` 入口做 null check 即可。
+**验收标准**: (1) serverProfile 使用具体类型 (2) 消除 `as` 类型断言 (3) 类型安全无 `any` 逃逸 (4) 编译通过
+**影响范围**: `packages/server/src/ai/agentic-chat.ts`, `packages/server/src/ai/agentic-prompts.ts`
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] apiRequest 无请求超时 — 挂起的网络请求永远阻塞 UI
+
+**ID**: chat-097
+**优先级**: P2
+**模块路径**: packages/dashboard/src/api/
+**发现的问题**: `apiRequest<T>()` (client.ts) 使用原生 `fetch()` 无 `AbortController` 超时设置。当网络异常（如 DNS 解析挂起、服务器不响应）时，请求永远等待。特别影响 Chat 功能中的非 SSE 请求：`respondToStep` (POST /step-decision)、`respondToAgenticConfirm` (POST /confirm)、`deleteSession` (DELETE)、`renameSession` (PATCH) 等操作会因挂起请求导致按钮永远 loading。SSE 连接不受影响（有自己的 AbortController）。
+**改进方案**: 在 `apiRequest` 中添加可选的 `timeout` 参数（默认 30s），使用 `AbortController` + `setTimeout` 实现。超时后抛出特定错误 `ApiTimeoutError`。
+**验收标准**: (1) 请求 30s 超时自动取消 (2) 超时错误消息友好 (3) 支持自定义超时时间 (4) SSE 不受影响
+**影响范围**: `packages/dashboard/src/api/client.ts`
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Agentic 循环错误信息不区分类型 — 用户看到泛化的"执行过程中发生错误"
+
+**ID**: chat-098
+**优先级**: P2
+**模块路径**: packages/server/src/ai/
+**发现的问题**: `AgenticChatEngine.run()` 的 catch 块（agentic-chat.ts:226-239）将所有错误统一包装为 `执行过程中发生错误: ${errorMsg}` 返回给用户。无论是 API 认证失败 (401)、token 超限 (context_length_exceeded)、速率限制 (429)、网络超时还是工具执行内部错误，用户都看到相同的泛化消息。这导致用户无法自助排查：(1) API key 过期需要在设置中更新 (2) 429 需要等待后重试 (3) 上下文超限可能需要新建会话。
+**改进方案**: 在 catch 块中解析错误类型（复用 `request-retry.ts` 的 `classifyError`），根据 `classification.category` 返回具体建议：认证错误 → "请检查 AI Provider API Key 设置"；速率限制 → "请稍后重试"；上下文超限 → "对话过长，建议新建会话"；网络错误 → "网络连接异常，请检查网络"。
+**验收标准**: (1) 不同类型错误显示不同提示 (2) 提示包含可操作建议 (3) 仍然记录详细错误到日志
+**影响范围**: `packages/server/src/ai/agentic-chat.ts`
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] ExecutionSummary duration 是静态快照 — 不显示实时计时器
+
+**ID**: chat-099
+**优先级**: P3
+**模块路径**: packages/dashboard/src/components/chat/
+**发现的问题**: `ExecutionLog.tsx` 中 `ExecutionSummary` 组件（约行 257）的 `totalDuration = startTime ? Date.now() - startTime : 0` 只在组件渲染时计算一次，不是实时更新的。用户在执行过程中看到的耗时数字是静态的（只有在有新渲染触发时才更新，比如收到新的步骤输出）。对于长时间运行的命令（如软件安装 5 分钟），显示的时间不变直到下一次渲染。
+**改进方案**: 在执行期间（`isExecuting=true`）使用 `useEffect` + `setInterval` 每秒更新 duration 显示。执行完成后停止计时器并显示最终时间。
+**验收标准**: (1) 执行中实时显示耗时 (2) 每秒更新一次 (3) 完成后显示最终耗时 (4) 计时器正确清理
+**影响范围**: `packages/dashboard/src/components/chat/ExecutionLog.tsx`
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] 并发 401 响应触发多次 auth:logout 事件 — 可能导致多次路由跳转
+
+**ID**: chat-100
+**优先级**: P3
+**模块路径**: packages/dashboard/src/api/
+**发现的问题**: `apiRequest()` (client.ts:83-88) 在持久化 401 时清除 token 并 dispatch `auth:logout` CustomEvent。如果多个请求同时收到 401（例如 token 过期后页面初始化时并发发出 fetchServers + fetchSessions + fetchNotifications），每个请求都会独立执行 `localStorage.removeItem` 和 `dispatchEvent(new CustomEvent('auth:logout'))`。多个 logout 事件可能导致：(1) React Router `navigate('/login')` 被多次调用 (2) 已清除的 token 被第二个请求再次尝试刷新（浪费请求）。虽然目前没有可观察的 bug，但是资源浪费。
+**改进方案**: 使用模块级 flag 如 `let logoutDispatched = false`，确保只 dispatch 一次 logout 事件。在 `refreshAccessToken` 成功后重置 flag。或者用 `requestIdleCallback` 去重。
+**验收标准**: (1) 并发 401 只触发一次 logout (2) token 刷新成功后恢复正常 (3) 现有测试通过
+**影响范围**: `packages/dashboard/src/api/client.ts`
+**创建时间**: 2026-02-13
+**完成时间**: -
+
 ### [completed] awaitAbort 轮询模式浪费 CPU — 200ms setInterval 未在 Promise.race 解决后清理 ✅
 
 **ID**: chat-066

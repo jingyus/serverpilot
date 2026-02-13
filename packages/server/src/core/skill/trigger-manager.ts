@@ -19,6 +19,10 @@ import {
   type SkillRepository,
 } from '../../db/repositories/skill-repository.js';
 import { loadSkillFromDir } from './loader.js';
+import {
+  checkThresholdTrigger,
+  type ThresholdRegistration,
+} from './trigger-evaluators.js';
 
 import type { WebhookDispatcher, DispatchedEvent } from '../webhook/dispatcher.js';
 import type { SkillManifest, SkillTrigger } from '@aiinstaller/shared';
@@ -52,14 +56,6 @@ interface EventRegistration {
   userId: string;
   eventType: string;
   filter?: Record<string, unknown>;
-}
-
-interface ThresholdRegistration {
-  skillId: string;
-  userId: string;
-  metric: string;
-  operator: string;
-  value: number;
 }
 
 type DebounceKey = string;
@@ -278,41 +274,13 @@ export class TriggerManager {
   private evaluateThresholds(metric: MetricEvent): void {
     for (const [skillId, registrations] of this.thresholdTriggers.entries()) {
       for (const reg of registrations) {
-        const currentValue = this.extractMetricValue(reg.metric, metric);
-        if (currentValue === null) continue;
-
-        if (this.compareValue(currentValue, reg.operator, reg.value)) {
+        if (checkThresholdTrigger(reg, metric)) {
           if (!this.isDebounced(skillId, metric.serverId)) {
             this.recordDebounce(skillId, metric.serverId);
             this.safeExecute(skillId, metric.serverId, reg.userId, 'threshold');
           }
         }
       }
-    }
-  }
-
-  private extractMetricValue(metricName: string, event: MetricEvent): number | null {
-    switch (metricName) {
-      case 'cpu.usage': return event.cpuUsage;
-      case 'memory.usage_percent':
-        return event.memoryTotal > 0 ? (event.memoryUsage / event.memoryTotal) * 100 : null;
-      case 'disk.usage_percent':
-        return event.diskTotal > 0 ? (event.diskUsage / event.diskTotal) * 100 : null;
-      case 'network.rx_bytes': return event.networkIn;
-      case 'network.tx_bytes': return event.networkOut;
-      default: return null;
-    }
-  }
-
-  private compareValue(current: number, operator: string, threshold: number): boolean {
-    switch (operator) {
-      case 'gt': return current > threshold;
-      case 'gte': return current >= threshold;
-      case 'lt': return current < threshold;
-      case 'lte': return current <= threshold;
-      case 'eq': return current === threshold;
-      case 'neq': return current !== threshold;
-      default: return false;
     }
   }
 

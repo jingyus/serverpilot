@@ -12,8 +12,8 @@
 import { randomUUID } from 'node:crypto';
 import { eq, and, desc, count, sql } from 'drizzle-orm';
 
-import { getDatabase } from '../connection.js';
-import { sessions, servers } from '../schema.js';
+import { getDatabase, getRawDatabase } from '../connection.js';
+import { sessions, sessionMessages, servers } from '../schema.js';
 
 import type { DrizzleDB } from '../connection.js';
 import type { SessionMessage, SessionContext } from '../schema.js';

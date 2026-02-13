@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
+import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Bot, MessageSquarePlus, Menu } from 'lucide-react';
+import { Bot, MessageSquarePlus, Menu, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import type { ExportFormat } from '@/utils/chat-export';
 
 export interface ChatHeaderProps {
   serverName: string;
@@ -10,10 +12,33 @@ export interface ChatHeaderProps {
   onNewSession: () => void;
   onToggleSidebar?: () => void;
   hasSessions?: boolean;
+  hasMessages?: boolean;
+  onExport?: (format: ExportFormat) => void;
 }
 
-export function ChatHeader({ serverName, sessionId, onNewSession, onToggleSidebar, hasSessions }: ChatHeaderProps) {
+export function ChatHeader({
+  serverName,
+  sessionId,
+  onNewSession,
+  onToggleSidebar,
+  hasSessions,
+  hasMessages,
+  onExport,
+}: ChatHeaderProps) {
   const { t } = useTranslation();
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showExportMenu) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setShowExportMenu(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showExportMenu]);
 
   return (
     <div
@@ -48,16 +73,59 @@ export function ChatHeader({ serverName, sessionId, onNewSession, onToggleSideba
           </p>
         </div>
       </div>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={onNewSession}
-        data-testid="new-session-btn"
-        className="shrink-0"
-      >
-        <MessageSquarePlus className="h-4 w-4 sm:mr-2" />
-        <span className="hidden sm:inline">{t('chat.newChat')}</span>
-      </Button>
+      <div className="flex items-center gap-2">
+        {hasMessages && onExport && (
+          <div className="relative" ref={menuRef}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowExportMenu((v) => !v)}
+              data-testid="export-chat-btn"
+              aria-label={t('chat.export')}
+              className="shrink-0"
+            >
+              <Download className="h-4 w-4" />
+            </Button>
+            {showExportMenu && (
+              <div
+                className="absolute right-0 top-full z-50 mt-1 min-w-[160px] rounded-md border bg-popover p-1 shadow-md"
+                data-testid="export-menu"
+              >
+                <button
+                  className="flex w-full items-center rounded-sm px-3 py-2 text-sm hover:bg-accent"
+                  onClick={() => {
+                    onExport('markdown');
+                    setShowExportMenu(false);
+                  }}
+                  data-testid="export-markdown-btn"
+                >
+                  {t('chat.exportMarkdown')}
+                </button>
+                <button
+                  className="flex w-full items-center rounded-sm px-3 py-2 text-sm hover:bg-accent"
+                  onClick={() => {
+                    onExport('json');
+                    setShowExportMenu(false);
+                  }}
+                  data-testid="export-json-btn"
+                >
+                  {t('chat.exportJson')}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onNewSession}
+          data-testid="new-session-btn"
+          className="shrink-0"
+        >
+          <MessageSquarePlus className="h-4 w-4 sm:mr-2" />
+          <span className="hidden sm:inline">{t('chat.newChat')}</span>
+        </Button>
+      </div>
     </div>
   );
 }

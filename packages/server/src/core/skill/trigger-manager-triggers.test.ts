@@ -18,6 +18,7 @@ import {
   _resetSkillRepository,
 } from '../../db/repositories/skill-repository.js';
 import { getMetricsBus, _resetMetricsBus, type MetricEvent } from '../metrics/metrics-bus.js';
+import { compareValue } from './trigger-evaluators.js';
 
 import type { SkillManifest } from '@aiinstaller/shared';
 
@@ -382,10 +383,6 @@ describe('TriggerManager threshold triggers', () => {
   });
 
   it('should support all comparison operators', () => {
-    const compareValue = (manager as unknown as {
-      compareValue: (current: number, op: string, threshold: number) => boolean;
-    }).compareValue.bind(manager);
-
     expect(compareValue(95, 'gt', 90)).toBe(true);
     expect(compareValue(90, 'gt', 90)).toBe(false);
     expect(compareValue(90, 'gte', 90)).toBe(true);

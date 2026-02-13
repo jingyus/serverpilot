@@ -27,6 +27,7 @@ import { SessionSidebar } from '@/components/chat/SessionSidebar';
 import { useChatStore, stripJsonPlan } from '@/stores/chat';
 import { useServersStore } from '@/stores/servers';
 import { useNotificationsStore } from '@/stores/notifications';
+import { exportChat, type ExportFormat } from '@/utils/chat-export';
 
 export function Chat() {
   const { t } = useTranslation();
@@ -192,6 +193,20 @@ export function Chat() {
   const serverName =
     servers.find((s) => s.id === serverId)?.name ?? serverId;
 
+  const sessionName = sessions.find((s) => s.id === sessionId)?.name;
+
+  const handleExport = useCallback(
+    (format: ExportFormat) => {
+      exportChat({
+        messages,
+        sessionName: sessionName ?? undefined,
+        serverName,
+        format,
+      });
+    },
+    [messages, sessionName, serverName],
+  );
+
   return (
     <div
       className="flex h-[calc(100vh-3.5rem)] flex-col sm:h-[calc(100vh-4rem)]"
@@ -204,6 +219,8 @@ export function Chat() {
         onNewSession={newSession}
         onToggleSidebar={() => setMobileSidebarOpen((v) => !v)}
         hasSessions={sessions.length > 0}
+        hasMessages={messages.length > 0}
+        onExport={handleExport}
       />
 
       {/* Error */}

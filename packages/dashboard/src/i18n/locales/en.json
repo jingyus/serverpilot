@@ -200,7 +200,10 @@
       "yesterday": "Yesterday",
       "thisWeek": "This Week",
       "older": "Older"
-    }
+    },
+    "export": "Export chat",
+    "exportMarkdown": "Export as Markdown",
+    "exportJson": "Export as JSON"
   },
   "search": {
     "title": "Knowledge Base",

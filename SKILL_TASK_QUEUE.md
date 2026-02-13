@@ -3,14 +3,14 @@
 > 此队列专注于 Skill 插件系统的设计与实现
 > AI 自动扫描 → 发现缺失 → 设计实现 → 验证
 
-**最后更新**: 2026-02-13 12:30:37
+**最后更新**: 2026-02-13 12:35:04
 
 ## 📊 统计
 
 - **总任务数**: 77
-- **待完成** (pending): 9
+- **待完成** (pending): 8
 - **进行中** (in_progress): 0
-- **已完成** (completed): 68
+- **已完成** (completed): 69
 - **失败** (failed): 0
 
 ## 📋 任务列表
@@ -39,7 +39,7 @@
 
 ---
 
-### [pending] trigger-manager.ts 拆分 — 从 530 行降至 ≤500 行
+### [completed] trigger-manager.ts 拆分 — 从 530 行降至 ≤500 行 ✅
 
 **ID**: skill-099
 **优先级**: P0
@@ -56,7 +56,7 @@
 - 新文件有对应单元测试 trigger-evaluators.test.ts (≥5 个测试)
 **影响范围**: packages/server/src/core/skill/trigger-manager.ts (拆分), 新建 trigger-evaluators.ts, trigger-evaluators.test.ts
 **创建时间**: 2026-02-13
-**完成时间**: -
+**完成时间**: 2026-02-13 12:35:04
 
 ---
 
