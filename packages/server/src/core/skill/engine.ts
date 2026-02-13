@@ -70,6 +70,8 @@ export class SkillEngine {
   private triggerManager: TriggerManager | null = null;
   private confirmationCleanupTimer: NodeJS.Timeout | null = null;
   private confirmationManager: SkillConfirmationManager;
+  /** Map of running execution IDs to their AbortControllers for cancellation support. */
+  private runningExecutions = new Map<string, AbortController>();
 
   constructor(projectRoot: string, repo?: SkillRepository) {
     this.projectRoot = resolve(projectRoot);

@@ -53,7 +53,7 @@ Rules:
 /** Result of a single skill run. */
 export interface SkillRunResult {
   success: boolean;
-  status: 'success' | 'failed' | 'timeout' | 'rejected';
+  status: 'success' | 'failed' | 'timeout' | 'rejected' | 'cancelled';
   stepsExecuted: number;
   duration: number;
   output: string;
@@ -81,6 +81,8 @@ export interface RunnerParams {
   userId: string;
   executionId: string;
   config?: Record<string, unknown>;
+  /** External abort signal for cancellation support. */
+  signal?: AbortSignal;
 }
 
 // Re-export for convenience
@@ -131,13 +133,28 @@ export class SkillRunner {
     let stepsExecuted = 0;
     let output = '';
     let timedOut = false;
+    let cancelled = false;
 
     // Global timeout via AbortController
-    const abortController = new AbortController();
+    const timeoutController = new AbortController();
     const timeoutHandle = setTimeout(() => {
-      abortController.abort();
+      timeoutController.abort();
       timedOut = true;
     }, timeoutMs);
+
+    // Merge external signal (cancellation) with timeout signal
+    const externalSignal = params.signal;
+    const mergedSignal = externalSignal
+      ? AbortSignal.any([timeoutController.signal, externalSignal])
+      : timeoutController.signal;
+
+    // Listen for external cancellation
+    if (externalSignal) {
+      const onExternalAbort = () => {
+        if (!timedOut) cancelled = true;
+      };
+      externalSignal.addEventListener('abort', onExternalAbort, { once: true });
+    }
 
     try {
       // Build initial messages
@@ -148,9 +165,9 @@ export class SkillRunner {
       ];
 
       // Agentic loop
-      while (stepsExecuted < maxSteps && !timedOut) {
-        if (abortController.signal.aborted) {
-          timedOut = true;
+      while (stepsExecuted < maxSteps && !timedOut && !cancelled) {
+        if (mergedSignal.aborted) {
+          if (!timedOut) cancelled = true;
           break;
         }
 
@@ -184,8 +201,8 @@ export class SkillRunner {
         const toolResultMessages: string[] = [];
 
         for (const toolCall of response.toolCalls) {
-          if (abortController.signal.aborted) {
-            timedOut = true;
+          if (mergedSignal.aborted) {
+            if (!timedOut) cancelled = true;
             break;
           }
 
@@ -255,7 +272,7 @@ export class SkillRunner {
           );
         }
 
-        if (timedOut) break;
+        if (timedOut || cancelled) break;
 
         // Add tool results back to conversation
         messages.push({
@@ -279,6 +296,25 @@ export class SkillRunner {
     const parsedOutputs = declaredOutputs.length > 0
       ? parseSkillOutputs(output, declaredOutputs)
       : undefined;
+
+    if (cancelled) {
+      bus.publish(executionId, {
+        type: 'error',
+        executionId,
+        timestamp: new Date().toISOString(),
+        message: 'Execution cancelled by user',
+      });
+      return {
+        success: false,
+        status: 'cancelled',
+        stepsExecuted,
+        duration,
+        output: output || 'Execution cancelled',
+        errors: [...errors, 'Execution cancelled by user'],
+        toolResults,
+        parsedOutputs,
+      };
+    }
 
     if (timedOut) {
       bus.publish(executionId, {

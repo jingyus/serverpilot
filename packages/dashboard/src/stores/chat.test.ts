@@ -332,6 +332,13 @@ describe('useChatStore', () => {
       useChatStore.getState().clearError();
       expect(useChatStore.getState().error).toBeNull();
     });
+
+    it('resets isReconnecting when clearing error', () => {
+      useChatStore.setState({ error: 'connection lost', isReconnecting: true });
+      useChatStore.getState().clearError();
+      expect(useChatStore.getState().error).toBeNull();
+      expect(useChatStore.getState().isReconnecting).toBe(false);
+    });
   });
 
   describe('confirmPlan', () => {

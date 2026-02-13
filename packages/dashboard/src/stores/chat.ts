@@ -178,5 +178,5 @@ export const useChatStore = create<ChatState>((set, get) => ({
     });
   },
 
-  clearError: () => set({ error: null }),
+  clearError: () => set({ error: null, isReconnecting: false }),
 }));
