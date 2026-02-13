@@ -9,10 +9,10 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { eq, and, desc, lt, not, inArray, count as drizzleCount } from 'drizzle-orm';
+import { eq, and, desc, lt, inArray, count as drizzleCount } from 'drizzle-orm';
 
 import { getDatabase } from '../connection.js';
-import { installedSkills, skillExecutions, skillStore, skillExecutionLogs } from '../schema.js';
+import { installedSkills, skillExecutions, skillExecutionLogs } from '../schema.js';
 import { computeStats } from './skill-repository-stats.js';
 
 import type { DrizzleDB } from '../connection.js';
