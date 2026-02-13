@@ -1,25 +1,25 @@
-### [pending] SessionSidebar 无会话重命名功能 — 只能依赖 lastMessage 预览识别会话
+### [pending] 后端 session API 无重命名端点 — 缺少 PATCH /sessions/:id 支持前端会话重命名
 
-**ID**: chat-074
+**ID**: chat-075
 **优先级**: P2
-**模块路径**: packages/dashboard/src/components/chat/
-**发现的问题**: `SessionSidebar.tsx:112-113` 显示 `session.lastMessage ?? t('chat.newSession')` 作为会话标题。用户无法重命名会话，只能通过最后一条消息的截断预览区分不同会话。当多个会话讨论类似主题时（如"安装 nginx"和"配置 nginx"），预览文本几乎相同，难以区分。对比 ChatGPT/Claude.ai 都支持会话重命名（双击标题或编辑图标）。`SessionItem` 接口（行 9-14）也无 `title` 字段。
+**模块路径**: packages/server/src/api/routes/
+**发现的问题**: `chat.ts:511-560` 定义了 sessions 的 GET（列表）、GET（详情）、DELETE 端点，但缺少 PATCH/PUT 端点用于更新会话元数据（标题/名称）。`SessionManager` 和底层 `SessionRepository` 也无 `updateSession` 或 `renameSession` 方法。sessions 数据库表（`chat_sessions`）是否有 `title` 列需确认。此为前端会话重命名功能（chat-074）的后端依赖。
 **改进方案**:
-1. 给 `SessionItem` 接口添加 `title?: string` 字段
-2. 在 session 项添加"编辑"图标按钮（与删除按钮并列，hover 时显示）
-3. 点击后切换为内联编辑模式（input 替换 p 标签）
-4. Enter 确认，Escape 取消
-5. 调用 `PATCH /chat/:serverId/sessions/:sessionId` API 更新标题
+1. 数据库层：确认 `chat_sessions` 表有 `title` 列，如无则添加 migration
+2. `SessionRepository` 添加 `updateTitle(sessionId, userId, title)` 方法
+3. `SessionManager` 添加 `renameSession(sessionId, userId, title)` 方法
+4. 添加 `PATCH /chat/:serverId/sessions/:sessionId` 路由，body: `{ title: string }`
+5. Zod schema 验证 title 长度（1-100 字符）
 **验收标准**:
-- 会话项 hover 显示编辑图标
-- 点击进入内联编辑模式
-- Enter 保存，Escape 取消
-- 保存后标题持久化（刷新后仍显示）
-- data-testid + 测试覆盖
+- PATCH 端点正常工作，返回 `{ success: true }`
+- 标题持久化到数据库
+- 权限检查：只能重命名自己的会话
+- listSessions 返回值包含 title 字段
+- 路由测试覆盖
 **影响范围**:
-- `packages/dashboard/src/components/chat/SessionSidebar.tsx` — 编辑 UI
-- `packages/dashboard/src/stores/chat-sessions.ts` — renameSession action
-- `packages/dashboard/src/components/chat/SessionSidebar.test.tsx` — 新增测试
+- `packages/server/src/api/routes/chat.ts` — 新增 PATCH 路由
+- `packages/server/src/core/session/manager.ts` — 新增 renameSession
+- `packages/server/tests/api/routes/chat.test.ts` — 新增测试
 **创建时间**: 2026-02-13
 **完成时间**: -
 

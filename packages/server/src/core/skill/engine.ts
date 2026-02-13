@@ -37,6 +37,12 @@ import {
 } from './engine-queries.js';
 import { buildServerVars, buildSkillVars } from './engine-template-vars.js';
 import { startCleanupTimers, cleanupOldExecutions, EXECUTION_RETENTION_DAYS } from './engine-cleanup.js';
+import {
+  healthCheck as runHealthCheck,
+  healthCheckAndAutoRepair,
+  startHealthCheckTimer,
+  type HealthReport,
+} from './engine-health.js';
 import type { SkillManifest } from '@aiinstaller/shared';
 import type { SkillStatus } from '../../db/schema.js';
 import type {
@@ -74,6 +80,7 @@ export class SkillEngine {
   private running = false;
   private triggerManager: TriggerManager | null = null;
   private cleanupDispose: (() => void) | null = null;
+  private healthDispose: (() => void) | null = null;
   private confirmationManager: SkillConfirmationManager;
   /** Map of running execution IDs to their AbortControllers for cancellation support. */
   private runningExecutions = new Map<string, AbortController>();
@@ -113,6 +120,10 @@ export class SkillEngine {
     );
     this.cleanupDispose = cleanup.dispose;
 
+    // Periodic health check (every 6 hours)
+    const health = startHealthCheckTimer(this.repo);
+    this.healthDispose = health.dispose;
+
     logger.info('SkillEngine started');
   }
 
@@ -124,6 +135,11 @@ export class SkillEngine {
     if (this.cleanupDispose) {
       this.cleanupDispose();
       this.cleanupDispose = null;
+    }
+
+    if (this.healthDispose) {
+      this.healthDispose();
+      this.healthDispose = null;
     }
 
     if (this.triggerManager) {
@@ -572,6 +588,11 @@ export class SkillEngine {
   /** Delete execution records older than the retention period (90 days). */
   async cleanupOldExecutions(): Promise<number> {
     return cleanupOldExecutions(this.repo);
+  }
+
+  /** Run health check on all installed skills. Broken skills are auto-marked as error. */
+  async healthCheck(): Promise<HealthReport> {
+    return healthCheckAndAutoRepair(this.repo);
   }
 
   async confirmExecution(executionId: string, userId: string): Promise<SkillExecutionResult> {
