@@ -1,20 +1,23 @@
-### [pending] buildHistoryWithLimit 截断无通知 — AI 不知道早期上下文被移除导致幻觉
+### [pending] chat 路由并发请求同 session 无互斥 — 消息顺序错乱和重复 AI 处理
 
-**ID**: chat-072
+**ID**: chat-073
 **优先级**: P1
-**模块路径**: packages/server/src/core/session/
-**发现的问题**: `manager.ts:389-434` 的 `buildHistoryWithLimit` 在 token 超预算时从最旧消息开始丢弃（行 421-431），但与 `buildContextWithLimit`（行 364-374，添加了 `[Earlier conversation summarized]` 标记）和 `trimMessagesIfNeeded`（行 75-89，注入了 context-loss notice）不同，此方法**不注入任何截断通知**。Agentic 引擎使用此方法构建对话历史（`chat.ts:178`），AI 模型收到的历史看起来像是完整的——但实际上丢失了早期的工具调用结果和文件内容。这会导致 AI 重复执行已完成的命令或引用不存在的上下文。
+**模块路径**: packages/server/src/api/routes/
+**发现的问题**: `chat.ts:112-364` POST `/:serverId` 路由无任何并发控制。当两个请求携带相同 `sessionId` 同时到达时：(1) 两者都调用 `getOrCreate`（行 153）获得同一 session；(2) 两者都调用 `addMessage`（行 156）添加 user 消息——消息顺序取决于 event loop 调度；(3) 两者都启动 AI 处理（行 180 或 290）——AI 收到两个不同用户消息的上下文；(4) 两者都写回 assistant 消息（行 203 或 309）——对话历史变为 user-user-assistant-assistant 交错。前端虽有重入保护（chat-010 已修复），但网络延迟或浏览器多 tab 场景仍可能触发。
 **改进方案**:
-1. 当历史被截断时（`selected.length < eligible.length`），在返回数组的第一条消息前插入一条 system-like user 消息
-2. 通知内容：`[System: Earlier conversation context was truncated. {N} messages removed. If you need information from earlier steps, re-read the relevant files.]`
-3. 保持与 `trimMessagesIfNeeded` 的通知格式一致
+1. 添加 per-session 锁机制：`sessionLocks: Map<sessionId, Promise<void>>`
+2. 每个 chat 请求先 await 当前 session 的锁 Promise，然后设置新锁
+3. 锁在 SSE 流完成（finally 块）后释放
+4. 实现为简单的串行队列：后到的请求等前一个完成后再处理
+5. 添加超时保护（30s），避免死锁
 **验收标准**:
-- 历史截断时 AI 收到的消息数组首条包含截断通知
-- 未截断时不插入任何通知
-- 现有 session manager 测试通过 + 新增截断通知测试
+- 同一 session 的 chat 请求串行处理
+- 不同 session 的请求不受影响（并行）
+- 锁超时后自动释放（不死锁）
+- 现有 chat route 测试通过 + 新增并发测试
 **影响范围**:
-- `packages/server/src/core/session/manager.ts` — `buildHistoryWithLimit` 方法
-- `packages/server/tests/core/session/manager.test.ts` — 新增测试
+- `packages/server/src/api/routes/chat.ts` — 添加 session 锁
+- `packages/server/tests/api/routes/chat.test.ts` — 新增并发测试
 **创建时间**: 2026-02-13
 **完成时间**: -
 
