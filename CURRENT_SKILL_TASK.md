@@ -1,23 +1,21 @@
-### [pending] engine-cleanup.ts 单元测试 — 补齐清理逻辑测试覆盖
+### [pending] engine-template-vars.ts 单元测试 — 补齐模板变量测试覆盖
 
-**ID**: skill-101
+**ID**: skill-102
 **优先级**: P1
 **模块路径**: packages/server/src/core/skill/
-**当前状态**: `engine-cleanup.ts` (75 行) 包含 `cleanupOldExecutions()` 和 `startCleanupTimers()` 两个函数，但没有对应的测试文件。清理逻辑的边界条件 (空记录、大批量删除、定时器启停) 未被验证。
+**当前状态**: `engine-template-vars.ts` (88 行) 包含 `buildServerVars()` 和 `buildSkillVars()` 两个函数，但没有对应的测试文件。模板变量构建涉及 server profile 解析和执行历史查询，边界条件较多。
 **实现方案**: 
-1. 创建 `engine-cleanup.test.ts`
+1. 创建 `engine-template-vars.test.ts`
 2. 测试用例:
-   - `cleanupOldExecutions()`: 删除过期记录、保留未过期记录、空表返回 0
-   - `startCleanupTimers()`: 定时器启动后调用 cleanup、dispose 后不再调用
-   - `EXECUTION_RETENTION_DAYS` 常量正确性
-   - 初始 fire-and-forget cleanup 执行
-3. 使用 `vi.useFakeTimers()` 测试定时器行为
-4. Mock `SkillRepository.deleteExecutionsBefore()` 和 `expirePendingConfirmations`
+   - `buildServerVars()`: 正常服务器、不存在的服务器、profile 不可用、osInfo 缺失
+   - `buildSkillVars()`: 有历史记录、无历史记录、result 为 object vs string
+   - 异常处理: 仓库抛错时返回默认值
+3. Mock `getServerRepository()` 和 `SkillRepository`
 **验收标准**: 
 - ≥8 个测试用例覆盖所有分支
 - 所有测试通过
-- 不依赖外部状态 (纯 mock)
-**影响范围**: 新建 packages/server/src/core/skill/engine-cleanup.test.ts
+- 验证默认值 fallback 逻辑
+**影响范围**: 新建 packages/server/src/core/skill/engine-template-vars.test.ts
 **创建时间**: 2026-02-13
 **完成时间**: -
 
