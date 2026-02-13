@@ -38,10 +38,50 @@ interface ExecutionLogProps {
   cancelled?: boolean;
 }
 
+/**
+ * Maximum characters to parse and render as ANSI.
+ * Output longer than this is tail-truncated so the DOM stays responsive.
+ */
+const RENDER_CHAR_LIMIT = 50_000;
+
+function countLines(text: string): number {
+  let count = 1;
+  for (let i = 0; i < text.length; i++) {
+    if (text.charCodeAt(i) === 10) count++;
+  }
+  return count;
+}
+
+function TruncationBanner({ totalLines, shownLines }: { totalLines: number; shownLines: number }) {
+  const hiddenLines = totalLines - shownLines;
+  return (
+    <div
+      className="mb-1 rounded bg-yellow-900/60 px-2 py-1 text-[10px] text-yellow-300"
+      data-testid="output-truncation-banner"
+    >
+      Output truncated — showing last {shownLines.toLocaleString()} of {totalLines.toLocaleString()} lines ({hiddenLines.toLocaleString()} lines hidden)
+    </div>
+  );
+}
+
 function AnsiOutput({ text }: { text: string }) {
-  const segments = useMemo(() => parseAnsi(text), [text]);
+  const { segments, totalLines, shownLines, isTruncated } = useMemo(() => {
+    if (text.length <= RENDER_CHAR_LIMIT) {
+      return { segments: parseAnsi(text), totalLines: 0, shownLines: 0, isTruncated: false };
+    }
+    const total = countLines(text);
+    // Find the start of a line boundary within the tail portion
+    const sliceStart = text.length - RENDER_CHAR_LIMIT;
+    const nextNewline = text.indexOf('\n', sliceStart);
+    const renderStart = nextNewline !== -1 && nextNewline < text.length - 1 ? nextNewline + 1 : sliceStart;
+    const tail = text.slice(renderStart);
+    const shown = countLines(tail);
+    return { segments: parseAnsi(tail), totalLines: total, shownLines: shown, isTruncated: true };
+  }, [text]);
+
   return (
     <>
+      {isTruncated && <TruncationBanner totalLines={totalLines} shownLines={shownLines} />}
       {segments.map((seg, i) =>
         seg.className ? (
           <span key={i} className={seg.className}>{seg.text}</span>

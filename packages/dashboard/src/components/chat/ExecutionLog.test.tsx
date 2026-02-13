@@ -446,4 +446,120 @@ describe('ExecutionLog', () => {
       });
     });
   });
+
+  describe('large output truncation', () => {
+    // RENDER_CHAR_LIMIT is 50_000
+    function makeLargeOutput(lineCount: number, charsPerLine: number): string {
+      const line = 'x'.repeat(charsPerLine);
+      return Array.from({ length: lineCount }, (_, i) => `${i + 1}: ${line}`).join('\n');
+    }
+
+    it('does not truncate output under 50K chars', () => {
+      const smallOutput = 'line1\nline2\nline3';
+      render(
+        <ExecutionLog
+          {...defaultProps}
+          activeStepId="step-1"
+          outputs={{ 'step-1': smallOutput }}
+        />
+      );
+      expect(screen.queryByTestId('output-truncation-banner')).not.toBeInTheDocument();
+      expect(screen.getByTestId('exec-output-step-1')).toHaveTextContent('line1');
+    });
+
+    it('shows truncation banner for output over 50K chars', () => {
+      // ~60K chars: 1000 lines × ~60 chars each
+      const largeOutput = makeLargeOutput(1000, 55);
+      expect(largeOutput.length).toBeGreaterThan(50_000);
+
+      render(
+        <ExecutionLog
+          {...defaultProps}
+          activeStepId="step-1"
+          outputs={{ 'step-1': largeOutput }}
+        />
+      );
+      expect(screen.getByTestId('output-truncation-banner')).toBeInTheDocument();
+    });
+
+    it('truncation banner shows line counts', () => {
+      const largeOutput = makeLargeOutput(1000, 55);
+      render(
+        <ExecutionLog
+          {...defaultProps}
+          activeStepId="step-1"
+          outputs={{ 'step-1': largeOutput }}
+        />
+      );
+      const banner = screen.getByTestId('output-truncation-banner');
+      expect(banner.textContent).toMatch(/showing last [\d,]+ of 1,000 lines/);
+      expect(banner.textContent).toMatch(/\d+ lines hidden/);
+    });
+
+    it('renders only the tail portion of large output', () => {
+      // Build output where each line is identifiable
+      const lines: string[] = [];
+      for (let i = 1; i <= 2000; i++) {
+        lines.push(`LINE_${i}_${'x'.repeat(30)}`);
+      }
+      const largeOutput = lines.join('\n');
+      expect(largeOutput.length).toBeGreaterThan(50_000);
+
+      render(
+        <ExecutionLog
+          {...defaultProps}
+          activeStepId="step-1"
+          outputs={{ 'step-1': largeOutput }}
+        />
+      );
+      const outputEl = screen.getByTestId('exec-output-step-1');
+      // Last line should be visible
+      expect(outputEl.textContent).toContain('LINE_2000_');
+      // First line should not be rendered (it's truncated)
+      expect(outputEl.textContent).not.toContain('LINE_1_x');
+    });
+
+    it('preserves ANSI coloring in truncated tail', () => {
+      // Build large output where the tail has ANSI colors
+      const padding = 'x'.repeat(55_000) + '\n';
+      const coloredTail = '\x1b[31mERROR: something failed\x1b[0m';
+      const largeOutput = padding + coloredTail;
+
+      render(
+        <ExecutionLog
+          {...defaultProps}
+          activeStepId="step-1"
+          outputs={{ 'step-1': largeOutput }}
+        />
+      );
+      const outputEl = screen.getByTestId('exec-output-step-1');
+      expect(outputEl.textContent).toContain('ERROR: something failed');
+      const span = outputEl.querySelector('span.text-red-500');
+      expect(span).toBeInTheDocument();
+    });
+
+    it('does not show banner at exactly 50K chars', () => {
+      const exactOutput = 'a'.repeat(50_000);
+      render(
+        <ExecutionLog
+          {...defaultProps}
+          activeStepId="step-1"
+          outputs={{ 'step-1': exactOutput }}
+        />
+      );
+      expect(screen.queryByTestId('output-truncation-banner')).not.toBeInTheDocument();
+    });
+
+    it('shows banner at 50K + 1 chars', () => {
+      const overOutput = 'a\n'.repeat(25_001); // 75_003 chars
+      render(
+        <ExecutionLog
+          {...defaultProps}
+          activeStepId="step-1"
+          outputs={{ 'step-1': overOutput }}
+        />
+      );
+      expect(screen.getByTestId('output-truncation-banner')).toBeInTheDocument();
+    });
+  });
 });

@@ -9,6 +9,7 @@ import {
   ListChecks,
   History,
   Bell,
+  Inbox,
   Shield,
   Settings,
   LogOut,
@@ -23,6 +24,10 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth';
 import { useUiStore } from '@/stores/ui';
+import {
+  useNotificationHistoryStore,
+  getUnreadCount,
+} from '@/stores/notification-history';
 import { cn } from '@/lib/utils';
 import { APP_NAME } from '@/utils/constants';
 import { useIsMobile } from '@/hooks/useMediaQuery';
@@ -41,6 +46,7 @@ const navItems: NavItem[] = [
   { to: '/tasks', labelKey: 'nav.tasks', icon: ListChecks },
   { to: '/operations', labelKey: 'nav.operations', icon: History },
   { to: '/alerts', labelKey: 'nav.alerts', icon: Bell },
+  { to: '/notifications', labelKey: 'nav.notifications', icon: Inbox },
   { to: '/audit-log', labelKey: 'nav.auditLog', icon: Shield },
   { to: '/webhooks', labelKey: 'nav.webhooks', icon: Webhook },
   { to: '/skills', labelKey: 'nav.skills', icon: Puzzle },
@@ -55,6 +61,7 @@ export function Sidebar() {
   const collapsed = useUiStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useUiStore((s) => s.toggleSidebar);
   const setMobileSidebarOpen = useUiStore((s) => s.setMobileSidebarOpen);
+  const notifUnread = useNotificationHistoryStore(getUnreadCount);
   const isMobile = useIsMobile();
 
   // On mobile, sidebar is always expanded (shown as overlay)
@@ -108,25 +115,48 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 space-y-1 px-2 py-4" aria-label="Main navigation">
-        {navItems.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            title={isCollapsed ? t(item.labelKey) : undefined}
-            className={({ isActive }) =>
-              cn(
-                'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-                isActive
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-                isCollapsed && 'justify-center px-2',
-              )
-            }
-          >
-            <item.icon className="h-5 w-5 shrink-0" />
-            {!isCollapsed && <span>{t(item.labelKey)}</span>}
-          </NavLink>
-        ))}
+        {navItems.map((item) => {
+          const isNotif = item.to === '/notifications';
+          const badge = isNotif && notifUnread > 0 ? notifUnread : 0;
+          return (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              title={isCollapsed ? t(item.labelKey) : undefined}
+              className={({ isActive }) =>
+                cn(
+                  'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                  isActive
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                  isCollapsed && 'justify-center px-2',
+                )
+              }
+            >
+              <div className="relative shrink-0">
+                <item.icon className="h-5 w-5" />
+                {badge > 0 && isCollapsed && (
+                  <span className="absolute -right-1 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-destructive px-0.5 text-[9px] font-bold text-destructive-foreground">
+                    {badge > 9 ? '9+' : badge}
+                  </span>
+                )}
+              </div>
+              {!isCollapsed && (
+                <>
+                  <span className="flex-1">{t(item.labelKey)}</span>
+                  {badge > 0 && (
+                    <span
+                      data-testid="notif-badge"
+                      className="flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground"
+                    >
+                      {badge > 99 ? '99+' : badge}
+                    </span>
+                  )}
+                </>
+              )}
+            </NavLink>
+          );
+        })}
       </nav>
 
       {/* Logout */}

@@ -26,6 +26,7 @@
     "tasks": "定时任务",
     "operations": "操作记录",
     "alerts": "告警",
+    "notifications": "通知",
     "auditLog": "审计日志",
     "webhooks": "Webhooks",
     "skills": "技能",
@@ -650,6 +651,19 @@
     "step3Title": "开始对话",
     "step3Desc": "与 AI 助手对话，安装软件、配置服务或排查问题。",
     "step3Action": "开始聊天"
+  },
+  "notifications": {
+    "title": "通知",
+    "description": "查看来自告警和 Webhook 的通知历史。",
+    "markAllRead": "全部已读",
+    "all": "全部",
+    "category": {
+      "alert": "告警",
+      "webhook": "Webhooks",
+      "system": "系统"
+    },
+    "noNotifications": "暂无通知",
+    "noNotificationsDesc": "一切正常。来自告警和 Webhook 的通知将在此显示。"
   },
   "notFound": {
     "title": "页面未找到",

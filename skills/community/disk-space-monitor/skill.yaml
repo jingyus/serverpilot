@@ -1,0 +1,160 @@
+kind: skill
+version: "1.0"
+
+metadata:
+  name: disk-space-monitor
+  displayName: "磁盘空间监控"
+  description: "实时监控磁盘使用率，超过阈值自动告警，识别大文件和快速增长的目录"
+  version: "1.0.0"
+  author: "community"
+  tags: [monitoring, disk, storage]
+
+triggers:
+  - type: threshold
+    metric: disk.usage_percent
+    operator: gte
+    value: 85
+  - type: cron
+    schedule: "0 */6 * * *"    # 每 6 小时检查一次
+  - type: manual
+
+tools:
+  - shell
+  - notify
+  - store
+
+inputs:
+  - name: warning_threshold
+    type: number
+    required: false
+    default: 80
+    description: "磁盘使用率警告阈值 (%)"
+
+  - name: critical_threshold
+    type: number
+    required: false
+    default: 90
+    description: "磁盘使用率严重告警阈值 (%)"
+
+  - name: top_n_files
+    type: number
+    required: false
+    default: 10
+    description: "列出最大的 N 个文件"
+
+  - name: monitor_paths
+    type: string[]
+    required: false
+    default: ["/"]
+    description: "要监控的挂载点路径列表"
+
+  - name: ignore_filesystems
+    type: string[]
+    required: false
+    default: ["tmpfs", "devtmpfs", "squashfs"]
+    description: "忽略的文件系统类型"
+
+constraints:
+  risk_level_max: green          # 只需要读取权限
+  timeout: "3m"
+  max_steps: 15
+  requires_confirmation: false
+  server_scope: single
+
+requires:
+  os: [linux, darwin]
+
+prompt: |
+  ## 角色
+  你是一个存储监控专家，负责检查服务器磁盘空间使用情况，预防磁盘满导致的服务中断。
+
+  ## 目标
+  检查服务器 {{server.name}} ({{server.os}}) 的磁盘使用情况，识别空间不足风险并及时告警。
+
+  ## 环境信息
+  - 服务器: {{server.name}} ({{server.os}})
+  - IP: {{server.ip}}
+  - 警告阈值: {{input.warning_threshold}}%
+  - 严重阈值: {{input.critical_threshold}}%
+  - 监控路径: {{input.monitor_paths}}
+  - 忽略文件系统: {{input.ignore_filesystems}}
+  - 上次检查: {{skill.last_run}}
+  - 上次结果: {{skill.last_result}}
+
+  ## 执行指南
+
+  ### 1. 收集磁盘使用概况
+  - 运行 `df -h` 获取所有挂载点使用情况
+  - 过滤掉 {{input.ignore_filesystems}} 类型的文件系统
+  - 记录每个分区的总容量、已用空间、可用空间、使用百分比
+
+  ### 2. 判断告警级别
+  对每个监控路径 ({{input.monitor_paths}}):
+  - 使用率 >= {{input.critical_threshold}}% → severity: critical
+  - 使用率 >= {{input.warning_threshold}}% → severity: warning
+  - 使用率 < {{input.warning_threshold}}% → severity: info
+  - 整体 severity 取最高级别
+
+  ### 3. 识别大文件（当有分区超过警告阈值时）
+  - 在使用率超标的分区上运行 `du` 查找最大的 {{input.top_n_files}} 个文件/目录
+  - 使用 `find <path> -type f -size +100M` 寻找大文件（仅搜索前几层目录，避免耗时过长）
+  - 检查常见的空间消耗源: 日志文件 (/var/log)、临时文件 (/tmp)、包缓存
+
+  ### 4. 增长趋势分析（如有历史数据）
+  - 对比 {{skill.last_result}} 中的数据，计算空间增长速率
+  - 如果增长速率异常（每天增长 > 5%），额外标注
+
+  ### 5. 清理建议
+  - 针对发现的大文件或快速增长的目录，给出安全的清理建议
+  - 常见建议: 清理日志轮转、删除临时文件、清理包管理器缓存
+  - 注意: 只给建议，不要执行任何清理操作
+
+  ### 6. 通知与存储
+  - 如果 severity >= warning，使用 notify 发送告警
+  - 使用 store 保存本次检查数据，供下次对比
+
+  ## 注意事项
+  - 只使用只读命令 (df, du, find, ls)，绝不修改或删除任何文件
+  - du 命令限制深度 (--max-depth=2) 和超时，避免扫描耗时过长
+  - 如果某个路径不存在或无权限，跳过并记录 warning
+  - macOS 上 df/du 参数可能不同，根据 {{server.os}} 自适应
+
+  ## 输出要求
+  以 JSON 格式输出:
+  ```json
+  {
+    "severity": "info | warning | critical",
+    "summary": "一句话总结磁盘使用状况",
+    "partitions": [
+      {
+        "mount_point": "/",
+        "filesystem": "ext4",
+        "total_gb": 100,
+        "used_gb": 72,
+        "available_gb": 28,
+        "usage_percent": 72,
+        "status": "ok | warning | critical"
+      }
+    ],
+    "large_files": [
+      {
+        "path": "/var/log/syslog.1",
+        "size_mb": 512,
+        "recommendation": "可安全轮转清理"
+      }
+    ],
+    "growth_rate": "每日增长约 1.2 GB",
+    "recommendations": ["清理 /var/log 下超过 30 天的日志"]
+  }
+  ```
+
+outputs:
+  - name: severity
+    type: string
+    description: "最高告警级别: info | warning | critical"
+  - name: report
+    type: object
+    description: "完整的磁盘使用报告"
+  - name: usage_percent
+    type: number
+    description: "根分区使用百分比"

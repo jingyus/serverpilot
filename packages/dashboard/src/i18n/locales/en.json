@@ -26,6 +26,7 @@
     "tasks": "Tasks",
     "operations": "Operations",
     "alerts": "Alerts",
+    "notifications": "Notifications",
     "auditLog": "Audit Log",
     "webhooks": "Webhooks",
     "skills": "Skills",
@@ -650,6 +651,19 @@
     "step3Title": "Start a Conversation",
     "step3Desc": "Chat with the AI assistant to install software, configure services, or troubleshoot issues.",
     "step3Action": "Start Chat"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "description": "View your notification history from alerts and webhook deliveries.",
+    "markAllRead": "Mark all read",
+    "all": "All",
+    "category": {
+      "alert": "Alerts",
+      "webhook": "Webhooks",
+      "system": "System"
+    },
+    "noNotifications": "No notifications",
+    "noNotificationsDesc": "You're all caught up. Notifications from alerts and webhooks will appear here."
   },
   "notFound": {
     "title": "Page Not Found",
