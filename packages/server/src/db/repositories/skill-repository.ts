@@ -66,6 +66,8 @@ export interface UpdateManifestInput {
 
 export interface SkillRepository {
   findAll(userId: string): Promise<InstalledSkill[]>;
+  /** Return all installed skills across all users (for health checks). */
+  findAllSkills(): Promise<InstalledSkill[]>;
   findAllEnabled(): Promise<InstalledSkill[]>;
   findById(id: string): Promise<InstalledSkill | null>;
   findByName(userId: string, name: string): Promise<InstalledSkill | null>;
@@ -113,6 +115,15 @@ export class DrizzleSkillRepository implements SkillRepository {
       .select()
       .from(installedSkills)
       .where(eq(installedSkills.userId, userId))
+      .orderBy(desc(installedSkills.createdAt))
+      .all();
+    return rows.map((r) => this.toInstalledSkill(r));
+  }
+
+  async findAllSkills(): Promise<InstalledSkill[]> {
+    const rows = this.db
+      .select()
+      .from(installedSkills)
       .orderBy(desc(installedSkills.createdAt))
       .all();
     return rows.map((r) => this.toInstalledSkill(r));

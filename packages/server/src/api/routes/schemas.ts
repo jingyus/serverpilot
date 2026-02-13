@@ -498,6 +498,13 @@ export const ExecuteSkillBodySchema = z.object({
 });
 export type ExecuteSkillBody = z.infer<typeof ExecuteSkillBodySchema>;
 
+/** Dry-run a skill — preview execution plan without side effects */
+export const DryRunSkillBodySchema = z.object({
+  serverId: z.string().min(1, 'Server ID is required'),
+  config: z.record(z.string(), z.unknown()).optional(),
+});
+export type DryRunSkillBody = z.infer<typeof DryRunSkillBodySchema>;
+
 /** Query skill executions */
 export const SkillExecutionQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),

@@ -128,7 +128,7 @@ async function checkSingleSkill(skill: InstalledSkill): Promise<SkillHealthCheck
  * when the underlying issue is fixed.
  */
 export async function healthCheck(repo: SkillRepository): Promise<HealthReport> {
-  const allSkills = await repo.findAll();
+  const allSkills = await repo.findAllSkills();
   const results: SkillHealthCheckResult[] = [];
 
   for (const skill of allSkills) {

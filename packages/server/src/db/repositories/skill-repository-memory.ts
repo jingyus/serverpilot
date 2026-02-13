@@ -48,6 +48,10 @@ export class InMemorySkillRepository implements SkillRepository {
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
+  async findAllSkills(): Promise<InstalledSkill[]> {
+    return [...this.skills].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+
   async findAllEnabled(): Promise<InstalledSkill[]> {
     return this.skills
       .filter((s) => s.status === 'enabled')

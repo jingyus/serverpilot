@@ -7,8 +7,8 @@
 ## 📊 统计信息
 
 - **总任务数**: 96
-- **待完成** (pending): 2
-- **进行中** (in_progress): 0
+- **待完成** (pending): 1
+- **进行中** (in_progress): 1
 - **已完成** (completed): 94
 - **失败** (failed): 0
 
@@ -152,7 +152,7 @@
 
 ---
 
-### [pending] Skill Dry-Run API 端点 — REST 接口暴露预览功能
+### [in_progress] Skill Dry-Run API 端点 — REST 接口暴露预览功能
 
 **ID**: task-099
 **优先级**: P1
@@ -2040,4 +2040,4 @@ ID: task-001
 
 ---
 
-**最后更新**: 2026-02-13 10:45:34
+**最后更新**: 2026-02-13 10:46:06

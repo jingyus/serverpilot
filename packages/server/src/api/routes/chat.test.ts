@@ -1114,10 +1114,6 @@ describe('PATCH /api/v1/chat/:serverId/sessions/:sessionId', () => {
       { name: 'My Custom Name' },
       tokenA,
     );
-    if (res.status !== 200) {
-      const errBody = await res.text();
-      console.error('PATCH response:', res.status, errBody);
-    }
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.success).toBe(true);
