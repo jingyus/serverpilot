@@ -6,9 +6,9 @@
 
 ## 📊 统计信息
 
-- **总任务数**: 106
-- **待完成** (pending): 0
-- **进行中** (in_progress): 0
+- **总任务数**: 116
+- **待完成** (pending): 9
+- **进行中** (in_progress): 1
 - **已完成** (completed): 106
 - **失败** (failed): 0
 
@@ -17,6 +17,134 @@
 ## 📋 任务列表
 
 <!-- 任务将由 AI 自动生成和更新 -->
+### [in_progress] Server 端 TypeScript 编译错误修复
+
+**ID**: task-060
+**优先级**: P0
+**模块路径**: packages/server/src/
+**任务描述**: 修复 server 包中 6 个 TypeScript 编译错误，确保 `pnpm typecheck` 通过。具体包括：(1) `ai/agentic-message-utils.ts` 中 3 处 `RedactedThinkingBlockParam` 类型转换错误；(2) `api/routes/skills-archive-routes.ts` 中 Buffer 类型不匹配；(3) `core/skill/runner-executor.ts` 中 `string` 到 `RiskLevel` 类型赋值错误；(4) `db/repositories/skill-repository.ts` 中 `unknown[]` 参数类型不兼容
+**产品需求**: P0 核心功能稳定性 — CI/CD 流水线中 typecheck 必须通过
+**验收标准**: `pnpm --filter @aiinstaller/server typecheck` 零错误退出；不改变任何运行时行为；所有现有测试保持通过
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Dashboard TypeScript 编译错误修复
+
+**ID**: task-061
+**优先级**: P0
+**模块路径**: packages/dashboard/src/
+**任务描述**: 修复 dashboard 包中 5 个 TypeScript 编译错误：(1) `components/skill/ExecutionHistory.tsx` 缺少 `SkillExecutionStatus` 枚举值 `cancelled`/`pending_confirmation`；(2) `pages/Chat.tsx` 第316行参数类型不匹配 (`decision` vs `action`)；(3) `pages/Dashboard.tsx` 第348-349行 Recharts formatter/label 类型不兼容；(4) `__tests__/chat-execution.test.ts` 缺少必填字段；(5) `__tests__/skills.test.ts` 缺少 `afterEach` 导入
+**产品需求**: P0 核心功能稳定性 — Dashboard 构建必须成功
+**验收标准**: `pnpm --filter @aiinstaller/dashboard typecheck` 零错误；`pnpm --filter @aiinstaller/dashboard build` 成功；所有 dashboard 测试通过
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Server 端用户密码修改 API
+
+**ID**: task-062
+**优先级**: P0
+**模块路径**: packages/server/src/api/routes/
+**任务描述**: 在 `auth.ts` 或 `settings.ts` 中新增密码修改接口 `PUT /api/v1/auth/password`。请求体包含 `currentPassword`、`newPassword`、`confirmPassword`，需验证当前密码正确性、新密码强度（≥8位、含大小写+数字）、两次输入一致。OAuth-only 用户（passwordHash 为 `oauth:*`）调用时返回 400。操作成功后写入 audit_log
+**产品需求**: MVP 核心闭环 — 用户账户安全管理基础功能，Settings 页 "Security" 部分当前显示 "Coming soon"
+**验收标准**: 接口返回正确状态码（200/400/401）；密码验证逻辑完整；附带 ≥10 个单元测试覆盖正常流程、错误分支、OAuth 用户拒绝、弱密码拒绝
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Dashboard 密码修改 UI
+
+**ID**: task-063
+**优先级**: P0
+**模块路径**: packages/dashboard/src/pages/
+**任务描述**: 在 Settings.tsx 中替换 "Security Settings — Coming soon" 占位为完整的密码修改表单。包含 3 个输入框（当前密码、新密码、确认密码）、密码强度指示器、提交按钮及加载/成功/错误状态。OAuth 用户显示 "Password change is not available for OAuth accounts" 提示。调用 task-062 的 `PUT /api/v1/auth/password` 接口
+**产品需求**: MVP 用户体验 — 账户安全设置完整性
+**验收标准**: 表单校验完整（前端预校验 + 后端错误显示）；i18n 支持中英文；OAuth 用户正确隐藏/禁用；附带 ≥6 个测试用例（渲染、提交、错误、OAuth）
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Server 端对话导出 API
+
+**ID**: task-064
+**优先级**: P1
+**模块路径**: packages/server/src/api/routes/
+**任务描述**: 在 chat routes 中新增 `GET /api/v1/chat/:serverId/sessions/:sessionId/export?format=json|markdown` 接口。复用 shared 包中已定义的 `ConversationExportSchema`，从 session_messages 表查询完整对话历史，按请求格式返回。JSON 格式返回结构化数据（含 metadata），Markdown 格式返回渲染好的文本。设置正确的 Content-Type 和 Content-Disposition 响应头
+**产品需求**: 产品方案 6.1 对话上下文管理 — 对话记录导出与归档
+**验收标准**: 两种格式均可正确下载；权限检查确保只能导出自己的对话；附带 ≥8 个测试用例；与 Dashboard 已有的 `chat-export.ts` 客户端导出逻辑互补
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] ESLint 警告批量清理 — Server 包
+
+**ID**: task-065
+**优先级**: P1
+**模块路径**: packages/server/src/
+**任务描述**: 清理 server 包中的 ESLint 警告，重点处理：(1) 未使用的 import 语句删除（约 200+ 处）；(2) import 顺序按 eslint-plugin-import-x 规则自动修复；(3) 修复 `@typescript-eslint/no-explicit-any` 警告中可明确类型的 top-10 高频文件。不修改任何运行时逻辑，仅代码风格优化
+**产品需求**: P1 开源发布准备 — 代码质量达到开源社区标准
+**验收标准**: `pnpm lint` 警告数从 600+ 降至 100 以下；零 ESLint error；所有测试保持通过
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Shared 包 — 密码校验规则与 PasswordPolicy Schema
+
+**ID**: task-066
+**优先级**: P0
+**模块路径**: packages/shared/src/
+**任务描述**: 在 shared 包中新增 `auth/password-policy.ts`，定义密码强度校验的 Zod schema 和纯函数。包含：(1) `ChangePasswordSchema` — Zod 对象校验 currentPassword/newPassword/confirmPassword 及 refine 一致性检查；(2) `validatePasswordStrength(password: string): PasswordStrengthResult` 纯函数，返回 { score: 0-4, feedback: string[] }；(3) 最低要求：≥8位、含大小写字母+数字。此模块供 task-062 (server) 和 task-063 (dashboard) 共同引用
+**产品需求**: 共享校验逻辑单一来源 — 避免前后端密码规则不一致
+**验收标准**: 导出 Zod schema + 纯函数；不含运行时副作用；附带 ≥12 个测试覆盖各种密码组合；`pnpm --filter @aiinstaller/shared build` 成功
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Dashboard 通知历史页面
+
+**ID**: task-067
+**优先级**: P1
+**模块路径**: packages/dashboard/src/pages/
+**任务描述**: 新增 `Notifications.tsx` 页面，展示用户的通知历史列表。从现有告警（Alerts）和 Webhook 交付记录（webhook_deliveries）聚合通知数据。包含：(1) 通知列表，按时间倒序，支持已读/未读标记；(2) 类型筛选（alert/webhook/system）；(3) 全部已读按钮；(4) 空状态提示。在 Sidebar 中 Alerts 下方添加 Notifications 导航项，带未读数 badge
+**产品需求**: 产品方案 MVP — Dashboard 基础功能完善，用户需要集中查看所有通知
+**验收标准**: 页面正确渲染通知列表；筛选功能正常；已读/未读状态持久化（localStorage）；附带 ≥8 个测试；路由注册到 React Router
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Server 端 Husky Pre-commit 钩子配置
+
+**ID**: task-068
+**优先级**: P1
+**模块路径**: (项目根目录)
+**任务描述**: 配置 Husky + lint-staged 预提交钩子，在 `git commit` 前自动运行：(1) `lint-staged` 对暂存文件执行 ESLint --fix + Prettier；(2) TypeScript 类型检查（仅检查变更文件的类型）。安装 `husky` 和 `lint-staged` 为 devDependency，在根 `package.json` 中配置 lint-staged 规则，创建 `.husky/pre-commit` 脚本
+**产品需求**: P1 开源发布准备 — 防止低质量代码进入 master 分支
+**验收标准**: `git commit` 时自动触发 lint-staged；lint 不通过时阻止提交；`npx husky install` 或 `pnpm prepare` 可初始化钩子；不影响 CI/CD 流水线
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Dashboard 服务器批量操作 UI
+
+**ID**: task-069
+**优先级**: P2
+**模块路径**: packages/dashboard/src/pages/
+**任务描述**: 在 Servers.tsx 中增加批量操作功能：(1) 服务器列表卡片/行增加复选框，支持全选/反选；(2) 选中后顶部显示操作栏（已选 N 台），提供"批量删除"和"批量对话"（打开 Chat 页并预选多台服务器）按钮；(3) 批量删除需二次确认弹窗。仅前端 UI 层面实现选择和确认交互，实际删除逐个调用现有 DELETE /servers/:id 接口
+**产品需求**: 产品方案 v1.5 批量操作的前端基础 — 多服务器管理效率提升
+**验收标准**: 复选框交互流畅；批量删除弹窗正确显示选中数量；删除后刷新列表；附带 ≥6 个测试；不新增后端 API
+**创建时间**: 2026-02-13
+**完成时间**: -
+
 ### [completed] Dashboard 服务器标签/分组 UI — 后端已支持但前端缺失 ✅
 
 **ID**: task-060
@@ -2226,4 +2354,4 @@ ID: task-001
 
 ---
 
-**最后更新**: 2026-02-13 13:39:25
+**最后更新**: 2026-02-13 13:50:50

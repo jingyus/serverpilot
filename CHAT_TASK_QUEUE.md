@@ -3,14 +3,14 @@
 > 此队列专注于 Chat 和 AI 对话系统的质量改进
 > AI 自动发现问题 → 生成任务 → 实现 → 验证
 
-**最后更新**: 2026-02-13 13:23:12
+**最后更新**: 2026-02-13 13:51:35
 
 ## 📊 统计
 
 - **总任务数**: 100
 - **待完成** (pending): 14
-- **进行中** (in_progress): 1
-- **已完成** (completed): 85
+- **进行中** (in_progress): 0
+- **已完成** (completed): 86
 - **失败** (failed): 0
 
 ## 📋 任务列表
@@ -86,7 +86,7 @@
 
 ---
 
-### [in_progress] 知识库 token 估算使用简单 4 chars/token — 中文知识库内容 token 严重低估
+### [completed] 知识库 token 估算使用简单 4 chars/token — 中文知识库内容 token 严重低估 ✅
 
 **ID**: chat-086
 **优先级**: P1
@@ -96,7 +96,7 @@
 **验收标准**: (1) 只保留一个 token 估算函数（CJK 感知版） (2) context-window-manager 使用统一的估算 (3) 现有 context-window-manager 测试更新适配 (4) 中文内容的 token 估算偏差小于 50%
 **影响范围**: `packages/server/src/knowledge/context-enhancer.ts`, `packages/server/src/knowledge/context-window-manager.ts`, `packages/server/src/knowledge/context-window-manager.test.ts`
 **创建时间**: 2026-02-13
-**完成时间**: -
+**完成时间**: 2026-02-13 13:51:35
 
 ---
 
