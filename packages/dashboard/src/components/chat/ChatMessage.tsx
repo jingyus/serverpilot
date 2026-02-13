@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { Bot, User, Info } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { Bot, User, Info, RotateCcw } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { formatDate } from '@/utils/format';
@@ -9,6 +10,8 @@ import type { ChatMessage as ChatMessageType } from '@/types/chat';
 
 interface ChatMessageProps {
   message: ChatMessageType;
+  failed?: boolean;
+  onRetry?: (messageId: string) => void;
 }
 
 const ROLE_CONFIG = {
@@ -32,7 +35,8 @@ const ROLE_CONFIG = {
   },
 };
 
-export function ChatMessage({ message }: ChatMessageProps) {
+export function ChatMessage({ message, failed, onRetry }: ChatMessageProps) {
+  const { t } = useTranslation();
   const config = ROLE_CONFIG[message.role];
   const Icon = config.icon;
 
@@ -66,16 +70,34 @@ export function ChatMessage({ message }: ChatMessageProps) {
       )}
 
       <div className={cn('max-w-[85%] space-y-1 sm:max-w-[75%]', isUser && 'items-end')}>
-        <div className={cn('rounded-2xl px-3 py-2 text-sm sm:px-4 sm:py-2.5', config.bubble)}>
+        <div className={cn(
+          'rounded-2xl px-3 py-2 text-sm sm:px-4 sm:py-2.5',
+          config.bubble,
+          failed && 'ring-2 ring-destructive/50',
+        )}>
           {isUser ? (
             <p className="whitespace-pre-wrap break-words">{message.content}</p>
           ) : (
             <MarkdownRenderer content={message.content} />
           )}
         </div>
-        <p className="px-1 text-xs text-muted-foreground">
-          {formatDate(message.timestamp)}
-        </p>
+        <div className="flex items-center gap-2 px-1">
+          <p className="text-xs text-muted-foreground">
+            {formatDate(message.timestamp)}
+          </p>
+          {failed && onRetry && (
+            <button
+              type="button"
+              onClick={() => onRetry(message.id)}
+              className="flex items-center gap-1 text-xs text-destructive hover:text-destructive/80"
+              data-testid="retry-message-btn"
+              aria-label={t('chat.retryMessage')}
+            >
+              <RotateCcw className="h-3 w-3" />
+              {t('chat.retry')}
+            </button>
+          )}
+        </div>
       </div>
 
       {isUser && (

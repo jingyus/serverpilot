@@ -3,7 +3,7 @@
 /** Message trimming and token estimation utilities for the Agentic Chat Engine. */
 
 import type Anthropic from '@anthropic-ai/sdk';
-import { estimateTokens } from './profile-context.js';
+import { estimateTokens, getCharsPerToken } from './profile-context.js';
 import { logger } from '../utils/logger.js';
 
 /** Extract text from a content block for token estimation. */
@@ -41,19 +41,70 @@ export interface TrimResult {
 }
 
 /**
+ * Truncate a string content to fit within a target character length.
+ * Keeps the tail (most recent context) and prepends a truncation marker.
+ */
+function truncateStringContent(content: string, targetChars: number): string {
+  if (content.length <= targetChars) return content;
+  const removedChars = content.length - targetChars;
+  const removedK = Math.round(removedChars / 1000);
+  const marker = `[Content truncated: ~${removedK}K chars removed from start]\n\n`;
+  // Reserve space for the marker itself, keep the tail
+  const keepChars = Math.max(0, targetChars - marker.length);
+  if (keepChars === 0) return marker;
+  return marker + content.slice(-keepChars);
+}
+
+/**
+ * Truncate array content blocks to fit within a target token budget.
+ * Removes earliest blocks first; if still over budget, truncates the first remaining text block.
+ */
+function truncateArrayContent(
+  blocks: Anthropic.ContentBlockParam[],
+  excessTokens: number,
+): Anthropic.ContentBlockParam[] {
+  const result = [...blocks];
+  let remaining = excessTokens;
+
+  // Remove blocks from the front until we've freed enough tokens
+  while (result.length > 1 && remaining > 0) {
+    const block = result[0];
+    const text = extractBlockText(block as Record<string, unknown>);
+    const blockTokens = estimateTokens(text);
+    result.shift();
+    remaining -= blockTokens;
+  }
+
+  // If still over budget and there's a text block, truncate it
+  if (remaining > 0 && result.length > 0) {
+    const first = result[0] as Record<string, unknown>;
+    if ('text' in first && typeof first.text === 'string') {
+      const charsPerToken = getCharsPerToken(first.text);
+      const charsToRemove = Math.ceil(remaining * charsPerToken);
+      result[0] = {
+        type: 'text' as const,
+        text: truncateStringContent(first.text, first.text.length - charsToRemove),
+      };
+    }
+  }
+
+  return result;
+}
+
+/**
  * Trim messages in-place if over token budget, keeping first message and newest pairs.
- * After trimming, injects a context-loss notice into the first user message so the AI
- * model is aware that earlier tool results and conversation turns were removed.
- * Returns a TrimResult if trimming occurred, or null otherwise.
+ * After trimming, if the remaining 3 messages still exceed the budget, the first
+ * message's content is truncated to fit. Injects a context-loss notice into the
+ * first user message so the AI model is aware that context was removed.
+ * Returns a TrimResult if trimming or truncation occurred, or null otherwise.
  */
 export function trimMessagesIfNeeded(
   messages: Anthropic.MessageParam[],
   maxTokens: number,
 ): TrimResult | null {
-  if (messages.length <= 3) return null; // first user + one turn pair minimum
-
   const tokensBefore = estimateMessagesTokens(messages);
   if (tokensBefore <= maxTokens) return null;
+  if (messages.length <= 1) return null; // single message, nothing we can do
 
   const lengthBefore = messages.length;
 
@@ -65,7 +116,38 @@ export function trimMessagesIfNeeded(
     if (estimateMessagesTokens(messages) <= maxTokens) break;
   }
 
-  const tokensAfter = estimateMessagesTokens(messages);
+  // Post-loop check: if remaining messages still exceed budget, truncate the
+  // first message's content to fit. This handles the case where 3 messages
+  // contain very large content (e.g. 50K file paste + 110K recent turn).
+  let tokensAfter = estimateMessagesTokens(messages);
+  if (tokensAfter > maxTokens) {
+    const excessTokens = tokensAfter - maxTokens;
+    const firstMsg = messages[0];
+
+    if (typeof firstMsg.content === 'string') {
+      const charsPerToken = getCharsPerToken(firstMsg.content);
+      const targetChars = firstMsg.content.length - Math.ceil(excessTokens * charsPerToken);
+      messages[0] = {
+        role: firstMsg.role,
+        content: truncateStringContent(firstMsg.content, Math.max(0, targetChars)),
+      };
+    } else if (Array.isArray(firstMsg.content)) {
+      messages[0] = {
+        role: firstMsg.role,
+        content: truncateArrayContent(
+          firstMsg.content as Anthropic.ContentBlockParam[],
+          excessTokens,
+        ),
+      };
+    }
+
+    tokensAfter = estimateMessagesTokens(messages);
+    logger.debug(
+      { operation: 'truncate_first_message', excessTokens, remainingTokens: tokensAfter },
+      `Truncated first message to fit token budget (excess was ~${Math.round(excessTokens / 1000)}K tokens)`,
+    );
+  }
+
   const removedMessages = lengthBefore - messages.length;
   const removedTokens = tokensBefore - tokensAfter;
 
@@ -84,7 +166,7 @@ export function trimMessagesIfNeeded(
   } else if (Array.isArray(firstMsg.content)) {
     messages[0] = {
       role: 'user',
-      content: [...firstMsg.content, { type: 'text' as const, text: notice }],
+      content: [...(firstMsg.content as Anthropic.ContentBlockParam[]), { type: 'text' as const, text: notice }],
     };
   }
 

@@ -146,6 +146,7 @@ export interface ChatState {
 
   setServerId: (id: string | null) => void;
   sendMessage: (message: string) => void;
+  retryMessage: (messageId: string) => void;
   confirmPlan: () => void;
   rejectPlan: () => void;
   respondToStep: (decision: 'allow' | 'allow_all' | 'reject') => Promise<void>;

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { useEffect, useRef, useCallback, useMemo } from 'react';
+import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
@@ -33,6 +33,8 @@ export function Chat() {
   const navigate = useNavigate();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
   const {
     messages,
     sessions,
@@ -51,6 +53,7 @@ export function Chat() {
     isAgenticMode,
     setServerId,
     sendMessage,
+    retryMessage,
     confirmPlan,
     rejectPlan,
     respondToStep,
@@ -155,6 +158,24 @@ export function Chat() {
     [sendMessage]
   );
 
+  const handleRetry = useCallback(
+    (messageId: string) => {
+      retryMessage(messageId);
+    },
+    [retryMessage]
+  );
+
+  // Determine the last user message ID that has no successful assistant reply after it
+  const failedMessageId = useMemo(() => {
+    if (!error || isStreaming) return null;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i];
+      if (msg.role === 'assistant') return null; // assistant replied — not failed
+      if (msg.role === 'user') return msg.id;
+    }
+    return null;
+  }, [error, isStreaming, messages]);
+
   if (!serverId) {
     return <ServerSelector servers={servers} navigate={navigate} />;
   }
@@ -172,6 +193,8 @@ export function Chat() {
         serverName={serverName}
         sessionId={sessionId}
         onNewSession={newSession}
+        onToggleSidebar={() => setMobileSidebarOpen((v) => !v)}
+        hasSessions={sessions.length > 0}
       />
 
       {/* Error */}
@@ -205,14 +228,19 @@ export function Chat() {
 
       {/* Main content */}
       <div className="flex flex-1 gap-2 overflow-hidden p-2 sm:gap-4 sm:p-4">
-        {/* Session sidebar */}
+        {/* Session sidebar — desktop always visible, mobile overlay */}
         <SessionSidebar
           sessions={sessions}
           activeSessionId={sessionId}
           serverId={serverId}
-          onSelect={(sid) => loadSession(serverId, sid)}
+          onSelect={(sid) => {
+            loadSession(serverId, sid);
+            setMobileSidebarOpen(false);
+          }}
           onDelete={(sid) => deleteSession(serverId, sid)}
           isLoading={isLoading}
+          mobileOpen={mobileSidebarOpen}
+          onMobileClose={() => setMobileSidebarOpen(false)}
         />
 
         {/* Chat area */}
@@ -227,7 +255,12 @@ export function Chat() {
             ) : (
               <div className="space-y-1 py-4">
                 {messages.map((msg) => (
-                  <ChatMessage key={msg.id} message={msg} />
+                  <ChatMessage
+                    key={msg.id}
+                    message={msg}
+                    failed={msg.id === failedMessageId}
+                    onRetry={handleRetry}
+                  />
                 ))}
 
                 {/* Streaming indicator */}

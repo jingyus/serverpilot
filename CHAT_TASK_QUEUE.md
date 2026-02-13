@@ -3,14 +3,14 @@
 > 此队列专注于 Chat 和 AI 对话系统的质量改进
 > AI 自动发现问题 → 生成任务 → 实现 → 验证
 
-**最后更新**: 2026-02-13 09:29:44
+**最后更新**: 2026-02-13 09:39:28
 
 ## 📊 统计
 
 - **总任务数**: 80
-- **待完成** (pending): 14
+- **待完成** (pending): 13
 - **进行中** (in_progress): 0
-- **已完成** (completed): 66
+- **已完成** (completed): 67
 - **失败** (failed): 0
 
 ## 📋 任务列表
@@ -41,7 +41,7 @@
 
 ---
 
-### [pending] trimMessagesIfNeeded 在仅剩 3 条消息时不保证 token 预算 — 可能超出 maxTokens
+### [completed] trimMessagesIfNeeded 在仅剩 3 条消息时不保证 token 预算 — 可能超出 maxTokens ✅
 
 **ID**: chat-067
 **优先级**: P0
@@ -59,7 +59,7 @@
 - `packages/server/src/ai/agentic-message-utils.ts` — 添加二次截断逻辑
 - `packages/server/tests/ai/agentic-message-utils.test.ts` — 新增边界测试
 **创建时间**: 2026-02-13
-**完成时间**: -
+**完成时间**: 2026-02-13 09:39:28
 
 ---
 

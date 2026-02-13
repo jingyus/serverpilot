@@ -185,15 +185,19 @@ describe('trimMessagesIfNeeded', () => {
     expect(messages).toHaveLength(3);
   });
 
-  it('should not trim when exactly 3 messages (minimum)', () => {
+  it('should truncate first message when exactly 3 messages exceed budget', () => {
     const messages = [
       makeMessage('user', 'x'.repeat(10000)),
       makeMessage('assistant', 'y'.repeat(10000)),
       makeMessage('user', 'z'.repeat(10000)),
     ];
-    // Even if over budget, don't trim below 3
-    trimMessagesIfNeeded(messages, 1);
+    // 3 messages over budget → truncate first message content, keep 3 messages
+    const result = trimMessagesIfNeeded(messages, 1);
     expect(messages).toHaveLength(3);
+    expect(result).not.toBeNull();
+    expect(result!.removedTokens).toBeGreaterThan(0);
+    // First message should contain truncation marker
+    expect(typeof messages[0].content === 'string' && messages[0].content).toContain('[Content truncated:');
   });
 
   it('should trim oldest pairs when over budget', () => {
@@ -214,13 +218,24 @@ describe('trimMessagesIfNeeded', () => {
     expect(typeof lastMsg.content === 'string' && lastMsg.content).toContain('Tool result 9');
   });
 
-  it('should preserve the first user message', () => {
-    const messages = makeLargeMessages(5, 2000);
-    trimMessagesIfNeeded(messages, 500);
+  it('should preserve the first user message when budget allows', () => {
+    const messages = makeLargeMessages(5, 200);
+    // Budget large enough to keep first msg + one pair after removing older pairs
+    trimMessagesIfNeeded(messages, 5000);
 
     expect(messages[0].role).toBe('user');
     // Original text preserved (with context-loss notice appended)
     expect(typeof messages[0].content === 'string' && messages[0].content).toContain('Initial user question');
+  });
+
+  it('should truncate first message when budget is too tight for all 3 remaining', () => {
+    const messages = makeLargeMessages(5, 2000);
+    trimMessagesIfNeeded(messages, 500);
+
+    expect(messages[0].role).toBe('user');
+    // First message is truncated because even after pair removal, 3 messages exceed budget
+    const firstContent = messages[0].content as string;
+    expect(firstContent).toContain('[Content truncated:');
   });
 
   it('should maintain alternating user/assistant structure', () => {
@@ -392,6 +407,147 @@ describe('trimMessagesIfNeeded — recalculation accuracy', () => {
 });
 
 // ============================================================================
+// trimMessagesIfNeeded — 3-message overflow (content truncation)
+// ============================================================================
+
+describe('trimMessagesIfNeeded — 3-message content truncation', () => {
+  it('should guarantee token budget even with 3 huge messages (string content)', () => {
+    // Simulate: 50K token first message + 60K + 60K recent pair = 170K > 150K budget
+    const messages = [
+      makeMessage('user', 'a'.repeat(200_000)),  // ~50K tokens
+      makeMessage('assistant', 'b'.repeat(240_000)), // ~60K tokens
+      makeMessage('user', 'c'.repeat(240_000)),  // ~60K tokens
+    ];
+    const budget = 150_000;
+
+    const result = trimMessagesIfNeeded(messages, budget);
+
+    expect(result).not.toBeNull();
+    expect(messages).toHaveLength(3);
+    const tokensAfterNotice = estimateMessagesTokens(messages);
+    // The notice adds some tokens, but the core guarantee: pre-notice content fits budget
+    // We verify the total (with notice) is reasonably close to budget
+    // The truncation marker + notice add ~100 tokens max
+    expect(tokensAfterNotice).toBeLessThanOrEqual(budget + 200);
+  });
+
+  it('should guarantee token budget when first message has massive file paste', () => {
+    // Real-world scenario: user pastes a 50K-token file, then recent turn is 110K tokens
+    const messages = [
+      makeMessage('user', 'x'.repeat(200_000)),  // ~50K tokens (large file paste)
+      makeMessage('assistant', 'y'.repeat(200_000)), // ~50K tokens
+      makeMessage('user', 'z'.repeat(240_000)),  // ~60K tokens
+    ];
+    const budget = 150_000;
+
+    trimMessagesIfNeeded(messages, budget);
+
+    expect(messages).toHaveLength(3);
+    // First message should be truncated with marker
+    const firstContent = messages[0].content as string;
+    expect(firstContent).toContain('[Content truncated:');
+    expect(firstContent).toContain('[System: Earlier conversation context was trimmed');
+  });
+
+  it('should truncate array content blocks when 3 messages exceed budget', () => {
+    // First message has multiple tool_result blocks
+    const messages: Anthropic.MessageParam[] = [
+      {
+        role: 'user',
+        content: [
+          { type: 'tool_result' as const, tool_use_id: 'tool-1', content: 'a'.repeat(100_000) },
+          { type: 'tool_result' as const, tool_use_id: 'tool-2', content: 'b'.repeat(100_000) },
+          { type: 'text' as const, text: 'Please analyze these results' },
+        ],
+      },
+      makeMessage('assistant', 'c'.repeat(100_000)),
+      makeMessage('user', 'd'.repeat(100_000)),
+    ];
+    const budget = 50_000;
+
+    const result = trimMessagesIfNeeded(messages, budget);
+
+    expect(result).not.toBeNull();
+    expect(messages).toHaveLength(3);
+    // First message content blocks should be reduced
+    const firstContent = messages[0].content;
+    expect(Array.isArray(firstContent)).toBe(true);
+    const blocks = firstContent as Array<Record<string, unknown>>;
+    // Some blocks were removed or truncated, plus notice appended
+    expect(blocks.length).toBeLessThan(4); // original 3 blocks + would have notice
+  });
+
+  it('should handle trimming from many messages down to 3 and still need truncation', () => {
+    // Start with many messages, trim to 3, but remaining 3 still exceed budget
+    const messages: Anthropic.MessageParam[] = [
+      makeMessage('user', 'x'.repeat(80_000)), // ~20K tokens
+    ];
+    for (let i = 0; i < 10; i++) {
+      messages.push(makeMessage('assistant', 'a'.repeat(40_000)));
+      messages.push(makeMessage('user', 'b'.repeat(40_000)));
+    }
+    // Total: 21 messages. After removing pairs to 3: first(20K) + last pair(20K) = 40K tokens
+    const budget = 30_000;
+
+    trimMessagesIfNeeded(messages, budget);
+
+    expect(messages).toHaveLength(3);
+    const tokensAfter = estimateMessagesTokens(messages);
+    // Should be under budget (with small margin for notice text)
+    expect(tokensAfter).toBeLessThanOrEqual(budget + 200);
+    // First message should have been truncated
+    const firstContent = messages[0].content as string;
+    expect(firstContent).toContain('[Content truncated:');
+  });
+
+  it('should preserve recent messages even when first message is truncated', () => {
+    const messages = [
+      makeMessage('user', 'INITIAL_QUERY:' + 'x'.repeat(200_000)),
+      makeMessage('assistant', 'RECENT_REPLY:' + 'y'.repeat(40_000)),
+      makeMessage('user', 'RECENT_RESULT:' + 'z'.repeat(40_000)),
+    ];
+    const budget = 50_000;
+
+    trimMessagesIfNeeded(messages, budget);
+
+    // Recent messages should be fully preserved
+    expect((messages[1].content as string)).toContain('RECENT_REPLY:');
+    expect((messages[2].content as string)).toContain('RECENT_RESULT:');
+    // First message truncated — original start may be gone, but tail preserved
+    const firstContent = messages[0].content as string;
+    expect(firstContent).toContain('[Content truncated:');
+  });
+
+  it('should not truncate when 3 messages fit within budget', () => {
+    const messages = [
+      makeMessage('user', 'Hello'),
+      makeMessage('assistant', 'Hi there'),
+      makeMessage('user', 'Thanks'),
+    ];
+    const result = trimMessagesIfNeeded(messages, 100_000);
+
+    expect(result).toBeNull();
+    expect(messages[0].content).toBe('Hello');
+  });
+
+  it('should handle CJK content truncation correctly', () => {
+    // CJK: ~1.5 chars/token, so 150K chars ≈ 100K tokens
+    const messages = [
+      makeMessage('user', '中'.repeat(150_000)),  // ~100K tokens
+      makeMessage('assistant', '文'.repeat(75_000)), // ~50K tokens
+      makeMessage('user', '字'.repeat(75_000)),   // ~50K tokens
+    ];
+    const budget = 150_000;
+
+    trimMessagesIfNeeded(messages, budget);
+
+    expect(messages).toHaveLength(3);
+    const tokensAfter = estimateMessagesTokens(messages);
+    expect(tokensAfter).toBeLessThanOrEqual(budget + 200);
+  });
+});
+
+// ============================================================================
 // trimMessagesIfNeeded — context-loss notice & return value
 // ============================================================================
 
@@ -480,16 +636,19 @@ describe('trimMessagesIfNeeded — context-loss notice', () => {
     expect(notice).toContain(`${expectedRemoved} messages`);
   });
 
-  it('should return null for ≤3 messages even if over budget', () => {
+  it('should truncate first message for ≤3 messages over budget', () => {
     const messages = [
       makeMessage('user', 'x'.repeat(50000)),
       makeMessage('assistant', 'y'.repeat(50000)),
       makeMessage('user', 'z'.repeat(50000)),
     ];
     const result = trimMessagesIfNeeded(messages, 1);
-    expect(result).toBeNull();
-    // Content should be unchanged (no notice injected)
-    expect(messages[0].content).toBe('x'.repeat(50000));
+    expect(result).not.toBeNull();
+    expect(result!.removedTokens).toBeGreaterThan(0);
+    // First message truncated + notice injected
+    const firstContent = messages[0].content as string;
+    expect(firstContent).toContain('[Content truncated:');
+    expect(firstContent).toContain('[System: Earlier conversation context was trimmed');
   });
 });
 

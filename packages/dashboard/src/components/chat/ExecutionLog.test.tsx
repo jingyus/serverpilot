@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ExecutionLog } from './ExecutionLog';
 import type { ExecutionPlan } from '@/types/chat';
 
@@ -406,6 +406,44 @@ describe('ExecutionLog', () => {
       );
       const output = screen.getByTestId('exec-output-step-1');
       expect(output.textContent).toBe('plain text output');
+    });
+  });
+
+  describe('copy output button', () => {
+    it('shows copy button when output exists', () => {
+      render(
+        <ExecutionLog
+          {...defaultProps}
+          activeStepId="step-1"
+          outputs={{ 'step-1': 'some output text' }}
+        />
+      );
+      expect(screen.getByTestId('copy-output-button')).toBeInTheDocument();
+    });
+
+    it('does not show copy button when no output', () => {
+      render(
+        <ExecutionLog {...defaultProps} activeStepId="step-1" />
+      );
+      expect(screen.queryByTestId('copy-output-button')).not.toBeInTheDocument();
+    });
+
+    it('copies output to clipboard on click', async () => {
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      Object.assign(navigator, { clipboard: { writeText } });
+
+      render(
+        <ExecutionLog
+          {...defaultProps}
+          activeStepId="step-1"
+          outputs={{ 'step-1': 'copy this text' }}
+        />
+      );
+      fireEvent.click(screen.getByTestId('copy-output-button'));
+
+      await waitFor(() => {
+        expect(writeText).toHaveBeenCalledWith('copy this text');
+      });
     });
   });
 });

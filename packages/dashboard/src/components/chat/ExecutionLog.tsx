@@ -9,6 +9,8 @@ import {
   Clock,
   OctagonX,
   AlertTriangle,
+  Copy,
+  Check,
 } from 'lucide-react';
 
 import {
@@ -77,6 +79,39 @@ function ProgressBar({
         />
       </div>
     </div>
+  );
+}
+
+function CopyOutputButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current !== null) clearTimeout(timerRef.current);
+    };
+  }, []);
+
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      if (timerRef.current !== null) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => setCopied(false), 2000);
+    }).catch(() => {
+      // Clipboard API may fail in non-HTTPS contexts
+    });
+  }, [text]);
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-gray-400 transition-colors hover:bg-white/10 hover:text-gray-200"
+      aria-label={copied ? 'Copied' : 'Copy output'}
+      data-testid="copy-output-button"
+    >
+      {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+    </button>
   );
 }
 
@@ -161,19 +196,25 @@ function StepLog({
       </div>
 
       {(output || isActive) && (
-        <div
-          ref={containerRef}
-          className="mt-2 max-h-40 overflow-auto rounded bg-gray-900 p-2 sm:p-3"
-          onScroll={handleOutputScroll}
-          data-testid={`exec-output-container-${step.id}`}
-        >
-          <pre
-            ref={outputRef}
-            className="whitespace-pre-wrap font-mono text-[10px] text-green-400 sm:text-xs"
-            data-testid={`exec-output-${step.id}`}
+        <div className="relative mt-2">
+          {output && (
+            <div className="absolute right-2 top-1 z-10">
+              <CopyOutputButton text={output} />
+            </div>
+          )}
+          <div
+            ref={containerRef}
+            className="max-h-40 overflow-auto rounded bg-gray-900 p-2 sm:p-3"
+            onScroll={handleOutputScroll}
+            data-testid={`exec-output-container-${step.id}`}
           >
-            {output ? <AnsiOutput text={output} /> : (isActive ? 'Waiting for output...' : '')}
-          </pre>
+            <pre
+              ref={outputRef}
+              className="whitespace-pre-wrap font-mono text-[10px] text-green-400 sm:text-xs"
+              data-testid={`exec-output-${step.id}`}
+            >
+              {output ? <AnsiOutput text={output} /> : (isActive ? 'Waiting for output...' : '')}
+            </pre>
           {userScrolledUp && isActive && (
             <button
               type="button"
@@ -189,6 +230,7 @@ function StepLog({
               Scroll to latest
             </button>
           )}
+          </div>
         </div>
       )}
     </div>

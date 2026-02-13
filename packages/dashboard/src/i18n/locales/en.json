@@ -171,6 +171,11 @@
     "executionCompleted": "Execution completed successfully",
     "executionFailed": "Execution failed",
     "reconnecting": "Connection lost. Reconnecting...",
+    "retry": "Retry",
+    "retryMessage": "Resend this message",
+    "copied": "Copied!",
+    "copyOutput": "Copy output",
+    "toggleSessions": "Toggle sessions",
     "sessionGroup": {
       "today": "Today",
       "yesterday": "Yesterday",

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { ChatMessage } from './ChatMessage';
 import type { ChatMessage as ChatMessageType } from '@/types/chat';
 
@@ -138,5 +138,58 @@ describe('ChatMessage', () => {
       />
     );
     expect(screen.getByText('Section Title').tagName).toBe('H2');
+  });
+
+  describe('retry button', () => {
+    it('shows retry button when failed is true and onRetry provided', () => {
+      const onRetry = vi.fn();
+      render(
+        <ChatMessage
+          message={createMessage({ role: 'user', content: 'Install nginx' })}
+          failed={true}
+          onRetry={onRetry}
+        />
+      );
+      const retryBtn = screen.getByTestId('retry-message-btn');
+      expect(retryBtn).toBeInTheDocument();
+      expect(retryBtn).toHaveTextContent('Retry');
+    });
+
+    it('calls onRetry with message id when retry clicked', () => {
+      const onRetry = vi.fn();
+      render(
+        <ChatMessage
+          message={createMessage({ id: 'msg-42', role: 'user', content: 'test' })}
+          failed={true}
+          onRetry={onRetry}
+        />
+      );
+      fireEvent.click(screen.getByTestId('retry-message-btn'));
+      expect(onRetry).toHaveBeenCalledWith('msg-42');
+    });
+
+    it('does not show retry when failed is false', () => {
+      render(
+        <ChatMessage
+          message={createMessage({ role: 'user' })}
+          failed={false}
+          onRetry={vi.fn()}
+        />
+      );
+      expect(screen.queryByTestId('retry-message-btn')).not.toBeInTheDocument();
+    });
+
+    it('adds ring styling to failed messages', () => {
+      render(
+        <ChatMessage
+          message={createMessage({ role: 'user' })}
+          failed={true}
+          onRetry={vi.fn()}
+        />
+      );
+      const container = screen.getByTestId('chat-message-user');
+      const bubble = container.querySelector('.ring-2');
+      expect(bubble).toBeInTheDocument();
+    });
   });
 });

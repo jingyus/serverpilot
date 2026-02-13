@@ -171,6 +171,11 @@
     "executionCompleted": "执行成功完成",
     "executionFailed": "执行失败",
     "reconnecting": "连接中断，正在重连...",
+    "retry": "重试",
+    "retryMessage": "重新发送此消息",
+    "copied": "已复制！",
+    "copyOutput": "复制输出",
+    "toggleSessions": "切换会话列表",
     "sessionGroup": {
       "today": "今天",
       "yesterday": "昨天",

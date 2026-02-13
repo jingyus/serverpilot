@@ -97,6 +97,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
     setActiveHandle(handle);
   },
 
+  retryMessage: (messageId) => {
+    const { messages, isStreaming } = get();
+    if (isStreaming) return;
+    const msg = messages.find((m) => m.id === messageId);
+    if (!msg || msg.role !== 'user') return;
+    // Remove the failed message and any subsequent assistant/system error messages
+    const idx = messages.indexOf(msg);
+    const trimmed = messages.slice(0, idx);
+    set({ messages: trimmed, error: null });
+    // Re-send the same content
+    get().sendMessage(msg.content);
+  },
+
   confirmPlan: createConfirmPlan(set, get),
   respondToStep: createRespondToStep(set, get),
   respondToAgenticConfirm: createRespondToAgenticConfirm(set, get),

@@ -6,14 +6,12 @@
  * @module core/skill/engine
  */
 
-import { join, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import { createContextLogger } from '../../utils/logger.js';
 import {
   loadSkillFromDir,
-  scanSkillDirectories,
   resolvePromptTemplate,
   checkRequirements,
-  type ScannedSkill,
   type TemplateVars,
   type RequirementCheckResult,
 } from './loader.js';
@@ -28,7 +26,18 @@ import { getWebhookDispatcher } from '../webhook/dispatcher.js';
 import { upgradeFromGitUrl } from './git-installer.js';
 import { getGitRemoteUrl } from './git-utils.js';
 import { SkillConfirmationManager } from './engine-confirmation.js';
-import type { SkillManifest, SkillInput } from '@aiinstaller/shared';
+import {
+  listInstalled as queryListInstalled,
+  listInstalledWithInputs as queryListInstalledWithInputs,
+  getInstalled as queryGetInstalled,
+  getInstalledWithInputs as queryGetInstalledWithInputs,
+  listAvailable as queryListAvailable,
+  getExecutions as queryGetExecutions,
+  getExecution as queryGetExecution,
+} from './engine-queries.js';
+import { buildServerVars, buildSkillVars } from './engine-template-vars.js';
+import { startCleanupTimers, cleanupOldExecutions } from './engine-cleanup.js';
+import type { SkillManifest } from '@aiinstaller/shared';
 import type { SkillStatus } from '../../db/schema.js';
 import type {
   InstalledSkill,

@@ -3,19 +3,274 @@
 > 此队列专注于 Skill 插件系统的设计与实现
 > AI 自动扫描 → 发现缺失 → 设计实现 → 验证
 
-**最后更新**: 2026-02-13 09:27:58
+**最后更新**: 2026-02-13 09:37:45
 
 ## 📊 统计
 
-- **总任务数**: 56
-- **待完成** (pending): 0
-- **进行中** (in_progress): 0
+- **总任务数**: 67
+- **待完成** (pending): 10
+- **进行中** (in_progress): 1
 - **已完成** (completed): 56
 - **失败** (failed): 0
 
 ## 📋 任务列表
 
 ### [completed] DB Schema + Migration + SkillRepository 数据层 ✅
+### [in_progress] SkillEngine 拆分 — engine.ts 已达 800 行硬限制需重构
+
+**ID**: skill-090
+**优先级**: P0
+**模块路径**: packages/server/src/core/skill/
+**当前状态**: engine.ts 已达 798 行，触及 800 行硬限制，无任何增长空间。文件承担了生命周期管理、执行编排、查询、模板变量构建、清理调度等职责。
+**实现方案**: 
+1. 提取查询方法 (`listInstalled`, `listAvailable`, `getSkill`, `getStats`) 到新文件 `engine-queries.ts` (~70 行)
+2. 提取模板变量构建 (`buildServerVars`, `buildSkillVars`) 到新文件 `engine-template-vars.ts` (~50 行)
+3. 提取清理逻辑 (`cleanupOldExecutions`, `cleanupPendingConfirmations`, 定时器管理) 到新文件 `engine-cleanup.ts` (~40 行)
+4. engine.ts 通过 import 委托调用，保留单例接口不变
+5. 现有测试不需要修改（公共 API 不变）
+**验收标准**: 
+- engine.ts 降至 ≤640 行，预留增长空间
+- 3 个新文件均 ≤200 行
+- 所有现有 engine 相关测试继续通过
+- 公共 API (`getSkillEngine()` 等) 不变
+**影响范围**: packages/server/src/core/skill/engine.ts (拆分), 新建 engine-queries.ts, engine-template-vars.ts, engine-cleanup.ts
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Cron 触发熔断机制 — 防止失败 Skill 无限重试
+
+**ID**: skill-091
+**优先级**: P0
+**模块路径**: packages/server/src/core/skill/
+**当前状态**: trigger-manager.ts 对 cron 触发的 Skill 无失败跟踪。一个持续失败的 Skill 会每个 poll 周期 (60s) 不断重试，无退避、无熔断、无自动禁用。
+**实现方案**: 
+1. 在 `trigger-manager.ts` 添加 `failureCounters: Map<string, { consecutive: number; lastFailure: Date }>` 
+2. 每次 cron 执行失败时递增 `consecutive`；成功时重置为 0
+3. 当 `consecutive >= MAX_CONSECUTIVE_FAILURES` (默认 5) 时:
+   - 调用 `getSkillRepository().updateStatus(skillId, 'error')` 自动暂停
+   - 记录 warn 日志："Skill auto-paused after N consecutive failures"
+   - 触发 `skill.auto_paused` webhook 事件通知用户
+4. 添加 `resetFailureCounter(skillId)` 方法供手动恢复时调用
+5. engine.ts 在 `updateStatus('enabled')` 时调用 `resetFailureCounter()`
+**验收标准**: 
+- 连续失败 5 次的 cron skill 自动进入 error 状态
+- 成功执行后计数器归零
+- 手动恢复后计数器归零
+- 测试覆盖: ≥8 个测试用例
+**影响范围**: packages/server/src/core/skill/trigger-manager.ts, packages/server/src/core/skill/trigger-manager.test.ts (或新建 trigger-manager-circuit-breaker.test.ts)
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] skill-repository.ts 拆分 — InMemory 实现移至独立文件
+
+**ID**: skill-092
+**优先级**: P1
+**模块路径**: packages/server/src/db/repositories/
+**当前状态**: skill-repository.ts 已达 740 行 (92% 容量)，包含 Interface + DrizzleSkillRepository + InMemorySkillRepository + Stats 计算 + 单例管理。随功能增长将超 800 行限制。
+**实现方案**: 
+1. 提取 `InMemorySkillRepository` 类到 `skill-repository-memory.ts` (~220 行)
+2. 提取 `computeStats()` 共享逻辑到 `skill-repository-stats.ts` (~70 行)
+3. skill-repository.ts 只保留: Interface + DrizzleSkillRepository + 单例管理 (~450 行)
+4. 更新所有 test 文件的 import 路径 (InMemory 从新文件导入)
+**验收标准**: 
+- skill-repository.ts 降至 ≤500 行
+- InMemorySkillRepository 可独立导入
+- 所有 repository 测试继续通过
+**影响范围**: packages/server/src/db/repositories/skill-repository.ts (拆分), 新建 skill-repository-memory.ts, skill-repository-stats.ts
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Skill Dry-Run 预览模式 — 不实际执行命令的模拟运行
+
+**ID**: skill-093
+**优先级**: P1
+**模块路径**: packages/server/src/core/skill/
+**当前状态**: Skill 执行后立即调用 AI 自主循环并向 Agent 发送真实命令。无法在不产生副作用的情况下预览 Skill 的执行计划。当前唯一安全机制是 `requires_confirmation: true` 阻止自动触发。
+**实现方案**: 
+1. 在 `types.ts` 的 `SkillRunParams` 添加 `dryRun?: boolean` 字段
+2. 在 `runner.ts` 的 `SkillRunner.run()` 中:
+   - dryRun=true 时修改 system prompt，要求 AI "输出你计划执行的命令列表，但不要调用工具"
+   - 设置 `max_steps: 0` 或从 tool_definitions 中移除 shell/write_file
+3. 在 `runner-executor.ts` 中增加保底: dryRun 模式下所有副作用工具返回 `"[DRY RUN] Would execute: ..."`
+4. engine.ts `execute()` 方法传递 dryRun 到 runner
+5. API 路由 `POST /skills/:id/execute` 支持 `{ dryRun: true }` 参数
+6. 执行记录的 triggerType 设为 `'dry-run'`
+**验收标准**: 
+- Dry-run 执行不产生任何副作用
+- AI 返回计划执行的命令列表
+- 执行记录中标记为 dry-run
+- 测试覆盖: ≥10 个测试用例
+**影响范围**: packages/server/src/core/skill/types.ts, runner.ts, runner-executor.ts, engine.ts (各改 <20 行)
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Skill Dry-Run API 端点 + Dashboard 支持
+
+**ID**: skill-094
+**优先级**: P1
+**模块路径**: packages/server/src/api/routes/
+**当前状态**: 后端 dry-run 功能实现后 (依赖 skill-093)，需要在 API 和 Dashboard 暴露此功能。
+**实现方案**: 
+1. `api/routes/skills.ts` 的 `POST /:id/execute` 端点解析 body 中 `dryRun: boolean` 字段
+2. 将 dryRun 参数传递给 `engine.execute()`
+3. 响应中标记 `{ dryRun: true }` 以便前端区分
+**验收标准**: 
+- API 支持 `POST /skills/:id/execute { dryRun: true }`
+- 返回 dry-run 结果而非真实执行结果
+- RBAC 权限与普通执行相同 (`skill:execute`)
+- 测试覆盖: ≥5 个 API 测试
+**影响范围**: packages/server/src/api/routes/skills.ts (改 <30 行)
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Dashboard Dry-Run UI — ExecuteDialog 添加预览按钮
+
+**ID**: skill-095
+**优先级**: P1
+**模块路径**: packages/dashboard/src/components/skill/
+**当前状态**: 依赖 skill-094 API 端点就绪后，Dashboard 需要暴露 dry-run 操作入口。
+**实现方案**: 
+1. `stores/skills.ts` 添加 `dryRunSkill(id: string, inputs?: Record<string, unknown>)` 方法
+2. `components/skill/ExecuteDialog.tsx` 在"Execute"按钮旁添加"Preview"按钮
+3. 点击 Preview → 调用 `dryRunSkill()` → 展示模拟结果 (命令列表，不执行)
+4. 模拟结果复用 `ExecutionDetail.tsx` 展示，标注 `[DRY RUN]` 标签
+**验收标准**: 
+- ExecuteDialog 显示 "Preview" 按钮
+- 点击 Preview 调用 dry-run API 并展示结果
+- UI 明确标注结果为模拟 (非真实执行)
+- 测试覆盖: ≥4 个组件测试
+**影响范围**: packages/dashboard/src/stores/skills.ts, components/skill/ExecuteDialog.tsx (各改 <30 行)
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Skill 健康检查 — 定期验证已安装 Skill 完整性
+
+**ID**: skill-096
+**优先级**: P1
+**模块路径**: packages/server/src/core/skill/
+**当前状态**: 已安装 Skill 的验证仅在执行时触发 (on-demand)。如果 Skill 目录被删除、manifest 损坏或依赖缺失，直到下次执行才会发现。Cron Skill 可能静默失败。
+**实现方案**: 
+1. 在 engine.ts (拆分后) 添加 `healthCheck(): Promise<HealthCheckResult[]>` 方法:
+   - 遍历所有 enabled skills
+   - 检查 skillPath 目录是否存在
+   - 尝试 loadSkillFromDir() 验证 manifest
+   - 对比 DB 中 version 与磁盘 manifest version
+   - 返回每个 skill 的健康状态: healthy / degraded / broken
+2. 在 engine `start()` 中添加定期健康检查 (每 6 小时)
+3. broken skill 自动标记为 `error` 状态 + warn 日志
+4. API: `GET /api/v1/skills/health` 返回健康报告
+**验收标准**: 
+- 健康检查检测目录缺失、manifest 损坏、版本不匹配
+- broken skill 自动降级到 error 状态
+- 日志记录所有健康状态变化
+- 测试覆盖: ≥10 个测试用例
+**影响范围**: packages/server/src/core/skill/engine.ts (拆分后文件), 新建 engine-health.test.ts
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Skill 健康检查 API 端点
+
+**ID**: skill-097
+**优先级**: P1
+**模块路径**: packages/server/src/api/routes/
+**当前状态**: 依赖 skill-096 健康检查核心逻辑完成后，需暴露 REST API 端点。
+**实现方案**: 
+1. `api/routes/skills.ts` 添加 `GET /skills/health` 端点
+2. 权限: `skill:manage` (admin/owner only)
+3. 调用 `getSkillEngine().healthCheck()` 返回结果
+4. 包含每个 skill 的: name, status, lastCheck, issues[]
+**验收标准**: 
+- GET /skills/health 返回所有已安装 skill 的健康状态
+- 仅 admin/owner 可访问
+- 测试覆盖: ≥4 个 API 测试
+**影响范围**: packages/server/src/api/routes/skills.ts (增加 <30 行)
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Skill 导出为可分发归档包
+
+**ID**: skill-098
+**优先级**: P2
+**模块路径**: packages/server/src/core/skill/
+**当前状态**: Skill 安装仅支持 Git URL 和本地目录。无法将已安装的 Skill 打包为可分发的归档文件 (.tar.gz)，阻碍 Skill 在非 Git 环境中的分享。
+**实现方案**: 
+1. 新建 `core/skill/skill-archive.ts` (~150 行):
+   - `exportSkill(skillId: string): Promise<{ filename: string; buffer: Buffer }>` 
+   - 读取 skill 目录 → 验证 manifest → tar.gz 打包 (使用 Node.js `zlib` + `tar` 或内置 API)
+   - 排除: .git/, node_modules/, *.test.*, .DS_Store
+   - 文件名格式: `{name}-{version}.tar.gz`
+2. `importSkill(buffer: Buffer, userId: string): Promise<InstalledSkill>`
+   - 解压到临时目录 → 验证 manifest → 移动到 `skills/community/{name}/` → 调用 engine.install()
+3. 对应测试文件 `skill-archive.test.ts`
+**验收标准**: 
+- 可导出 skill 为 .tar.gz
+- 可从 .tar.gz 导入安装 skill
+- 导入时验证 manifest schema
+- 测试覆盖: ≥8 个测试用例
+**影响范围**: 新建 packages/server/src/core/skill/skill-archive.ts, skill-archive.test.ts
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Skill 导出/导入 API 端点
+
+**ID**: skill-099
+**优先级**: P2
+**模块路径**: packages/server/src/api/routes/
+**当前状态**: 依赖 skill-098 归档功能完成后，需暴露 REST API。
+**实现方案**: 
+1. `api/routes/skills.ts` 添加:
+   - `GET /skills/:id/export` → 返回 .tar.gz 文件 (Content-Type: application/gzip)
+   - `POST /skills/import` → 接受 multipart/form-data 上传 → 调用 importSkill()
+2. 权限: `skill:manage` (admin/owner only)
+3. 文件大小限制: 10MB
+**验收标准**: 
+- 可通过 API 下载 skill 归档
+- 可通过 API 上传归档安装 skill
+- 测试覆盖: ≥6 个 API 测试
+**影响范围**: packages/server/src/api/routes/skills.ts (增加 <50 行)
+**创建时间**: 2026-02-13
+**完成时间**: -
+
+---
+
+### [pending] Dashboard Skill 导出/导入 UI
+
+**ID**: skill-100
+**优先级**: P2
+**模块路径**: packages/dashboard/src/
+**当前状态**: 依赖 skill-099 API 就绪后，Dashboard 需要导出/导入操作入口。
+**实现方案**: 
+1. `stores/skills.ts` 添加 `exportSkill(id: string)` (blob download) 和 `importSkill(file: File)` 方法
+2. `components/skill/SkillCard.tsx` 在操作菜单添加 "Export" 按钮
+3. `pages/Skills.tsx` 的 "Installed" tab 添加 "Import Skill" 按钮 (文件上传)
+4. 导入成功后自动刷新列表
+**验收标准**: 
+- SkillCard 可导出 Skill
+- Skills 页面可上传导入 Skill
+- 错误提示 (文件过大、格式错误) 正确显示
+- 测试覆盖: ≥6 个测试用例
+**影响范围**: packages/dashboard/src/stores/skills.ts, components/skill/SkillCard.tsx, pages/Skills.tsx (各改 <30 行)
+**创建时间**: 2026-02-13
+**完成时间**: -
+
 # 无新增任务
 
 所有 Skill 模块开发任务已完成 (56/56)。
