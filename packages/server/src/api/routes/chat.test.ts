@@ -60,6 +60,7 @@ import {
   _hasRecentlyExpired,
   _resetSessionLocks,
   _hasSessionLock,
+  _getSessionLock,
   CONFIRM_TIMEOUT_MS,
   SESSION_LOCK_TIMEOUT_MS,
   RECENTLY_EXPIRED_TTL_MS,
@@ -2204,6 +2205,112 @@ describe('acquireSessionLock', () => {
 
   it('should export SESSION_LOCK_TIMEOUT_MS as 30 seconds', () => {
     expect(SESSION_LOCK_TIMEOUT_MS).toBe(30_000);
+  });
+
+  it('should delete stale lock entry on timeout', async () => {
+    vi.useFakeTimers();
+
+    // First acquire — never released (hung request)
+    await acquireSessionLock('session-stale');
+    expect(_hasSessionLock('session-stale')).toBe(true);
+
+    // Second acquire starts waiting
+    const acquirePromise2 = acquireSessionLock('session-stale');
+
+    // Advance past timeout — stale lock should be cleaned up
+    vi.advanceTimersByTime(SESSION_LOCK_TIMEOUT_MS + 1);
+
+    const release2 = await acquirePromise2;
+
+    // Lock now belongs to request 2 (stale entry was deleted, then new one set)
+    expect(_hasSessionLock('session-stale')).toBe(true);
+
+    release2();
+    expect(_hasSessionLock('session-stale')).toBe(false);
+    vi.useRealTimers();
+  });
+
+  it('should log warning on timeout', async () => {
+    vi.useFakeTimers();
+    const warnSpy = vi.spyOn(logger, 'warn');
+
+    await acquireSessionLock('session-log-timeout');
+
+    const acquirePromise2 = acquireSessionLock('session-log-timeout');
+    vi.advanceTimersByTime(SESSION_LOCK_TIMEOUT_MS + 1);
+
+    const release2 = await acquirePromise2;
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operation: 'session_lock_timeout',
+        sessionId: 'session-log-timeout',
+      }),
+      expect.stringContaining('Session lock timed out'),
+    );
+
+    release2();
+    warnSpy.mockRestore();
+    vi.useRealTimers();
+  });
+
+  it('should not delete another request\'s lock on release', async () => {
+    vi.useFakeTimers();
+
+    // Request A acquires lock
+    const releaseA = await acquireSessionLock('session-guard');
+    const lockA = _getSessionLock('session-guard');
+
+    // Request B starts waiting, then times out
+    const acquirePromiseB = acquireSessionLock('session-guard');
+    vi.advanceTimersByTime(SESSION_LOCK_TIMEOUT_MS + 1);
+    const releaseB = await acquirePromiseB;
+
+    // Now the Map points to B's lock, not A's
+    const lockB = _getSessionLock('session-guard');
+    expect(lockB).not.toBe(lockA);
+
+    // Request A finally releases — should NOT delete B's lock
+    releaseA();
+    expect(_hasSessionLock('session-guard')).toBe(true);
+    expect(_getSessionLock('session-guard')).toBe(lockB);
+
+    // Request B releases — should delete its own lock
+    releaseB();
+    expect(_hasSessionLock('session-guard')).toBe(false);
+
+    vi.useRealTimers();
+  });
+
+  it('should allow request C to properly wait on request B after timeout recovery', async () => {
+    vi.useFakeTimers();
+
+    // Request A acquires and hangs
+    await acquireSessionLock('session-abc');
+
+    // Request B times out waiting for A
+    const acquirePromiseB = acquireSessionLock('session-abc');
+    vi.advanceTimersByTime(SESSION_LOCK_TIMEOUT_MS + 1);
+    const releaseB = await acquirePromiseB;
+
+    // Request C arrives while B holds the lock
+    let cAcquired = false;
+    const acquirePromiseC = acquireSessionLock('session-abc').then((release) => {
+      cAcquired = true;
+      return release;
+    });
+
+    // Give event loop a tick — C should still be waiting
+    await Promise.resolve();
+    expect(cAcquired).toBe(false);
+
+    // B releases — C should now acquire
+    releaseB();
+    const releaseC = await acquirePromiseC;
+    expect(cAcquired).toBe(true);
+
+    releaseC();
+    vi.useRealTimers();
   });
 });
 

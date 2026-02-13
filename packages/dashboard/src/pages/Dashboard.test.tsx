@@ -9,7 +9,22 @@ import { useServersStore } from '@/stores/servers';
 import { useDashboardStore } from '@/stores/dashboard';
 import { useUiStore } from '@/stores/ui';
 import type { Server } from '@/types/server';
-import type { Operation, Alert } from '@/types/dashboard';
+import type { Operation, Alert, OperationStats } from '@/types/dashboard';
+
+// Mock recharts to avoid SVG rendering issues in jsdom
+vi.mock('recharts', () => ({
+  ResponsiveContainer: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="responsive-container">{children}</div>
+  ),
+  LineChart: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="line-chart">{children}</div>
+  ),
+  Line: () => <div data-testid="line" />,
+  XAxis: () => <div data-testid="xaxis" />,
+  YAxis: () => <div data-testid="yaxis" />,
+  CartesianGrid: () => <div data-testid="cartesian-grid" />,
+  Tooltip: () => <div data-testid="tooltip" />,
+}));
 
 const mockNavigate = vi.fn();
 vi.mock('react-router-dom', async () => {
@@ -124,6 +139,35 @@ const mockAlerts: Alert[] = [
   },
 ];
 
+const mockStats: OperationStats = {
+  total: 25,
+  byStatus: { success: 18, failed: 5, pending: 1, running: 1, rolled_back: 0 },
+  byType: { install: 10, config: 8, restart: 4, execute: 2, backup: 1 },
+  byRiskLevel: { green: 15, yellow: 7, red: 2, critical: 1 },
+  avgDuration: 4500,
+  successRate: 78,
+};
+
+function getDefaultDashboardState() {
+  return {
+    operations: mockOperations,
+    alerts: mockAlerts,
+    stats: mockStats,
+    weekOperations: [],
+    isLoadingOperations: false,
+    isLoadingAlerts: false,
+    isLoadingStats: false,
+    isLoadingWeekOps: false,
+    operationsError: null,
+    alertsError: null,
+    fetchRecentOperations: vi.fn().mockResolvedValue(undefined),
+    fetchAlerts: vi.fn().mockResolvedValue(undefined),
+    fetchOperationStats: vi.fn().mockResolvedValue(undefined),
+    fetchWeekOperations: vi.fn().mockResolvedValue(undefined),
+    clearErrors: vi.fn(),
+  };
+}
+
 function renderDashboard() {
   return render(
     <MemoryRouter>
@@ -151,17 +195,7 @@ describe('Dashboard Page', () => {
       setSearchQuery: vi.fn(),
       clearError: vi.fn(),
     });
-    useDashboardStore.setState({
-      operations: mockOperations,
-      alerts: mockAlerts,
-      isLoadingOperations: false,
-      isLoadingAlerts: false,
-      operationsError: null,
-      alertsError: null,
-      fetchRecentOperations: vi.fn().mockResolvedValue(undefined),
-      fetchAlerts: vi.fn().mockResolvedValue(undefined),
-      clearErrors: vi.fn(),
-    });
+    useDashboardStore.setState(getDefaultDashboardState());
   });
 
   describe('rendering', () => {
@@ -292,9 +326,10 @@ describe('Dashboard Page', () => {
 
     it('displays operation status badges', () => {
       renderDashboard();
-      expect(screen.getByText('Success')).toBeInTheDocument();
-      expect(screen.getByText('Failed')).toBeInTheDocument();
-      expect(screen.getByText('Running')).toBeInTheDocument();
+      const opsList = screen.getByTestId('operations-list');
+      expect(within(opsList).getByText('Success')).toBeInTheDocument();
+      expect(within(opsList).getByText('Failed')).toBeInTheDocument();
+      expect(within(opsList).getByText('Running')).toBeInTheDocument();
     });
 
     it('renders View All operations button', () => {
@@ -331,6 +366,14 @@ describe('Dashboard Page', () => {
       renderDashboard();
       expect(screen.getByTestId('operations-error')).toBeInTheDocument();
       expect(screen.getByText('Failed to load operations')).toBeInTheDocument();
+    });
+
+    it('navigates to operations page with highlight on operation click', async () => {
+      const user = userEvent.setup();
+      renderDashboard();
+
+      await user.click(screen.getByTestId('operation-op-1'));
+      expect(mockNavigate).toHaveBeenCalledWith('/operations?highlight=op-1');
     });
   });
 
@@ -418,6 +461,20 @@ describe('Dashboard Page', () => {
       renderDashboard();
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
+
+    it('calls fetchOperationStats on mount', () => {
+      const fetchMock = vi.fn().mockResolvedValue(undefined);
+      useDashboardStore.setState({ fetchOperationStats: fetchMock });
+      renderDashboard();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('calls fetchWeekOperations on mount', () => {
+      const fetchMock = vi.fn().mockResolvedValue(undefined);
+      useDashboardStore.setState({ fetchWeekOperations: fetchMock });
+      renderDashboard();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('operation with fallback serverId', () => {
@@ -457,6 +514,85 @@ describe('Dashboard Page', () => {
       });
       renderDashboard();
       expect(screen.getByText('srv-unknown')).toBeInTheDocument();
+    });
+  });
+
+  describe('overview charts section', () => {
+    it('renders overview charts container', () => {
+      renderDashboard();
+      expect(screen.getByTestId('overview-charts')).toBeInTheDocument();
+    });
+
+    it('renders operation trend title', () => {
+      renderDashboard();
+      expect(screen.getByText('Operation Trend')).toBeInTheDocument();
+      expect(screen.getByText('Daily operation count over the last 7 days')).toBeInTheDocument();
+    });
+
+    it('renders trend chart', () => {
+      renderDashboard();
+      expect(screen.getByTestId('trend-chart')).toBeInTheDocument();
+    });
+
+    it('shows loading state for trend chart', () => {
+      useDashboardStore.setState({ isLoadingWeekOps: true });
+      renderDashboard();
+      expect(screen.getByTestId('trend-loading')).toBeInTheDocument();
+      expect(screen.queryByTestId('trend-chart')).not.toBeInTheDocument();
+    });
+
+    it('renders success rate card title', () => {
+      renderDashboard();
+      expect(screen.getByText('Success Rate')).toBeInTheDocument();
+      expect(screen.getByText('Overall operation success rate')).toBeInTheDocument();
+    });
+
+    it('renders success rate card with stats', () => {
+      renderDashboard();
+      const card = screen.getByTestId('success-rate-card');
+      expect(card).toBeInTheDocument();
+      // successRate from mockStats is 78
+      expect(within(card).getByText('78%')).toBeInTheDocument();
+      expect(within(card).getByText('Overall Success')).toBeInTheDocument();
+      // success count = 18, failed count = 5
+      expect(within(card).getByText('18')).toBeInTheDocument();
+      expect(within(card).getByText('5')).toBeInTheDocument();
+      // total ops = 25
+      expect(within(card).getByText('25')).toBeInTheDocument();
+    });
+
+    it('shows loading state for success rate card', () => {
+      useDashboardStore.setState({ isLoadingStats: true });
+      renderDashboard();
+      expect(screen.getByTestId('stats-card-loading')).toBeInTheDocument();
+      expect(screen.queryByTestId('success-rate-card')).not.toBeInTheDocument();
+    });
+
+    it('shows 0% success rate when no stats', () => {
+      useDashboardStore.setState({ stats: null });
+      renderDashboard();
+      const card = screen.getByTestId('success-rate-card');
+      expect(within(card).getByText('0%')).toBeInTheDocument();
+    });
+
+    it('applies green color for high success rate', () => {
+      useDashboardStore.setState({
+        stats: { ...mockStats, successRate: 95, byStatus: { ...mockStats.byStatus, success: 95, failed: 5 } },
+      });
+      renderDashboard();
+      const card = screen.getByTestId('success-rate-card');
+      const rateEl = within(card).getByText('95%');
+      expect(rateEl.className).toContain('text-green-600');
+    });
+
+    it('applies red color for low success rate', () => {
+      useDashboardStore.setState({
+        stats: { ...mockStats, successRate: 30, byStatus: { ...mockStats.byStatus, success: 3, failed: 7 } },
+      });
+      renderDashboard();
+      const card = screen.getByTestId('success-rate-card');
+      const rateEl = within(card).getByText('30%');
+      expect(rateEl.className).toContain('text-red-600');
     });
   });
 

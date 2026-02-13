@@ -88,10 +88,20 @@ const sessionLocks = new Map<string, Promise<void>>();
 async function acquireSessionLock(sessionId: string): Promise<() => void> {
   const currentLock = sessionLocks.get(sessionId);
   if (currentLock) {
+    let timedOut = false;
     await Promise.race([
       currentLock,
-      new Promise<void>((resolve) => setTimeout(resolve, SESSION_LOCK_TIMEOUT_MS)),
+      new Promise<void>((resolve) => setTimeout(() => { timedOut = true; resolve(); }, SESSION_LOCK_TIMEOUT_MS)),
     ]);
+    if (timedOut) {
+      // Previous lock holder hung — clean up the stale entry so future
+      // requests don't wait on a Promise that will never resolve.
+      sessionLocks.delete(sessionId);
+      logger.warn(
+        { operation: 'session_lock_timeout', sessionId },
+        `Session lock timed out after ${SESSION_LOCK_TIMEOUT_MS}ms — forcing acquisition`,
+      );
+    }
   }
 
   let releaseFn!: () => void;
@@ -104,7 +114,11 @@ async function acquireSessionLock(sessionId: string): Promise<() => void> {
   return () => {
     if (released) return;
     released = true;
-    sessionLocks.delete(sessionId);
+    // Only delete if the Map still points to OUR lock.
+    // Another request may have already replaced it after a timeout.
+    if (sessionLocks.get(sessionId) === newLock) {
+      sessionLocks.delete(sessionId);
+    }
     releaseFn();
   };
 }
@@ -726,6 +740,11 @@ export function _resetSessionLocks(): void {
 /** @internal Test helper — check if a session lock exists. */
 export function _hasSessionLock(sessionId: string): boolean {
   return sessionLocks.has(sessionId);
+}
+
+/** @internal Test helper — get the raw lock Promise for identity checks. */
+export function _getSessionLock(sessionId: string): Promise<void> | undefined {
+  return sessionLocks.get(sessionId);
 }
 
 /** @internal Exported for testing. */
