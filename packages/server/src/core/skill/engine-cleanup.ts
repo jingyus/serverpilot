@@ -43,7 +43,10 @@ export async function cleanupOldExecutions(repo: SkillRepository): Promise<numbe
 export function startCleanupTimers(
   repo: SkillRepository,
   expirePendingConfirmations: () => Promise<number>,
+  cleanupExecutions?: () => Promise<number>,
 ): { dispose: () => void } {
+  const doCleanupExecutions = cleanupExecutions ?? (() => cleanupOldExecutions(repo));
+
   const confirmationTimer = setInterval(() => {
     expirePendingConfirmations().then((c) => {
       if (c > 0) logger.info({ expiredCount: c }, 'Expired pending confirmations cleaned up');
@@ -54,14 +57,14 @@ export function startCleanupTimers(
   confirmationTimer.unref();
 
   const executionTimer = setInterval(() => {
-    cleanupOldExecutions(repo).catch((err) => {
+    doCleanupExecutions().catch((err) => {
       logger.error({ error: (err as Error).message }, 'Failed to clean up old executions');
     });
   }, EXECUTION_CLEANUP_INTERVAL_MS);
   executionTimer.unref();
 
   // Initial cleanup (fire-and-forget)
-  cleanupOldExecutions(repo).catch(() => {});
+  doCleanupExecutions().catch(() => {});
 
   return {
     dispose() {

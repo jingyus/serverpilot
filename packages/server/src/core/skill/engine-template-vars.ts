@@ -78,7 +78,7 @@ export async function buildSkillVars(
       : 'N/A';
 
     return {
-      last_run: last.completedAt,
+      last_run: last.completedAt!,
       last_result: lastResult,
     };
   } catch {

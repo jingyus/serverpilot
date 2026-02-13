@@ -1,20 +1,21 @@
-### [pending] trimMessagesIfNeeded 在仅剩 3 条消息时不保证 token 预算 — 可能超出 maxTokens
+### [pending] chat 路由 profileMgr.getProfile 在 SSE 流创建前调用 — 异常导致 HTTP 500 而非 SSE 错误事件
 
-**ID**: chat-067
+**ID**: chat-068
 **优先级**: P0
-**模块路径**: packages/server/src/ai/
-**发现的问题**: `agentic-message-utils.ts:63-66` 的 while 循环在 `messages.length > 3` 时才继续裁剪。当裁剪到仅剩 3 条消息后，即使 `estimateMessagesTokens(messages) > maxTokens`，循环也会退出。例如：如果第一条 user 消息包含 50K tokens 的文件内容，加上最近一轮 assistant+user 共 110K tokens，总计 160K > 150K maxTokens，函数返回时消息仍超预算。这会导致后续 Anthropic API 调用因 token 超限而失败。
+**模块路径**: packages/server/src/api/routes/
+**发现的问题**: `chat.ts:162-163` 在 `streamSSE(c, ...)` 之前调用 `profileMgr.getProfile(serverId, userId)`。如果 getProfile 抛出异常（数据库错误、profile 损坏等），异常发生在 SSE 流创建之前，Hono 框架会返回 HTTP 500 响应。前端 SSE 客户端收到的是标准 HTTP 错误响应而非 SSE 事件，无法触发 `onError` 回调——用户看到静默失败或浏览器控制台报错。注意：execute 路由（行 441-455）已经在 SSE 流内部正确处理了 getProfile 异常，说明这是一个遗漏，而非设计选择。
 **改进方案**:
-1. 在 while 循环退出后增加二次检查：如果剩余 3 条消息仍超预算，对最早的消息内容进行截断（保留末尾部分）
-2. 截断策略：估算需要移除的 token 数，按字符比例截断第一条消息的 content，保留 `[Content truncated: ~{N}K tokens removed]` 标记
-3. 如果第一条消息是 array content（tool results），移除最早的 content blocks 直到预算内
+1. 将 `profileMgr.getProfile` 调用移到 `streamSSE` 回调内部（行 165 之后）
+2. 用 try/catch 包裹，失败时通过 `safeWriteSSE` 发送错误事件给前端
+3. profile 加载失败后仍可选择无 profile 模式继续对话（降级而非终止）
 **验收标准**:
-- 无论消息数量多少，函数返回时 `estimateMessagesTokens(messages) <= maxTokens` 始终成立
-- 截断后注入通知让 AI 知道上下文被截断
-- 现有 trim 测试通过 + 新增边界场景测试（3 条超大消息）
+- `getProfile` 异常时前端收到 SSE error 事件（非 HTTP 500）
+- 用户看到友好错误消息而非空白/断连
+- 现有 chat route 测试通过
+- 新增测试：mock getProfile 抛异常，验证 SSE 流仍正确关闭
 **影响范围**:
-- `packages/server/src/ai/agentic-message-utils.ts` — 添加二次截断逻辑
-- `packages/server/tests/ai/agentic-message-utils.test.ts` — 新增边界测试
+- `packages/server/src/api/routes/chat.ts` — POST `/:serverId` 路由重构
+- `packages/server/tests/api/routes/chat.test.ts` — 新增测试
 **创建时间**: 2026-02-13
 **完成时间**: -
 

@@ -3,20 +3,20 @@
 > 此队列专注于 Skill 插件系统的设计与实现
 > AI 自动扫描 → 发现缺失 → 设计实现 → 验证
 
-**最后更新**: 2026-02-13 09:37:45
+**最后更新**: 2026-02-13 09:43:01
 
 ## 📊 统计
 
 - **总任务数**: 67
 - **待完成** (pending): 10
-- **进行中** (in_progress): 1
-- **已完成** (completed): 56
+- **进行中** (in_progress): 0
+- **已完成** (completed): 57
 - **失败** (failed): 0
 
 ## 📋 任务列表
 
 ### [completed] DB Schema + Migration + SkillRepository 数据层 ✅
-### [in_progress] SkillEngine 拆分 — engine.ts 已达 800 行硬限制需重构
+### [completed] SkillEngine 拆分 — engine.ts 已达 800 行硬限制需重构 ✅
 
 **ID**: skill-090
 **优先级**: P0
@@ -35,7 +35,7 @@
 - 公共 API (`getSkillEngine()` 等) 不变
 **影响范围**: packages/server/src/core/skill/engine.ts (拆分), 新建 engine-queries.ts, engine-template-vars.ts, engine-cleanup.ts
 **创建时间**: 2026-02-13
-**完成时间**: -
+**完成时间**: 2026-02-13 09:43:01
 
 ---
 

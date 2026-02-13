@@ -503,6 +503,123 @@ describe('POST /api/v1/chat/:serverId', () => {
 });
 
 // ============================================================================
+// POST /chat/:serverId — getProfile error handling (chat-068)
+// ============================================================================
+
+describe('POST /api/v1/chat/:serverId (profile load failure)', () => {
+  it('should send SSE error event instead of HTTP 500 when getProfile throws', async () => {
+    const server = await createServer('web-01', tokenA);
+
+    // Override profile manager to throw
+    const { getProfileManager } = await import('../../core/profile/manager.js');
+    vi.mocked(getProfileManager).mockReturnValueOnce({
+      getProfile: vi.fn().mockRejectedValue(new Error('DB connection lost')),
+    } as never);
+
+    _setMockAgent({
+      chat: vi.fn().mockResolvedValue({ text: 'response', plan: null }),
+    });
+
+    const res = await jsonPost(
+      `/api/v1/chat/${server.id}`,
+      { message: 'hello' },
+      tokenA,
+    );
+
+    // Must be 200 with SSE, NOT 500
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/event-stream');
+
+    const events = await parseSSEEvents(res);
+
+    // Should have sessionId event
+    const sessionEvent = events.find(e =>
+      e.event === 'message' && JSON.parse(e.data).sessionId,
+    );
+    expect(sessionEvent).toBeDefined();
+
+    // Should have a warning about profile load failure
+    const warningEvent = events.find(e =>
+      e.event === 'message' && e.data.includes('Failed to load server profile'),
+    );
+    expect(warningEvent).toBeDefined();
+
+    // Chat should still complete (graceful degradation)
+    const completeEvent = events.find(e => e.event === 'complete');
+    expect(completeEvent).toBeDefined();
+  });
+
+  it('should log error when getProfile throws', async () => {
+    const server = await createServer('web-01', tokenA);
+    const errorSpy = vi.spyOn(logger, 'error');
+
+    const { getProfileManager } = await import('../../core/profile/manager.js');
+    vi.mocked(getProfileManager).mockReturnValueOnce({
+      getProfile: vi.fn().mockRejectedValue(new Error('Corrupted profile data')),
+    } as never);
+
+    _setMockAgent({
+      chat: vi.fn().mockResolvedValue({ text: 'ok', plan: null }),
+    });
+
+    await jsonPost(
+      `/api/v1/chat/${server.id}`,
+      { message: 'hello' },
+      tokenA,
+    );
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operation: 'profile_load',
+        serverId: server.id,
+        error: 'Corrupted profile data',
+      }),
+      'Failed to load server profile for chat',
+    );
+    errorSpy.mockRestore();
+  });
+
+  it('should continue with null profile in legacy mode when getProfile throws', async () => {
+    const server = await createServer('web-01', tokenA);
+
+    const { getProfileManager } = await import('../../core/profile/manager.js');
+    vi.mocked(getProfileManager).mockReturnValueOnce({
+      getProfile: vi.fn().mockRejectedValue(new Error('DB timeout')),
+    } as never);
+
+    const mockAgent = {
+      chat: vi.fn().mockImplementation(async (
+        _message: string,
+        _serverCtx: string,
+        _convCtx: string,
+        callbacks?: { onToken?: (t: string) => void | Promise<void> },
+      ) => {
+        if (callbacks?.onToken) await callbacks.onToken('response');
+        return { text: 'response', plan: null };
+      }),
+    };
+    _setMockAgent(mockAgent);
+
+    const res = await jsonPost(
+      `/api/v1/chat/${server.id}`,
+      { message: 'hello' },
+      tokenA,
+    );
+
+    expect(res.status).toBe(200);
+    const events = await parseSSEEvents(res);
+
+    // Chat should complete successfully despite profile failure
+    const completeEvent = events.find(e => e.event === 'complete');
+    expect(completeEvent).toBeDefined();
+    expect(JSON.parse(completeEvent!.data).success).toBe(true);
+
+    // AI agent should have been called
+    expect(mockAgent.chat).toHaveBeenCalled();
+  });
+});
+
+// ============================================================================
 // POST /chat/:serverId — Reconnect (SSE)
 // ============================================================================
 

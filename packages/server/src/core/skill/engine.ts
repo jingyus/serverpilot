@@ -36,7 +36,7 @@ import {
   getExecution as queryGetExecution,
 } from './engine-queries.js';
 import { buildServerVars, buildSkillVars } from './engine-template-vars.js';
-import { startCleanupTimers, cleanupOldExecutions } from './engine-cleanup.js';
+import { startCleanupTimers, cleanupOldExecutions, EXECUTION_RETENTION_DAYS } from './engine-cleanup.js';
 import type { SkillManifest } from '@aiinstaller/shared';
 import type { SkillStatus } from '../../db/schema.js';
 import type {
@@ -58,13 +58,7 @@ const logger = createContextLogger({ module: 'skill-engine' });
 
 // --------------- Constants ---------------
 
-const DEFAULT_SKILL_PATHS = ['skills/official', 'skills/community'];
-
 const MAX_CHAIN_DEPTH = 5;
-
-const CONFIRMATION_CLEANUP_INTERVAL_MS = 10 * 60 * 1000; // 10 minutes
-const EXECUTION_CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
-const EXECUTION_RETENTION_DAYS = 90;
 
 const STATUS_TRANSITIONS: Record<SkillStatus, SkillStatus[]> = {
   installed:  ['configured', 'enabled', 'error'],
@@ -79,8 +73,7 @@ export class SkillEngine {
   private repo: SkillRepository;
   private running = false;
   private triggerManager: TriggerManager | null = null;
-  private confirmationCleanupTimer: NodeJS.Timeout | null = null;
-  private executionCleanupTimer: NodeJS.Timeout | null = null;
+  private cleanupDispose: (() => void) | null = null;
   private confirmationManager: SkillConfirmationManager;
   /** Map of running execution IDs to their AbortControllers for cancellation support. */
   private runningExecutions = new Map<string, AbortController>();
@@ -90,8 +83,8 @@ export class SkillEngine {
     this.repo = repo ?? getSkillRepository();
     this.confirmationManager = new SkillConfirmationManager({
       repo: this.repo,
-      buildServerVars: (serverId, userId) => this.buildServerVars(serverId, userId),
-      buildSkillVars: (skillId) => this.buildSkillVars(skillId),
+      buildServerVars: (serverId, userId) => buildServerVars(serverId, userId),
+      buildSkillVars: (skillId) => buildSkillVars(this.repo, skillId),
       dispatchWebhookEvent: (type, userId, data) => this.dispatchWebhookEvent(type, userId, data),
     });
     logger.info({ projectRoot: this.projectRoot }, 'SkillEngine created');
@@ -112,24 +105,13 @@ export class SkillEngine {
     setTriggerManager(this.triggerManager);
     await this.triggerManager.start();
 
-    // Periodic cleanup of expired pending confirmations
-    this.confirmationCleanupTimer = setInterval(() => {
-      this.expirePendingConfirmations().then((c) => {
-        if (c > 0) logger.info({ expiredCount: c }, 'Expired pending confirmations cleaned up');
-      }).catch((err) => {
-        logger.error({ error: (err as Error).message }, 'Failed to expire pending confirmations');
-      });
-    }, CONFIRMATION_CLEANUP_INTERVAL_MS);
-    this.confirmationCleanupTimer.unref();
-
-    // Periodic cleanup of old execution history (24h interval, 90-day retention)
-    this.executionCleanupTimer = setInterval(() => {
-      this.cleanupOldExecutions().catch((err) => {
-        logger.error({ error: (err as Error).message }, 'Failed to clean up old executions');
-      });
-    }, EXECUTION_CLEANUP_INTERVAL_MS);
-    this.executionCleanupTimer.unref();
-    this.cleanupOldExecutions().catch(() => {}); // initial cleanup
+    // Periodic cleanup timers (confirmations + old executions)
+    const cleanup = startCleanupTimers(
+      this.repo,
+      () => this.expirePendingConfirmations(),
+      () => this.cleanupOldExecutions(),
+    );
+    this.cleanupDispose = cleanup.dispose;
 
     logger.info('SkillEngine started');
   }
@@ -139,11 +121,10 @@ export class SkillEngine {
     if (!this.running) return;
     this.running = false;
 
-    for (const timer of [this.confirmationCleanupTimer, this.executionCleanupTimer]) {
-      if (timer) clearInterval(timer);
+    if (this.cleanupDispose) {
+      this.cleanupDispose();
+      this.cleanupDispose = null;
     }
-    this.confirmationCleanupTimer = null;
-    this.executionCleanupTimer = null;
 
     if (this.triggerManager) {
       this.triggerManager.stop();
@@ -457,10 +438,10 @@ export class SkillEngine {
       const mergedConfig = { ...skill.config, ...params.config };
 
       // Build server context from repository
-      const serverVars = await this.buildServerVars(serverId, userId);
+      const serverVars = await buildServerVars(serverId, userId);
 
       // Build skill context from last execution
-      const skillVars = await this.buildSkillVars(skillId);
+      const skillVars = await buildSkillVars(this.repo, skillId);
 
       const templateVars: TemplateVars = {
         input: mergedConfig,
@@ -581,10 +562,7 @@ export class SkillEngine {
 
   /** Delete execution records older than the retention period (90 days). */
   async cleanupOldExecutions(): Promise<number> {
-    const cutoff = new Date(Date.now() - EXECUTION_RETENTION_DAYS * 24 * 60 * 60 * 1000);
-    const deleted = await this.repo.deleteExecutionsBefore(cutoff);
-    if (deleted > 0) logger.info({ deletedCount: deleted, retentionDays: EXECUTION_RETENTION_DAYS }, 'Old executions cleaned up');
-    return deleted;
+    return cleanupOldExecutions(this.repo);
   }
 
   async confirmExecution(executionId: string, userId: string): Promise<SkillExecutionResult> {
@@ -654,132 +632,39 @@ export class SkillEngine {
     return checkRequirements(manifest.requires, serverProfile, agentVersion);
   }
 
-  /** Build server-related template variables from the server repository. */
-  private async buildServerVars(
-    serverId: string,
-    userId: string,
-  ): Promise<{ name: string; os: string; ip: string }> {
-    try {
-      const serverRepo = getServerRepository();
-      const server = await serverRepo.findById(serverId, userId);
-      if (!server) {
-        return { name: '', os: '', ip: '' };
-      }
-
-      let os = '';
-      let ip = '';
-      try {
-        const profile = await serverRepo.getProfile(serverId, userId);
-        if (profile?.osInfo) {
-          os = profile.osInfo.platform;
-          ip = profile.osInfo.hostname;
-        }
-      } catch {
-        // Profile may not be available; use empty strings
-      }
-
-      return { name: server.name, os, ip };
-    } catch {
-      logger.debug({ serverId }, 'Failed to fetch server info for template vars');
-      return { name: '', os: '', ip: '' };
-    }
-  }
-
-  /** Build skill-related template variables from execution history. */
-  private async buildSkillVars(
-    skillId: string,
-  ): Promise<{ last_run: string; last_result: string }> {
-    try {
-      // Fetch a few recent executions — the newest may be the current in-progress one
-      const executions = await this.repo.listExecutions(skillId, 5);
-      const last = executions.find((e) => e.completedAt);
-      if (!last) {
-        return { last_run: 'N/A', last_result: 'N/A' };
-      }
-      const lastResult = last.result
-        ? (typeof last.result['output'] === 'string'
-            ? last.result['output']
-            : JSON.stringify(last.result))
-        : 'N/A';
-
-      return {
-        last_run: last.completedAt,
-        last_result: lastResult,
-      };
-    } catch {
-      logger.debug({ skillId }, 'Failed to fetch skill execution history for template vars');
-      return { last_run: 'N/A', last_result: 'N/A' };
-    }
-  }
-
   /** List all installed skills for a user. */
   async listInstalled(userId: string): Promise<InstalledSkill[]> {
-    return this.repo.findAll(userId);
+    return queryListInstalled(this.repo, userId);
   }
 
   /** List installed skills enriched with manifest input definitions. */
   async listInstalledWithInputs(userId: string): Promise<InstalledSkillWithInputs[]> {
-    const skills = await this.repo.findAll(userId);
-    return Promise.all(
-      skills.map(async (skill): Promise<InstalledSkillWithInputs> => {
-        if (skill.manifestInputs) {
-          return { ...skill, inputs: skill.manifestInputs as SkillInput[] };
-        }
-        try {
-          const manifest = await loadSkillFromDir(skill.skillPath);
-          return { ...skill, inputs: manifest.inputs ?? [] };
-        } catch {
-          logger.warn({ skillId: skill.id, path: skill.skillPath }, 'Failed to load manifest for inputs');
-          return { ...skill, inputs: [] };
-        }
-      }),
-    );
+    return queryListInstalledWithInputs(this.repo, userId);
   }
 
   /** Get a single installed skill by ID. */
   async getInstalled(skillId: string): Promise<InstalledSkill | null> {
-    return this.repo.findById(skillId);
+    return queryGetInstalled(this.repo, skillId);
   }
 
   /** Get a single installed skill enriched with manifest input definitions. */
   async getInstalledWithInputs(skillId: string): Promise<InstalledSkillWithInputs | null> {
-    const skill = await this.repo.findById(skillId);
-    if (!skill) return null;
-    if (skill.manifestInputs) {
-      return { ...skill, inputs: skill.manifestInputs as SkillInput[] };
-    }
-    try {
-      const manifest = await loadSkillFromDir(skill.skillPath);
-      return { ...skill, inputs: manifest.inputs ?? [] };
-    } catch {
-      logger.warn({ skillId: skill.id, path: skill.skillPath }, 'Failed to load manifest for inputs');
-      return { ...skill, inputs: [] };
-    }
+    return queryGetInstalledWithInputs(this.repo, skillId);
   }
 
   /** List all available skills (official + community + local). */
   async listAvailable(userId: string): Promise<AvailableSkill[]> {
-    const scanPaths = DEFAULT_SKILL_PATHS.map((p) => join(this.projectRoot, p));
-    const scanned = await scanSkillDirectories(scanPaths);
-    const installed = await this.repo.findAll(userId);
-    const installedNames = new Set(installed.map((s) => s.name));
-
-    return scanned.map((s: ScannedSkill) => ({
-      manifest: s.manifest,
-      source: s.source,
-      dirPath: s.dirPath,
-      installed: installedNames.has(s.manifest.metadata.name),
-    }));
+    return queryListAvailable(this.repo, this.projectRoot, userId);
   }
 
   /** Get execution history for a skill. */
   async getExecutions(skillId: string, limit = 20): Promise<SkillExecution[]> {
-    return this.repo.listExecutions(skillId, limit);
+    return queryGetExecutions(this.repo, skillId, limit);
   }
 
   /** Get a single execution by ID. */
   async getExecution(executionId: string): Promise<SkillExecution | null> {
-    return this.repo.findExecutionById(executionId);
+    return queryGetExecution(this.repo, executionId);
   }
 }
 

@@ -3,13 +3,13 @@
 > 此队列专注于 Chat 和 AI 对话系统的质量改进
 > AI 自动发现问题 → 生成任务 → 实现 → 验证
 
-**最后更新**: 2026-02-13 09:39:28
+**最后更新**: 2026-02-13 09:39:59
 
 ## 📊 统计
 
 - **总任务数**: 80
-- **待完成** (pending): 13
-- **进行中** (in_progress): 0
+- **待完成** (pending): 12
+- **进行中** (in_progress): 1
 - **已完成** (completed): 67
 - **失败** (failed): 0
 
@@ -63,7 +63,7 @@
 
 ---
 
-### [pending] chat 路由 profileMgr.getProfile 在 SSE 流创建前调用 — 异常导致 HTTP 500 而非 SSE 错误事件
+### [in_progress] chat 路由 profileMgr.getProfile 在 SSE 流创建前调用 — 异常导致 HTTP 500 而非 SSE 错误事件
 
 **ID**: chat-068
 **优先级**: P0

@@ -159,15 +159,28 @@ chat.post('/:serverId', requirePermission('chat:use'), validateBody(ChatMessageB
   }
   logger.info({ operation: 'chat_message', serverId, sessionId: session.id, userId }, `Chat message received for server ${server.name}`);
 
-  const profileMgr = getProfileManager();
-  const fullProfile = await profileMgr.getProfile(serverId, userId);
-
   return streamSSE(c, async (stream) => {
     // Send sessionId to client so it can track the conversation
     await stream.writeSSE({
       event: 'message',
       data: JSON.stringify({ sessionId: session.id }),
     });
+
+    // Load profile inside SSE stream so failures emit SSE error events
+    // instead of HTTP 500 (graceful degradation: continue without profile)
+    let fullProfile = null;
+    try {
+      const profileMgr = getProfileManager();
+      fullProfile = await profileMgr.getProfile(serverId, userId);
+    } catch (profileErr) {
+      logger.error(
+        { operation: 'profile_load', serverId, error: profileErr instanceof Error ? profileErr.message : String(profileErr) },
+        'Failed to load server profile for chat',
+      );
+      await safeWriteSSE(stream, 'message', JSON.stringify({
+        content: '⚠️ Failed to load server profile — continuing without profile context.',
+      }));
+    }
 
     // Try agentic mode first (Claude provider with tool_use support)
     const agenticEngine = getAgenticEngine();
