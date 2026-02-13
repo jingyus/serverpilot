@@ -322,6 +322,11 @@ export class SessionManager {
     return { sessions, total: result.total };
   }
 
+  /** Peek at a cached session without touching LRU order or loading from DB. */
+  getSessionFromCache(sessionId: string): Session | undefined {
+    return this.cache.peek(sessionId) ?? undefined;
+  }
+
   /** Get a session by ID. Checks cache first, then DB. */
   async getSession(sessionId: string, userId: string): Promise<Session | undefined> {
     const cached = this.cache.get(sessionId);

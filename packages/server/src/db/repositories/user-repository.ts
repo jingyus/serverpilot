@@ -55,6 +55,7 @@ export interface UserRepository {
   findByEmail(email: string): Promise<User | null>;
   create(input: CreateUserInput): Promise<User>;
   update(id: string, input: UpdateUserInput): Promise<User | null>;
+  updatePasswordHash(id: string, passwordHash: string): Promise<boolean>;
   delete(id: string): Promise<boolean>;
 }
 
@@ -131,6 +132,19 @@ export class DrizzleUserRepository implements UserRepository {
     return this.findById(id);
   }
 
+  async updatePasswordHash(id: string, passwordHash: string): Promise<boolean> {
+    const existing = await this.findById(id);
+    if (!existing) return false;
+
+    this.db
+      .update(users)
+      .set({ passwordHash, updatedAt: new Date() })
+      .where(eq(users.id, id))
+      .run();
+
+    return true;
+  }
+
   async delete(id: string): Promise<boolean> {
     const existing = await this.findById(id);
     if (!existing) return false;
@@ -199,6 +213,16 @@ export class InMemoryUserRepository implements UserRepository {
 
     this.users.set(id, user);
     return user;
+  }
+
+  async updatePasswordHash(id: string, passwordHash: string): Promise<boolean> {
+    const user = this.users.get(id);
+    if (!user) return false;
+
+    user.passwordHash = passwordHash;
+    user.updatedAt = new Date().toISOString();
+    this.users.set(id, user);
+    return true;
   }
 
   async delete(id: string): Promise<boolean> {

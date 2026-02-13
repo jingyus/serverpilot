@@ -11,16 +11,17 @@
 
 import { Hono } from 'hono';
 import { eq } from 'drizzle-orm';
-import { LoginBodySchema, RegisterBodySchema, RefreshTokenBodySchema } from './schemas.js';
+import { LoginBodySchema, RegisterBodySchema, RefreshTokenBodySchema, ChangePasswordBodySchema } from './schemas.js';
 import { validateBody } from '../middleware/validate.js';
 import { ApiError } from '../middleware/error-handler.js';
-import { generateTokens, verifyToken } from '../middleware/auth.js';
+import { generateTokens, verifyToken, requireAuth } from '../middleware/auth.js';
 import { getUserRepository } from '../../db/repositories/user-repository.js';
 import { getDatabase } from '../../db/connection.js';
 import { users } from '../../db/schema.js';
 import { hashPassword, verifyPassword } from '../../utils/password.js';
 import { ensureDefaultTenant } from '../../utils/auto-tenant.js';
-import type { LoginBody, RegisterBody, RefreshTokenBody } from './schemas.js';
+import { logger } from '../../utils/logger.js';
+import type { LoginBody, RegisterBody, RefreshTokenBody, ChangePasswordBody } from './schemas.js';
 import type { ApiEnv } from './types.js';
 
 const auth = new Hono<ApiEnv>();
@@ -131,6 +132,47 @@ auth.post('/refresh', validateBody(RefreshTokenBodySchema), async (c) => {
     accessToken: tokens.accessToken,
     refreshToken: tokens.refreshToken,
   });
+});
+
+// ============================================================================
+// PUT /auth/password — Change password (authenticated)
+// ============================================================================
+
+auth.put('/password', requireAuth, validateBody(ChangePasswordBodySchema), async (c) => {
+  const userId = c.get('userId');
+  const body = c.get('validatedBody') as ChangePasswordBody;
+  const repo = getUserRepository();
+
+  // Find the authenticated user
+  const user = await repo.findById(userId);
+  if (!user) {
+    throw ApiError.unauthorized('User not found');
+  }
+
+  // OAuth-only users cannot change password
+  if (user.passwordHash.startsWith('oauth:')) {
+    throw ApiError.badRequest('OAuth-only accounts cannot change password. Use your OAuth provider to manage credentials.');
+  }
+
+  // Verify current password
+  const currentValid = await verifyPassword(body.currentPassword, user.passwordHash);
+  if (!currentValid) {
+    throw ApiError.badRequest('Current password is incorrect');
+  }
+
+  // Hash and persist the new password
+  const newHash = await hashPassword(body.newPassword);
+  const updated = await repo.updatePasswordHash(userId, newHash);
+  if (!updated) {
+    throw ApiError.internal('Failed to update password');
+  }
+
+  logger.info(
+    { operation: 'password_change', userId },
+    'User password changed successfully',
+  );
+
+  return c.json({ message: 'Password changed successfully' });
 });
 
 // ============================================================================

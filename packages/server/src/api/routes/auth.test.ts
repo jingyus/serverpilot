@@ -9,7 +9,7 @@ import { Hono } from 'hono';
 
 import { auth } from './auth.js';
 import { onError } from '../middleware/error-handler.js';
-import { initJwtConfig, _resetJwtConfig, verifyToken } from '../middleware/auth.js';
+import { initJwtConfig, _resetJwtConfig, verifyToken, generateTokens } from '../middleware/auth.js';
 import {
   InMemoryUserRepository,
   setUserRepository,
@@ -393,6 +393,191 @@ describe('POST /auth/logout', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.message).toBe('Logged out successfully');
+  });
+});
+
+// ============================================================================
+// PUT /auth/password
+// ============================================================================
+
+function jsonPut(app: Hono<ApiEnv>, path: string, body: unknown, token?: string) {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  return app.request(path, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify(body),
+  });
+}
+
+describe('PUT /auth/password', () => {
+  let accessToken: string;
+  let userId: string;
+
+  beforeEach(async () => {
+    const app = createTestApp();
+    const res = await jsonPost(app, '/auth/register', {
+      email: 'eve@example.com',
+      password: 'OldPass123',
+      name: 'Eve',
+    });
+    const body = await res.json();
+    accessToken = body.accessToken;
+    userId = body.user.id;
+  });
+
+  it('should change password with valid credentials', async () => {
+    const app = createTestApp();
+    const res = await jsonPut(app, '/auth/password', {
+      currentPassword: 'OldPass123',
+      newPassword: 'NewPass456',
+      confirmPassword: 'NewPass456',
+    }, accessToken);
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.message).toBe('Password changed successfully');
+  });
+
+  it('should allow login with new password after change', async () => {
+    const app = createTestApp();
+    await jsonPut(app, '/auth/password', {
+      currentPassword: 'OldPass123',
+      newPassword: 'NewPass456',
+      confirmPassword: 'NewPass456',
+    }, accessToken);
+
+    // Login with new password should succeed
+    const loginRes = await jsonPost(app, '/auth/login', {
+      email: 'eve@example.com',
+      password: 'NewPass456',
+    });
+    expect(loginRes.status).toBe(200);
+  });
+
+  it('should reject login with old password after change', async () => {
+    const app = createTestApp();
+    await jsonPut(app, '/auth/password', {
+      currentPassword: 'OldPass123',
+      newPassword: 'NewPass456',
+      confirmPassword: 'NewPass456',
+    }, accessToken);
+
+    // Login with old password should fail
+    const loginRes = await jsonPost(app, '/auth/login', {
+      email: 'eve@example.com',
+      password: 'OldPass123',
+    });
+    expect(loginRes.status).toBe(401);
+  });
+
+  it('should reject incorrect current password', async () => {
+    const app = createTestApp();
+    const res = await jsonPut(app, '/auth/password', {
+      currentPassword: 'WrongOldPass1',
+      newPassword: 'NewPass456',
+      confirmPassword: 'NewPass456',
+    }, accessToken);
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.message).toContain('Current password is incorrect');
+  });
+
+  it('should reject mismatched confirmation password', async () => {
+    const app = createTestApp();
+    const res = await jsonPut(app, '/auth/password', {
+      currentPassword: 'OldPass123',
+      newPassword: 'NewPass456',
+      confirmPassword: 'Different789',
+    }, accessToken);
+
+    expect(res.status).toBe(400);
+  });
+
+  it('should reject weak password — too short', async () => {
+    const app = createTestApp();
+    const res = await jsonPut(app, '/auth/password', {
+      currentPassword: 'OldPass123',
+      newPassword: 'Ab1',
+      confirmPassword: 'Ab1',
+    }, accessToken);
+
+    expect(res.status).toBe(400);
+  });
+
+  it('should reject weak password — no uppercase', async () => {
+    const app = createTestApp();
+    const res = await jsonPut(app, '/auth/password', {
+      currentPassword: 'OldPass123',
+      newPassword: 'alllower1',
+      confirmPassword: 'alllower1',
+    }, accessToken);
+
+    expect(res.status).toBe(400);
+  });
+
+  it('should reject weak password — no lowercase', async () => {
+    const app = createTestApp();
+    const res = await jsonPut(app, '/auth/password', {
+      currentPassword: 'OldPass123',
+      newPassword: 'ALLUPPER1',
+      confirmPassword: 'ALLUPPER1',
+    }, accessToken);
+
+    expect(res.status).toBe(400);
+  });
+
+  it('should reject weak password — no digit', async () => {
+    const app = createTestApp();
+    const res = await jsonPut(app, '/auth/password', {
+      currentPassword: 'OldPass123',
+      newPassword: 'NoDigitsHere',
+      confirmPassword: 'NoDigitsHere',
+    }, accessToken);
+
+    expect(res.status).toBe(400);
+  });
+
+  it('should reject unauthenticated request (no token)', async () => {
+    const app = createTestApp();
+    const res = await jsonPut(app, '/auth/password', {
+      currentPassword: 'OldPass123',
+      newPassword: 'NewPass456',
+      confirmPassword: 'NewPass456',
+    });
+
+    expect(res.status).toBe(401);
+  });
+
+  it('should reject OAuth-only user', async () => {
+    // Create an OAuth-only user (passwordHash starts with "oauth:")
+    const oauthUser = await repo.create({
+      email: 'oauth@example.com',
+      passwordHash: 'oauth:github-random-id',
+      name: 'OAuth User',
+    });
+
+    // Get a token for this user
+    const tokens = await generateTokens(oauthUser.id);
+
+    const app = createTestApp();
+    const res = await jsonPut(app, '/auth/password', {
+      currentPassword: 'anything',
+      newPassword: 'NewPass456',
+      confirmPassword: 'NewPass456',
+    }, tokens.accessToken);
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.message).toContain('OAuth-only accounts cannot change password');
+  });
+
+  it('should reject empty body', async () => {
+    const app = createTestApp();
+    const res = await jsonPut(app, '/auth/password', {}, accessToken);
+
+    expect(res.status).toBe(400);
   });
 });
 

@@ -65,6 +65,7 @@ import {
   SESSION_LOCK_TIMEOUT_MS,
   RECENTLY_EXPIRED_TTL_MS,
   cleanupSessionConfirmations,
+  hasActiveSessionWork,
   safeWriteSSE,
   acquireSessionLock,
 } from './chat.js';
@@ -1387,6 +1388,125 @@ describe('DELETE /api/v1/chat/:serverId/sessions/:sessionId', () => {
       { method: 'DELETE' },
     );
     expect(res.status).toBe(404);
+  });
+
+  it('should return 409 when session has active plan execution', async () => {
+    const server = await createServer('web-01', tokenA);
+    const sessionMgr = getSessionManager();
+    const session = await sessionMgr.getOrCreate(server.id, USER_A);
+
+    // Store a plan in the session and mark it as actively executing
+    sessionMgr.storePlan(session.id, {
+      planId: 'active-plan-1',
+      description: 'test plan',
+      steps: [],
+      totalRisk: 'green',
+      requiresConfirmation: false,
+    });
+    _setActiveExecution('active-plan-1', 'exec-123');
+
+    const res = await req(
+      `/api/v1/chat/${server.id}/sessions/${session.id}`,
+      tokenA,
+      { method: 'DELETE' },
+    );
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error).toContain('active executions');
+
+    // Session should still exist
+    const still = await sessionMgr.getSession(session.id, USER_A);
+    expect(still).toBeDefined();
+  });
+
+  it('should return 409 when session has pending agentic confirmation', async () => {
+    const server = await createServer('web-01', tokenA);
+    const sessionMgr = getSessionManager();
+    const session = await sessionMgr.getOrCreate(server.id, USER_A);
+
+    // Simulate a pending confirmation for this session
+    const confirmId = `${session.id}:test-uuid`;
+    _setPendingConfirmation(confirmId, () => {}, setTimeout(() => {}, 60000));
+
+    const res = await req(
+      `/api/v1/chat/${server.id}/sessions/${session.id}`,
+      tokenA,
+      { method: 'DELETE' },
+    );
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error).toContain('active executions');
+
+    // Session should still exist
+    const still = await sessionMgr.getSession(session.id, USER_A);
+    expect(still).toBeDefined();
+  });
+
+  it('should delete session after execution completes (no active work)', async () => {
+    const server = await createServer('web-01', tokenA);
+    const sessionMgr = getSessionManager();
+    const session = await sessionMgr.getOrCreate(server.id, USER_A);
+
+    // Store a plan but do NOT mark it as actively executing
+    sessionMgr.storePlan(session.id, {
+      planId: 'completed-plan',
+      description: 'completed plan',
+      steps: [],
+      totalRisk: 'green',
+      requiresConfirmation: false,
+    });
+
+    const res = await req(
+      `/api/v1/chat/${server.id}/sessions/${session.id}`,
+      tokenA,
+      { method: 'DELETE' },
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+  });
+});
+
+// ============================================================================
+// hasActiveSessionWork — Unit Tests
+// ============================================================================
+
+describe('hasActiveSessionWork', () => {
+  it('should return false for session with no active work', async () => {
+    const repo = new InMemoryServerRepository();
+    setServerRepository(repo);
+    const sessionMgr = getSessionManager();
+    const session = await sessionMgr.getOrCreate('server-1', USER_A);
+
+    expect(hasActiveSessionWork(session.id)).toBe(false);
+  });
+
+  it('should return true when pending confirmation exists', async () => {
+    const sessionMgr = getSessionManager();
+    const session = await sessionMgr.getOrCreate('server-1', USER_A);
+
+    _setPendingConfirmation(`${session.id}:uuid-1`, () => {}, setTimeout(() => {}, 60000));
+    expect(hasActiveSessionWork(session.id)).toBe(true);
+  });
+
+  it('should return true when active plan execution exists', async () => {
+    const sessionMgr = getSessionManager();
+    const session = await sessionMgr.getOrCreate('server-1', USER_A);
+
+    sessionMgr.storePlan(session.id, {
+      planId: 'plan-xyz',
+      description: 'test',
+      steps: [],
+      totalRisk: 'green',
+      requiresConfirmation: false,
+    });
+    _setActiveExecution('plan-xyz', 'exec-abc');
+
+    expect(hasActiveSessionWork(session.id)).toBe(true);
+  });
+
+  it('should return false when session not in cache', () => {
+    expect(hasActiveSessionWork('nonexistent-session')).toBe(false);
   });
 });
 

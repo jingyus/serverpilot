@@ -49,6 +49,26 @@ export const RefreshTokenBodySchema = z.object({
 });
 export type RefreshTokenBody = z.infer<typeof RefreshTokenBodySchema>;
 
+/** Password strength: ≥8 chars, at least one uppercase, one lowercase, one digit */
+const strongPassword = z
+  .string()
+  .min(8, 'Password must be at least 8 characters')
+  .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
+  .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
+  .regex(/[0-9]/, 'Password must contain at least one digit');
+
+export const ChangePasswordBodySchema = z
+  .object({
+    currentPassword: z.string().min(1, 'Current password is required'),
+    newPassword: strongPassword,
+    confirmPassword: z.string().min(1, 'Password confirmation is required'),
+  })
+  .refine((data) => data.newPassword === data.confirmPassword, {
+    message: 'New password and confirmation do not match',
+    path: ['confirmPassword'],
+  });
+export type ChangePasswordBody = z.infer<typeof ChangePasswordBodySchema>;
+
 // ============================================================================
 // Server Schemas
 // ============================================================================

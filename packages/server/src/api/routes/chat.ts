@@ -148,6 +148,32 @@ function cleanupSessionConfirmations(sessionId: string): number {
 }
 
 /**
+ * Check whether a session has any active work (running plan executions or
+ * pending agentic confirmations). Used by the DELETE route to prevent
+ * deleting a session with in-flight executions.
+ */
+function hasActiveSessionWork(sessionId: string): boolean {
+  // Check pending agentic confirmations (keyed as `${sessionId}:${uuid}`)
+  for (const confirmId of pendingConfirmations.keys()) {
+    if (confirmId.startsWith(`${sessionId}:`)) {
+      return true;
+    }
+  }
+
+  // Check active plan executions — plans are in-memory, tied to the cached session
+  const session = getSessionManager().getSessionFromCache(sessionId);
+  if (session) {
+    for (const planId of session.plans.keys()) {
+      if (hasActiveExecution(planId)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+/**
  * Write an SSE event, swallowing errors if the stream is already closed
  * (e.g. client disconnected). Failures are logged but never re-thrown,
  * preventing exceptions from escaping catch blocks.
@@ -684,6 +710,14 @@ chat.delete('/:serverId/sessions/:sessionId', requirePermission('chat:use'), asy
     throw ApiError.notFound('Server');
   }
 
+  // Prevent deleting a session with active plan executions or pending confirmations
+  if (hasActiveSessionWork(sessionId)) {
+    return c.json(
+      { error: 'Session has active executions — cancel them before deleting' },
+      409,
+    );
+  }
+
   const deleted = await getSessionManager().deleteSession(sessionId, serverId, userId);
   if (!deleted) {
     throw ApiError.notFound('Session');
@@ -750,6 +784,6 @@ export function _getSessionLock(sessionId: string): Promise<void> | undefined {
 /** @internal Exported for testing. */
 export {
   CONFIRM_TIMEOUT_MS, SESSION_LOCK_TIMEOUT_MS, RECENTLY_EXPIRED_TTL_MS,
-  cleanupSessionConfirmations, safeWriteSSE,
+  cleanupSessionConfirmations, hasActiveSessionWork, safeWriteSSE,
   acquireSessionLock,
 };
