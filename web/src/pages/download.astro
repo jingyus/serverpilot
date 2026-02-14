@@ -1,0 +1,166 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout title="下载" description="下载 ServerPilot 开源版或注册云服务版">
+  <section class="container mx-auto px-6 py-20">
+    <div class="max-w-4xl mx-auto">
+      <h1 class="text-4xl font-bold mb-6 text-center">下载 ServerPilot</h1>
+      <p class="text-gray-600 text-center mb-12">选择适合你的版本开始使用</p>
+
+      <div class="grid md:grid-cols-2 gap-8">
+        <!-- 开源版 -->
+        <div class="border rounded-lg p-8 hover:shadow-lg transition-shadow">
+          <div class="mb-6">
+            <h2 class="text-2xl font-bold mb-2">开源版</h2>
+            <p class="text-gray-600">完全免费，自行部署</p>
+          </div>
+
+          <div class="mb-6">
+            <div class="text-3xl font-bold mb-4">免费</div>
+            <ul class="space-y-3 text-sm text-gray-600">
+              <li class="flex items-start">
+                <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                </svg>
+                <span>完整的核心功能</span>
+              </li>
+              <li class="flex items-start">
+                <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                </svg>
+                <span>无服务器数量限制</span>
+              </li>
+              <li class="flex items-start">
+                <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                </svg>
+                <span>社区支持</span>
+              </li>
+              <li class="flex items-start">
+                <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                </svg>
+                <span>MIT 开源协议</span>
+              </li>
+            </ul>
+          </div>
+
+          <div class="space-y-3">
+            <a href="#download-linux" class="block w-full text-center btn-primary">
+              下载 Linux 版本
+            </a>
+            <a href="#download-macos" class="block w-full text-center btn-secondary">
+              下载 macOS 版本
+            </a>
+            <a href="https://github.com/yourusername/serverpilot" target="_blank" class="block w-full text-center btn-secondary">
+              查看源代码
+            </a>
+          </div>
+        </div>
+
+        <!-- 云服务版 -->
+        <div class="border-2 border-primary-500 rounded-lg p-8 hover:shadow-lg transition-shadow relative">
+          <div class="absolute -top-4 left-1/2 -translate-x-1/2 bg-primary-600 text-white px-4 py-1 rounded-full text-sm">
+            推荐
+          </div>
+
+          <div class="mb-6">
+            <h2 class="text-2xl font-bold mb-2">云服务版</h2>
+            <p class="text-gray-600">托管服务，开箱即用</p>
+          </div>
+
+          <div class="mb-6">
+            <div class="text-3xl font-bold mb-4">
+              ¥99<span class="text-lg text-gray-500 font-normal">/月起</span>
+            </div>
+            <ul class="space-y-3 text-sm text-gray-600">
+              <li class="flex items-start">
+                <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                </svg>
+                <span>开源版所有功能</span>
+              </li>
+              <li class="flex items-start">
+                <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                </svg>
+                <span>托管服务，无需自行部署</span>
+              </li>
+              <li class="flex items-start">
+                <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                </svg>
+                <span>企业级技术支持</span>
+              </li>
+              <li class="flex items-start">
+                <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                </svg>
+                <span>自动备份与高可用</span>
+              </li>
+              <li class="flex items-start">
+                <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                </svg>
+                <span>团队协作与权限管理</span>
+              </li>
+            </ul>
+          </div>
+
+          <div class="space-y-3">
+            <a href="#cloud-signup" class="block w-full text-center btn-primary">
+              免费试用 14 天
+            </a>
+            <a href="/pricing" class="block w-full text-center btn-secondary">
+              查看详细定价
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- 安装说明 -->
+      <div class="mt-16 bg-gray-50 rounded-lg p-8">
+        <h2 class="text-2xl font-bold mb-6">快速安装</h2>
+
+        <div class="space-y-6">
+          <div>
+            <h3 class="font-semibold mb-3 flex items-center">
+              <span class="bg-primary-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm mr-3">1</span>
+              下载安装包
+            </h3>
+            <div class="ml-9 bg-gray-900 text-gray-100 p-4 rounded-md font-mono text-sm">
+              wget https://releases.serverpilot.ai/latest/serverpilot-linux-amd64.tar.gz
+            </div>
+          </div>
+
+          <div>
+            <h3 class="font-semibold mb-3 flex items-center">
+              <span class="bg-primary-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm mr-3">2</span>
+              解压并安装
+            </h3>
+            <div class="ml-9 bg-gray-900 text-gray-100 p-4 rounded-md font-mono text-sm">
+              tar -xzf serverpilot-linux-amd64.tar.gz<br/>
+              cd serverpilot<br/>
+              ./install.sh
+            </div>
+          </div>
+
+          <div>
+            <h3 class="font-semibold mb-3 flex items-center">
+              <span class="bg-primary-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm mr-3">3</span>
+              启动服务
+            </h3>
+            <div class="ml-9 bg-gray-900 text-gray-100 p-4 rounded-md font-mono text-sm">
+              serverpilot start
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-6 text-sm text-gray-600">
+          更多详细安装说明，请查看 <a href="/docs" class="text-primary-600 hover:underline">官方文档</a>
+        </div>
+      </div>
+    </div>
+  </section>
+</BaseLayout>

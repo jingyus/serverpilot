@@ -1,0 +1,198 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout title="定价" description="ServerPilot 定价方案">
+  <section class="container mx-auto px-6 py-20">
+    <div class="max-w-6xl mx-auto">
+      <h1 class="text-4xl font-bold mb-6 text-center">选择适合你的方案</h1>
+      <p class="text-gray-600 text-center mb-12">灵活的定价，满足不同规模团队的需求</p>
+
+      <div class="grid md:grid-cols-3 gap-8">
+        <!-- 开源版 -->
+        <div class="border rounded-lg p-8 hover:shadow-lg transition-shadow">
+          <h2 class="text-2xl font-bold mb-2">开源版</h2>
+          <p class="text-gray-600 mb-6">适合个人开发者</p>
+
+          <div class="mb-6">
+            <div class="text-4xl font-bold mb-2">免费</div>
+            <p class="text-sm text-gray-500">永久免费</p>
+          </div>
+
+          <ul class="space-y-3 mb-8 text-sm">
+            <li class="flex items-start">
+              <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+              </svg>
+              <span>无限服务器</span>
+            </li>
+            <li class="flex items-start">
+              <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+              </svg>
+              <span>AI 对话与自动化</span>
+            </li>
+            <li class="flex items-start">
+              <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+              </svg>
+              <span>社区支持</span>
+            </li>
+            <li class="flex items-start">
+              <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+              </svg>
+              <span>自行部署</span>
+            </li>
+          </ul>
+
+          <a href="/download" class="block w-full text-center btn-secondary">
+            下载使用
+          </a>
+        </div>
+
+        <!-- 基础版 -->
+        <div class="border-2 border-primary-500 rounded-lg p-8 hover:shadow-lg transition-shadow relative">
+          <div class="absolute -top-4 left-1/2 -translate-x-1/2 bg-primary-600 text-white px-4 py-1 rounded-full text-sm">
+            推荐
+          </div>
+
+          <h2 class="text-2xl font-bold mb-2">基础版</h2>
+          <p class="text-gray-600 mb-6">适合小型团队</p>
+
+          <div class="mb-6">
+            <div class="text-4xl font-bold mb-2">
+              ¥99<span class="text-lg text-gray-500 font-normal">/月</span>
+            </div>
+            <p class="text-sm text-gray-500">按月付费，随时取消</p>
+          </div>
+
+          <ul class="space-y-3 mb-8 text-sm">
+            <li class="flex items-start">
+              <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+              </svg>
+              <span>开源版所有功能</span>
+            </li>
+            <li class="flex items-start">
+              <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+              </svg>
+              <span>最多 10 台服务器</span>
+            </li>
+            <li class="flex items-start">
+              <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+              </svg>
+              <span>5 个团队成员</span>
+            </li>
+            <li class="flex items-start">
+              <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+              </svg>
+              <span>托管服务</span>
+            </li>
+            <li class="flex items-start">
+              <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+              </svg>
+              <span>邮件支持</span>
+            </li>
+          </ul>
+
+          <a href="#" class="block w-full text-center btn-primary">
+            免费试用 14 天
+          </a>
+        </div>
+
+        <!-- 企业版 -->
+        <div class="border rounded-lg p-8 hover:shadow-lg transition-shadow">
+          <h2 class="text-2xl font-bold mb-2">企业版</h2>
+          <p class="text-gray-600 mb-6">适合大型团队</p>
+
+          <div class="mb-6">
+            <div class="text-4xl font-bold mb-2">定制</div>
+            <p class="text-sm text-gray-500">联系销售团队</p>
+          </div>
+
+          <ul class="space-y-3 mb-8 text-sm">
+            <li class="flex items-start">
+              <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+              </svg>
+              <span>基础版所有功能</span>
+            </li>
+            <li class="flex items-start">
+              <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+              </svg>
+              <span>无限服务器</span>
+            </li>
+            <li class="flex items-start">
+              <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+              </svg>
+              <span>无限团队成员</span>
+            </li>
+            <li class="flex items-start">
+              <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+              </svg>
+              <span>专属技术支持</span>
+            </li>
+            <li class="flex items-start">
+              <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+              </svg>
+              <span>SLA 保障</span>
+            </li>
+            <li class="flex items-start">
+              <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+              </svg>
+              <span>私有部署选项</span>
+            </li>
+          </ul>
+
+          <a href="#contact" class="block w-full text-center btn-secondary">
+            联系销售
+          </a>
+        </div>
+      </div>
+
+      <!-- FAQ -->
+      <div class="mt-20">
+        <h2 class="text-3xl font-bold mb-12 text-center">常见问题</h2>
+        <div class="max-w-3xl mx-auto space-y-6">
+          <div class="border rounded-lg p-6">
+            <h3 class="font-semibold mb-2">开源版和云服务版有什么区别？</h3>
+            <p class="text-gray-600 text-sm">
+              开源版提供完整的核心功能，需要自行部署和维护。云服务版是托管服务，无需部署，提供企业级支持、自动备份和高可用保障。
+            </p>
+          </div>
+
+          <div class="border rounded-lg p-6">
+            <h3 class="font-semibold mb-2">可以先试用再购买吗？</h3>
+            <p class="text-gray-600 text-sm">
+              云服务版提供 14 天免费试用，无需信用卡。试用期间可以使用所有功能，满意后再选择付费计划。
+            </p>
+          </div>
+
+          <div class="border rounded-lg p-6">
+            <h3 class="font-semibold mb-2">支持哪些支付方式？</h3>
+            <p class="text-gray-600 text-sm">
+              支持支付宝、微信支付、银行转账等多种支付方式。企业版支持对公转账和签订年度合同。
+            </p>
+          </div>
+
+          <div class="border rounded-lg p-6">
+            <h3 class="font-semibold mb-2">如何从开源版迁移到云服务版？</h3>
+            <p class="text-gray-600 text-sm">
+              我们提供完整的迁移工具和文档，技术团队会协助您完成数据迁移，确保业务平滑过渡。
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</BaseLayout>

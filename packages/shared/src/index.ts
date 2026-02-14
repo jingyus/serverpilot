@@ -6,24 +6,27 @@
  * This package contains shared code used by both the server and agent packages.
  */
 
-export const PACKAGE_NAME = '@aiinstaller/shared';
-export const PACKAGE_VERSION = '0.1.0';
+export const PACKAGE_NAME = "@aiinstaller/shared";
+export const PACKAGE_VERSION = "0.1.0";
 
 // Protocol exports
-export * from './protocol/messages.js';
-export * from './protocol/types.js';
-export * from './protocol/schemas.js';
-export * from './protocol/version.js';
-export * from './protocol/conversation-export.js';
+export * from "./protocol/messages.js";
+export * from "./protocol/types.js";
+export * from "./protocol/schemas.js";
+export * from "./protocol/version.js";
+export * from "./protocol/conversation-export.js";
 
 // Security exports
-export * from './security/index.js';
+export * from "./security/index.js";
 
 // RBAC exports
-export * from './rbac.js';
+export * from "./rbac.js";
 
 // Skill schema exports
-export * from './skill-schema.js';
+export * from "./skill-schema.js";
 
 // Auth exports
-export * from './auth/password-policy.js';
+export * from "./auth/password-policy.js";
+
+// Edition exports
+export * from "./edition.js";

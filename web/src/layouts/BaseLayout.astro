@@ -1,0 +1,78 @@
+---
+import '../styles/global.css';
+
+interface Props {
+  title: string;
+  description?: string;
+}
+
+const { title, description = 'AI-Driven DevOps Platform' } = Astro.props;
+---
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content={description} />
+    <title>{title} - ServerPilot</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  </head>
+  <body>
+    <header class="border-b sticky top-0 bg-white/80 backdrop-blur-sm z-50">
+      <nav class="container mx-auto px-6 py-4 flex items-center justify-between">
+        <a href="/" class="text-2xl font-bold text-primary-600">ServerPilot</a>
+        <div class="hidden md:flex gap-8">
+          <a href="/" class="hover:text-primary-600 transition-colors">首页</a>
+          <a href="/docs" class="hover:text-primary-600 transition-colors">文档</a>
+          <a href="/download" class="hover:text-primary-600 transition-colors">下载</a>
+          <a href="/pricing" class="hover:text-primary-600 transition-colors">定价</a>
+          <a href="https://github.com/yourusername/serverpilot" target="_blank" class="hover:text-primary-600 transition-colors">GitHub</a>
+        </div>
+        <a href="#" class="btn-primary">开始使用</a>
+      </nav>
+    </header>
+
+    <main>
+      <slot />
+    </main>
+
+    <footer class="border-t mt-20 py-12 bg-gray-50">
+      <div class="container mx-auto px-6">
+        <div class="grid md:grid-cols-4 gap-8">
+          <div>
+            <h3 class="font-bold text-lg mb-4">ServerPilot</h3>
+            <p class="text-gray-600 text-sm">AI 驱动的 DevOps 平台</p>
+          </div>
+          <div>
+            <h4 class="font-semibold mb-4">产品</h4>
+            <ul class="space-y-2 text-sm text-gray-600">
+              <li><a href="/docs" class="hover:text-primary-600">文档</a></li>
+              <li><a href="/download" class="hover:text-primary-600">下载</a></li>
+              <li><a href="/pricing" class="hover:text-primary-600">定价</a></li>
+            </ul>
+          </div>
+          <div>
+            <h4 class="font-semibold mb-4">社区</h4>
+            <ul class="space-y-2 text-sm text-gray-600">
+              <li><a href="https://github.com/yourusername/serverpilot" target="_blank" class="hover:text-primary-600">GitHub</a></li>
+              <li><a href="https://github.com/yourusername/serverpilot/discussions" target="_blank" class="hover:text-primary-600">讨论区</a></li>
+              <li><a href="https://github.com/yourusername/serverpilot/issues" target="_blank" class="hover:text-primary-600">问题反馈</a></li>
+            </ul>
+          </div>
+          <div>
+            <h4 class="font-semibold mb-4">关于</h4>
+            <ul class="space-y-2 text-sm text-gray-600">
+              <li><a href="#" class="hover:text-primary-600">关于我们</a></li>
+              <li><a href="#" class="hover:text-primary-600">许可证</a></li>
+              <li><a href="#" class="hover:text-primary-600">联系方式</a></li>
+            </ul>
+          </div>
+        </div>
+        <div class="mt-8 pt-8 border-t text-center text-sm text-gray-500">
+          © {new Date().getFullYear()} ServerPilot. All rights reserved.
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

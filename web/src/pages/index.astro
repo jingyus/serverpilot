@@ -1,0 +1,69 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout title="首页">
+  <!-- Hero Section -->
+  <section class="container mx-auto px-6 py-20 text-center">
+    <h1 class="text-5xl md:text-6xl font-bold mb-6 bg-gradient-to-r from-primary-600 to-blue-600 bg-clip-text text-transparent">
+      AI 驱动的 DevOps 平台
+    </h1>
+    <p class="text-xl text-gray-600 mb-12 max-w-2xl mx-auto">
+      通过 AI 智能对话管理服务器，自动化运维任务，提升团队效率
+    </p>
+    <div class="flex gap-4 justify-center">
+      <a href="/download" class="btn-primary">立即下载</a>
+      <a href="/docs" class="btn-secondary">查看文档</a>
+    </div>
+  </section>
+
+  <!-- Features Section -->
+  <section class="container mx-auto px-6 py-20">
+    <h2 class="text-3xl font-bold text-center mb-16">核心特性</h2>
+    <div class="grid md:grid-cols-3 gap-12">
+      <div class="text-center">
+        <div class="w-16 h-16 bg-primary-100 rounded-lg mx-auto mb-6 flex items-center justify-center">
+          <svg class="w-8 h-8 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+          </svg>
+        </div>
+        <h3 class="text-xl font-semibold mb-4">AI 智能对话</h3>
+        <p class="text-gray-600">通过自然语言与 AI 对话，自动生成和执行运维任务</p>
+      </div>
+
+      <div class="text-center">
+        <div class="w-16 h-16 bg-primary-100 rounded-lg mx-auto mb-6 flex items-center justify-center">
+          <svg class="w-8 h-8 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+          </svg>
+        </div>
+        <h3 class="text-xl font-semibold mb-4">安全可控</h3>
+        <p class="text-gray-600">5 层安全防护，命令风险评估，确保操作安全</p>
+      </div>
+
+      <div class="text-center">
+        <div class="w-16 h-16 bg-primary-100 rounded-lg mx-auto mb-6 flex items-center justify-center">
+          <svg class="w-8 h-8 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+        </div>
+        <h3 class="text-xl font-semibold mb-4">高效执行</h3>
+        <p class="text-gray-600">实时进度反馈，自动错误诊断，快速完成运维任务</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA Section -->
+  <section class="bg-primary-50 py-20">
+    <div class="container mx-auto px-6 text-center">
+      <h2 class="text-3xl font-bold mb-6">选择适合你的版本</h2>
+      <p class="text-gray-600 mb-12 max-w-2xl mx-auto">
+        开源版本免费使用，云服务版本提供托管服务和企业级支持
+      </p>
+      <div class="flex gap-4 justify-center">
+        <a href="/download" class="btn-primary">下载开源版</a>
+        <a href="/pricing" class="btn-secondary">查看云服务</a>
+      </div>
+    </div>
+  </section>
+</BaseLayout>

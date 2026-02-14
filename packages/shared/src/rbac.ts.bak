@@ -96,8 +96,6 @@ export const PERMISSIONS = [
   "tenant:read",
   "tenant:update",
   "tenant:delete",
-  // Admin operations
-  "admin:db-vacuum",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -164,7 +162,6 @@ const OWNER_PERMISSIONS: readonly Permission[] = [
   "member:update-role",
   "tenant:update",
   "tenant:delete",
-  "admin:db-vacuum",
 ];
 
 export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {

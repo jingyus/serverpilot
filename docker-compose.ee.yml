@@ -1,0 +1,217 @@
+# ==============================================================================
+# ServerPilot Enterprise Edition (EE) — Docker Compose Configuration
+# ==============================================================================
+# Multi-service deployment: Server + Dashboard + PostgreSQL + Redis
+# Database: PostgreSQL 16 (high availability, multi-tenant)
+# Target: Enterprise SaaS / self-hosted enterprise deployment
+#
+# Usage:
+#   cp .env.ee.example .env          # Configure environment
+#   docker compose -f docker-compose.ee.yml up -d        # Start EE
+#   docker compose -f docker-compose.ee.yml logs -f      # Follow logs
+#   docker compose -f docker-compose.ee.yml down          # Stop
+#
+# Build from source:
+#   docker compose -f docker-compose.ee.yml up -d --build
+#
+# Data persistence:
+#   PostgreSQL data stored in named volume (ee-postgres-data)
+#   Redis data stored in named volume (ee-redis-data)
+#   Knowledge base stored in named volume (ee-server-data)
+# ==============================================================================
+
+services:
+  # ============================================================================
+  # PostgreSQL 16 — Primary Database
+  # ============================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: serverpilot-ee-postgres
+    restart: unless-stopped
+    stop_grace_period: 30s
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-serverpilot}
+      - POSTGRES_USER=${POSTGRES_USER:-serverpilot}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - ee-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-serverpilot} -d ${POSTGRES_DB:-serverpilot}"]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - serverpilot-ee-network
+
+  # ============================================================================
+  # Redis 7 — Session Management & Caching
+  # ============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: serverpilot-ee-redis
+    restart: unless-stopped
+    stop_grace_period: 10s
+    command: >
+      redis-server
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --appendonly yes
+      --appendfsync everysec
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - ee-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+    networks:
+      - serverpilot-ee-network
+
+  # ============================================================================
+  # ServerPilot Server (REST API + WebSocket + EE Features)
+  # ============================================================================
+  server:
+    build:
+      context: .
+      dockerfile: packages/server/Dockerfile
+      args:
+        EDITION: ee
+    image: ghcr.io/jingjinbao/serverpilot/server:latest-ee
+    container_name: serverpilot-ee-server
+    restart: unless-stopped
+    stop_grace_period: 15s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - NODE_ENV=production
+      - EDITION=ee
+      - CLOUD_MODE=${CLOUD_MODE:-true}
+      - SERVER_PORT=3000
+      - SERVER_HOST=0.0.0.0
+      - CORS_ORIGIN=${CORS_ORIGIN:-}
+      # Database (PostgreSQL)
+      - DB_TYPE=postgres
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-serverpilot}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-serverpilot}
+      # Redis
+      - REDIS_URL=redis://redis:6379
+      # Security
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      # AI Provider configuration
+      - AI_PROVIDER=${AI_PROVIDER:-claude}
+      - AI_MODEL=${AI_MODEL:-claude-sonnet-4-20250514}
+      - AI_TIMEOUT_MS=${AI_TIMEOUT_MS:-30000}
+      - AI_MAX_RETRIES=${AI_MAX_RETRIES:-3}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - CUSTOM_OPENAI_BASE_URL=${CUSTOM_OPENAI_BASE_URL:-}
+      - CUSTOM_OPENAI_API_KEY=${CUSTOM_OPENAI_API_KEY:-}
+      # GitHub OAuth
+      - GITHUB_OAUTH_CLIENT_ID=${GITHUB_OAUTH_CLIENT_ID:-}
+      - GITHUB_OAUTH_CLIENT_SECRET=${GITHUB_OAUTH_CLIENT_SECRET:-}
+      - GITHUB_OAUTH_REDIRECT_URI=${GITHUB_OAUTH_REDIRECT_URI:-}
+      # Knowledge base
+      - KNOWLEDGE_BASE_DIR=/app/knowledge-base
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      # WebSocket
+      - WS_HEARTBEAT_INTERVAL_MS=${WS_HEARTBEAT_INTERVAL_MS:-30000}
+      - WS_CONNECTION_TIMEOUT_MS=${WS_CONNECTION_TIMEOUT_MS:-10000}
+      - WS_REQUIRE_AUTH=${WS_REQUIRE_AUTH:-true}
+      - WS_AUTH_TIMEOUT_MS=${WS_AUTH_TIMEOUT_MS:-10000}
+      # SMTP (alerts)
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_SECURE=${SMTP_SECURE:-false}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL:-}
+      - SMTP_FROM_NAME=${SMTP_FROM_NAME:-ServerPilot Alerts}
+      # Session management
+      - SESSION_RETENTION_DAYS=${SESSION_RETENTION_DAYS:-30}
+      # Agent binary distribution
+      - AGENT_BINARY_BASE_URL=${AGENT_BINARY_BASE_URL:-}
+      # Default admin account (first startup only)
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@serverpilot.io}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+    ports:
+      - "${SERVER_PORT:-3000}:3000"
+    volumes:
+      - ee-server-data:/app/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "const http = require('http'); http.get('http://localhost:3000/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      start_period: 45s
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    networks:
+      - serverpilot-ee-network
+
+  # ============================================================================
+  # ServerPilot Dashboard (Nginx + Static Frontend)
+  # ============================================================================
+  dashboard:
+    build:
+      context: .
+      dockerfile: packages/dashboard/Dockerfile
+      args:
+        EDITION: ee
+    image: ghcr.io/jingjinbao/serverpilot/dashboard:latest-ee
+    container_name: serverpilot-ee-dashboard
+    restart: unless-stopped
+    stop_grace_period: 10s
+    depends_on:
+      server:
+        condition: service_healthy
+    ports:
+      - "${DASHBOARD_PORT:-3001}:80"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 10s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+    networks:
+      - serverpilot-ee-network
+
+networks:
+  serverpilot-ee-network:
+    driver: bridge
+
+volumes:
+  ee-postgres-data:
+    driver: local
+  ee-redis-data:
+    driver: local
+  ee-server-data:
+    driver: local

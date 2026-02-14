@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" fill="none">
+  <!-- Server rack body -->
+  <rect x="4" y="4" width="24" height="24" rx="4" fill="#0284c7"/>
+  <!-- Server slots -->
+  <rect x="8" y="8" width="16" height="4" rx="1" fill="white" opacity="0.9"/>
+  <rect x="8" y="14" width="16" height="4" rx="1" fill="white" opacity="0.9"/>
+  <!-- Pilot/navigation arrow -->
+  <path d="M16 21 L12 27 L16 25 L20 27 Z" fill="white" opacity="0.9"/>
+  <!-- Status LEDs -->
+  <circle cx="21" cy="10" r="1" fill="#0284c7"/>
+  <circle cx="21" cy="16" r="1" fill="#0284c7"/>
+</svg>

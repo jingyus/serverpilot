@@ -1,0 +1,101 @@
+ServerPilot Enterprise Edition (EE) License
+Copyright (c) 2024-2026 ServerPilot Contributors
+
+IMPORTANT: This license applies ONLY to Enterprise Edition (EE) features.
+Community Edition (CE) features are licensed under their respective open-source
+licenses. See LICENSING.md for full details.
+
+1. GRANT OF LICENSE
+
+   Subject to the terms of this Agreement, ServerPilot Contributors ("Licensor")
+   grants you ("Licensee") a limited, non-exclusive, non-transferable,
+   non-sublicensable license to use the Enterprise Edition features of the
+   ServerPilot software ("EE Features") solely in accordance with the
+   subscription plan purchased by Licensee.
+
+2. EE FEATURES
+
+   "EE Features" means the features and functionality available only when
+   EDITION=ee is configured, including but not limited to:
+
+   - Multi-server management
+   - Team collaboration (RBAC, invitations)
+   - Webhook notifications
+   - Alert system
+   - Real-time metrics monitoring (SSE push)
+   - Audit log export (CSV/JSON)
+   - OAuth third-party login
+   - API rate limiting
+   - Multi-tenant isolation
+   - Subscription billing integration
+
+   EE Features are identified in source files by one of the following:
+   - SPDX-License-Identifier: BUSL-1.1
+   - SPDX-License-Identifier: LicenseRef-ServerPilot-EE
+   - Feature flag guards (FEATURES.* checks that require isEE)
+
+3. RESTRICTIONS
+
+   Licensee shall NOT:
+
+   a) Use EE Features without a valid subscription or license key;
+   b) Distribute, sublicense, or make EE Features available to third parties
+      as part of a competing product or service;
+   c) Remove or alter any license notices, copyright headers, or SPDX
+      identifiers in EE Feature source files;
+   d) Circumvent or disable the edition detection or feature flag mechanisms
+      for the purpose of enabling EE Features without authorization.
+
+4. OPEN-SOURCE COMPONENTS
+
+   This license does NOT apply to:
+
+   a) Community Edition (CE) features — licensed under AGPL-3.0;
+   b) The Agent package (@aiinstaller/agent) — licensed under Apache-2.0;
+   c) The Shared package (@aiinstaller/shared) — licensed under MIT;
+   d) Third-party dependencies — governed by their respective licenses.
+
+   These open-source components remain freely available under their stated
+   licenses regardless of the Licensee's EE subscription status.
+
+5. SUBSCRIPTION TERMS
+
+   a) EE Features require an active subscription from serverpilot.io
+   b) Upon subscription expiration or termination, Licensee must cease
+      use of EE Features
+   c) Licensee's CE functionality is not affected by subscription status
+
+6. INTELLECTUAL PROPERTY
+
+   All EE Features, including source code, documentation, and related
+   materials, are the intellectual property of ServerPilot Contributors
+   and are protected by copyright law.
+
+7. WARRANTY DISCLAIMER
+
+   THE EE FEATURES ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+   EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+
+8. LIMITATION OF LIABILITY
+
+   IN NO EVENT SHALL THE LICENSOR BE LIABLE FOR ANY CLAIM, DAMAGES OR
+   OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+   ARISING FROM, OUT OF OR IN CONNECTION WITH THE EE FEATURES OR THE
+   USE OR OTHER DEALINGS IN THE EE FEATURES.
+
+9. TERMINATION
+
+   This license terminates automatically if Licensee breaches any of its
+   terms. Upon termination, Licensee must cease all use of EE Features
+   and destroy any copies in their possession.
+
+10. GOVERNING LAW
+
+    This license shall be governed by the laws of the jurisdiction in
+    which the Licensor is established.
+
+---
+
+For licensing inquiries: license@serverpilot.io
+For subscription plans: https://serverpilot.io/pricing

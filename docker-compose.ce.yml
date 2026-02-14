@@ -1,0 +1,119 @@
+# ==============================================================================
+# ServerPilot Community Edition (CE) — Docker Compose Configuration
+# ==============================================================================
+# Single-container deployment: Server + Agent + Dashboard (all-in-one)
+# Database: SQLite (zero-config, file-based)
+# Target: Personal/small-team self-hosted deployment
+#
+# Usage:
+#   cp .env.ce.example .env          # Configure environment
+#   docker compose -f docker-compose.ce.yml up -d        # Start CE
+#   docker compose -f docker-compose.ce.yml logs -f      # Follow logs
+#   docker compose -f docker-compose.ce.yml down          # Stop
+#
+# Build from source:
+#   docker compose -f docker-compose.ce.yml up -d --build
+#
+# Data persistence:
+#   SQLite database stored in ./data/serverpilot.db (bind mount)
+#   Knowledge base stored in ./data/knowledge-base/
+# ==============================================================================
+
+services:
+  # ============================================================================
+  # init-db — One-shot database initializer
+  # ============================================================================
+  # Creates the SQLite database and all required tables on first startup.
+  # Runs once and exits (restart: "no"). The main service waits for it to
+  # complete via depends_on + condition: service_completed_successfully.
+  # ============================================================================
+  init-db:
+    build:
+      context: .
+      dockerfile: packages/server/Dockerfile
+      args:
+        EDITION: ce
+    image: ghcr.io/jingjinbao/serverpilot/server:latest-ce
+    container_name: serverpilot-ce-init
+    restart: "no"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_PATH=/app/data/serverpilot.db
+    volumes:
+      - ./data:/app/data
+    command: ["node", "-e", "
+      const { initDatabase, createTables } = require('./packages/server/dist/db/connection.js');
+      try {
+        initDatabase('/app/data/serverpilot.db');
+        createTables();
+        console.log('Database initialized successfully');
+        process.exit(0);
+      } catch (e) {
+        console.error('Database init failed:', e.message);
+        process.exit(1);
+      }
+      "]
+    labels:
+      com.serverpilot.edition: "ce"
+      com.serverpilot.role: "init-db"
+      com.serverpilot.description: "One-shot database initializer for ServerPilot CE"
+
+  # ============================================================================
+  # ServerPilot CE — All-in-One (Server + Agent + Dashboard)
+  # ============================================================================
+  serverpilot:
+    build:
+      context: .
+      dockerfile: packages/server/Dockerfile
+      args:
+        EDITION: ce
+    image: ghcr.io/jingjinbao/serverpilot/server:latest-ce
+    container_name: serverpilot-ce
+    restart: unless-stopped
+    stop_grace_period: 15s
+    depends_on:
+      init-db:
+        condition: service_completed_successfully
+    environment:
+      - NODE_ENV=production
+      - EDITION=ce
+      - CLOUD_MODE=false
+      - SERVER_PORT=3000
+      - SERVER_HOST=0.0.0.0
+      - DATABASE_PATH=/app/data/serverpilot.db
+      - JWT_SECRET=${JWT_SECRET:-change_me_to_a_random_string_at_least_32_chars}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      # AI Provider configuration
+      - AI_PROVIDER=${AI_PROVIDER:-claude}
+      - AI_MODEL=${AI_MODEL:-claude-sonnet-4-20250514}
+      - AI_TIMEOUT_MS=${AI_TIMEOUT_MS:-30000}
+      - AI_MAX_RETRIES=${AI_MAX_RETRIES:-3}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - CUSTOM_OPENAI_BASE_URL=${CUSTOM_OPENAI_BASE_URL:-}
+      - CUSTOM_OPENAI_API_KEY=${CUSTOM_OPENAI_API_KEY:-}
+      # Knowledge base
+      - KNOWLEDGE_BASE_DIR=/app/data/knowledge-base
+      # Default admin account (first startup only)
+      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@serverpilot.local}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+    ports:
+      - "${SERVER_PORT:-3000}:3000"
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "const http = require('http'); http.get('http://localhost:3000/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
+    labels:
+      com.serverpilot.edition: "ce"
+      com.serverpilot.role: "server"
+      com.serverpilot.description: "ServerPilot Community Edition — All-in-One Server"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
