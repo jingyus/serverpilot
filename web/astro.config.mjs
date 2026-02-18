@@ -1,13 +1,13 @@
 import { defineConfig } from 'astro/config';
-import react from '@astrojs/react';
 import tailwind from '@astrojs/tailwind';
 import mdx from '@astrojs/mdx';
+import sitemap from '@astrojs/sitemap';
 
 export default defineConfig({
   integrations: [
-    react(),
     tailwind(),
-    mdx()
+    mdx(),
+    sitemap()
   ],
   output: 'static',
   site: 'https://serverpilot.ai', // 替换为实际域名

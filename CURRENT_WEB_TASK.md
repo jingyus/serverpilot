@@ -1,13 +1,13 @@
-### [pending] 替换所有 GitHub 占位符 URL 为真实仓库地址
+### [pending] README.md 技术栈描述与实际项目状态不一致 — 声称使用 React 和 content 目录
 
-**ID**: web-002
-**优先级**: P0
-**模块路径**: web/src/layouts/
-**发现的问题**: `BaseLayout.astro` 中有 3 处 GitHub URL 使用 `yourusername` 占位符：第 30 行（导航栏）、第 58 行（社区-GitHub）、第 59 行（社区-讨论区）、第 60 行（问题反馈）。下载页 `download.astro:56` 也有同样的占位符 `https://github.com/yourusername/serverpilot`。用户点击后会跳转到不存在的页面。
-**改进方案**: 将所有 `yourusername` 替换为实际的 GitHub 用户名/组织名。如果仓库尚未公开，改为统一的占位提示（如 `#github-coming-soon`）并添加 HTML 注释标记待替换位置，避免用户误点击跳转到 404。
-**验收标准**: 所有 GitHub 链接指向有效地址或明确的占位符，不再出现 `yourusername` 文本。
-**影响范围**: `web/src/layouts/BaseLayout.astro`, `web/src/pages/download.astro`
-**创建时间**: 2026-02-14
+**ID**: web-048
+**优先级**: P1
+**模块路径**: web/
+**发现的问题**: `README.md` 第 8 行声称技术栈包含 "React 18"，第 42 行将 `components/` 目录标注为 "React 组件"，第 43 行声称存在 `content/` 目录用于 "Markdown 文档内容"。但实际上：(1) React 依赖已在 web-046 中被移除，`astro.config.mjs` 不再包含 React 集成，所有组件均为 `.astro` 文件；(2) `src/content/` 目录根本不存在；(3) 项目结构中缺少 `404.astro`、`docs/getting-started.astro` 等已存在的页面文件。"待补充内容" 列表（第 58-65 行）中的 5 项已全部在之前的任务中完成（favicon、GitHub 链接、下载链接等），但仍标注为待办，给新贡献者传递错误信息。
+**改进方案**: (1) 技术栈中移除 "React 18" 改为 "Astro 组件"；(2) 将 `components/` 标注改为 "Astro 组件"；(3) 移除 `content/` 目录的引用（项目未使用 content collections）；(4) 更新项目结构树，添加 `404.astro`、`docs/getting-started.astro`、`components/CheckIcon.astro`、`components/CodeBlock.astro`；(5) 删除或更新"待补充内容"列表，反映当前实际状态。
+**验收标准**: README 技术栈描述与 `package.json` 和 `astro.config.mjs` 实际配置一致；项目结构树反映真实的文件目录；无过时的待办列表。
+**影响范围**: `web/README.md`
+**创建时间**: 2026-02-15
 **完成时间**: -
 
 ---

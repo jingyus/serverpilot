@@ -1,13 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { create } from 'zustand';
-import { apiRequest, setToken, clearToken, ApiError } from '@/api/client';
+import { create } from "zustand";
+import {
+  apiRequest,
+  setToken,
+  clearToken,
+  setTenantId,
+  ApiError,
+} from "@/api/client";
 
 export interface User {
   id: string;
   email: string;
   name?: string;
   timezone?: string;
+  /** Cloud 多租户：当前用户所属租户 ID，请求 API 时会带 X-Tenant-ID */
+  tenantId?: string | null;
 }
 
 interface AuthResponse {
@@ -39,12 +47,14 @@ interface AuthState {
 // does not flash a redirect to /login on page reload.
 function hydrateAuth(): { user: User | null; isAuthenticated: boolean } {
   try {
-    const token = localStorage.getItem('auth_token');
-    const userJson = localStorage.getItem('auth_user');
+    const token = localStorage.getItem("auth_token");
+    const userJson = localStorage.getItem("auth_user");
     if (token && userJson) {
       return { user: JSON.parse(userJson) as User, isAuthenticated: true };
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return { user: null, isAuthenticated: false };
 }
 
@@ -59,19 +69,22 @@ export const useAuthStore = create<AuthState>((set) => ({
   login: async (email, password) => {
     set({ isLoading: true, error: null });
     try {
-      const data = await apiRequest<AuthResponse>('/auth/login', {
-        method: 'POST',
+      const data = await apiRequest<AuthResponse>("/auth/login", {
+        method: "POST",
         body: JSON.stringify({ email, password }),
       });
       setToken(data.accessToken);
-      localStorage.setItem('refresh_token', data.refreshToken);
-      localStorage.setItem('auth_user', JSON.stringify(data.user));
+      localStorage.setItem("refresh_token", data.refreshToken);
+      localStorage.setItem("auth_user", JSON.stringify(data.user));
+      if (data.user.tenantId != null) {
+        setTenantId(data.user.tenantId);
+      }
       set({ user: data.user, isAuthenticated: true, isLoading: false });
     } catch (err) {
       const message =
         err instanceof ApiError
           ? err.message
-          : 'Network error, please try again';
+          : "Network error, please try again";
       set({ error: message, isLoading: false });
       throw err;
     }
@@ -80,56 +93,64 @@ export const useAuthStore = create<AuthState>((set) => ({
   register: async (email, password, name) => {
     set({ isLoading: true, error: null });
     try {
-      const data = await apiRequest<AuthResponse>('/auth/register', {
-        method: 'POST',
+      const data = await apiRequest<AuthResponse>("/auth/register", {
+        method: "POST",
         body: JSON.stringify({ email, password, name }),
       });
       setToken(data.accessToken);
-      localStorage.setItem('refresh_token', data.refreshToken);
-      localStorage.setItem('auth_user', JSON.stringify(data.user));
+      localStorage.setItem("refresh_token", data.refreshToken);
+      localStorage.setItem("auth_user", JSON.stringify(data.user));
+      if (data.user.tenantId != null) {
+        setTenantId(data.user.tenantId);
+      }
       set({ user: data.user, isAuthenticated: true, isLoading: false });
     } catch (err) {
       const message =
         err instanceof ApiError
           ? err.message
-          : 'Network error, please try again';
+          : "Network error, please try again";
       set({ error: message, isLoading: false });
       throw err;
     }
   },
 
   changePassword: async (params) => {
-    await apiRequest<{ message: string }>('/auth/password', {
-      method: 'PUT',
+    await apiRequest<{ message: string }>("/auth/password", {
+      method: "PUT",
       body: JSON.stringify(params),
     });
   },
 
   logout: () => {
     clearToken();
-    localStorage.removeItem('refresh_token');
-    localStorage.removeItem('auth_user');
+    setTenantId(null);
+    localStorage.removeItem("refresh_token");
+    localStorage.removeItem("auth_user");
     set({ user: null, isAuthenticated: false, error: null });
   },
 
   clearError: () => set({ error: null }),
 
   restoreSession: () => {
-    const token = localStorage.getItem('auth_token');
-    const userJson = localStorage.getItem('auth_user');
+    const token = localStorage.getItem("auth_token");
+    const userJson = localStorage.getItem("auth_user");
     if (token && userJson) {
       try {
         const user = JSON.parse(userJson) as User;
         set({ user, isAuthenticated: true });
       } catch {
         clearToken();
-        localStorage.removeItem('auth_user');
+        localStorage.removeItem("auth_user");
       }
     }
 
     // Listen for forced logout from token refresh failure
-    window.addEventListener('auth:logout', () => {
-      set({ user: null, isAuthenticated: false, error: 'Session expired, please log in again' });
+    window.addEventListener("auth:logout", () => {
+      set({
+        user: null,
+        isAuthenticated: false,
+        error: "Session expired, please log in again",
+      });
     });
   },
 }));

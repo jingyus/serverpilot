@@ -14,17 +14,21 @@
  * - Token usage extraction
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { z } from 'zod';
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { z } from "zod";
 import {
   OpenAIProvider,
   OpenAIError,
   OpenAIConfigSchema,
   estimateCost,
   parseStructuredOutput,
-} from './openai.js';
-import type { OpenAIConfig } from './openai.js';
-import type { ChatOptions, ProviderStreamCallbacks, TokenUsage } from './base.js';
+} from "./openai.js";
+import type { OpenAIConfig } from "./openai.js";
+import type {
+  ChatOptions,
+  ProviderStreamCallbacks,
+  TokenUsage,
+} from "./base.js";
 
 // ============================================================================
 // Mock fetch globally
@@ -33,7 +37,7 @@ import type { ChatOptions, ProviderStreamCallbacks, TokenUsage } from './base.js
 const mockFetch = vi.fn<(...args: unknown[]) => Promise<Response>>();
 
 beforeEach(() => {
-  vi.stubGlobal('fetch', mockFetch);
+  vi.stubGlobal("fetch", mockFetch);
 });
 
 afterEach(() => {
@@ -44,7 +48,7 @@ afterEach(() => {
 // Test Helpers
 // ============================================================================
 
-const TEST_API_KEY = 'sk-test-openai-key-12345';
+const TEST_API_KEY = "sk-test-openai-key-12345";
 
 function createProvider(overrides?: Partial<OpenAIConfig>): OpenAIProvider {
   return new OpenAIProvider({
@@ -55,21 +59,26 @@ function createProvider(overrides?: Partial<OpenAIConfig>): OpenAIProvider {
 
 function createChatOptions(overrides?: Partial<ChatOptions>): ChatOptions {
   return {
-    messages: [{ role: 'user', content: 'Analyze this environment' }],
-    system: 'You are a DevOps expert. Respond with JSON only.',
+    messages: [{ role: "user", content: "Analyze this environment" }],
+    system: "You are a DevOps expert. Respond with JSON only.",
     maxTokens: 2048,
     ...overrides,
   };
 }
 
-function createMockChatResponse(content: string, overrides?: Record<string, unknown>) {
+function createMockChatResponse(
+  content: string,
+  overrides?: Record<string, unknown>,
+) {
   return {
-    id: 'chatcmpl-test-123',
-    choices: [{
-      index: 0,
-      message: { role: 'assistant', content },
-      finish_reason: 'stop',
-    }],
+    id: "chatcmpl-test-123",
+    choices: [
+      {
+        index: 0,
+        message: { role: "assistant", content },
+        finish_reason: "stop",
+      },
+    ],
     usage: {
       prompt_tokens: 42,
       completion_tokens: 128,
@@ -84,25 +93,29 @@ function createMockStreamChunks(tokens: string[]): string {
   for (let i = 0; i < tokens.length; i++) {
     const isLast = i === tokens.length - 1;
     const chunk = {
-      id: 'chatcmpl-test-123',
-      choices: [{
-        index: 0,
-        delta: { content: tokens[i] },
-        finish_reason: isLast ? 'stop' : null,
-      }],
-      ...(isLast ? {
-        usage: {
-          prompt_tokens: 42,
-          completion_tokens: tokens.length,
-          total_tokens: 42 + tokens.length,
+      id: "chatcmpl-test-123",
+      choices: [
+        {
+          index: 0,
+          delta: { content: tokens[i] },
+          finish_reason: isLast ? "stop" : null,
         },
-      } : {}),
+      ],
+      ...(isLast
+        ? {
+            usage: {
+              prompt_tokens: 42,
+              completion_tokens: tokens.length,
+              total_tokens: 42 + tokens.length,
+            },
+          }
+        : {}),
     };
     lines.push(`data: ${JSON.stringify(chunk)}`);
   }
-  lines.push('data: [DONE]');
-  lines.push('');
-  return lines.join('\n');
+  lines.push("data: [DONE]");
+  lines.push("");
+  return lines.join("\n");
 }
 
 function createReadableStream(text: string): ReadableStream<Uint8Array> {
@@ -125,7 +138,8 @@ function createMockResponse(body: unknown, status = 200): Response {
     ok: status >= 200 && status < 300,
     status,
     json: () => Promise.resolve(body),
-    text: () => Promise.resolve(typeof body === 'string' ? body : JSON.stringify(body)),
+    text: () =>
+      Promise.resolve(typeof body === "string" ? body : JSON.stringify(body)),
     body: null,
     headers: new Headers(),
   } as unknown as Response;
@@ -142,56 +156,63 @@ function createMockStreamResponse(text: string, status = 200): Response {
   } as unknown as Response;
 }
 
-function createMockErrorResponse(message: string, type: string, status: number): Response {
-  return createMockResponse({
-    error: { message, type, code: null },
-  }, status);
+function createMockErrorResponse(
+  message: string,
+  type: string,
+  status: number,
+): Response {
+  return createMockResponse(
+    {
+      error: { message, type, code: null },
+    },
+    status,
+  );
 }
 
 // ============================================================================
 // Tests: Constructor & Configuration
 // ============================================================================
 
-describe('OpenAIProvider', () => {
-  describe('constructor', () => {
-    it('should use default configuration with API key', () => {
+describe("OpenAIProvider", () => {
+  describe("constructor", () => {
+    it("should use default configuration with API key", () => {
       const provider = createProvider();
-      expect(provider.name).toBe('openai');
+      expect(provider.name).toBe("openai");
       expect(provider.tier).toBe(2);
     });
 
-    it('should accept custom configuration', () => {
+    it("should accept custom configuration", () => {
       const provider = createProvider({
-        baseUrl: 'https://custom.openai.azure.com',
-        model: 'gpt-4-turbo',
+        baseUrl: "https://custom.openai.azure.com",
+        model: "gpt-4-turbo",
         timeoutMs: 30000,
       });
-      expect(provider.name).toBe('openai');
+      expect(provider.name).toBe("openai");
       expect(provider.tier).toBe(2);
     });
 
-    it('should strip trailing slashes from baseUrl', async () => {
+    it("should strip trailing slashes from baseUrl", async () => {
       const provider = createProvider({
-        baseUrl: 'https://api.openai.com/',
+        baseUrl: "https://api.openai.com/",
       });
 
       mockFetch.mockResolvedValueOnce(
-        createMockResponse(createMockChatResponse('hello')),
+        createMockResponse(createMockChatResponse("hello")),
       );
 
       await provider.chat(createChatOptions());
 
       expect(mockFetch).toHaveBeenCalledWith(
-        'https://api.openai.com/v1/chat/completions',
+        "https://api.openai.com/v1/chat/completions",
         expect.anything(),
       );
     });
 
-    it('should throw when API key is missing', () => {
-      expect(() => new OpenAIProvider({ apiKey: '' })).toThrow();
+    it("should throw when API key is missing", () => {
+      expect(() => new OpenAIProvider({ apiKey: "" })).toThrow();
     });
 
-    it('should throw when API key is not provided and env is empty', () => {
+    it("should throw when API key is not provided and env is empty", () => {
       const originalEnv = process.env.OPENAI_API_KEY;
       delete process.env.OPENAI_API_KEY;
 
@@ -204,13 +225,13 @@ describe('OpenAIProvider', () => {
       }
     });
 
-    it('should read API key from OPENAI_API_KEY env var', () => {
+    it("should read API key from OPENAI_API_KEY env var", () => {
       const originalEnv = process.env.OPENAI_API_KEY;
-      process.env.OPENAI_API_KEY = 'sk-env-test-key';
+      process.env.OPENAI_API_KEY = "sk-env-test-key";
 
       try {
         const provider = new OpenAIProvider();
-        expect(provider.name).toBe('openai');
+        expect(provider.name).toBe("openai");
       } finally {
         if (originalEnv !== undefined) {
           process.env.OPENAI_API_KEY = originalEnv;
@@ -220,41 +241,41 @@ describe('OpenAIProvider', () => {
       }
     });
 
-    it('should reject invalid baseUrl', () => {
-      expect(() => createProvider({ baseUrl: 'not-a-url' })).toThrow();
+    it("should reject invalid baseUrl", () => {
+      expect(() => createProvider({ baseUrl: "not-a-url" })).toThrow();
     });
 
-    it('should reject empty model name', () => {
-      expect(() => createProvider({ model: '' })).toThrow();
+    it("should reject empty model name", () => {
+      expect(() => createProvider({ model: "" })).toThrow();
     });
 
-    it('should reject non-positive timeout', () => {
+    it("should reject non-positive timeout", () => {
       expect(() => createProvider({ timeoutMs: 0 })).toThrow();
       expect(() => createProvider({ timeoutMs: -1 })).toThrow();
     });
   });
 
-  describe('OpenAIConfigSchema', () => {
-    it('should apply defaults for minimal config', () => {
+  describe("OpenAIConfigSchema", () => {
+    it("should apply defaults for minimal config", () => {
       const config = OpenAIConfigSchema.parse({ apiKey: TEST_API_KEY });
-      expect(config.baseUrl).toBe('https://api.openai.com');
-      expect(config.model).toBe('gpt-4o');
+      expect(config.baseUrl).toBe("https://api.openai.com");
+      expect(config.model).toBe("gpt-4o");
       expect(config.timeoutMs).toBe(60000);
       expect(config.apiKey).toBe(TEST_API_KEY);
     });
 
-    it('should accept valid custom config', () => {
+    it("should accept valid custom config", () => {
       const config = OpenAIConfigSchema.parse({
-        baseUrl: 'https://custom.api.openai.com',
+        baseUrl: "https://custom.api.openai.com",
         apiKey: TEST_API_KEY,
-        model: 'gpt-4-turbo',
+        model: "gpt-4-turbo",
         timeoutMs: 30000,
       });
-      expect(config.model).toBe('gpt-4-turbo');
+      expect(config.model).toBe("gpt-4-turbo");
       expect(config.timeoutMs).toBe(30000);
     });
 
-    it('should reject missing API key', () => {
+    it("should reject missing API key", () => {
       expect(() => OpenAIConfigSchema.parse({})).toThrow();
     });
   });
@@ -263,8 +284,8 @@ describe('OpenAIProvider', () => {
   // Tests: chat()
   // ==========================================================================
 
-  describe('chat()', () => {
-    it('should send a successful chat request', async () => {
+  describe("chat()", () => {
+    it("should send a successful chat request", async () => {
       const provider = createProvider();
       const responseBody = createMockChatResponse('{"summary": "All good"}');
 
@@ -277,34 +298,36 @@ describe('OpenAIProvider', () => {
       expect(result.usage.outputTokens).toBe(128);
     });
 
-    it('should include system prompt as a system message', async () => {
+    it("should include system prompt as a system message", async () => {
       const provider = createProvider();
       mockFetch.mockResolvedValueOnce(
-        createMockResponse(createMockChatResponse('ok')),
+        createMockResponse(createMockChatResponse("ok")),
       );
 
-      await provider.chat(createChatOptions({
-        system: 'You are a JSON-only bot.',
-        messages: [{ role: 'user', content: 'Hello' }],
-      }));
+      await provider.chat(
+        createChatOptions({
+          system: "You are a JSON-only bot.",
+          messages: [{ role: "user", content: "Hello" }],
+        }),
+      );
 
       const fetchCall = mockFetch.mock.calls[0];
       const body = JSON.parse(fetchCall[1].body as string);
 
       expect(body.messages[0]).toEqual({
-        role: 'system',
-        content: 'You are a JSON-only bot.',
+        role: "system",
+        content: "You are a JSON-only bot.",
       });
       expect(body.messages[1]).toEqual({
-        role: 'user',
-        content: 'Hello',
+        role: "user",
+        content: "Hello",
       });
     });
 
-    it('should omit system message when system is not provided', async () => {
+    it("should omit system message when system is not provided", async () => {
       const provider = createProvider();
       mockFetch.mockResolvedValueOnce(
-        createMockResponse(createMockChatResponse('ok')),
+        createMockResponse(createMockChatResponse("ok")),
       );
 
       await provider.chat(createChatOptions({ system: undefined }));
@@ -313,13 +336,13 @@ describe('OpenAIProvider', () => {
       const body = JSON.parse(fetchCall[1].body as string);
 
       expect(body.messages).toHaveLength(1);
-      expect(body.messages[0].role).toBe('user');
+      expect(body.messages[0].role).toBe("user");
     });
 
-    it('should send stream: false for chat requests', async () => {
+    it("should send stream: false for chat requests", async () => {
       const provider = createProvider();
       mockFetch.mockResolvedValueOnce(
-        createMockResponse(createMockChatResponse('ok')),
+        createMockResponse(createMockChatResponse("ok")),
       );
 
       await provider.chat(createChatOptions());
@@ -329,23 +352,23 @@ describe('OpenAIProvider', () => {
       expect(body.stream).toBe(false);
     });
 
-    it('should use configured model name', async () => {
-      const provider = createProvider({ model: 'gpt-4-turbo' });
+    it("should use configured model name", async () => {
+      const provider = createProvider({ model: "gpt-4-turbo" });
       mockFetch.mockResolvedValueOnce(
-        createMockResponse(createMockChatResponse('ok')),
+        createMockResponse(createMockChatResponse("ok")),
       );
 
       await provider.chat(createChatOptions());
 
       const fetchCall = mockFetch.mock.calls[0];
       const body = JSON.parse(fetchCall[1].body as string);
-      expect(body.model).toBe('gpt-4-turbo');
+      expect(body.model).toBe("gpt-4-turbo");
     });
 
-    it('should pass maxTokens as max_tokens', async () => {
+    it("should pass maxTokens as max_tokens", async () => {
       const provider = createProvider();
       mockFetch.mockResolvedValueOnce(
-        createMockResponse(createMockChatResponse('ok')),
+        createMockResponse(createMockChatResponse("ok")),
       );
 
       await provider.chat(createChatOptions({ maxTokens: 8192 }));
@@ -355,104 +378,121 @@ describe('OpenAIProvider', () => {
       expect(body.max_tokens).toBe(8192);
     });
 
-    it('should include Authorization header with Bearer token', async () => {
+    it("should include Authorization header with Bearer token", async () => {
       const provider = createProvider();
       mockFetch.mockResolvedValueOnce(
-        createMockResponse(createMockChatResponse('ok')),
+        createMockResponse(createMockChatResponse("ok")),
       );
 
       await provider.chat(createChatOptions());
 
       const fetchCall = mockFetch.mock.calls[0];
       const headers = fetchCall[1].headers;
-      expect(headers['Authorization']).toBe(`Bearer ${TEST_API_KEY}`);
-      expect(headers['Content-Type']).toBe('application/json');
+      expect(headers["Authorization"]).toBe(`Bearer ${TEST_API_KEY}`);
+      expect(headers["Content-Type"]).toBe("application/json");
     });
 
-    it('should throw OpenAIError on HTTP error response', async () => {
+    it("should throw OpenAIError on HTTP error response", async () => {
       const provider = createProvider();
       mockFetch.mockResolvedValueOnce(
-        createMockErrorResponse('Model not found', 'invalid_request_error', 404),
+        createMockErrorResponse(
+          "Model not found",
+          "invalid_request_error",
+          404,
+        ),
       );
 
-      await expect(provider.chat(createChatOptions()))
-        .rejects.toThrow(OpenAIError);
+      await expect(provider.chat(createChatOptions())).rejects.toThrow(
+        OpenAIError,
+      );
     });
 
-    it('should include status code in OpenAIError', async () => {
+    it("should include status code in OpenAIError", async () => {
       const provider = createProvider();
       mockFetch.mockResolvedValueOnce(
-        createMockErrorResponse('Internal error', 'server_error', 500),
+        createMockErrorResponse("Internal error", "server_error", 500),
       );
 
       try {
         await provider.chat(createChatOptions());
-        expect.fail('Should have thrown');
+        expect.fail("Should have thrown");
       } catch (err) {
         expect(err).toBeInstanceOf(OpenAIError);
         expect((err as OpenAIError).statusCode).toBe(500);
       }
     });
 
-    it('should throw specific error on 401 authentication failure', async () => {
+    it("should throw specific error on 401 authentication failure", async () => {
       const provider = createProvider();
       mockFetch.mockResolvedValueOnce(
-        createMockErrorResponse('Invalid API key', 'authentication_error', 401),
+        createMockErrorResponse("Invalid API key", "authentication_error", 401),
       );
 
-      await expect(provider.chat(createChatOptions()))
-        .rejects.toThrow(/authentication failed/);
+      await expect(provider.chat(createChatOptions())).rejects.toThrow(
+        /authentication failed/,
+      );
     });
 
-    it('should throw specific error on 429 rate limit', async () => {
+    it("should throw specific error on 429 rate limit", async () => {
       const provider = createProvider();
       mockFetch.mockResolvedValueOnce(
-        createMockErrorResponse('Rate limit exceeded', 'rate_limit_error', 429),
+        createMockErrorResponse("Rate limit exceeded", "rate_limit_error", 429),
       );
 
-      await expect(provider.chat(createChatOptions()))
-        .rejects.toThrow(/rate limit/);
+      await expect(provider.chat(createChatOptions())).rejects.toThrow(
+        /rate limit/,
+      );
     });
 
-    it('should throw specific error on 400 bad request', async () => {
+    it("should throw specific error on 400 bad request", async () => {
       const provider = createProvider();
       mockFetch.mockResolvedValueOnce(
-        createMockErrorResponse('Invalid request', 'invalid_request_error', 400),
+        createMockErrorResponse(
+          "Invalid request",
+          "invalid_request_error",
+          400,
+        ),
       );
 
-      await expect(provider.chat(createChatOptions()))
-        .rejects.toThrow(/bad request/);
+      await expect(provider.chat(createChatOptions())).rejects.toThrow(
+        /bad request/,
+      );
     });
 
-    it('should throw OpenAIError on timeout', async () => {
+    it("should throw OpenAIError on timeout", async () => {
       const provider = createProvider({ timeoutMs: 50 });
 
       mockFetch.mockImplementationOnce(
-        () => new Promise((_, reject) => {
-          setTimeout(() => {
-            const err = new DOMException('The operation was aborted', 'AbortError');
-            reject(err);
-          }, 10);
-        }),
+        () =>
+          new Promise((_, reject) => {
+            setTimeout(() => {
+              const err = new DOMException(
+                "The operation was aborted",
+                "AbortError",
+              );
+              reject(err);
+            }, 10);
+          }),
       );
 
-      await expect(provider.chat(createChatOptions()))
-        .rejects.toThrow(/timed out/);
+      await expect(provider.chat(createChatOptions())).rejects.toThrow(
+        /timed out/,
+      );
     });
 
-    it('should throw on malformed API response', async () => {
+    it("should throw on malformed API response", async () => {
       const provider = createProvider();
       mockFetch.mockResolvedValueOnce(
-        createMockResponse({ invalid: 'response' }),
+        createMockResponse({ invalid: "response" }),
       );
 
       await expect(provider.chat(createChatOptions())).rejects.toThrow();
     });
 
-    it('should use per-request timeoutMs if provided', async () => {
+    it("should use per-request timeoutMs if provided", async () => {
       const provider = createProvider({ timeoutMs: 120000 });
       mockFetch.mockResolvedValueOnce(
-        createMockResponse(createMockChatResponse('ok')),
+        createMockResponse(createMockChatResponse("ok")),
       );
 
       await provider.chat(createChatOptions({ timeoutMs: 5000 }));
@@ -460,45 +500,46 @@ describe('OpenAIProvider', () => {
       expect(mockFetch).toHaveBeenCalledTimes(1);
     });
 
-    it('should call /v1/chat/completions endpoint', async () => {
+    it("should call /v1/chat/completions endpoint", async () => {
       const provider = createProvider({
-        baseUrl: 'https://custom.openai.com',
+        baseUrl: "https://custom.openai.com",
       });
       mockFetch.mockResolvedValueOnce(
-        createMockResponse(createMockChatResponse('ok')),
+        createMockResponse(createMockChatResponse("ok")),
       );
 
       await provider.chat(createChatOptions());
 
       expect(mockFetch).toHaveBeenCalledWith(
-        'https://custom.openai.com/v1/chat/completions',
+        "https://custom.openai.com/v1/chat/completions",
         expect.anything(),
       );
     });
 
-    it('should handle error response with non-JSON body', async () => {
+    it("should handle error response with non-JSON body", async () => {
       const provider = createProvider();
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 502,
-        json: () => Promise.reject(new Error('not json')),
-        text: () => Promise.resolve('Bad Gateway'),
+        json: () => Promise.reject(new Error("not json")),
+        text: () => Promise.resolve("Bad Gateway"),
         headers: new Headers(),
       } as unknown as Response);
 
-      await expect(provider.chat(createChatOptions()))
-        .rejects.toThrow(/502/);
+      await expect(provider.chat(createChatOptions())).rejects.toThrow(/502/);
     });
 
-    it('should handle null content in response', async () => {
+    it("should handle null content in response", async () => {
       const provider = createProvider();
       const responseBody = {
-        id: 'chatcmpl-test-123',
-        choices: [{
-          index: 0,
-          message: { role: 'assistant', content: null },
-          finish_reason: 'stop',
-        }],
+        id: "chatcmpl-test-123",
+        choices: [
+          {
+            index: 0,
+            message: { role: "assistant", content: null },
+            finish_reason: "stop",
+          },
+        ],
         usage: {
           prompt_tokens: 42,
           completion_tokens: 0,
@@ -510,7 +551,7 @@ describe('OpenAIProvider', () => {
 
       const result = await provider.chat(createChatOptions());
 
-      expect(result.content).toBe('');
+      expect(result.content).toBe("");
     });
   });
 
@@ -518,10 +559,10 @@ describe('OpenAIProvider', () => {
   // Tests: stream()
   // ==========================================================================
 
-  describe('stream()', () => {
-    it('should stream tokens and call callbacks', async () => {
+  describe("stream()", () => {
+    it("should stream tokens and call callbacks", async () => {
       const provider = createProvider();
-      const streamText = createMockStreamChunks(['Hello', ' world', '!']);
+      const streamText = createMockStreamChunks(["Hello", " world", "!"]);
 
       mockFetch.mockResolvedValueOnce(createMockStreamResponse(streamText));
 
@@ -536,19 +577,19 @@ describe('OpenAIProvider', () => {
       const result = await provider.stream(createChatOptions(), callbacks);
 
       expect(result.success).toBe(true);
-      expect(result.content).toBe('Hello world!');
-      expect(tokens).toEqual(['Hello', ' world', '!']);
+      expect(result.content).toBe("Hello world!");
+      expect(tokens).toEqual(["Hello", " world", "!"]);
       expect(callbacks.onStart).toHaveBeenCalledTimes(1);
       expect(callbacks.onComplete).toHaveBeenCalledWith(
-        'Hello world!',
+        "Hello world!",
         expect.objectContaining({ inputTokens: 42, outputTokens: 3 }),
       );
       expect(callbacks.onError).not.toHaveBeenCalled();
     });
 
-    it('should send stream: true for streaming requests', async () => {
+    it("should send stream: true for streaming requests", async () => {
       const provider = createProvider();
-      const streamText = createMockStreamChunks(['ok']);
+      const streamText = createMockStreamChunks(["ok"]);
       mockFetch.mockResolvedValueOnce(createMockStreamResponse(streamText));
 
       await provider.stream(createChatOptions());
@@ -558,9 +599,9 @@ describe('OpenAIProvider', () => {
       expect(body.stream).toBe(true);
     });
 
-    it('should include stream_options for usage in streaming', async () => {
+    it("should include stream_options for usage in streaming", async () => {
       const provider = createProvider();
-      const streamText = createMockStreamChunks(['ok']);
+      const streamText = createMockStreamChunks(["ok"]);
       mockFetch.mockResolvedValueOnce(createMockStreamResponse(streamText));
 
       await provider.stream(createChatOptions());
@@ -570,20 +611,20 @@ describe('OpenAIProvider', () => {
       expect(body.stream_options).toEqual({ include_usage: true });
     });
 
-    it('should work without callbacks', async () => {
+    it("should work without callbacks", async () => {
       const provider = createProvider();
-      const streamText = createMockStreamChunks(['Hello', ' world']);
+      const streamText = createMockStreamChunks(["Hello", " world"]);
       mockFetch.mockResolvedValueOnce(createMockStreamResponse(streamText));
 
       const result = await provider.stream(createChatOptions());
 
       expect(result.success).toBe(true);
-      expect(result.content).toBe('Hello world');
+      expect(result.content).toBe("Hello world");
     });
 
-    it('should call onToken with accumulated text', async () => {
+    it("should call onToken with accumulated text", async () => {
       const provider = createProvider();
-      const streamText = createMockStreamChunks(['A', 'B', 'C']);
+      const streamText = createMockStreamChunks(["A", "B", "C"]);
       mockFetch.mockResolvedValueOnce(createMockStreamResponse(streamText));
 
       const accumulatedValues: string[] = [];
@@ -593,16 +634,19 @@ describe('OpenAIProvider', () => {
 
       await provider.stream(createChatOptions(), callbacks);
 
-      expect(accumulatedValues).toEqual(['A', 'AB', 'ABC']);
+      expect(accumulatedValues).toEqual(["A", "AB", "ABC"]);
     });
 
-    it('should return error on HTTP failure', async () => {
+    it("should return error on HTTP failure", async () => {
       const provider = createProvider();
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 500,
-        json: () => Promise.resolve({ error: { message: 'Internal Server Error', type: 'server_error' } }),
-        text: () => Promise.resolve('Internal Server Error'),
+        json: () =>
+          Promise.resolve({
+            error: { message: "Internal Server Error", type: "server_error" },
+          }),
+        text: () => Promise.resolve("Internal Server Error"),
         body: null,
         headers: new Headers(),
       } as unknown as Response);
@@ -611,89 +655,102 @@ describe('OpenAIProvider', () => {
       const result = await provider.stream(createChatOptions(), { onError });
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('500');
+      expect(result.error).toContain("500");
       expect(onError).toHaveBeenCalled();
     });
 
-    it('should handle unreadable response body', async () => {
+    it("should handle unreadable response body", async () => {
       const provider = createProvider();
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
         body: null,
-        text: () => Promise.resolve(''),
+        text: () => Promise.resolve(""),
         headers: new Headers(),
       } as unknown as Response);
 
       const result = await provider.stream(createChatOptions());
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('not readable');
+      expect(result.error).toContain("not readable");
     });
 
-    it('should handle [DONE] signal correctly', async () => {
+    it("should handle [DONE] signal correctly", async () => {
       const provider = createProvider();
       // Manually build SSE with [DONE]
       const lines = [
         `data: ${JSON.stringify({
-          id: 'chatcmpl-test',
-          choices: [{ index: 0, delta: { content: 'done' }, finish_reason: null }],
+          id: "chatcmpl-test",
+          choices: [
+            { index: 0, delta: { content: "done" }, finish_reason: null },
+          ],
         })}`,
-        'data: [DONE]',
-        '',
-      ].join('\n');
+        "data: [DONE]",
+        "",
+      ].join("\n");
 
       mockFetch.mockResolvedValueOnce(createMockStreamResponse(lines));
 
       const result = await provider.stream(createChatOptions());
 
       expect(result.success).toBe(true);
-      expect(result.content).toBe('done');
+      expect(result.content).toBe("done");
     });
 
-    it('should skip non-SSE lines gracefully', async () => {
+    it("should skip non-SSE lines gracefully", async () => {
       const provider = createProvider();
       const goodChunk = `data: ${JSON.stringify({
-        id: 'chatcmpl-test',
-        choices: [{ index: 0, delta: { content: 'ok' }, finish_reason: 'stop' }],
+        id: "chatcmpl-test",
+        choices: [
+          { index: 0, delta: { content: "ok" }, finish_reason: "stop" },
+        ],
         usage: { prompt_tokens: 10, completion_tokens: 1, total_tokens: 11 },
       })}`;
-      const streamText = 'garbage line\n: comment\n' + goodChunk + '\ndata: [DONE]\n';
+      const streamText =
+        "garbage line\n: comment\n" + goodChunk + "\ndata: [DONE]\n";
       mockFetch.mockResolvedValueOnce(createMockStreamResponse(streamText));
 
       const result = await provider.stream(createChatOptions());
 
       expect(result.success).toBe(true);
-      expect(result.content).toBe('ok');
+      expect(result.content).toBe("ok");
     });
 
-    it('should handle fetch network error in stream', async () => {
+    it("should handle fetch network error in stream", async () => {
       const provider = createProvider();
-      mockFetch.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+      mockFetch.mockRejectedValueOnce(new Error("ECONNREFUSED"));
 
       const onError = vi.fn();
       const result = await provider.stream(createChatOptions(), { onError });
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain('ECONNREFUSED');
+      expect(result.error).toContain("ECONNREFUSED");
       expect(onError).toHaveBeenCalled();
     });
 
-    it('should extract usage from final chunk', async () => {
+    it("should extract usage from final chunk", async () => {
       const provider = createProvider();
       const lines = [
         `data: ${JSON.stringify({
-          id: 'chatcmpl-test',
-          choices: [{ index: 0, delta: { content: 'Hello' }, finish_reason: null }],
+          id: "chatcmpl-test",
+          choices: [
+            { index: 0, delta: { content: "Hello" }, finish_reason: null },
+          ],
         })}`,
         `data: ${JSON.stringify({
-          id: 'chatcmpl-test',
-          choices: [{ index: 0, delta: { content: '' }, finish_reason: 'stop' }],
-          usage: { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 },
+          id: "chatcmpl-test",
+          choices: [
+            { index: 0, delta: { content: "" }, finish_reason: "stop" },
+          ],
+          usage: {
+            prompt_tokens: 100,
+            completion_tokens: 50,
+            total_tokens: 150,
+          },
         })}`,
-        'data: [DONE]',
-        '',
-      ].join('\n');
+        "data: [DONE]",
+        "",
+      ].join("\n");
 
       mockFetch.mockResolvedValueOnce(createMockStreamResponse(lines));
 
@@ -703,16 +760,16 @@ describe('OpenAIProvider', () => {
       expect(result.usage.outputTokens).toBe(50);
     });
 
-    it('should include Authorization header in stream requests', async () => {
+    it("should include Authorization header in stream requests", async () => {
       const provider = createProvider();
-      const streamText = createMockStreamChunks(['ok']);
+      const streamText = createMockStreamChunks(["ok"]);
       mockFetch.mockResolvedValueOnce(createMockStreamResponse(streamText));
 
       await provider.stream(createChatOptions());
 
       const fetchCall = mockFetch.mock.calls[0];
       const headers = fetchCall[1].headers;
-      expect(headers['Authorization']).toBe(`Bearer ${TEST_API_KEY}`);
+      expect(headers["Authorization"]).toBe(`Bearer ${TEST_API_KEY}`);
     });
   });
 
@@ -720,75 +777,78 @@ describe('OpenAIProvider', () => {
   // Tests: isAvailable()
   // ==========================================================================
 
-  describe('isAvailable()', () => {
-    it('should return true when API responds with 200', async () => {
+  describe("isAvailable()", () => {
+    it("should return true when API responds with 200", async () => {
       const provider = createProvider();
       mockFetch.mockResolvedValueOnce(
-        createMockResponse({ data: [{ id: 'gpt-4o' }] }),
+        createMockResponse({ data: [{ id: "gpt-4o" }] }),
       );
 
       expect(await provider.isAvailable()).toBe(true);
     });
 
-    it('should return false when API responds with 401', async () => {
+    it("should throw when API responds with 401", async () => {
       const provider = createProvider();
       mockFetch.mockResolvedValueOnce(
-        createMockResponse({ error: { message: 'Unauthorized' } }, 401),
+        createMockResponse({ error: { message: "Unauthorized" } }, 401),
       );
 
-      expect(await provider.isAvailable()).toBe(false);
-    });
-
-    it('should return false when API is unreachable', async () => {
-      const provider = createProvider();
-      mockFetch.mockRejectedValueOnce(new Error('ECONNREFUSED'));
-
-      expect(await provider.isAvailable()).toBe(false);
-    });
-
-    it('should return false on non-200 response', async () => {
-      const provider = createProvider();
-      mockFetch.mockResolvedValueOnce(
-        createMockResponse('error', 500),
+      await expect(provider.isAvailable()).rejects.toThrow(
+        /API 密钥无效或已过期/,
       );
-
-      expect(await provider.isAvailable()).toBe(false);
     });
 
-    it('should call /v1/models endpoint', async () => {
+    it("should throw when API is unreachable", async () => {
+      const provider = createProvider();
+      mockFetch.mockRejectedValueOnce(new Error("ECONNREFUSED"));
+
+      await expect(provider.isAvailable()).rejects.toThrow(/无法连接 OpenAI/);
+    });
+
+    it("should throw on non-200 response", async () => {
+      const provider = createProvider();
+      mockFetch.mockResolvedValueOnce(createMockResponse("error", 500));
+
+      await expect(provider.isAvailable()).rejects.toThrow(/健康检查失败/);
+    });
+
+    it("should call /v1/models endpoint", async () => {
       const provider = createProvider({
-        baseUrl: 'https://custom.openai.com',
+        baseUrl: "https://custom.openai.com",
       });
-      mockFetch.mockResolvedValueOnce(
-        createMockResponse({ data: [] }),
-      );
+      mockFetch.mockResolvedValueOnce(createMockResponse({ data: [] }));
 
       await provider.isAvailable();
 
       expect(mockFetch).toHaveBeenCalledWith(
-        'https://custom.openai.com/v1/models',
+        "https://custom.openai.com/v1/models",
         expect.objectContaining({
-          method: 'GET',
+          method: "GET",
           headers: expect.objectContaining({
-            'Authorization': `Bearer ${TEST_API_KEY}`,
+            Authorization: `Bearer ${TEST_API_KEY}`,
           }),
         }),
       );
     });
 
-    it('should use a short timeout for availability checks', async () => {
+    it("should use a short timeout for availability checks", async () => {
       const provider = createProvider();
       mockFetch.mockImplementationOnce(
-        () => new Promise((_, reject) => {
-          setTimeout(() => {
-            const err = new DOMException('The operation was aborted', 'AbortError');
-            reject(err);
-          }, 10);
-        }),
+        () =>
+          new Promise((_, reject) => {
+            setTimeout(() => {
+              const err = new DOMException(
+                "The operation was aborted",
+                "AbortError",
+              );
+              reject(err);
+            }, 10);
+          }),
       );
 
-      // Should not throw, just return false
-      expect(await provider.isAvailable()).toBe(false);
+      await expect(provider.isAvailable()).rejects.toThrow(
+        /无法连接 OpenAI|timed out|AbortError/i,
+      );
     });
   });
 
@@ -796,26 +856,29 @@ describe('OpenAIProvider', () => {
   // Tests: OpenAIError
   // ==========================================================================
 
-  describe('OpenAIError', () => {
-    it('should carry the status code', () => {
-      const err = new OpenAIError('Not Found', 404);
-      expect(err.name).toBe('OpenAIError');
-      expect(err.message).toBe('Not Found');
+  describe("OpenAIError", () => {
+    it("should carry the status code", () => {
+      const err = new OpenAIError("Not Found", 404);
+      expect(err.name).toBe("OpenAIError");
+      expect(err.message).toBe("Not Found");
       expect(err.statusCode).toBe(404);
       expect(err).toBeInstanceOf(Error);
     });
 
-    it('should have correct name for authentication error', () => {
-      const err = new OpenAIError('OpenAI authentication failed: Invalid API key', 401);
-      expect(err.name).toBe('OpenAIError');
+    it("should have correct name for authentication error", () => {
+      const err = new OpenAIError(
+        "OpenAI authentication failed: Invalid API key",
+        401,
+      );
+      expect(err.name).toBe("OpenAIError");
       expect(err.statusCode).toBe(401);
-      expect(err.message).toContain('authentication');
+      expect(err.message).toContain("authentication");
     });
 
-    it('should have correct name for rate limit error', () => {
-      const err = new OpenAIError('OpenAI rate limit exceeded', 429);
+    it("should have correct name for rate limit error", () => {
+      const err = new OpenAIError("OpenAI rate limit exceeded", 429);
       expect(err.statusCode).toBe(429);
-      expect(err.message).toContain('rate limit');
+      expect(err.message).toContain("rate limit");
     });
   });
 
@@ -823,52 +886,56 @@ describe('OpenAIProvider', () => {
   // Tests: Edge Cases
   // ==========================================================================
 
-  describe('edge cases', () => {
-    it('should handle empty messages array', async () => {
+  describe("edge cases", () => {
+    it("should handle empty messages array", async () => {
       const provider = createProvider();
       mockFetch.mockResolvedValueOnce(
-        createMockResponse(createMockChatResponse('ok')),
+        createMockResponse(createMockChatResponse("ok")),
       );
 
-      await provider.chat(createChatOptions({
-        messages: [],
-        system: undefined,
-      }));
+      await provider.chat(
+        createChatOptions({
+          messages: [],
+          system: undefined,
+        }),
+      );
 
       const fetchCall = mockFetch.mock.calls[0];
       const body = JSON.parse(fetchCall[1].body as string);
       expect(body.messages).toEqual([]);
     });
 
-    it('should handle multi-turn conversation', async () => {
+    it("should handle multi-turn conversation", async () => {
       const provider = createProvider();
       mockFetch.mockResolvedValueOnce(
-        createMockResponse(createMockChatResponse('result')),
+        createMockResponse(createMockChatResponse("result")),
       );
 
-      await provider.chat(createChatOptions({
-        messages: [
-          { role: 'user', content: 'Hello' },
-          { role: 'assistant', content: 'Hi there!' },
-          { role: 'user', content: 'What is the status?' },
-        ],
-        system: 'You are helpful.',
-      }));
+      await provider.chat(
+        createChatOptions({
+          messages: [
+            { role: "user", content: "Hello" },
+            { role: "assistant", content: "Hi there!" },
+            { role: "user", content: "What is the status?" },
+          ],
+          system: "You are helpful.",
+        }),
+      );
 
       const fetchCall = mockFetch.mock.calls[0];
       const body = JSON.parse(fetchCall[1].body as string);
       // system + 3 conversation messages
       expect(body.messages).toHaveLength(4);
-      expect(body.messages[0].role).toBe('system');
-      expect(body.messages[1].role).toBe('user');
-      expect(body.messages[2].role).toBe('assistant');
-      expect(body.messages[3].role).toBe('user');
+      expect(body.messages[0].role).toBe("system");
+      expect(body.messages[1].role).toBe("user");
+      expect(body.messages[2].role).toBe("assistant");
+      expect(body.messages[3].role).toBe("user");
     });
 
-    it('should use default maxTokens when not specified', async () => {
+    it("should use default maxTokens when not specified", async () => {
       const provider = createProvider();
       mockFetch.mockResolvedValueOnce(
-        createMockResponse(createMockChatResponse('ok')),
+        createMockResponse(createMockChatResponse("ok")),
       );
 
       await provider.chat(createChatOptions({ maxTokens: undefined }));
@@ -878,32 +945,36 @@ describe('OpenAIProvider', () => {
       expect(body.max_tokens).toBe(4096);
     });
 
-    it('should handle stream with empty delta content', async () => {
+    it("should handle stream with empty delta content", async () => {
       const provider = createProvider();
       const lines = [
         `data: ${JSON.stringify({
-          id: 'chatcmpl-test',
-          choices: [{ index: 0, delta: { role: 'assistant' }, finish_reason: null }],
+          id: "chatcmpl-test",
+          choices: [
+            { index: 0, delta: { role: "assistant" }, finish_reason: null },
+          ],
         })}`,
         `data: ${JSON.stringify({
-          id: 'chatcmpl-test',
-          choices: [{ index: 0, delta: { content: 'Hello' }, finish_reason: null }],
+          id: "chatcmpl-test",
+          choices: [
+            { index: 0, delta: { content: "Hello" }, finish_reason: null },
+          ],
         })}`,
         `data: ${JSON.stringify({
-          id: 'chatcmpl-test',
-          choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+          id: "chatcmpl-test",
+          choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
           usage: { prompt_tokens: 10, completion_tokens: 1, total_tokens: 11 },
         })}`,
-        'data: [DONE]',
-        '',
-      ].join('\n');
+        "data: [DONE]",
+        "",
+      ].join("\n");
 
       mockFetch.mockResolvedValueOnce(createMockStreamResponse(lines));
 
       const result = await provider.stream(createChatOptions());
 
       expect(result.success).toBe(true);
-      expect(result.content).toBe('Hello');
+      expect(result.content).toBe("Hello");
     });
   });
 
@@ -911,15 +982,15 @@ describe('OpenAIProvider', () => {
   // Tests: getModel()
   // ==========================================================================
 
-  describe('getModel()', () => {
-    it('should return default model', () => {
+  describe("getModel()", () => {
+    it("should return default model", () => {
       const provider = createProvider();
-      expect(provider.getModel()).toBe('gpt-4o');
+      expect(provider.getModel()).toBe("gpt-4o");
     });
 
-    it('should return custom model', () => {
-      const provider = createProvider({ model: 'gpt-4-turbo' });
-      expect(provider.getModel()).toBe('gpt-4-turbo');
+    it("should return custom model", () => {
+      const provider = createProvider({ model: "gpt-4-turbo" });
+      expect(provider.getModel()).toBe("gpt-4-turbo");
     });
   });
 
@@ -927,13 +998,13 @@ describe('OpenAIProvider', () => {
   // Tests: estimateCost()
   // ==========================================================================
 
-  describe('estimateCost()', () => {
+  describe("estimateCost()", () => {
     const usage: TokenUsage = { inputTokens: 1000, outputTokens: 500 };
 
-    it('should estimate cost for gpt-4o', () => {
-      const cost = estimateCost(usage, 'gpt-4o');
+    it("should estimate cost for gpt-4o", () => {
+      const cost = estimateCost(usage, "gpt-4o");
       expect(cost).not.toBeNull();
-      expect(cost!.currency).toBe('USD');
+      expect(cost!.currency).toBe("USD");
       // 1000/1M * 2.50 = 0.0025 input
       expect(cost!.inputCost).toBeCloseTo(0.0025, 6);
       // 500/1M * 10.00 = 0.005 output
@@ -941,8 +1012,8 @@ describe('OpenAIProvider', () => {
       expect(cost!.totalCost).toBeCloseTo(0.0075, 6);
     });
 
-    it('should estimate cost for gpt-4o-mini', () => {
-      const cost = estimateCost(usage, 'gpt-4o-mini');
+    it("should estimate cost for gpt-4o-mini", () => {
+      const cost = estimateCost(usage, "gpt-4o-mini");
       expect(cost).not.toBeNull();
       // 1000/1M * 0.15 = 0.00015 input
       expect(cost!.inputCost).toBeCloseTo(0.00015, 6);
@@ -950,39 +1021,39 @@ describe('OpenAIProvider', () => {
       expect(cost!.outputCost).toBeCloseTo(0.0003, 6);
     });
 
-    it('should estimate cost for gpt-4', () => {
-      const cost = estimateCost(usage, 'gpt-4');
+    it("should estimate cost for gpt-4", () => {
+      const cost = estimateCost(usage, "gpt-4");
       expect(cost).not.toBeNull();
       // 1000/1M * 30.00 = 0.03 input
       expect(cost!.inputCost).toBeCloseTo(0.03, 6);
     });
 
-    it('should estimate cost for gpt-3.5-turbo', () => {
-      const cost = estimateCost(usage, 'gpt-3.5-turbo');
+    it("should estimate cost for gpt-3.5-turbo", () => {
+      const cost = estimateCost(usage, "gpt-3.5-turbo");
       expect(cost).not.toBeNull();
       expect(cost!.inputCost).toBeCloseTo(0.0005, 6);
     });
 
-    it('should return null for unknown model', () => {
-      const cost = estimateCost(usage, 'unknown-model');
+    it("should return null for unknown model", () => {
+      const cost = estimateCost(usage, "unknown-model");
       expect(cost).toBeNull();
     });
 
-    it('should handle zero token usage', () => {
-      const cost = estimateCost({ inputTokens: 0, outputTokens: 0 }, 'gpt-4o');
+    it("should handle zero token usage", () => {
+      const cost = estimateCost({ inputTokens: 0, outputTokens: 0 }, "gpt-4o");
       expect(cost).not.toBeNull();
       expect(cost!.totalCost).toBe(0);
     });
 
-    it('should be accessible via provider instance', () => {
+    it("should be accessible via provider instance", () => {
       const provider = createProvider();
       const cost = provider.estimateCost(usage);
       expect(cost).not.toBeNull();
-      expect(cost!.currency).toBe('USD');
+      expect(cost!.currency).toBe("USD");
     });
 
-    it('should return null for provider with unknown model', () => {
-      const provider = createProvider({ model: 'custom-model' });
+    it("should return null for provider with unknown model", () => {
+      const provider = createProvider({ model: "custom-model" });
       const cost = provider.estimateCost(usage);
       expect(cost).toBeNull();
     });
@@ -992,44 +1063,47 @@ describe('OpenAIProvider', () => {
   // Tests: parseStructuredOutput()
   // ==========================================================================
 
-  describe('parseStructuredOutput()', () => {
+  describe("parseStructuredOutput()", () => {
     const TestSchema = z.object({
       name: z.string(),
       value: z.number(),
     });
 
-    it('should parse plain JSON', () => {
-      const result = parseStructuredOutput('{"name":"test","value":42}', TestSchema);
-      expect(result).toEqual({ name: 'test', value: 42 });
+    it("should parse plain JSON", () => {
+      const result = parseStructuredOutput(
+        '{"name":"test","value":42}',
+        TestSchema,
+      );
+      expect(result).toEqual({ name: "test", value: 42 });
     });
 
-    it('should strip json code fences', () => {
+    it("should strip json code fences", () => {
       const text = '```json\n{"name":"test","value":42}\n```';
       const result = parseStructuredOutput(text, TestSchema);
-      expect(result).toEqual({ name: 'test', value: 42 });
+      expect(result).toEqual({ name: "test", value: 42 });
     });
 
-    it('should strip bare code fences', () => {
+    it("should strip bare code fences", () => {
       const text = '```\n{"name":"test","value":42}\n```';
       const result = parseStructuredOutput(text, TestSchema);
-      expect(result).toEqual({ name: 'test', value: 42 });
+      expect(result).toEqual({ name: "test", value: 42 });
     });
 
-    it('should handle leading/trailing whitespace', () => {
+    it("should handle leading/trailing whitespace", () => {
       const text = '  \n  {"name":"test","value":42}  \n  ';
       const result = parseStructuredOutput(text, TestSchema);
-      expect(result).toEqual({ name: 'test', value: 42 });
+      expect(result).toEqual({ name: "test", value: 42 });
     });
 
-    it('should throw on invalid JSON', () => {
-      expect(() => parseStructuredOutput('not json', TestSchema)).toThrow();
+    it("should throw on invalid JSON", () => {
+      expect(() => parseStructuredOutput("not json", TestSchema)).toThrow();
     });
 
-    it('should throw on schema validation failure', () => {
+    it("should throw on schema validation failure", () => {
       expect(() => parseStructuredOutput('{"name":123}', TestSchema)).toThrow();
     });
 
-    it('should parse array schemas', () => {
+    it("should parse array schemas", () => {
       const ArraySchema = z.array(z.object({ id: z.string() }));
       const text = '[{"id":"a"},{"id":"b"}]';
       const result = parseStructuredOutput(text, ArraySchema);
@@ -1041,48 +1115,58 @@ describe('OpenAIProvider', () => {
   // Tests: chatStructured()
   // ==========================================================================
 
-  describe('chatStructured()', () => {
+  describe("chatStructured()", () => {
     const PlanSchema = z.object({
-      steps: z.array(z.object({
-        id: z.string(),
-        command: z.string(),
-      })),
+      steps: z.array(
+        z.object({
+          id: z.string(),
+          command: z.string(),
+        }),
+      ),
     });
 
-    it('should parse structured JSON response', async () => {
+    it("should parse structured JSON response", async () => {
       const provider = createProvider();
       const jsonContent = '{"steps":[{"id":"s1","command":"npm install"}]}';
       mockFetch.mockResolvedValueOnce(
         createMockResponse(createMockChatResponse(jsonContent)),
       );
 
-      const result = await provider.chatStructured(createChatOptions(), PlanSchema);
+      const result = await provider.chatStructured(
+        createChatOptions(),
+        PlanSchema,
+      );
 
       expect(result.data.steps).toHaveLength(1);
-      expect(result.data.steps[0].id).toBe('s1');
+      expect(result.data.steps[0].id).toBe("s1");
       expect(result.usage.inputTokens).toBe(42);
     });
 
-    it('should strip code fences before parsing', async () => {
+    it("should strip code fences before parsing", async () => {
       const provider = createProvider();
-      const jsonContent = '```json\n{"steps":[{"id":"s1","command":"apt install"}]}\n```';
+      const jsonContent =
+        '```json\n{"steps":[{"id":"s1","command":"apt install"}]}\n```';
       mockFetch.mockResolvedValueOnce(
         createMockResponse(createMockChatResponse(jsonContent)),
       );
 
-      const result = await provider.chatStructured(createChatOptions(), PlanSchema);
+      const result = await provider.chatStructured(
+        createChatOptions(),
+        PlanSchema,
+      );
 
-      expect(result.data.steps[0].command).toBe('apt install');
+      expect(result.data.steps[0].command).toBe("apt install");
     });
 
-    it('should throw on invalid response structure', async () => {
+    it("should throw on invalid response structure", async () => {
       const provider = createProvider();
       mockFetch.mockResolvedValueOnce(
         createMockResponse(createMockChatResponse('{"invalid": true}')),
       );
 
-      await expect(provider.chatStructured(createChatOptions(), PlanSchema))
-        .rejects.toThrow();
+      await expect(
+        provider.chatStructured(createChatOptions(), PlanSchema),
+      ).rejects.toThrow();
     });
   });
 
@@ -1090,30 +1174,30 @@ describe('OpenAIProvider', () => {
   // Tests: chatWithRetry()
   // ==========================================================================
 
-  describe('chatWithRetry()', () => {
-    it('should succeed on first attempt', async () => {
+  describe("chatWithRetry()", () => {
+    it("should succeed on first attempt", async () => {
       const provider = createProvider();
       mockFetch.mockResolvedValueOnce(
-        createMockResponse(createMockChatResponse('ok')),
+        createMockResponse(createMockChatResponse("ok")),
       );
 
       const result = await provider.chatWithRetry(createChatOptions());
 
       expect(result.success).toBe(true);
-      expect(result.data?.content).toBe('ok');
+      expect(result.data?.content).toBe("ok");
       expect(result.attempts).toBe(1);
     });
 
-    it('should retry on server error and succeed', async () => {
+    it("should retry on server error and succeed", async () => {
       const provider = createProvider();
 
       // First call: 500 error
       mockFetch.mockResolvedValueOnce(
-        createMockErrorResponse('Internal error', 'server_error', 500),
+        createMockErrorResponse("Internal error", "server_error", 500),
       );
       // Second call: success
       mockFetch.mockResolvedValueOnce(
-        createMockResponse(createMockChatResponse('ok')),
+        createMockResponse(createMockChatResponse("ok")),
       );
 
       const result = await provider.chatWithRetry(createChatOptions(), {
@@ -1125,14 +1209,14 @@ describe('OpenAIProvider', () => {
       expect(result.attempts).toBe(2);
     });
 
-    it('should retry on rate limit error', async () => {
+    it("should retry on rate limit error", async () => {
       const provider = createProvider();
 
       mockFetch.mockResolvedValueOnce(
-        createMockErrorResponse('Rate limited', 'rate_limit_error', 429),
+        createMockErrorResponse("Rate limited", "rate_limit_error", 429),
       );
       mockFetch.mockResolvedValueOnce(
-        createMockResponse(createMockChatResponse('ok')),
+        createMockResponse(createMockChatResponse("ok")),
       );
 
       const result = await provider.chatWithRetry(createChatOptions(), {
@@ -1144,10 +1228,10 @@ describe('OpenAIProvider', () => {
       expect(result.attempts).toBe(2);
     });
 
-    it('should not retry on auth error (401)', async () => {
+    it("should not retry on auth error (401)", async () => {
       const provider = createProvider();
       mockFetch.mockResolvedValueOnce(
-        createMockErrorResponse('Invalid API key', 'auth_error', 401),
+        createMockErrorResponse("Invalid API key", "auth_error", 401),
       );
 
       const result = await provider.chatWithRetry(createChatOptions(), {
@@ -1157,28 +1241,13 @@ describe('OpenAIProvider', () => {
 
       expect(result.success).toBe(false);
       expect(result.attempts).toBe(1);
-      expect(result.error).toContain('authentication');
+      expect(result.error).toContain("authentication");
     });
 
-    it('should not retry on bad request (400)', async () => {
+    it("should not retry on bad request (400)", async () => {
       const provider = createProvider();
       mockFetch.mockResolvedValueOnce(
-        createMockErrorResponse('Bad request', 'invalid_request', 400),
-      );
-
-      const result = await provider.chatWithRetry(createChatOptions(), {
-        maxRetries: 3,
-        initialDelayMs: 1,
-      });
-
-      expect(result.success).toBe(false);
-      expect(result.attempts).toBe(1);
-    });
-
-    it('should not retry on 404', async () => {
-      const provider = createProvider();
-      mockFetch.mockResolvedValueOnce(
-        createMockErrorResponse('Not found', 'not_found', 404),
+        createMockErrorResponse("Bad request", "invalid_request", 400),
       );
 
       const result = await provider.chatWithRetry(createChatOptions(), {
@@ -1190,12 +1259,27 @@ describe('OpenAIProvider', () => {
       expect(result.attempts).toBe(1);
     });
 
-    it('should exhaust retries and report failure', async () => {
+    it("should not retry on 404", async () => {
+      const provider = createProvider();
+      mockFetch.mockResolvedValueOnce(
+        createMockErrorResponse("Not found", "not_found", 404),
+      );
+
+      const result = await provider.chatWithRetry(createChatOptions(), {
+        maxRetries: 3,
+        initialDelayMs: 1,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.attempts).toBe(1);
+    });
+
+    it("should exhaust retries and report failure", async () => {
       const provider = createProvider();
 
       for (let i = 0; i < 4; i++) {
         mockFetch.mockResolvedValueOnce(
-          createMockErrorResponse('Server error', 'server_error', 500),
+          createMockErrorResponse("Server error", "server_error", 500),
         );
       }
 
@@ -1206,15 +1290,15 @@ describe('OpenAIProvider', () => {
 
       expect(result.success).toBe(false);
       expect(result.attempts).toBe(4);
-      expect(result.error).toContain('4 attempts');
+      expect(result.error).toContain("4 attempts");
     });
 
-    it('should retry on network error', async () => {
+    it("should retry on network error", async () => {
       const provider = createProvider();
 
-      mockFetch.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+      mockFetch.mockRejectedValueOnce(new Error("ECONNREFUSED"));
       mockFetch.mockResolvedValueOnce(
-        createMockResponse(createMockChatResponse('ok')),
+        createMockResponse(createMockChatResponse("ok")),
       );
 
       const result = await provider.chatWithRetry(createChatOptions(), {
@@ -1226,10 +1310,10 @@ describe('OpenAIProvider', () => {
       expect(result.attempts).toBe(2);
     });
 
-    it('should use default retry options when not specified', async () => {
+    it("should use default retry options when not specified", async () => {
       const provider = createProvider();
       mockFetch.mockResolvedValueOnce(
-        createMockResponse(createMockChatResponse('ok')),
+        createMockResponse(createMockChatResponse("ok")),
       );
 
       const result = await provider.chatWithRetry(createChatOptions());
@@ -1243,53 +1327,61 @@ describe('OpenAIProvider', () => {
   // Tests: streamWithRetry()
   // ==========================================================================
 
-  describe('streamWithRetry()', () => {
-    it('should succeed on first attempt', async () => {
+  describe("streamWithRetry()", () => {
+    it("should succeed on first attempt", async () => {
       const provider = createProvider();
-      const streamText = createMockStreamChunks(['Hello']);
+      const streamText = createMockStreamChunks(["Hello"]);
       mockFetch.mockResolvedValueOnce(createMockStreamResponse(streamText));
 
       const result = await provider.streamWithRetry(createChatOptions());
 
       expect(result.success).toBe(true);
-      expect(result.data?.content).toBe('Hello');
+      expect(result.data?.content).toBe("Hello");
       expect(result.attempts).toBe(1);
     });
 
-    it('should retry on stream connection error', async () => {
+    it("should retry on stream connection error", async () => {
       const provider = createProvider();
 
       // First call: network error
-      mockFetch.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+      mockFetch.mockRejectedValueOnce(new Error("ECONNREFUSED"));
       // Second call: success
-      const streamText = createMockStreamChunks(['ok']);
+      const streamText = createMockStreamChunks(["ok"]);
       mockFetch.mockResolvedValueOnce(createMockStreamResponse(streamText));
 
-      const result = await provider.streamWithRetry(createChatOptions(), undefined, {
-        maxRetries: 1,
-        initialDelayMs: 1,
-      });
+      const result = await provider.streamWithRetry(
+        createChatOptions(),
+        undefined,
+        {
+          maxRetries: 1,
+          initialDelayMs: 1,
+        },
+      );
 
       expect(result.success).toBe(true);
       expect(result.attempts).toBe(2);
     });
 
-    it('should not retry on auth error in stream', async () => {
+    it("should not retry on auth error in stream", async () => {
       const provider = createProvider();
       mockFetch.mockResolvedValueOnce(
-        createMockErrorResponse('Invalid API key', 'auth_error', 401),
+        createMockErrorResponse("Invalid API key", "auth_error", 401),
       );
 
-      const result = await provider.streamWithRetry(createChatOptions(), undefined, {
-        maxRetries: 3,
-        initialDelayMs: 1,
-      });
+      const result = await provider.streamWithRetry(
+        createChatOptions(),
+        undefined,
+        {
+          maxRetries: 3,
+          initialDelayMs: 1,
+        },
+      );
 
       expect(result.success).toBe(false);
       expect(result.attempts).toBe(1);
     });
 
-    it('should only use callbacks on first attempt', async () => {
+    it("should only use callbacks on first attempt", async () => {
       const provider = createProvider();
 
       // First attempt fails with unreadable body
@@ -1297,12 +1389,12 @@ describe('OpenAIProvider', () => {
         ok: true,
         status: 200,
         body: null,
-        text: () => Promise.resolve(''),
+        text: () => Promise.resolve(""),
         headers: new Headers(),
       } as unknown as Response);
 
       // Second attempt succeeds
-      const streamText = createMockStreamChunks(['ok']);
+      const streamText = createMockStreamChunks(["ok"]);
       mockFetch.mockResolvedValueOnce(createMockStreamResponse(streamText));
 
       const onStart = vi.fn();
@@ -1315,7 +1407,7 @@ describe('OpenAIProvider', () => {
       expect(result.success).toBe(true);
     });
 
-    it('should exhaust retries for stream failures', async () => {
+    it("should exhaust retries for stream failures", async () => {
       const provider = createProvider();
 
       // All attempts fail with server error
@@ -1323,21 +1415,28 @@ describe('OpenAIProvider', () => {
         mockFetch.mockResolvedValueOnce({
           ok: false,
           status: 500,
-          json: () => Promise.resolve({ error: { message: 'Server Error 500', type: 'server_error' } }),
-          text: () => Promise.resolve('Server Error 500'),
+          json: () =>
+            Promise.resolve({
+              error: { message: "Server Error 500", type: "server_error" },
+            }),
+          text: () => Promise.resolve("Server Error 500"),
           body: null,
           headers: new Headers(),
         } as unknown as Response);
       }
 
-      const result = await provider.streamWithRetry(createChatOptions(), undefined, {
-        maxRetries: 2,
-        initialDelayMs: 1,
-      });
+      const result = await provider.streamWithRetry(
+        createChatOptions(),
+        undefined,
+        {
+          maxRetries: 2,
+          initialDelayMs: 1,
+        },
+      );
 
       expect(result.success).toBe(false);
       expect(result.attempts).toBe(3);
-      expect(result.error).toContain('3 attempts');
+      expect(result.error).toContain("3 attempts");
     });
   });
 
@@ -1345,62 +1444,73 @@ describe('OpenAIProvider', () => {
   // Tests: Tool Use / Function Calling
   // ==========================================================================
 
-  describe('tool use / function calling', () => {
+  describe("tool use / function calling", () => {
     const toolDefinitions = [
       {
-        name: 'execute_command',
-        description: 'Execute a shell command on the target server',
+        name: "execute_command",
+        description: "Execute a shell command on the target server",
         input_schema: {
-          type: 'object',
+          type: "object",
           properties: {
-            command: { type: 'string', description: 'The command to run' },
-            description: { type: 'string', description: 'What this command does' },
+            command: { type: "string", description: "The command to run" },
+            description: {
+              type: "string",
+              description: "What this command does",
+            },
           },
-          required: ['command', 'description'],
+          required: ["command", "description"],
         },
       },
       {
-        name: 'read_file',
-        description: 'Read a file from the server',
+        name: "read_file",
+        description: "Read a file from the server",
         input_schema: {
-          type: 'object',
+          type: "object",
           properties: {
-            path: { type: 'string', description: 'File path' },
+            path: { type: "string", description: "File path" },
           },
-          required: ['path'],
+          required: ["path"],
         },
       },
     ];
 
-    function createToolCallResponse(toolCalls: Array<{ id: string; name: string; arguments: Record<string, unknown> }>) {
+    function createToolCallResponse(
+      toolCalls: Array<{
+        id: string;
+        name: string;
+        arguments: Record<string, unknown>;
+      }>,
+    ) {
       return {
-        id: 'chatcmpl-tool-123',
-        choices: [{
-          index: 0,
-          message: {
-            role: 'assistant',
-            content: null,
-            tool_calls: toolCalls.map((tc) => ({
-              id: tc.id,
-              type: 'function',
-              function: {
-                name: tc.name,
-                arguments: JSON.stringify(tc.arguments),
-              },
-            })),
+        id: "chatcmpl-tool-123",
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: "assistant",
+              content: null,
+              tool_calls: toolCalls.map((tc) => ({
+                id: tc.id,
+                type: "function",
+                function: {
+                  name: tc.name,
+                  arguments: JSON.stringify(tc.arguments),
+                },
+              })),
+            },
+            finish_reason: "tool_calls",
           },
-          finish_reason: 'tool_calls',
-        }],
+        ],
         usage: { prompt_tokens: 100, completion_tokens: 50, total_tokens: 150 },
       };
     }
 
     // --- chat() with tools ---
 
-    it('should pass tools in OpenAI function calling format in chat()', async () => {
+    it("should pass tools in OpenAI function calling format in chat()", async () => {
       const provider = createProvider();
       mockFetch.mockResolvedValueOnce(
-        createMockResponse(createMockChatResponse('ok')),
+        createMockResponse(createMockChatResponse("ok")),
       );
 
       await provider.chat(createChatOptions({ tools: toolDefinitions }));
@@ -1409,20 +1519,20 @@ describe('OpenAIProvider', () => {
       const body = JSON.parse(fetchCall[1].body as string);
       expect(body.tools).toHaveLength(2);
       expect(body.tools[0]).toEqual({
-        type: 'function',
+        type: "function",
         function: {
-          name: 'execute_command',
-          description: 'Execute a shell command on the target server',
+          name: "execute_command",
+          description: "Execute a shell command on the target server",
           parameters: toolDefinitions[0].input_schema,
         },
       });
-      expect(body.tools[1].function.name).toBe('read_file');
+      expect(body.tools[1].function.name).toBe("read_file");
     });
 
-    it('should not include tools in request when none provided', async () => {
+    it("should not include tools in request when none provided", async () => {
       const provider = createProvider();
       mockFetch.mockResolvedValueOnce(
-        createMockResponse(createMockChatResponse('ok')),
+        createMockResponse(createMockChatResponse("ok")),
       );
 
       await provider.chat(createChatOptions());
@@ -1432,262 +1542,351 @@ describe('OpenAIProvider', () => {
       expect(body.tools).toBeUndefined();
     });
 
-    it('should extract tool calls from chat() response', async () => {
-      const provider = createProvider();
-      const responseBody = createToolCallResponse([{
-        id: 'call_abc123',
-        name: 'execute_command',
-        arguments: { command: 'ls -la', description: 'List files' },
-      }]);
-
-      mockFetch.mockResolvedValueOnce(createMockResponse(responseBody));
-
-      const result = await provider.chat(createChatOptions({ tools: toolDefinitions }));
-
-      expect(result.toolCalls).toHaveLength(1);
-      expect(result.toolCalls![0]).toEqual({
-        type: 'tool_use',
-        id: 'call_abc123',
-        name: 'execute_command',
-        input: { command: 'ls -la', description: 'List files' },
-      });
-      expect(result.stopReason).toBe('tool_use');
-      expect(result.content).toBe('');
-    });
-
-    it('should handle multiple tool calls in a single chat() response', async () => {
+    it("should extract tool calls from chat() response", async () => {
       const provider = createProvider();
       const responseBody = createToolCallResponse([
-        { id: 'call_1', name: 'execute_command', arguments: { command: 'uname -a', description: 'Get OS info' } },
-        { id: 'call_2', name: 'read_file', arguments: { path: '/etc/os-release' } },
+        {
+          id: "call_abc123",
+          name: "execute_command",
+          arguments: { command: "ls -la", description: "List files" },
+        },
       ]);
 
       mockFetch.mockResolvedValueOnce(createMockResponse(responseBody));
 
-      const result = await provider.chat(createChatOptions({ tools: toolDefinitions }));
+      const result = await provider.chat(
+        createChatOptions({ tools: toolDefinitions }),
+      );
+
+      expect(result.toolCalls).toHaveLength(1);
+      expect(result.toolCalls![0]).toEqual({
+        type: "tool_use",
+        id: "call_abc123",
+        name: "execute_command",
+        input: { command: "ls -la", description: "List files" },
+      });
+      expect(result.stopReason).toBe("tool_use");
+      expect(result.content).toBe("");
+    });
+
+    it("should handle multiple tool calls in a single chat() response", async () => {
+      const provider = createProvider();
+      const responseBody = createToolCallResponse([
+        {
+          id: "call_1",
+          name: "execute_command",
+          arguments: { command: "uname -a", description: "Get OS info" },
+        },
+        {
+          id: "call_2",
+          name: "read_file",
+          arguments: { path: "/etc/os-release" },
+        },
+      ]);
+
+      mockFetch.mockResolvedValueOnce(createMockResponse(responseBody));
+
+      const result = await provider.chat(
+        createChatOptions({ tools: toolDefinitions }),
+      );
 
       expect(result.toolCalls).toHaveLength(2);
-      expect(result.toolCalls![0].name).toBe('execute_command');
-      expect(result.toolCalls![1].name).toBe('read_file');
-      expect(result.toolCalls![1].input).toEqual({ path: '/etc/os-release' });
+      expect(result.toolCalls![0].name).toBe("execute_command");
+      expect(result.toolCalls![1].name).toBe("read_file");
+      expect(result.toolCalls![1].input).toEqual({ path: "/etc/os-release" });
     });
 
     it('should return stopReason "end_turn" when finish_reason is "stop"', async () => {
       const provider = createProvider();
       mockFetch.mockResolvedValueOnce(
-        createMockResponse(createMockChatResponse('Done!')),
+        createMockResponse(createMockChatResponse("Done!")),
       );
 
-      const result = await provider.chat(createChatOptions({ tools: toolDefinitions }));
+      const result = await provider.chat(
+        createChatOptions({ tools: toolDefinitions }),
+      );
 
-      expect(result.stopReason).toBe('end_turn');
+      expect(result.stopReason).toBe("end_turn");
       expect(result.toolCalls).toBeUndefined();
     });
 
     it('should return stopReason "max_tokens" when finish_reason is "length"', async () => {
       const provider = createProvider();
       const responseBody = {
-        id: 'chatcmpl-test',
-        choices: [{
-          index: 0,
-          message: { role: 'assistant', content: 'Truncated...' },
-          finish_reason: 'length',
-        }],
-        usage: { prompt_tokens: 100, completion_tokens: 4096, total_tokens: 4196 },
+        id: "chatcmpl-test",
+        choices: [
+          {
+            index: 0,
+            message: { role: "assistant", content: "Truncated..." },
+            finish_reason: "length",
+          },
+        ],
+        usage: {
+          prompt_tokens: 100,
+          completion_tokens: 4096,
+          total_tokens: 4196,
+        },
       };
       mockFetch.mockResolvedValueOnce(createMockResponse(responseBody));
 
-      const result = await provider.chat(createChatOptions({ tools: toolDefinitions }));
+      const result = await provider.chat(
+        createChatOptions({ tools: toolDefinitions }),
+      );
 
-      expect(result.stopReason).toBe('max_tokens');
+      expect(result.stopReason).toBe("max_tokens");
     });
 
     // --- stream() with tools ---
 
-    it('should accumulate streaming tool calls and return them in stream()', async () => {
+    it("should accumulate streaming tool calls and return them in stream()", async () => {
       const provider = createProvider();
 
       // Simulate OpenAI streaming tool call: first chunk has id+name, subsequent chunks append arguments
       const chunks = [
         // First chunk: tool_call starts with id and function name
         `data: ${JSON.stringify({
-          id: 'chatcmpl-stream-tool',
-          choices: [{
-            index: 0,
-            delta: {
-              role: 'assistant',
-              tool_calls: [{
-                index: 0,
-                id: 'call_stream_1',
-                type: 'function',
-                function: { name: 'execute_command', arguments: '' },
-              }],
+          id: "chatcmpl-stream-tool",
+          choices: [
+            {
+              index: 0,
+              delta: {
+                role: "assistant",
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: "call_stream_1",
+                    type: "function",
+                    function: { name: "execute_command", arguments: "" },
+                  },
+                ],
+              },
+              finish_reason: null,
             },
-            finish_reason: null,
-          }],
+          ],
         })}`,
         // Second chunk: arguments fragment
         `data: ${JSON.stringify({
-          id: 'chatcmpl-stream-tool',
-          choices: [{
-            index: 0,
-            delta: {
-              tool_calls: [{
-                index: 0,
-                function: { arguments: '{"comma' },
-              }],
+          id: "chatcmpl-stream-tool",
+          choices: [
+            {
+              index: 0,
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    function: { arguments: '{"comma' },
+                  },
+                ],
+              },
+              finish_reason: null,
             },
-            finish_reason: null,
-          }],
+          ],
         })}`,
         // Third chunk: arguments fragment continued
         `data: ${JSON.stringify({
-          id: 'chatcmpl-stream-tool',
-          choices: [{
-            index: 0,
-            delta: {
-              tool_calls: [{
-                index: 0,
-                function: { arguments: 'nd":"ls","description":"List"}' },
-              }],
+          id: "chatcmpl-stream-tool",
+          choices: [
+            {
+              index: 0,
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    function: { arguments: 'nd":"ls","description":"List"}' },
+                  },
+                ],
+              },
+              finish_reason: null,
             },
-            finish_reason: null,
-          }],
+          ],
         })}`,
         // Final chunk: finish_reason + usage
         `data: ${JSON.stringify({
-          id: 'chatcmpl-stream-tool',
-          choices: [{
-            index: 0,
-            delta: {},
-            finish_reason: 'tool_calls',
-          }],
-          usage: { prompt_tokens: 80, completion_tokens: 20, total_tokens: 100 },
+          id: "chatcmpl-stream-tool",
+          choices: [
+            {
+              index: 0,
+              delta: {},
+              finish_reason: "tool_calls",
+            },
+          ],
+          usage: {
+            prompt_tokens: 80,
+            completion_tokens: 20,
+            total_tokens: 100,
+          },
         })}`,
-        'data: [DONE]',
-        '',
-      ].join('\n');
+        "data: [DONE]",
+        "",
+      ].join("\n");
 
       mockFetch.mockResolvedValueOnce(createMockStreamResponse(chunks));
 
-      const result = await provider.stream(createChatOptions({ tools: toolDefinitions }));
+      const result = await provider.stream(
+        createChatOptions({ tools: toolDefinitions }),
+      );
 
       expect(result.success).toBe(true);
       expect(result.toolCalls).toHaveLength(1);
       expect(result.toolCalls![0]).toEqual({
-        type: 'tool_use',
-        id: 'call_stream_1',
-        name: 'execute_command',
-        input: { command: 'ls', description: 'List' },
+        type: "tool_use",
+        id: "call_stream_1",
+        name: "execute_command",
+        input: { command: "ls", description: "List" },
       });
-      expect(result.stopReason).toBe('tool_use');
+      expect(result.stopReason).toBe("tool_use");
       expect(result.usage.inputTokens).toBe(80);
     });
 
-    it('should handle stream with mixed text and tool calls', async () => {
+    it("should handle stream with mixed text and tool calls", async () => {
       const provider = createProvider();
 
       const chunks = [
         // Text content first
         `data: ${JSON.stringify({
-          id: 'chatcmpl-mixed',
-          choices: [{ index: 0, delta: { role: 'assistant', content: 'Let me check' }, finish_reason: null }],
+          id: "chatcmpl-mixed",
+          choices: [
+            {
+              index: 0,
+              delta: { role: "assistant", content: "Let me check" },
+              finish_reason: null,
+            },
+          ],
         })}`,
         // Then tool call
         `data: ${JSON.stringify({
-          id: 'chatcmpl-mixed',
-          choices: [{
-            index: 0,
-            delta: {
-              tool_calls: [{
-                index: 0,
-                id: 'call_mixed',
-                type: 'function',
-                function: { name: 'read_file', arguments: '{"path":"/etc/hosts"}' },
-              }],
+          id: "chatcmpl-mixed",
+          choices: [
+            {
+              index: 0,
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: "call_mixed",
+                    type: "function",
+                    function: {
+                      name: "read_file",
+                      arguments: '{"path":"/etc/hosts"}',
+                    },
+                  },
+                ],
+              },
+              finish_reason: null,
             },
-            finish_reason: null,
-          }],
+          ],
         })}`,
         `data: ${JSON.stringify({
-          id: 'chatcmpl-mixed',
-          choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }],
+          id: "chatcmpl-mixed",
+          choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }],
           usage: { prompt_tokens: 50, completion_tokens: 30, total_tokens: 80 },
         })}`,
-        'data: [DONE]',
-        '',
-      ].join('\n');
+        "data: [DONE]",
+        "",
+      ].join("\n");
 
       mockFetch.mockResolvedValueOnce(createMockStreamResponse(chunks));
 
-      const result = await provider.stream(createChatOptions({ tools: toolDefinitions }));
+      const result = await provider.stream(
+        createChatOptions({ tools: toolDefinitions }),
+      );
 
       expect(result.success).toBe(true);
-      expect(result.content).toBe('Let me check');
+      expect(result.content).toBe("Let me check");
       expect(result.toolCalls).toHaveLength(1);
-      expect(result.toolCalls![0].name).toBe('read_file');
-      expect(result.toolCalls![0].input).toEqual({ path: '/etc/hosts' });
-      expect(result.stopReason).toBe('tool_use');
+      expect(result.toolCalls![0].name).toBe("read_file");
+      expect(result.toolCalls![0].input).toEqual({ path: "/etc/hosts" });
+      expect(result.stopReason).toBe("tool_use");
     });
 
-    it('should handle multiple streaming tool calls', async () => {
+    it("should handle multiple streaming tool calls", async () => {
       const provider = createProvider();
 
       const chunks = [
         // First tool call
         `data: ${JSON.stringify({
-          id: 'chatcmpl-multi',
-          choices: [{
-            index: 0,
-            delta: {
-              role: 'assistant',
-              tool_calls: [
-                { index: 0, id: 'call_a', type: 'function', function: { name: 'execute_command', arguments: '{"command":"df -h","description":"Disk usage"}' } },
-                { index: 1, id: 'call_b', type: 'function', function: { name: 'read_file', arguments: '' } },
-              ],
+          id: "chatcmpl-multi",
+          choices: [
+            {
+              index: 0,
+              delta: {
+                role: "assistant",
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: "call_a",
+                    type: "function",
+                    function: {
+                      name: "execute_command",
+                      arguments:
+                        '{"command":"df -h","description":"Disk usage"}',
+                    },
+                  },
+                  {
+                    index: 1,
+                    id: "call_b",
+                    type: "function",
+                    function: { name: "read_file", arguments: "" },
+                  },
+                ],
+              },
+              finish_reason: null,
             },
-            finish_reason: null,
-          }],
+          ],
         })}`,
         // Second tool call arguments continue
         `data: ${JSON.stringify({
-          id: 'chatcmpl-multi',
-          choices: [{
-            index: 0,
-            delta: {
-              tool_calls: [
-                { index: 1, function: { arguments: '{"path":"/var/log/syslog"}' } },
-              ],
+          id: "chatcmpl-multi",
+          choices: [
+            {
+              index: 0,
+              delta: {
+                tool_calls: [
+                  {
+                    index: 1,
+                    function: { arguments: '{"path":"/var/log/syslog"}' },
+                  },
+                ],
+              },
+              finish_reason: null,
             },
-            finish_reason: null,
-          }],
+          ],
         })}`,
         `data: ${JSON.stringify({
-          id: 'chatcmpl-multi',
-          choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }],
-          usage: { prompt_tokens: 60, completion_tokens: 40, total_tokens: 100 },
+          id: "chatcmpl-multi",
+          choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }],
+          usage: {
+            prompt_tokens: 60,
+            completion_tokens: 40,
+            total_tokens: 100,
+          },
         })}`,
-        'data: [DONE]',
-        '',
-      ].join('\n');
+        "data: [DONE]",
+        "",
+      ].join("\n");
 
       mockFetch.mockResolvedValueOnce(createMockStreamResponse(chunks));
 
-      const result = await provider.stream(createChatOptions({ tools: toolDefinitions }));
+      const result = await provider.stream(
+        createChatOptions({ tools: toolDefinitions }),
+      );
 
       expect(result.success).toBe(true);
       expect(result.toolCalls).toHaveLength(2);
-      expect(result.toolCalls![0].id).toBe('call_a');
-      expect(result.toolCalls![0].name).toBe('execute_command');
-      expect(result.toolCalls![0].input).toEqual({ command: 'df -h', description: 'Disk usage' });
-      expect(result.toolCalls![1].id).toBe('call_b');
-      expect(result.toolCalls![1].name).toBe('read_file');
-      expect(result.toolCalls![1].input).toEqual({ path: '/var/log/syslog' });
+      expect(result.toolCalls![0].id).toBe("call_a");
+      expect(result.toolCalls![0].name).toBe("execute_command");
+      expect(result.toolCalls![0].input).toEqual({
+        command: "df -h",
+        description: "Disk usage",
+      });
+      expect(result.toolCalls![1].id).toBe("call_b");
+      expect(result.toolCalls![1].name).toBe("read_file");
+      expect(result.toolCalls![1].input).toEqual({ path: "/var/log/syslog" });
     });
 
-    it('should pass tools in stream() request body', async () => {
+    it("should pass tools in stream() request body", async () => {
       const provider = createProvider();
-      const streamText = createMockStreamChunks(['ok']);
+      const streamText = createMockStreamChunks(["ok"]);
       mockFetch.mockResolvedValueOnce(createMockStreamResponse(streamText));
 
       await provider.stream(createChatOptions({ tools: toolDefinitions }));
@@ -1695,20 +1894,22 @@ describe('OpenAIProvider', () => {
       const fetchCall = mockFetch.mock.calls[0];
       const body = JSON.parse(fetchCall[1].body as string);
       expect(body.tools).toHaveLength(2);
-      expect(body.tools[0].type).toBe('function');
-      expect(body.tools[0].function.name).toBe('execute_command');
+      expect(body.tools[0].type).toBe("function");
+      expect(body.tools[0].function.name).toBe("execute_command");
     });
 
-    it('should return no toolCalls and stopReason end_turn for normal stream completion', async () => {
+    it("should return no toolCalls and stopReason end_turn for normal stream completion", async () => {
       const provider = createProvider();
-      const streamText = createMockStreamChunks(['Hello', ' world']);
+      const streamText = createMockStreamChunks(["Hello", " world"]);
       mockFetch.mockResolvedValueOnce(createMockStreamResponse(streamText));
 
-      const result = await provider.stream(createChatOptions({ tools: toolDefinitions }));
+      const result = await provider.stream(
+        createChatOptions({ tools: toolDefinitions }),
+      );
 
       expect(result.success).toBe(true);
       expect(result.toolCalls).toBeUndefined();
-      expect(result.stopReason).toBe('end_turn');
+      expect(result.stopReason).toBe("end_turn");
     });
   });
 });

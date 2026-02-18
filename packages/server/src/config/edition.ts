@@ -1,98 +1,145 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
 /**
- * Edition configuration module.
+ * Deployment mode configuration module.
  *
- * Defines CE (Community Edition) and EE (Enterprise Edition) constants
- * and feature flags. All feature availability is driven by the EDITION
- * and CLOUD_MODE environment variables.
+ * Defines Self-Hosted vs Cloud deployment modes. All core features are
+ * enabled by default (100% open source). Cloud-only features are reserved
+ * for managed SaaS infrastructure.
  *
- * - EDITION=ce (default): single-server, single-user, local deployment
- * - EDITION=ee: multi-server, team collaboration, enterprise features
- * - CLOUD_MODE=true: cloud-only features (multi-tenant, billing)
+ * - CLOUD_MODE=false (default): Self-Hosted deployment, all features enabled
+ * - CLOUD_MODE=true: Official Cloud SaaS, adds managed infrastructure features
  *
- * Primitive types (`EditionType`, `FeatureKey`, `FeatureFlags`) are the
- * canonical definitions from `@aiinstaller/shared` and re-exported here
- * for convenience. The server-specific `EditionInfo` (with `isCE`, `isEE`,
- * `isCloud`) is defined locally — it is distinct from the shared
- * `EditionInfo` API-response shape.
+ * Core features (multiServer, teamCollaboration, webhooks, etc.) are always
+ * enabled — no feature gating by deployment mode. Cloud-only features
+ * (SAML SSO, compliance reports, billing) are infrastructure enhancements,
+ * not capability restrictions.
  *
  * @module config/edition
  */
 
 import type {
-  EditionType as SharedEditionType,
   FeatureKey as SharedFeatureKey,
   FeatureFlags as SharedFeatureFlags,
 } from "@aiinstaller/shared";
 
-// Re-export shared types so existing consumers don't break.
-// Using `export type` with aliased re-exports for clarity.
-export type EditionType = SharedEditionType;
+// Re-export shared types for backward compatibility
 export type FeatureKey = SharedFeatureKey;
 export type FeatureFlags = SharedFeatureFlags;
 
-/** Edition detection constants derived from environment variables. */
-export interface EditionInfo {
-  /** Current edition identifier */
-  readonly edition: EditionType;
-  /** True when running Community Edition */
-  readonly isCE: boolean;
-  /** True when running Enterprise Edition */
-  readonly isEE: boolean;
-  /** True when deployed in cloud mode (EE only) */
+/** Deployment mode detection constants. */
+export interface DeploymentInfo {
+  /** True when running Self-Hosted (open source deployment) */
+  readonly isSelfHosted: boolean;
+  /** True when running Cloud (official SaaS) */
   readonly isCloud: boolean;
 }
 
 /**
- * Resolve the current edition from environment variables.
+ * Cloud-only features (infrastructure enhancements, not capability restrictions).
  *
- * Reads `process.env.EDITION` (defaults to 'ce') and `process.env.CLOUD_MODE`.
+ * These features are specific to the managed SaaS environment and represent
+ * operational conveniences (official AI keys, auto-backup) or enterprise
+ * compliance (SAML SSO, audit reports) that don't make sense in self-hosted
+ * deployments.
+ */
+export interface CloudOnlyFeatures {
+  /** Official AI Provider (no need to bring your own API key) */
+  readonly officialAIKey: boolean;
+  /** Automated backup and disaster recovery */
+  readonly autoBackup: boolean;
+  /** Enterprise SAML SSO (Google Workspace, Okta, etc.) */
+  readonly samlSSO: boolean;
+  /** Compliance reports (SOC2, ISO27001, GDPR) */
+  readonly complianceReports: boolean;
+  /** Multi-tenant isolation (SaaS data isolation) */
+  readonly multiTenant: boolean;
+  /** Subscription billing (Stripe integration) */
+  readonly billing: boolean;
+  /** Managed infrastructure (PostgreSQL, Redis, S3, K8s) */
+  readonly managedInfra: boolean;
+}
+
+/**
+ * Resolve the current deployment mode from environment variables.
+ *
+ * Reads `process.env.CLOUD_MODE` (defaults to 'false').
  * Pure function — useful for testing with custom env values.
  */
-export function resolveEdition(
+export function resolveDeployment(
   env: Record<string, string | undefined> = process.env,
-): EditionInfo {
-  const raw = (env.EDITION ?? "ce").toLowerCase();
-  const edition: EditionType = raw === "ee" ? "ee" : "ce";
-  const isEE = edition === "ee";
-  const isCloud = isEE && env.CLOUD_MODE === "true";
+): DeploymentInfo {
+  const isCloud = env.CLOUD_MODE === "true";
 
   return {
-    edition,
-    isCE: !isEE,
-    isEE,
+    isSelfHosted: !isCloud,
     isCloud,
   };
 }
 
 /**
- * Resolve feature flags from an EditionInfo.
+ * Resolve feature flags (all core features enabled).
  *
- * CE features are always enabled. EE features require `isEE`.
- * Cloud-only features additionally require `isCloud`.
+ * Self-Hosted deployment has full access to all features:
+ * - Multi-server management
+ * - Team collaboration
+ * - Webhooks, alerts, metrics monitoring
+ * - Audit export, OAuth login, rate limiting
+ *
+ * No feature gating based on deployment mode.
  */
-export function resolveFeatures(info: EditionInfo): FeatureFlags {
+export function resolveFeatures(_info: DeploymentInfo): FeatureFlags {
+  // All features enabled — 100% open source
   return {
-    // CE core features — always enabled
+    // Core AI features
     chat: true,
     commandExecution: true,
     knowledgeBase: true,
 
-    // EE features — require Enterprise Edition
-    multiServer: info.isEE,
-    multiSession: info.isEE,
-    teamCollaboration: info.isEE,
-    webhooks: info.isEE,
-    alerts: info.isEE,
-    metricsMonitoring: info.isEE,
-    auditExport: info.isEE,
-    oauthLogin: info.isEE,
-    rateLimiting: info.isEE,
+    // Server management (Self-Hosted supported)
+    multiServer: true,
+    multiSession: true,
 
-    // Cloud-only features — require EE + CLOUD_MODE
-    multiTenant: info.isCloud,
-    billing: info.isCloud,
+    // Team collaboration (Self-Hosted supported)
+    teamCollaboration: true,
+
+    // Notifications & alerts (Self-Hosted supported)
+    webhooks: true,
+    alerts: true,
+
+    // Monitoring & audit (Self-Hosted supported)
+    metricsMonitoring: true,
+    auditExport: true,
+
+    // Security & auth (Self-Hosted supported, may require manual config)
+    oauthLogin: true, // Self-Hosted: configure your own GitHub OAuth App
+    rateLimiting: true,
+
+    // Cloud features (legacy flags, kept for backward compatibility)
+    // In new model, these are always true — Cloud adds *enhancements*, not restrictions
+    multiTenant: true, // Self-Hosted can use tenant isolation if desired
+    billing: true, // Self-Hosted can implement billing if they fork
+  };
+}
+
+/**
+ * Resolve Cloud-only features (infrastructure enhancements).
+ *
+ * These features are only available in the official Cloud SaaS deployment.
+ * They represent operational conveniences (official AI, auto-backup) or
+ * enterprise compliance (SAML, audit reports) that require managed infrastructure.
+ */
+export function resolveCloudOnlyFeatures(
+  info: DeploymentInfo,
+): CloudOnlyFeatures {
+  return {
+    officialAIKey: info.isCloud,
+    autoBackup: info.isCloud,
+    samlSSO: info.isCloud,
+    complianceReports: info.isCloud,
+    multiTenant: info.isCloud, // Cloud uses multi-tenant, Self-Hosted typically single-tenant
+    billing: info.isCloud, // Stripe subscription billing
+    managedInfra: info.isCloud, // PostgreSQL, Redis, S3, K8s
   };
 }
 
@@ -100,17 +147,45 @@ export function resolveFeatures(info: EditionInfo): FeatureFlags {
 // Module-level singletons (initialized from process.env on first import)
 // ---------------------------------------------------------------------------
 
-/** Current edition info, resolved once at module load. */
-export const EDITION: EditionInfo = resolveEdition();
+/** Current deployment mode, resolved once at module load. */
+export const DEPLOYMENT: DeploymentInfo = resolveDeployment();
 
 /** Current feature flags, resolved once at module load. */
-export const FEATURES: FeatureFlags = resolveFeatures(EDITION);
+export const FEATURES: FeatureFlags = resolveFeatures(DEPLOYMENT);
+
+/** Cloud-only features, resolved once at module load. */
+export const CLOUD_ONLY: CloudOnlyFeatures =
+  resolveCloudOnlyFeatures(DEPLOYMENT);
+
+/**
+ * Legacy `EDITION` export for backward compatibility.
+ *
+ * @deprecated Use `DEPLOYMENT` instead. `EDITION.isCE` → `DEPLOYMENT.isSelfHosted`
+ */
+export const EDITION = {
+  edition: DEPLOYMENT.isSelfHosted ? ("ce" as const) : ("ee" as const),
+  isCE: DEPLOYMENT.isSelfHosted,
+  isEE: DEPLOYMENT.isCloud,
+  isCloud: DEPLOYMENT.isCloud,
+};
 
 /**
  * Check whether a specific feature is enabled.
  *
  * Convenience wrapper around `FEATURES[key]`.
+ * Since all features are enabled, this always returns true.
+ *
+ * @deprecated All features are enabled. Use `FEATURES[key]` directly if needed.
  */
 export function isFeatureEnabled(key: FeatureKey): boolean {
   return FEATURES[key];
+}
+
+/**
+ * Check whether a Cloud-only feature is available.
+ *
+ * Use this for infrastructure features like SAML SSO, compliance reports, etc.
+ */
+export function isCloudOnlyFeature(key: keyof CloudOnlyFeatures): boolean {
+  return CLOUD_ONLY[key];
 }

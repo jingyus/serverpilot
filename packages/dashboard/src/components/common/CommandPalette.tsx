@@ -19,6 +19,8 @@ import {
   Users,
   Search,
   Plus,
+  BarChart3,
+  CreditCard,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useUiStore } from "@/stores/ui";
@@ -151,6 +153,20 @@ function useCommandItems(): CommandItem[] {
         action: go("/team"),
         keywords: ["members", "invitation"],
         featureKey: "teamCollaboration",
+      },
+      {
+        id: "nav-usage",
+        label: t("nav.usage", "使用量"),
+        icon: BarChart3,
+        action: go("/usage"),
+        keywords: ["usage", "quota", "AI"],
+      },
+      {
+        id: "nav-billing",
+        label: t("nav.billing", "计费"),
+        icon: CreditCard,
+        action: go("/billing"),
+        keywords: ["billing", "subscription", "plan"],
       },
       {
         id: "nav-settings",

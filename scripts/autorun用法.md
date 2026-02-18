@@ -70,6 +70,24 @@ nohup ./scripts/autorun.sh > /dev/null 2>&1 &
 ./scripts/autorun.sh --reset-failures
 ```
 
+### 双模型与可选配置
+
+autorun 采用「布置任务用强模型、执行开发用性价比模型」的策略，以兼顾任务规划质量与成本：
+
+| 阶段     | 默认模型 | 说明 |
+|----------|----------|------|
+| 布置任务（discover） | opus   | 理解文档、拆解任务、排优先级，调用频率低 |
+| 执行开发（execute） | sonnet | 单任务代码实现，调用次数多，性价比高 |
+| 测试修复（fix）     | sonnet | 与执行阶段一致 |
+
+可通过环境变量覆盖（在运行脚本前 export，或在具体 autorun_*.sh 的模块配置处取消注释）：
+
+```bash
+export CLAUDE_MODEL_DISCOVER=opus   # 布置任务时使用的模型
+export CLAUDE_MODEL_EXECUTE=sonnet  # 执行开发时使用的模型
+export CLAUDE_MODEL_FIX=sonnet     # 测试修复时使用的模型（默认与 EXECUTE 相同）
+```
+
 ---
 
 ## 四、核心设计思路

@@ -12,13 +12,19 @@
  * @module api/auth-handler
  */
 
-import type { AuthRequestMessage, AuthResponseMessage } from '@aiinstaller/shared';
-import { MessageType, PROTOCOL_VERSION, checkVersionCompatibility } from '@aiinstaller/shared';
-import { eq, and } from 'drizzle-orm';
-import { logger } from '../utils/logger.js';
-import { getDatabase } from '../db/connection.js';
-import { agents } from '../db/schema.js';
-import { DeviceClient } from './device-client.js';
+import type {
+  AuthRequestMessage,
+  AuthResponseMessage,
+} from "@aiinstaller/shared";
+import {
+  MessageType,
+  PROTOCOL_VERSION,
+  checkVersionCompatibility,
+} from "@aiinstaller/shared";
+import { eq, and } from "drizzle-orm";
+import { logger } from "../utils/logger.js";
+import { getDatabase } from "../db/connection.js";
+import { agents } from "../db/schema.js";
 
 /**
  * Authentication result for WebSocket connections
@@ -55,6 +61,11 @@ export interface AuthResult {
  */
 function tryLocalAgentAuth(serverId: string, token: string): AuthResult | null {
   try {
+    console.log("[AUTH DEBUG] Attempting local agent auth:", {
+      serverId,
+      tokenPrefix: token.substring(0, 20) + "...",
+    });
+
     const db = getDatabase();
     const rows = db
       .select()
@@ -63,22 +74,28 @@ function tryLocalAgentAuth(serverId: string, token: string): AuthResult | null {
       .limit(1)
       .all();
 
+    console.log("[AUTH DEBUG] Query result:", {
+      serverId,
+      rowsFound: rows.length,
+      firstRow: rows[0] ? { id: rows[0].id, serverId: rows[0].serverId } : null,
+    });
+
     if (rows.length > 0) {
       logger.info(
-        { serverId, operation: 'auth_handshake' },
-        'Local agent authenticated via agents table',
+        { serverId, operation: "auth_handshake" },
+        "Local agent authenticated via agents table",
       );
       return {
         success: true,
         deviceToken: token,
         quota: { limit: 999_999, used: 0, remaining: 999_999 },
-        plan: 'self-hosted',
+        plan: "self-hosted",
       };
     }
   } catch (err) {
-    logger.debug(
-      { serverId, error: err, operation: 'auth_handshake' },
-      'Local agent auth lookup failed, falling back to DeviceClient',
+    logger.error(
+      { serverId, error: err, operation: "auth_handshake" },
+      "Local agent auth lookup failed, falling back to DeviceClient",
     );
   }
   return null;
@@ -87,145 +104,47 @@ function tryLocalAgentAuth(serverId: string, token: string): AuthResult | null {
 /**
  * Authenticate a device during WebSocket handshake.
  *
- * Flow:
- * 0. Try local agent auth (self-hosted: check agents table directly)
- * 1. If device has token, verify it via DeviceClient
- * 2. If verification succeeds, return quota info
- * 3. If token missing or invalid, auto-register device
- * 4. Return new token and quota info
+ * Self-hosted mode (simplified):
+ * 1. Check agents table for matching serverId + agentToken
+ * 2. If found, return success with unlimited quota
+ * 3. If not found, reject authentication
+ *
+ * Note: Magic API (DeviceClient) removed for self-hosted version.
+ * Cloud version will use a separate authentication module.
  *
  * @param authRequest - Authentication request from client
  * @returns Authentication result with token and quota info
  */
 export async function authenticateDevice(
-  authRequest: AuthRequestMessage
+  authRequest: AuthRequestMessage,
 ): Promise<AuthResult> {
-  const { deviceId, deviceToken, platform, osVersion, architecture, hostname } =
-    authRequest.payload;
+  const { deviceId, deviceToken } = authRequest.payload;
 
   logger.info(
     {
       deviceId,
       hasToken: !!deviceToken,
-      platform,
-      operation: 'auth_handshake',
+      operation: "auth_handshake",
     },
-    'Processing device authentication'
+    "Processing device authentication (self-hosted mode)",
   );
 
-  // Case 0: Try local agent auth (self-hosted mode)
+  // Self-hosted mode: only local agent auth
   if (deviceId && deviceToken) {
     const localResult = tryLocalAgentAuth(deviceId, deviceToken);
     if (localResult) return localResult;
   }
 
-  // Case 1: Device has token, verify it via DeviceClient
-  if (deviceToken) {
-    const verifyResult = await DeviceClient.verify({
-      deviceId,
-      token: deviceToken,
-    });
-
-    if (verifyResult.success && verifyResult.data) {
-      const { valid, banned, banReason, plan, quotaLimit, quotaUsed } = verifyResult.data;
-
-      // Check if device is banned
-      if (banned) {
-        logger.warn(
-          { deviceId, banReason, operation: 'auth_handshake' },
-          'Device is banned'
-        );
-
-        return {
-          success: false,
-          error: 'Device is banned',
-          banned: true,
-          banReason,
-        };
-      }
-
-      // Check if token is valid
-      if (valid) {
-        logger.info(
-          {
-            deviceId,
-            plan,
-            quotaUsed,
-            quotaRemaining: quotaLimit - quotaUsed,
-            operation: 'auth_handshake',
-          },
-          'Device token verified successfully'
-        );
-
-        return {
-          success: true,
-          deviceToken,
-          quota: {
-            limit: quotaLimit,
-            used: quotaUsed,
-            remaining: quotaLimit - quotaUsed,
-          },
-          plan,
-        };
-      }
-
-      // Token is invalid, fall through to registration
-      logger.info(
-        { deviceId, operation: 'auth_handshake' },
-        'Device token invalid, will auto-register'
-      );
-    }
-  }
-
-  // Case 2: No token or token invalid, auto-register device
-  logger.info({ deviceId, platform, operation: 'auth_handshake' }, 'Auto-registering device');
-
-  const registerResult = await DeviceClient.register({
-    deviceId,
-    platform,
-    osVersion,
-    architecture,
-    hostname,
-  });
-
-  if (registerResult.success && registerResult.data) {
-    const { token, quotaLimit, quotaUsed, plan } = registerResult.data;
-
-    logger.info(
-      {
-        deviceId,
-        plan,
-        quotaLimit,
-        operation: 'auth_handshake',
-      },
-      'Device registered successfully'
-    );
-
-    return {
-      success: true,
-      deviceToken: token,
-      quota: {
-        limit: quotaLimit,
-        used: quotaUsed,
-        remaining: quotaLimit - quotaUsed,
-      },
-      plan,
-    };
-  }
-
-  // Registration failed
-  logger.error(
-    {
-      deviceId,
-      error: registerResult.error,
-      operation: 'auth_handshake',
-    },
-    'Device registration failed'
+  // Authentication failed - no matching agent found
+  logger.warn(
+    { deviceId, operation: "auth_handshake" },
+    "Authentication failed: no matching agent found in database",
   );
 
   return {
     success: false,
-    error: registerResult.error || 'Device registration failed',
+    error:
+      "Authentication failed: agent not registered. Please create server in Dashboard first.",
   };
 }
 
@@ -291,7 +210,7 @@ export function hasQuota(authResult: AuthResult): boolean {
 export function createAuthTimeout(timeoutMs: number = 10000): Promise<never> {
   return new Promise((_, reject) => {
     setTimeout(() => {
-      reject(new Error('Authentication timeout: no auth message received'));
+      reject(new Error("Authentication timeout: no auth message received"));
     }, timeoutMs);
   });
 }

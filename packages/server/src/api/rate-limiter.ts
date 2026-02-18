@@ -16,9 +16,8 @@
  * @module api/rate-limiter
  */
 
-import { logger } from '../utils/logger.js';
-import { DeviceClient } from './device-client.js';
-import { sessionClient } from './session-client.js';
+import { logger } from "../utils/logger.js";
+import { sessionClient } from "./session-client.js";
 
 // ============================================================================
 // Constants
@@ -31,7 +30,7 @@ export const FREE_TIER_INSTALLATION_LIMIT = 5;
 export const FREE_TIER_AI_CALL_LIMIT = 20;
 
 /** Error code for quota exceeded */
-export const QUOTA_EXCEEDED_ERROR = 'QUOTA_EXCEEDED';
+export const QUOTA_EXCEEDED_ERROR = "QUOTA_EXCEEDED";
 
 // ============================================================================
 // Types
@@ -56,7 +55,11 @@ export interface RateLimitCheckResult {
 /**
  * AI operation types for logging
  */
-export type AIOperationType = 'envAnalysis' | 'planGeneration' | 'errorDiagnosis' | 'fixGeneration';
+export type AIOperationType =
+  | "envAnalysis"
+  | "planGeneration"
+  | "errorDiagnosis"
+  | "fixGeneration";
 
 /**
  * AI call tracking info
@@ -67,7 +70,7 @@ export interface AICallInfo {
   /** Operation type */
   operation: AIOperationType;
   /** AI provider */
-  provider: 'anthropic' | 'openai' | 'deepseek' | 'google' | 'qwen' | 'claude';
+  provider: "anthropic" | "openai" | "deepseek" | "google" | "qwen" | "claude";
   /** Model name */
   model: string;
   /** Input tokens used */
@@ -89,146 +92,55 @@ export interface AICallInfo {
 /**
  * Check if device has sufficient quota for an AI operation.
  *
- * Verifies that:
- * 1. Device has remaining quota
- * 2. Device is not banned
+ * Self-hosted mode: unlimited quota, always allowed.
+ * Cloud version will use a separate quota management module.
  *
  * @param deviceId - Device fingerprint hash
- * @param deviceToken - Device authentication token
- * @returns Rate limit check result
+ * @param deviceToken - Device authentication token (unused in self-hosted)
+ * @returns Rate limit check result (always allowed)
  */
 export async function checkRateLimit(
   deviceId: string,
-  deviceToken: string
+  deviceToken: string,
 ): Promise<RateLimitCheckResult> {
-  try {
-    logger.debug({ deviceId, operation: 'rate_limit_check' }, 'Checking rate limit');
+  logger.debug(
+    { deviceId, operation: "rate_limit_check" },
+    "Rate limit check (self-hosted: unlimited)",
+  );
 
-    // Query device quota
-    const quotaResult = await DeviceClient.getQuota({
-      deviceId,
-      token: deviceToken,
-    });
-
-    if (!quotaResult.success || !quotaResult.data) {
-      logger.error(
-        { deviceId, error: quotaResult.error, operation: 'rate_limit_check' },
-        'Failed to query device quota'
-      );
-
-      return {
-        allowed: false,
-        error: quotaResult.error || 'Failed to query quota',
-      };
-    }
-
-    const { quotaRemaining, plan } = quotaResult.data;
-
-    // Check if quota is exhausted
-    if (quotaRemaining <= 0) {
-      logger.warn(
-        { deviceId, plan, quotaRemaining, operation: 'rate_limit_check' },
-        'Quota exceeded'
-      );
-
-      return {
-        allowed: false,
-        quotaRemaining: 0,
-        error: 'Monthly quota exceeded',
-        errorCode: QUOTA_EXCEEDED_ERROR,
-        upgradeMessage: plan === 'free'
-          ? 'Your free monthly quota (5 installations) has been exhausted. Upgrade to Pro for unlimited installations: https://aiinstaller.dev/pricing'
-          : 'Your monthly quota has been exhausted. Please contact support or wait for quota reset.',
-      };
-    }
-
-    logger.debug(
-      { deviceId, quotaRemaining, plan, operation: 'rate_limit_check' },
-      'Rate limit check passed'
-    );
-
-    return {
-      allowed: true,
-      quotaRemaining,
-    };
-  } catch (error) {
-    logger.error(
-      { deviceId, error, operation: 'rate_limit_check' },
-      'Rate limit check failed with exception'
-    );
-
-    return {
-      allowed: false,
-      error: error instanceof Error ? error.message : 'Rate limit check failed',
-    };
-  }
+  // Self-hosted mode: unlimited quota
+  return {
+    allowed: true,
+    quotaRemaining: 999_999,
+  };
 }
 
 /**
  * Increment AI call count for a device.
  *
- * Called after a successful AI operation to track usage.
+ * Self-hosted mode: no quota tracking needed.
+ * Cloud version will use a separate quota management module.
  *
  * @param deviceId - Device fingerprint hash
- * @param deviceToken - Device authentication token
+ * @param deviceToken - Device authentication token (unused in self-hosted)
  * @param scene - Scene identifier for the AI call
- * @returns Updated quota information
+ * @returns Updated quota information (always success)
  */
 export async function incrementAICall(
   deviceId: string,
   deviceToken: string,
-  scene: AIOperationType
+  scene: AIOperationType,
 ): Promise<{ success: boolean; quotaRemaining?: number; error?: string }> {
-  try {
-    logger.debug(
-      { deviceId, scene, operation: 'increment_ai_call' },
-      'Incrementing AI call count'
-    );
+  logger.debug(
+    { deviceId, scene, operation: "increment_ai_call" },
+    "AI call logged (self-hosted: no quota tracking)",
+  );
 
-    const result = await DeviceClient.incrementCall({
-      deviceId,
-      token: deviceToken,
-      scene,
-    });
-
-    if (!result.success || !result.data) {
-      logger.error(
-        { deviceId, scene, error: result.error, operation: 'increment_ai_call' },
-        'Failed to increment AI call count'
-      );
-
-      return {
-        success: false,
-        error: result.error || 'Failed to increment call count',
-      };
-    }
-
-    logger.info(
-      {
-        deviceId,
-        scene,
-        quotaUsed: result.data.quotaUsed,
-        quotaRemaining: result.data.quotaRemaining,
-        operation: 'increment_ai_call',
-      },
-      'AI call count incremented'
-    );
-
-    return {
-      success: true,
-      quotaRemaining: result.data.quotaRemaining,
-    };
-  } catch (error) {
-    logger.error(
-      { deviceId, scene, error, operation: 'increment_ai_call' },
-      'Increment AI call failed with exception'
-    );
-
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to increment call count',
-    };
-  }
+  // Self-hosted mode: no quota tracking
+  return {
+    success: true,
+    quotaRemaining: 999_999,
+  };
 }
 
 /**
@@ -248,7 +160,7 @@ export async function incrementAICall(
 export async function logAICall(
   deviceId: string,
   deviceToken: string,
-  callInfo: AICallInfo
+  callInfo: AICallInfo,
 ): Promise<{ success: boolean; error?: string }> {
   try {
     logger.debug(
@@ -258,7 +170,7 @@ export async function logAICall(
         operation: callInfo.operation,
         provider: callInfo.provider,
       },
-      'Logging AI call'
+      "Logging AI call",
     );
 
     const result = await sessionClient.logAICall({
@@ -280,9 +192,9 @@ export async function logAICall(
           deviceId,
           sessionId: callInfo.sessionId,
           error: result.error,
-          operation: 'log_ai_call',
+          operation: "log_ai_call",
         },
-        'Failed to log AI call'
+        "Failed to log AI call",
       );
 
       // Don't fail the operation if logging fails
@@ -298,7 +210,7 @@ export async function logAICall(
         sessionId: callInfo.sessionId,
         operation: callInfo.operation,
       },
-      'AI call logged successfully'
+      "AI call logged successfully",
     );
 
     return {
@@ -310,15 +222,15 @@ export async function logAICall(
         deviceId,
         sessionId: callInfo.sessionId,
         error,
-        operation: 'log_ai_call',
+        operation: "log_ai_call",
       },
-      'Log AI call failed with exception'
+      "Log AI call failed with exception",
     );
 
     // Don't fail the operation if logging fails
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to log AI call',
+      error: error instanceof Error ? error.message : "Failed to log AI call",
     };
   }
 }
@@ -330,7 +242,7 @@ export async function logAICall(
  * @returns User-friendly upgrade message
  */
 export function getUpgradeMessage(plan: string): string {
-  if (plan === 'free') {
+  if (plan === "free") {
     return `
 🚀 Quota Exceeded - Upgrade to Pro!
 
@@ -365,12 +277,17 @@ Support: support@aiinstaller.dev
  * @returns True if quota exceeded
  */
 export function isQuotaExceededError(error: unknown): boolean {
-  if (typeof error === 'string') {
-    return error.includes('quota exceeded') || error.includes(QUOTA_EXCEEDED_ERROR);
+  if (typeof error === "string") {
+    return (
+      error.includes("quota exceeded") || error.includes(QUOTA_EXCEEDED_ERROR)
+    );
   }
 
   if (error instanceof Error) {
-    return error.message.includes('quota exceeded') || error.message.includes(QUOTA_EXCEEDED_ERROR);
+    return (
+      error.message.includes("quota exceeded") ||
+      error.message.includes(QUOTA_EXCEEDED_ERROR)
+    );
   }
 
   return false;

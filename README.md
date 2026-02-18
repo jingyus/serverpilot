@@ -220,13 +220,17 @@ AI_MODEL=gpt-4o  # 可选，按你的服务支持的模型名
 | **v0.3** | GitHub 开源发布 + 社区版安装脚本 |
 | **v1.0** | ServerPilot Cloud + 团队协作 + 计费 |
 
-## 商业模式：Open Core
+## 部署模式与定价
 
-| 版本 | 特性 | 价格 |
+| 模式 | 特性 | 价格 |
 |------|------|------|
-| **社区版** | Agent + Server 100% 开源，自带 AI Key，无限服务器 | 免费 |
-| **云版专业版** | 免配置 AI + 团队协作 + 高级监控 | $19/月 |
-| **云版企业版** | SSO + 审计合规 + API 接入 | $99/月起 |
+| **Self-Hosted（自部署）** | 🎉 100% 开源，所有功能完整可用<br/>✅ 多服务器管理、团队协作、Webhook、监控等<br/>⚙️ 需要自己申请 AI API Key<br/>⚙️ 手动执行 AI Skills（日志巡检、安全扫描等） | **永久免费** |
+| **Cloud Free（云免费版）** | ✅ Self-Hosted 全部功能<br/>✅ 官方 AI（智能路由，100 次/月）<br/>🤖 体验 AI Skills（日志巡检、安全扫描）<br/>📊 限制：1 台服务器，1 个用户 | **$0/月** |
+| **Cloud Pro（云专业版）** | ✅ 10 台服务器，5 个用户<br/>✅ 官方 AI（2000 次/月，智能路由降本 60%）<br/>🤖 AI 日志巡检 + AI 安全扫描<br/>📈 周报邮件 + 趋势分析 | **$19/月** |
+| **Cloud Team（云团队版）** | ✅ 无限服务器、无限用户<br/>✅ 无限 AI 调用（智能路由）<br/>🤖 全部 AI Skills（性能优化、成本分析、备份建议）<br/>🔔 自动巡检 + 主动告警 | **$49/月** |
+| **Cloud Enterprise（云企业版）** | ✅ Team 全部功能<br/>🤖 自定义 AI Skills + 专属模型<br/>🛡️ SAML SSO + 合规报告（SOC2、ISO27001）<br/>📞 SLA 保障 + 专属支持 | **$199/月起** |
+
+**核心理念**：Self-Hosted 和 Cloud 的**核心功能完全一致**（多服务器、团队、Webhook、告警）。Cloud 的价值是 **AI 智能化**（官方 AI + 智能路由 + 专业 Skills）和**企业增强**（SAML SSO、合规报告），而非功能解锁。用户付费购买的是 **AI 运维专家能力**，不是服务器托管。
 
 ## 文档
 
@@ -275,9 +279,16 @@ pnpm lint && pnpm typecheck && pnpm test
 
 ## 许可证
 
-- **Server + Dashboard**: [AGPL-3.0](LICENSE) — 开源但限制云服务商直接使用
-- **Agent**: [Apache-2.0](packages/agent/LICENSE) — 企业友好，100% 开源可审计
-- **Shared**: [MIT](packages/shared/LICENSE) — 最大生态兼容性
+ServerPilot 采用 **Open Core** 模式：
+
+| 组件 | 许可证 | 说明 |
+|------|--------|------|
+| **Server + Dashboard** (CE) | [AGPL-3.0](LICENSE) | 开源核心，限制云服务商直接使用 |
+| **Agent** | [Apache-2.0](packages/agent/LICENSE) | 企业友好，100% 开源可审计 |
+| **Shared** | [MIT](packages/shared/LICENSE) | 最大生态兼容性 |
+| **EE 企业功能** | [Commercial](LICENSE-EE) | 多服务器、团队协作等企业级功能 |
+
+详细策略见 [LICENSING.md](LICENSING.md)。
 
 ---
 
@@ -322,4 +333,4 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 
 ### License
 
-Server + Dashboard: AGPL-3.0 | Agent: Apache-2.0 | Shared: MIT
+Open Core model — CE: AGPL-3.0 | Agent: Apache-2.0 | Shared: MIT | EE: [Commercial](LICENSE-EE) | See [LICENSING.md](LICENSING.md)

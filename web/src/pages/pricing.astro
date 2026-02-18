@@ -1,10 +1,28 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import CheckIcon from '../components/CheckIcon.astro';
 ---
 
 <BaseLayout title="定价" description="ServerPilot 定价方案">
+  <!-- BreadcrumbList 结构化数据 -->
+  <script is:inline type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "首页", "item": "https://serverpilot.ai/" },
+      { "@type": "ListItem", "position": 2, "name": "定价" }
+    ]
+  })} />
+
   <section class="container mx-auto px-6 py-20">
     <div class="max-w-6xl mx-auto">
+      <!-- 面包屑导航 -->
+      <nav class="text-sm text-gray-500 mb-8">
+        <a href="/" class="hover:text-primary-600">首页</a>
+        <span class="mx-2">/</span>
+        <span class="text-gray-900">定价</span>
+      </nav>
+
       <h1 class="text-4xl font-bold mb-6 text-center">选择适合你的方案</h1>
       <p class="text-gray-600 text-center mb-12">灵活的定价，满足不同规模团队的需求</p>
 
@@ -21,27 +39,19 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 
           <ul class="space-y-3 mb-8 text-sm">
             <li class="flex items-start">
-              <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-              </svg>
+              <CheckIcon />
               <span>无限服务器</span>
             </li>
             <li class="flex items-start">
-              <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-              </svg>
+              <CheckIcon />
               <span>AI 对话与自动化</span>
             </li>
             <li class="flex items-start">
-              <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-              </svg>
+              <CheckIcon />
               <span>社区支持</span>
             </li>
             <li class="flex items-start">
-              <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-              </svg>
+              <CheckIcon />
               <span>自行部署</span>
             </li>
           </ul>
@@ -69,40 +79,30 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 
           <ul class="space-y-3 mb-8 text-sm">
             <li class="flex items-start">
-              <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-              </svg>
+              <CheckIcon />
               <span>开源版所有功能</span>
             </li>
             <li class="flex items-start">
-              <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-              </svg>
+              <CheckIcon />
               <span>最多 10 台服务器</span>
             </li>
             <li class="flex items-start">
-              <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-              </svg>
+              <CheckIcon />
               <span>5 个团队成员</span>
             </li>
             <li class="flex items-start">
-              <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-              </svg>
+              <CheckIcon />
               <span>托管服务</span>
             </li>
             <li class="flex items-start">
-              <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-              </svg>
+              <CheckIcon />
               <span>邮件支持</span>
             </li>
           </ul>
 
-          <a href="#" class="block w-full text-center btn-primary">
-            免费试用 14 天
-          </a>
+          <span class="block w-full text-center btn-primary opacity-50 cursor-not-allowed">
+            即将推出
+          </span>
         </div>
 
         <!-- 企业版 -->
@@ -117,46 +117,37 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 
           <ul class="space-y-3 mb-8 text-sm">
             <li class="flex items-start">
-              <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-              </svg>
+              <CheckIcon />
               <span>基础版所有功能</span>
             </li>
             <li class="flex items-start">
-              <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-              </svg>
+              <CheckIcon />
               <span>无限服务器</span>
             </li>
             <li class="flex items-start">
-              <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-              </svg>
+              <CheckIcon />
               <span>无限团队成员</span>
             </li>
             <li class="flex items-start">
-              <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-              </svg>
+              <CheckIcon />
               <span>专属技术支持</span>
             </li>
             <li class="flex items-start">
-              <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-              </svg>
+              <CheckIcon />
               <span>SLA 保障</span>
             </li>
             <li class="flex items-start">
-              <svg class="w-5 h-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-              </svg>
+              <CheckIcon />
               <span>私有部署选项</span>
             </li>
           </ul>
 
-          <a href="#contact" class="block w-full text-center btn-secondary">
-            联系销售
-          </a>
+          <span class="block w-full text-center btn-secondary opacity-50 cursor-not-allowed">
+            即将推出
+          </span>
+          <p class="text-xs text-gray-400 mt-2 text-center">
+            商业合作请通过 <a href="https://github.com/jingjinbao/ServerPilot/discussions" target="_blank" class="text-primary-500 hover:underline">GitHub Discussions</a> 联系
+          </p>
         </div>
       </div>
 
@@ -174,14 +165,14 @@ import BaseLayout from '../layouts/BaseLayout.astro';
           <div class="border rounded-lg p-6">
             <h3 class="font-semibold mb-2">可以先试用再购买吗？</h3>
             <p class="text-gray-600 text-sm">
-              云服务版提供 14 天免费试用，无需信用卡。试用期间可以使用所有功能，满意后再选择付费计划。
+              云服务版正式上线后，将提供 14 天免费试用，无需信用卡。试用期间可使用所有功能，满意后再选择付费计划。
             </p>
           </div>
 
           <div class="border rounded-lg p-6">
             <h3 class="font-semibold mb-2">支持哪些支付方式？</h3>
             <p class="text-gray-600 text-sm">
-              支持支付宝、微信支付、银行转账等多种支付方式。企业版支持对公转账和签订年度合同。
+              云服务正式上线后，将支持支付宝、微信支付、银行转账等多种支付方式。企业版支持对公转账和签订年度合同。
             </p>
           </div>
 
@@ -195,4 +186,43 @@ import BaseLayout from '../layouts/BaseLayout.astro';
       </div>
     </div>
   </section>
+
+  <script type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "开源版和云服务版有什么区别？",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "开源版提供完整的核心功能，需要自行部署和维护。云服务版是托管服务，无需部署，提供企业级支持、自动备份和高可用保障。"
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "可以先试用再购买吗？",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "云服务版正式上线后，将提供 14 天免费试用，无需信用卡。试用期间可使用所有功能，满意后再选择付费计划。"
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "支持哪些支付方式？",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "云服务正式上线后，将支持支付宝、微信支付、银行转账等多种支付方式。企业版支持对公转账和签订年度合同。"
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "如何从开源版迁移到云服务版？",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "我们提供完整的迁移工具和文档，技术团队会协助您完成数据迁移，确保业务平滑过渡。"
+        }
+      }
+    ]
+  })} />
 </BaseLayout>

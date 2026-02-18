@@ -11,25 +11,30 @@
  * @module ai/providers/provider-factory
  */
 
-import type { AIProviderInterface, ProviderConfig } from './base.js';
-import { ClaudeProvider } from './claude.js';
-import type { ClaudeConfig } from './claude.js';
-import { OpenAIProvider } from './openai.js';
-import type { OpenAIConfig } from './openai.js';
-import { OllamaProvider } from './ollama.js';
-import type { OllamaConfig } from './ollama.js';
-import { DeepSeekProvider } from './deepseek.js';
-import type { DeepSeekConfig } from './deepseek.js';
-import { CustomOpenAIProvider } from './custom-openai.js';
-import type { CustomOpenAIConfig } from './custom-openai.js';
-import { logger } from '../../utils/logger.js';
+import { logger } from "../../utils/logger.js";
+import type { AIProviderInterface, ProviderConfig } from "./base.js";
+import { ClaudeProvider } from "./claude.js";
+import type { ClaudeConfig } from "./claude.js";
+import { OpenAIProvider } from "./openai.js";
+import type { OpenAIConfig } from "./openai.js";
+import { OllamaProvider } from "./ollama.js";
+import type { OllamaConfig } from "./ollama.js";
+import { DeepSeekProvider } from "./deepseek.js";
+import type { DeepSeekConfig } from "./deepseek.js";
+import { CustomOpenAIProvider } from "./custom-openai.js";
+import type { CustomOpenAIConfig } from "./custom-openai.js";
 
 // ============================================================================
 // Types
 // ============================================================================
 
 /** Supported provider names */
-export type AIProviderType = 'claude' | 'openai' | 'ollama' | 'deepseek' | 'custom-openai';
+export type AIProviderType =
+  | "claude"
+  | "openai"
+  | "ollama"
+  | "deepseek"
+  | "custom-openai";
 
 /** Provider-specific configuration options */
 export interface ProviderFactoryConfig {
@@ -64,9 +69,11 @@ export interface ProviderHealthStatus {
  * @returns The created provider instance
  * @throws If the provider type is unknown or config is invalid
  */
-export function createProvider(config: ProviderFactoryConfig): AIProviderInterface {
+export function createProvider(
+  config: ProviderFactoryConfig,
+): AIProviderInterface {
   switch (config.provider) {
-    case 'claude': {
+    case "claude": {
       const claudeConfig: ClaudeConfig = {
         apiKey: config.apiKey,
         model: config.model,
@@ -75,7 +82,7 @@ export function createProvider(config: ProviderFactoryConfig): AIProviderInterfa
       return new ClaudeProvider(claudeConfig);
     }
 
-    case 'openai': {
+    case "openai": {
       const openaiConfig: OpenAIConfig = {
         apiKey: config.apiKey,
         model: config.model,
@@ -85,7 +92,7 @@ export function createProvider(config: ProviderFactoryConfig): AIProviderInterfa
       return new OpenAIProvider(openaiConfig);
     }
 
-    case 'ollama': {
+    case "ollama": {
       const ollamaConfig: OllamaConfig = {
         model: config.model,
         baseUrl: config.baseUrl,
@@ -94,7 +101,7 @@ export function createProvider(config: ProviderFactoryConfig): AIProviderInterfa
       return new OllamaProvider(ollamaConfig);
     }
 
-    case 'deepseek': {
+    case "deepseek": {
       const deepseekConfig: DeepSeekConfig = {
         apiKey: config.apiKey,
         model: config.model,
@@ -104,11 +111,11 @@ export function createProvider(config: ProviderFactoryConfig): AIProviderInterfa
       return new DeepSeekProvider(deepseekConfig);
     }
 
-    case 'custom-openai': {
+    case "custom-openai": {
       const customConfig: CustomOpenAIConfig = {
-        baseUrl: config.baseUrl ?? '',
-        apiKey: config.apiKey ?? '',
-        model: config.model ?? '',
+        baseUrl: config.baseUrl ?? "",
+        apiKey: config.apiKey ?? "",
+        model: config.model ?? "",
         timeoutMs: config.timeoutMs,
       };
       return new CustomOpenAIProvider(customConfig);
@@ -128,15 +135,15 @@ export function createProvider(config: ProviderFactoryConfig): AIProviderInterfa
  * @returns Factory config, or null if no provider can be configured
  */
 export function resolveProviderFromEnv(): ProviderFactoryConfig | null {
-  const providerName = (process.env.AI_PROVIDER ?? 'claude').toLowerCase();
+  const providerName = (process.env.AI_PROVIDER ?? "claude").toLowerCase();
 
   // Validate provider name
   if (!isValidProviderType(providerName)) {
     logger.warn(
-      { operation: 'provider_factory', provider: providerName },
+      { operation: "provider_factory", provider: providerName },
       `Unknown AI_PROVIDER value "${providerName}", falling back to "claude"`,
     );
-    return resolveProviderConfig('claude');
+    return resolveProviderConfig("claude");
   }
 
   return resolveProviderConfig(providerName);
@@ -145,20 +152,22 @@ export function resolveProviderFromEnv(): ProviderFactoryConfig | null {
 /**
  * Build provider config for a specific provider type from env vars.
  */
-function resolveProviderConfig(provider: AIProviderType): ProviderFactoryConfig | null {
+function resolveProviderConfig(
+  provider: AIProviderType,
+): ProviderFactoryConfig | null {
   const model = process.env.AI_MODEL;
   const timeoutMs = process.env.AI_TIMEOUT_MS
     ? parseInt(process.env.AI_TIMEOUT_MS, 10)
     : undefined;
 
   switch (provider) {
-    case 'claude': {
+    case "claude": {
       const apiKey = process.env.ANTHROPIC_API_KEY;
       if (!apiKey) return null;
       return { provider, apiKey, model, timeoutMs };
     }
 
-    case 'openai': {
+    case "openai": {
       const apiKey = process.env.OPENAI_API_KEY;
       if (!apiKey) return null;
       return {
@@ -170,7 +179,7 @@ function resolveProviderConfig(provider: AIProviderType): ProviderFactoryConfig 
       };
     }
 
-    case 'deepseek': {
+    case "deepseek": {
       const apiKey = process.env.DEEPSEEK_API_KEY;
       if (!apiKey) return null;
       return {
@@ -182,7 +191,7 @@ function resolveProviderConfig(provider: AIProviderType): ProviderFactoryConfig 
       };
     }
 
-    case 'ollama':
+    case "ollama":
       return {
         provider,
         model,
@@ -190,7 +199,7 @@ function resolveProviderConfig(provider: AIProviderType): ProviderFactoryConfig 
         timeoutMs,
       };
 
-    case 'custom-openai': {
+    case "custom-openai": {
       const apiKey = process.env.CUSTOM_OPENAI_API_KEY;
       const baseUrl = process.env.CUSTOM_OPENAI_BASE_URL;
       if (!apiKey || !baseUrl) return null;
@@ -201,6 +210,15 @@ function resolveProviderConfig(provider: AIProviderType): ProviderFactoryConfig 
       return null;
   }
 }
+
+/**
+ * 当前对话实际使用哪个 AI？
+ * - 由内存中的 active provider 决定，与「设置页显示」可能不一致。
+ * - 启动时：从 .env 的 AI_PROVIDER / API Key 等初始化一次。
+ * - 之后：只有在「设置页点击保存」时才会用保存的配置覆盖内存。
+ * 因此：.env 填了 Claude、设置页选了 DeepSeek 但没点保存 → 对话仍用 Claude；
+ *       设置页选了 DeepSeek 并点击保存 → 对话改用 DeepSeek。
+ */
 
 /**
  * Check if a provider is available (health check).
@@ -218,7 +236,9 @@ export async function checkProviderHealth(
       provider: providerType,
       available,
       tier: provider.tier,
-      error: available ? undefined : 'Provider health check returned false',
+      error: available
+        ? undefined
+        : "健康检查未通过。请检查：API Key（Claude/OpenAI/DeepSeek）、模型名称、Base URL（Ollama 需已启动且地址可从当前环境访问）。",
     };
   } catch (err) {
     return {
@@ -231,7 +251,9 @@ export async function checkProviderHealth(
 }
 
 function isValidProviderType(value: string): value is AIProviderType {
-  return ['claude', 'openai', 'ollama', 'deepseek', 'custom-openai'].includes(value);
+  return ["claude", "openai", "ollama", "deepseek", "custom-openai"].includes(
+    value,
+  );
 }
 
 // ============================================================================
@@ -254,13 +276,13 @@ export function getActiveProvider(): AIProviderInterface | null {
         _activeProvider = createProvider(config);
         _activeConfig = config;
         logger.info(
-          { operation: 'provider_factory', provider: config.provider },
+          { operation: "provider_factory", provider: config.provider },
           `AI provider initialized: ${config.provider}`,
         );
       } catch (err) {
         logger.error(
           {
-            operation: 'provider_factory',
+            operation: "provider_factory",
             provider: config.provider,
             error: err instanceof Error ? err.message : String(err),
           },
@@ -285,12 +307,14 @@ export function getActiveProviderConfig(): ProviderFactoryConfig | null {
  * @param config - New provider configuration
  * @returns The new provider instance
  */
-export function setActiveProvider(config: ProviderFactoryConfig): AIProviderInterface {
+export function setActiveProvider(
+  config: ProviderFactoryConfig,
+): AIProviderInterface {
   const provider = createProvider(config);
   _activeProvider = provider;
   _activeConfig = config;
   logger.info(
-    { operation: 'provider_switch', provider: config.provider },
+    { operation: "provider_switch", provider: config.provider },
     `AI provider switched to: ${config.provider}`,
   );
   return provider;

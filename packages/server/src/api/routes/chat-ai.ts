@@ -10,15 +10,23 @@
  * @module api/routes/chat-ai
  */
 
-import { InstallPlanSchema } from '@aiinstaller/shared';
-import type { InstallPlan } from '@aiinstaller/shared';
-import type { AIProviderInterface } from '../../ai/providers/base.js';
-import { getActiveProvider, createProvider } from '../../ai/providers/provider-factory.js';
-import type { AIProviderType } from '../../ai/providers/provider-factory.js';
-import { classifyError } from '../../ai/request-retry.js';
-import type { ErrorClassification } from '../../ai/request-retry.js';
-import { estimateTokens } from '../../ai/profile-context.js';
-import { logger } from '../../utils/logger.js';
+import { InstallPlanSchema } from "@aiinstaller/shared";
+import type { InstallPlan } from "@aiinstaller/shared";
+import type { AIProviderInterface } from "../../ai/providers/base.js";
+import {
+  getActiveProvider,
+  createProvider,
+} from "../../ai/providers/provider-factory.js";
+import type { AIProviderType } from "../../ai/providers/provider-factory.js";
+import { ClaudeProvider } from "../../ai/providers/claude.js";
+import {
+  initAgenticEngine,
+  _resetAgenticEngine,
+} from "../../ai/agentic-chat.js";
+import { classifyError } from "../../ai/request-retry.js";
+import type { ErrorClassification } from "../../ai/request-retry.js";
+import { estimateTokens } from "../../ai/profile-context.js";
+import { logger } from "../../utils/logger.js";
 
 // ============================================================================
 // Types
@@ -139,21 +147,26 @@ export function buildSystemPrompt(
   }
 
   if (caveats && caveats.length > 0) {
-    parts.push('## Important Caveats\n' + caveats.map((c) => `- ${c}`).join('\n'));
+    parts.push(
+      "## Important Caveats\n" + caveats.map((c) => `- ${c}`).join("\n"),
+    );
   }
 
   if (knowledgeContext) {
     parts.push(knowledgeContext);
   }
 
-  return parts.join('\n\n');
+  return parts.join("\n\n");
 }
 
 export class ChatAIAgent {
   private readonly provider: AIProviderInterface;
   private readonly retryConfig: ChatRetryConfig;
 
-  constructor(provider: AIProviderInterface, retryConfig?: Partial<ChatRetryConfig>) {
+  constructor(
+    provider: AIProviderInterface,
+    retryConfig?: Partial<ChatRetryConfig>,
+  ) {
     this.provider = provider;
     this.retryConfig = { ...DEFAULT_CHAT_RETRY_CONFIG, ...retryConfig };
   }
@@ -182,7 +195,11 @@ export class ChatAIAgent {
     caveats?: string[],
     knowledgeContext?: string,
   ): Promise<ChatResult> {
-    const systemPrompt = buildSystemPrompt(profileContext, caveats, knowledgeContext);
+    const systemPrompt = buildSystemPrompt(
+      profileContext,
+      caveats,
+      knowledgeContext,
+    );
     const profileTokens = profileContext ? estimateTokens(profileContext) : 0;
 
     const userPrompt = conversationHistory
@@ -190,7 +207,7 @@ export class ChatAIAgent {
       : `${serverContext}\n\nUser: ${message}`;
 
     const chatOptions = {
-      messages: [{ role: 'user' as const, content: userPrompt }],
+      messages: [{ role: "user" as const, content: userPrompt }],
       system: systemPrompt,
       maxTokens: 4096,
     };
@@ -199,11 +216,14 @@ export class ChatAIAgent {
       onToken: (token: string) => {
         if (callbacks?.onToken) {
           const cbResult = callbacks.onToken(token);
-          if (cbResult && typeof (cbResult as Promise<void>).catch === 'function') {
+          if (
+            cbResult &&
+            typeof (cbResult as Promise<void>).catch === "function"
+          ) {
             (cbResult as Promise<void>).catch((err) => {
               logger.error(
-                { operation: 'chat_stream_token_error', error: String(err) },
-                'Token callback error',
+                { operation: "chat_stream_token_error", error: String(err) },
+                "Token callback error",
               );
             });
           }
@@ -218,10 +238,13 @@ export class ChatAIAgent {
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        const result = await this.provider.stream(chatOptions, makeStreamCallbacks());
+        const result = await this.provider.stream(
+          chatOptions,
+          makeStreamCallbacks(),
+        );
 
         if (!result.success) {
-          throw new Error(result.error ?? 'AI streaming request failed');
+          throw new Error(result.error ?? "AI streaming request failed");
         }
 
         const plan = this.extractPlan(result.content);
@@ -243,7 +266,7 @@ export class ChatAIAgent {
 
           logger.warn(
             {
-              operation: 'chat_retry',
+              operation: "chat_retry",
               attempt: attempt + 1,
               maxRetries,
               category: classification.category,
@@ -292,7 +315,11 @@ export class ChatAIAgent {
     if (!fallbackProvider) return null;
 
     logger.info(
-      { operation: 'chat_fallback', from: this.provider.name, to: fallbackProvider.name },
+      {
+        operation: "chat_fallback",
+        from: this.provider.name,
+        to: fallbackProvider.name,
+      },
       `Falling back to ${fallbackProvider.name} provider`,
     );
 
@@ -300,7 +327,7 @@ export class ChatAIAgent {
     await this.notifyRetry(callbacks, {
       attempt: 1,
       maxAttempts: 1,
-      errorCategory: 'fallback',
+      errorCategory: "fallback",
       errorMessage: `Primary provider failed, trying ${fallbackProvider.name}`,
       delayMs: 0,
       isFallback: true,
@@ -310,26 +337,39 @@ export class ChatAIAgent {
     const fallbackAgent = new ChatAIAgent(fallbackProvider, { maxRetries: 1 });
     try {
       return await fallbackAgent.chat(
-        message, serverContext, conversationHistory,
-        callbacks, profileContext, caveats, knowledgeContext,
+        message,
+        serverContext,
+        conversationHistory,
+        callbacks,
+        profileContext,
+        caveats,
+        knowledgeContext,
       );
     } catch (err) {
       logger.error(
-        { operation: 'chat_fallback_failed', provider: fallbackProvider.name, error: String(err) },
-        'Fallback provider also failed',
+        {
+          operation: "chat_fallback_failed",
+          provider: fallbackProvider.name,
+          error: String(err),
+        },
+        "Fallback provider also failed",
       );
       return null;
     }
   }
 
   /** Calculate delay for retry attempt, respecting Retry-After headers */
-  private calculateDelay(attempt: number, classification?: ErrorClassification): number {
+  private calculateDelay(
+    attempt: number,
+    classification?: ErrorClassification,
+  ): number {
     // Respect Retry-After header for rate-limit errors
     if (classification?.retryAfterMs && classification.retryAfterMs > 0) {
       return Math.min(classification.retryAfterMs, this.retryConfig.maxDelayMs);
     }
 
-    const delay = this.retryConfig.initialDelayMs *
+    const delay =
+      this.retryConfig.initialDelayMs *
       Math.pow(this.retryConfig.backoffMultiplier, attempt);
     return Math.min(delay, this.retryConfig.maxDelayMs);
   }
@@ -342,13 +382,13 @@ export class ChatAIAgent {
     if (!callbacks?.onRetry) return;
     try {
       const result = callbacks.onRetry(event);
-      if (result && typeof (result as Promise<void>).catch === 'function') {
+      if (result && typeof (result as Promise<void>).catch === "function") {
         await result;
       }
     } catch (err) {
       logger.error(
-        { operation: 'chat_retry_callback_error', error: String(err) },
-        'Retry callback error',
+        { operation: "chat_retry_callback_error", error: String(err) },
+        "Retry callback error",
       );
     }
   }
@@ -360,7 +400,9 @@ export class ChatAIAgent {
    * AI-generated plans may not perfectly match the strict schema,
    * so we normalize common variations before validation.
    */
-  private extractPlan(text: string): (InstallPlan & { description?: string }) | null {
+  private extractPlan(
+    text: string,
+  ): (InstallPlan & { description?: string }) | null {
     const planMatch = text.match(/```json-plan\s*\n([\s\S]*?)```/);
     if (!planMatch) return null;
 
@@ -369,16 +411,19 @@ export class ChatAIAgent {
       const description = raw.description as string | undefined;
 
       // Normalize AI-generated values to match strict schema
-      const validOnError = new Set(['retry', 'skip', 'abort', 'fallback']);
-      const validRiskLevel = new Set(['low', 'medium', 'high']);
+      const validOnError = new Set(["retry", "skip", "abort", "fallback"]);
+      const validRiskLevel = new Set(["low", "medium", "high"]);
 
       if (Array.isArray(raw.steps)) {
         for (const step of raw.steps) {
           // Normalize onError: continue→skip, stop→abort, etc.
           if (step.onError && !validOnError.has(step.onError)) {
-            step.onError = step.onError === 'abort' || step.onError === 'stop' ? 'abort' : 'skip';
+            step.onError =
+              step.onError === "abort" || step.onError === "stop"
+                ? "abort"
+                : "skip";
           }
-          if (step.onError === undefined) step.onError = 'skip';
+          if (step.onError === undefined) step.onError = "skip";
           // Ensure required fields have defaults
           if (step.timeout === undefined) step.timeout = 30000;
           if (step.canRollback === undefined) step.canRollback = false;
@@ -388,7 +433,10 @@ export class ChatAIAgent {
       if (Array.isArray(raw.risks)) {
         for (const risk of raw.risks) {
           if (risk.level && !validRiskLevel.has(risk.level)) {
-            risk.level = risk.level === 'none' || risk.level === 'minimal' ? 'low' : 'medium';
+            risk.level =
+              risk.level === "none" || risk.level === "minimal"
+                ? "low"
+                : "medium";
           }
         }
       }
@@ -400,8 +448,8 @@ export class ChatAIAgent {
       return { ...plan, description };
     } catch (err) {
       logger.warn(
-        { operation: 'plan_parse_error', error: String(err) },
-        'Failed to parse plan from AI response',
+        { operation: "plan_parse_error", error: String(err) },
+        "Failed to parse plan from AI response",
       );
       return null;
     }
@@ -421,7 +469,7 @@ export class ChatRetryExhaustedError extends Error {
 
   constructor(message: string, classification?: ErrorClassification) {
     super(message);
-    this.name = 'ChatRetryExhaustedError';
+    this.name = "ChatRetryExhaustedError";
     this.classification = classification;
   }
 }
@@ -431,13 +479,20 @@ export class ChatRetryExhaustedError extends Error {
 // ============================================================================
 
 /** Fallback order: claude → openai → deepseek → ollama */
-const FALLBACK_ORDER: AIProviderType[] = ['claude', 'openai', 'deepseek', 'ollama'];
+const FALLBACK_ORDER: AIProviderType[] = [
+  "claude",
+  "openai",
+  "deepseek",
+  "ollama",
+];
 
 /**
  * Resolve a fallback provider that differs from the current one.
  * Returns null if no alternative provider is configured.
  */
-export function resolveFallbackProvider(currentProviderName: string): AIProviderInterface | null {
+export function resolveFallbackProvider(
+  currentProviderName: string,
+): AIProviderInterface | null {
   for (const providerType of FALLBACK_ORDER) {
     if (providerType === currentProviderName) continue;
 
@@ -454,23 +509,32 @@ export function resolveFallbackProvider(currentProviderName: string): AIProvider
 }
 
 /** Check if a specific provider type has credentials configured */
-function resolveFallbackConfig(provider: AIProviderType): { provider: AIProviderType; apiKey?: string; model?: string; baseUrl?: string } | null {
+function resolveFallbackConfig(provider: AIProviderType): {
+  provider: AIProviderType;
+  apiKey?: string;
+  model?: string;
+  baseUrl?: string;
+} | null {
   switch (provider) {
-    case 'claude': {
+    case "claude": {
       const apiKey = process.env.ANTHROPIC_API_KEY;
       return apiKey ? { provider, apiKey } : null;
     }
-    case 'openai': {
+    case "openai": {
       const apiKey = process.env.OPENAI_API_KEY;
-      return apiKey ? { provider, apiKey, baseUrl: process.env.OPENAI_BASE_URL } : null;
+      return apiKey
+        ? { provider, apiKey, baseUrl: process.env.OPENAI_BASE_URL }
+        : null;
     }
-    case 'deepseek': {
+    case "deepseek": {
       const apiKey = process.env.DEEPSEEK_API_KEY;
-      return apiKey ? { provider, apiKey, baseUrl: process.env.DEEPSEEK_BASE_URL } : null;
+      return apiKey
+        ? { provider, apiKey, baseUrl: process.env.DEEPSEEK_BASE_URL }
+        : null;
     }
-    case 'ollama':
+    case "ollama":
       return { provider, baseUrl: process.env.OLLAMA_BASE_URL };
-    case 'custom-openai': {
+    case "custom-openai": {
       const apiKey = process.env.CUSTOM_OPENAI_API_KEY;
       const baseUrl = process.env.CUSTOM_OPENAI_BASE_URL;
       return apiKey && baseUrl ? { provider, apiKey, baseUrl } : null;
@@ -516,11 +580,16 @@ export function getChatAIAgent(): ChatAIAgent | null {
 }
 
 /**
- * Reinitialize the chat AI agent with the current active provider.
- * Called after provider switch to ensure chat uses the new provider.
+ * Reinitialize the chat AI agent and（若当前为 Claude）AgenticChatEngine。
+ * 在设置里切换 AI 提供商后调用，确保对话使用刚保存的 provider 与模型。
  */
 export function refreshChatAIAgent(): void {
   _agent = null;
+  _resetAgenticEngine();
+  const provider = getActiveProvider();
+  if (provider && provider instanceof ClaudeProvider) {
+    initAgenticEngine(provider.getClient(), provider.getModel());
+  }
 }
 
 /** Reset for testing */

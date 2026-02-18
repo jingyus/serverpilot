@@ -83,19 +83,31 @@ export interface ModelPricing {
  * Based on Anthropic's published pricing.
  */
 export const MODEL_PRICING: Record<string, ModelPricing> = {
-  'claude-sonnet-4-20250514': {
+  "claude-sonnet-4-5": {
     inputPerMillion: 3,
     outputPerMillion: 15,
     cacheCreationPerMillion: 3.75,
     cacheReadPerMillion: 0.3,
   },
-  'claude-haiku-3-5-20241022': {
+  "claude-sonnet-4-5-20250929": {
+    inputPerMillion: 3,
+    outputPerMillion: 15,
+    cacheCreationPerMillion: 3.75,
+    cacheReadPerMillion: 0.3,
+  },
+  "claude-sonnet-4-20250514": {
+    inputPerMillion: 3,
+    outputPerMillion: 15,
+    cacheCreationPerMillion: 3.75,
+    cacheReadPerMillion: 0.3,
+  },
+  "claude-haiku-3-5-20241022": {
     inputPerMillion: 0.8,
     outputPerMillion: 4,
     cacheCreationPerMillion: 1,
     cacheReadPerMillion: 0.08,
   },
-  'claude-opus-4-20250514': {
+  "claude-opus-4-20250514": {
     inputPerMillion: 15,
     outputPerMillion: 75,
     cacheCreationPerMillion: 18.75,
@@ -289,11 +301,14 @@ export function estimateCost(model: string, usage: TokenUsage): number {
   const pricing = getPricing(model);
 
   const inputCost = (usage.inputTokens / 1_000_000) * pricing.inputPerMillion;
-  const outputCost = (usage.outputTokens / 1_000_000) * pricing.outputPerMillion;
+  const outputCost =
+    (usage.outputTokens / 1_000_000) * pricing.outputPerMillion;
   const cacheCreationCost =
-    ((usage.cacheCreationInputTokens ?? 0) / 1_000_000) * pricing.cacheCreationPerMillion;
+    ((usage.cacheCreationInputTokens ?? 0) / 1_000_000) *
+    pricing.cacheCreationPerMillion;
   const cacheReadCost =
-    ((usage.cacheReadInputTokens ?? 0) / 1_000_000) * pricing.cacheReadPerMillion;
+    ((usage.cacheReadInputTokens ?? 0) / 1_000_000) *
+    pricing.cacheReadPerMillion;
 
   return inputCost + outputCost + cacheCreationCost + cacheReadCost;
 }
@@ -337,7 +352,9 @@ export function fromApiUsage(apiUsage: {
  * @param entries - The entries to aggregate
  * @returns Aggregated statistics
  */
-export function aggregateStats(entries: readonly TokenUsageEntry[]): TokenUsageStats {
+export function aggregateStats(
+  entries: readonly TokenUsageEntry[],
+): TokenUsageStats {
   if (entries.length === 0) {
     return {
       totalRequests: 0,

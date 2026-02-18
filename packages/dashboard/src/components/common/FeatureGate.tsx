@@ -3,11 +3,15 @@
 /**
  * FeatureGate — conditionally renders children or an upgrade prompt.
  *
- * When the requested feature is enabled (EE), the children are rendered
- * normally.  When disabled (CE), a friendly upgrade card is shown instead,
- * explaining what the feature does and pointing users to the EE edition.
+ * **Deprecated**: In the new Self-Hosted vs Cloud model, all core features
+ * are enabled by default. This component should only be used for Cloud-only
+ * features (multiTenant, billing) that are infrastructure enhancements.
+ *
+ * For core features (multiServer, teamCollaboration, webhooks, etc.),
+ * render directly without a gate.
  *
  * @module components/common/FeatureGate
+ * @deprecated Use only for Cloud-only features. Core features are always enabled.
  */
 
 import type { ReactNode } from "react";
@@ -20,7 +24,12 @@ import { useFeatures, type FeatureKey } from "@/hooks/useFeatures";
 // ---------------------------------------------------------------------------
 
 export interface FeatureGateProps {
-  /** The feature flag to check. */
+  /**
+   * The feature flag to check.
+   *
+   * **Note**: Core features are always enabled. Only use this component
+   * for Cloud-only features (multiTenant, billing).
+   */
   feature: FeatureKey;
   /** Content to render when the feature is enabled. */
   children: ReactNode;
@@ -32,16 +41,41 @@ export interface FeatureGateProps {
 // Upgrade URL
 // ---------------------------------------------------------------------------
 
-const UPGRADE_URL = "https://serverpilot.io";
+const UPGRADE_URL = "https://serverpilot.io/pricing";
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
+/**
+ * FeatureGate component.
+ *
+ * **Deprecated for core features**: All core features (multiServer,
+ * teamCollaboration, webhooks, alerts, etc.) are enabled in both
+ * Self-Hosted and Cloud deployments. Only use this for Cloud-only
+ * features (multiTenant, billing).
+ *
+ * @example
+ * ```tsx
+ * // ❌ Don't use for core features (always enabled)
+ * <FeatureGate feature="multiServer">
+ *   <ServersPage />
+ * </FeatureGate>
+ *
+ * // ✅ Only use for Cloud-only features
+ * <FeatureGate feature="multiTenant">
+ *   <TenantSelector />
+ * </FeatureGate>
+ *
+ * // ✅ Better: render core features directly
+ * <ServersPage />
+ * ```
+ */
 export function FeatureGate({ feature, children, fallback }: FeatureGateProps) {
   const { features } = useFeatures();
   const { t } = useTranslation();
 
+  // All core features are enabled — this should only block Cloud-only features
   if (features[feature]) {
     return <>{children}</>;
   }
@@ -77,7 +111,7 @@ export function FeatureGate({ feature, children, fallback }: FeatureGateProps) {
         </p>
 
         <span className="inline-block mb-4 text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-3 py-1 rounded-full">
-          {t("featureGate.enterpriseOnly")}
+          {t("featureGate.cloudOnly")}
         </span>
 
         {highlightsList.length > 0 && (

@@ -1,10 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { create } from 'zustand';
-import { apiRequest, ApiError } from '@/api/client';
-import type { HealthDetailResponse } from '@/types/dashboard';
+import { create } from "zustand";
+import { apiRequest, ApiError } from "@/api/client";
+import type { HealthDetailResponse } from "@/types/dashboard";
 
-export type AIProvider = 'claude' | 'openai' | 'ollama' | 'deepseek' | 'custom-openai';
+export type AIProvider =
+  | "claude"
+  | "openai"
+  | "ollama"
+  | "deepseek"
+  | "custom-openai";
 
 export interface AIProviderConfig {
   provider: AIProvider;
@@ -43,6 +48,8 @@ export interface ProviderHealthStatus {
   available: boolean;
   tier?: 1 | 2 | 3;
   error?: string;
+  /** 当前生效的模型名（与对话实际使用一致） */
+  model?: string;
 }
 
 interface SettingsState {
@@ -77,13 +84,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   fetchSettings: async () => {
     set({ isLoading: true, error: null });
     try {
-      const data = await apiRequest<SettingsData>('/settings');
+      const data = await apiRequest<SettingsData>("/settings");
       set({ settings: data, isLoading: false });
     } catch (err) {
       const message =
-        err instanceof ApiError
-          ? err.message
-          : 'Failed to load settings';
+        err instanceof ApiError ? err.message : "Failed to load settings";
       set({ error: message, isLoading: false });
     }
   },
@@ -91,8 +96,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   updateAIProvider: async (config: AIProviderConfig) => {
     set({ isSaving: true, error: null });
     try {
-      const data = await apiRequest<SettingsData>('/settings/ai-provider', {
-        method: 'PUT',
+      const data = await apiRequest<SettingsData>("/settings/ai-provider", {
+        method: "PUT",
         body: JSON.stringify(config),
       });
       set({ settings: data, isSaving: false });
@@ -102,7 +107,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       const message =
         err instanceof ApiError
           ? err.message
-          : 'Failed to update AI provider settings';
+          : "Failed to update AI provider settings";
       set({ error: message, isSaving: false });
       throw err;
     }
@@ -111,16 +116,14 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   updateUserProfile: async (profile: UserProfile) => {
     set({ isSaving: true, error: null });
     try {
-      const data = await apiRequest<SettingsData>('/settings/profile', {
-        method: 'PUT',
+      const data = await apiRequest<SettingsData>("/settings/profile", {
+        method: "PUT",
         body: JSON.stringify(profile),
       });
       set({ settings: data, isSaving: false });
     } catch (err) {
       const message =
-        err instanceof ApiError
-          ? err.message
-          : 'Failed to update profile';
+        err instanceof ApiError ? err.message : "Failed to update profile";
       set({ error: message, isSaving: false });
       throw err;
     }
@@ -129,8 +132,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   updateNotifications: async (prefs: NotificationPreferences) => {
     set({ isSaving: true, error: null });
     try {
-      const data = await apiRequest<SettingsData>('/settings/notifications', {
-        method: 'PUT',
+      const data = await apiRequest<SettingsData>("/settings/notifications", {
+        method: "PUT",
         body: JSON.stringify(prefs),
       });
       set({ settings: data, isSaving: false });
@@ -138,7 +141,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       const message =
         err instanceof ApiError
           ? err.message
-          : 'Failed to update notification preferences';
+          : "Failed to update notification preferences";
       set({ error: message, isSaving: false });
       throw err;
     }
@@ -147,8 +150,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   updateKnowledgeBase: async (config: KnowledgeBaseConfig) => {
     set({ isSaving: true, error: null });
     try {
-      const data = await apiRequest<SettingsData>('/settings/knowledge-base', {
-        method: 'PUT',
+      const data = await apiRequest<SettingsData>("/settings/knowledge-base", {
+        method: "PUT",
         body: JSON.stringify(config),
       });
       set({ settings: data, isSaving: false });
@@ -156,7 +159,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       const message =
         err instanceof ApiError
           ? err.message
-          : 'Failed to update knowledge base settings';
+          : "Failed to update knowledge base settings";
       set({ error: message, isSaving: false });
       throw err;
     }
@@ -166,12 +169,16 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     set({ isCheckingHealth: true });
     try {
       const data = await apiRequest<ProviderHealthStatus>(
-        '/settings/ai-provider/health'
+        "/settings/ai-provider/health",
       );
       set({ healthStatus: data, isCheckingHealth: false });
     } catch {
       set({
-        healthStatus: { provider: null, available: false, error: 'Health check failed' },
+        healthStatus: {
+          provider: null,
+          available: false,
+          error: "Health check failed",
+        },
         isCheckingHealth: false,
       });
     }
@@ -180,14 +187,16 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   fetchHealthDetail: async () => {
     set({ isCheckingSystemHealth: true });
     try {
-      const data = await apiRequest<HealthDetailResponse>('/health/detail');
+      const data = await apiRequest<HealthDetailResponse>("/health/detail");
       set({ systemHealth: data, isCheckingSystemHealth: false });
     } catch (err) {
       const message =
-        err instanceof ApiError
-          ? err.message
-          : 'Failed to check system health';
-      set({ systemHealth: null, isCheckingSystemHealth: false, error: message });
+        err instanceof ApiError ? err.message : "Failed to check system health";
+      set({
+        systemHealth: null,
+        isCheckingSystemHealth: false,
+        error: message,
+      });
     }
   },
 

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
 import { API_BASE_URL } from "@/utils/constants";
-import { getToken, clearToken, refreshAccessToken } from "./auth";
+import { getToken, clearToken, refreshAccessToken, getTenantId } from "./auth";
 
 // Re-export token helpers so existing consumers don't break
-export { setToken, clearToken } from "./auth";
+export { setToken, clearToken, setTenantId } from "./auth";
 
 /**
  * Module-level flag to deduplicate auth:logout dispatch.
@@ -83,6 +83,10 @@ export async function apiRequest<T>(
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }
+  const tenantId = getTenantId();
+  if (tenantId) {
+    headers["X-Tenant-ID"] = tenantId;
+  }
 
   let response = await fetchWithTimeout(
     `${API_BASE_URL}${path}`,
@@ -124,6 +128,7 @@ export async function apiRequest<T>(
       clearToken();
       localStorage.removeItem("refresh_token");
       localStorage.removeItem("auth_user");
+      localStorage.removeItem("tenant_id");
       if (!logoutDispatched) {
         logoutDispatched = true;
         window.dispatchEvent(new CustomEvent("auth:logout"));

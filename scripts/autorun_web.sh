@@ -161,22 +161,30 @@ module_run_tests() {
 
     cd "$WEB_DIR" || return 1
 
-    # 1. TypeScript 类型检查
-    log_info "TypeScript 类型检查..."
-    if pnpm typecheck > "$TEST_LOG" 2>&1; then
+    # 1. TypeScript 类型检查（5分钟超时）
+    if run_with_timeout 300 "TypeScript 类型检查" "pnpm typecheck" > "$TEST_LOG" 2>&1; then
         log_success "TypeScript 类型检查通过"
     else
-        log_error "TypeScript 类型检查失败"
+        local exit_code=$?
+        if [ $exit_code -eq 124 ]; then
+            log_error "TypeScript 类型检查超时（可能卡在交互提示或进程挂起）"
+        else
+            log_error "TypeScript 类型检查失败"
+        fi
         tail -30 "$TEST_LOG"
         return 1
     fi
 
-    # 2. 构建测试
-    log_info "构建网站..."
-    if pnpm build >> "$TEST_LOG" 2>&1; then
+    # 2. 构建测试（5分钟超时）
+    if run_with_timeout 300 "构建网站" "pnpm build" >> "$TEST_LOG" 2>&1; then
         log_success "网站构建成功"
     else
-        log_error "网站构建失败"
+        local exit_code=$?
+        if [ $exit_code -eq 124 ]; then
+            log_error "构建超时（可能卡在交互提示或进程挂起）"
+        else
+            log_error "网站构建失败"
+        fi
         tail -30 "$TEST_LOG"
         return 1
     fi

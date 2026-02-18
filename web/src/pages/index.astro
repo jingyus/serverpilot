@@ -1,19 +1,129 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import pkg from '../../package.json';
+
+const GITHUB_REPO = 'https://github.com/jingjinbao/ServerPilot';
+const SITE_URL = 'https://serverpilot.ai';
+
+const aiProviders = [
+  { name: 'Claude', desc: 'Anthropic' },
+  { name: 'OpenAI', desc: 'GPT 系列' },
+  { name: 'DeepSeek', desc: '深度求索' },
+  { name: 'Ollama', desc: '本地部署' },
+];
+
+const softwareAppSchema = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "ServerPilot",
+  "description": "AI 驱动的 DevOps 平台，通过智能对话管理服务器，自动化运维任务，提升团队效率",
+  "url": SITE_URL,
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Linux, macOS",
+  "isAccessibleForFree": true,
+  "license": "https://www.gnu.org/licenses/agpl-3.0.html",
+  "author": {
+    "@type": "Organization",
+    "name": "ServerPilot",
+    "url": SITE_URL,
+  },
+  "downloadUrl": `${SITE_URL}/download`,
+  "softwareVersion": pkg.version,
+  "featureList": [
+    "AI 智能对话运维",
+    "多 AI 提供商支持 (Claude, OpenAI, DeepSeek, Ollama)",
+    "5 级命令风险分类与安全管控",
+    "实时执行反馈与错误自动诊断",
+    "WebSocket 实时通信",
+    "RBAC 权限控制",
+  ],
+};
+
+const webSiteSchema = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "ServerPilot",
+  "url": SITE_URL,
+};
 ---
 
-<BaseLayout title="首页">
+<BaseLayout title="首页" description="ServerPilot — AI 驱动的 DevOps 平台，通过智能对话管理服务器，自动化运维任务，提升团队效率">
   <!-- Hero Section -->
-  <section class="container mx-auto px-6 py-20 text-center">
+  <section class="container mx-auto px-6 py-12 md:py-20 text-center">
     <h1 class="text-5xl md:text-6xl font-bold mb-6 bg-gradient-to-r from-primary-600 to-blue-600 bg-clip-text text-transparent">
       AI 驱动的 DevOps 平台
     </h1>
-    <p class="text-xl text-gray-600 mb-12 max-w-2xl mx-auto">
+    <p class="text-xl text-gray-600 mb-8 md:mb-12 max-w-2xl mx-auto">
       通过 AI 智能对话管理服务器，自动化运维任务，提升团队效率
     </p>
     <div class="flex gap-4 justify-center">
       <a href="/download" class="btn-primary">立即下载</a>
       <a href="/docs" class="btn-secondary">查看文档</a>
+    </div>
+
+    <!-- Terminal Demo -->
+    <div class="mt-16 lg:max-w-3xl mx-auto">
+      <div class="rounded-xl overflow-hidden shadow-2xl border border-gray-700">
+        <!-- Terminal Title Bar -->
+        <div class="bg-gray-800 px-4 py-3 flex items-center gap-2">
+          <span class="w-3 h-3 rounded-full bg-red-500"></span>
+          <span class="w-3 h-3 rounded-full bg-yellow-500"></span>
+          <span class="w-3 h-3 rounded-full bg-green-500"></span>
+          <span class="ml-3 text-gray-400 text-sm font-mono">ServerPilot — AI Chat</span>
+        </div>
+        <!-- Terminal Content -->
+        <div class="bg-gray-900 p-6 font-mono text-sm leading-relaxed text-left">
+          <!-- User Input -->
+          <div class="mb-4">
+            <span class="text-blue-400">you &gt;</span>
+            <span class="text-gray-100 ml-2">帮我在 server-1 上安装 nginx 并配置反向代理</span>
+          </div>
+          <!-- AI Response -->
+          <div class="mb-4">
+            <span class="text-green-400">ai &gt;</span>
+            <span class="text-gray-300 ml-2">好的，我来帮你完成。正在分析 server-1 的环境...</span>
+          </div>
+          <!-- Execution Steps -->
+          <div class="pl-6 border-l-2 border-gray-700 mb-4 space-y-2">
+            <div class="flex items-center gap-2">
+              <span class="text-green-400">✓</span>
+              <span class="text-gray-400">检测系统: Ubuntu 22.04 (apt)</span>
+            </div>
+            <!-- Security Confirmation -->
+            <div class="rounded border border-yellow-600/40 bg-yellow-900/20 px-3 py-2 space-y-1.5">
+              <div class="flex items-center gap-2">
+                <span class="text-yellow-400">⚠</span>
+                <span class="text-yellow-300 text-xs font-semibold">YELLOW · 需要确认</span>
+              </div>
+              <div class="text-gray-400 text-xs">
+                <code class="bg-gray-800 px-1 rounded">sudo apt update && sudo apt install -y nginx</code>
+              </div>
+              <div class="text-gray-500 text-xs">原因: 软件包安装 (apt) — 将修改系统软件</div>
+              <div class="flex items-center gap-2 pt-0.5">
+                <span class="inline-block bg-green-600 text-white text-xs px-2 py-0.5 rounded">✓ 已确认</span>
+                <span class="text-gray-600 text-xs">用户已批准执行</span>
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-green-400">✓</span>
+              <span class="text-gray-400">sudo apt update && sudo apt install -y nginx</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-green-400">✓</span>
+              <span class="text-gray-400">生成 /etc/nginx/sites-available/app.conf</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-green-400">✓</span>
+              <span class="text-gray-400">sudo systemctl enable --now nginx</span>
+            </div>
+          </div>
+          <!-- Result -->
+          <div>
+            <span class="text-green-400">ai &gt;</span>
+            <span class="text-gray-300 ml-2">完成！Nginx 已安装并配置反向代理，服务已启动。</span>
+          </div>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -28,7 +138,9 @@ import BaseLayout from '../layouts/BaseLayout.astro';
           </svg>
         </div>
         <h3 class="text-xl font-semibold mb-4">AI 智能对话</h3>
-        <p class="text-gray-600">通过自然语言与 AI 对话，自动生成和执行运维任务</p>
+        <p class="text-gray-600">
+          通过自然语言与 AI 对话，自动生成和执行运维任务。支持 Claude、OpenAI、DeepSeek 等主流模型，也可通过 Ollama 接入本地模型，完全掌控数据隐私。AI 会自动识别服务器环境，生成适配当前系统的操作方案。
+        </p>
       </div>
 
       <div class="text-center">
@@ -38,7 +150,9 @@ import BaseLayout from '../layouts/BaseLayout.astro';
           </svg>
         </div>
         <h3 class="text-xl font-semibold mb-4">安全可控</h3>
-        <p class="text-gray-600">5 层安全防护，命令风险评估，确保操作安全</p>
+        <p class="text-gray-600">
+          所有命令按风险自动分为 5 个等级，从安全的只读查询到高危的系统变更。高风险操作（如删除数据、修改防火墙规则）需人工确认后才会执行，危险命令（如 rm -rf /）会被直接拦截，杜绝误操作。
+        </p>
       </div>
 
       <div class="text-center">
@@ -48,7 +162,50 @@ import BaseLayout from '../layouts/BaseLayout.astro';
           </svg>
         </div>
         <h3 class="text-xl font-semibold mb-4">高效执行</h3>
-        <p class="text-gray-600">实时进度反馈，自动错误诊断，快速完成运维任务</p>
+        <p class="text-gray-600">
+          每一步操作实时反馈执行进度和结果，全程可见。命令执行失败时，AI 自动诊断错误原因并给出修复建议，无需手动排查。支持 WebSocket 实时通信，服务器指标秒级推送到仪表盘。
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Trust & Tech Highlights Section -->
+  <section class="border-t py-20">
+    <div class="container mx-auto px-6">
+      <h2 class="text-3xl font-bold text-center mb-4">开源 & 多 AI 支持</h2>
+      <p class="text-gray-600 text-center mb-12 max-w-2xl mx-auto">
+        支持主流 AI 提供商，采用开源协议，代码完全透明
+      </p>
+
+      <!-- AI Providers -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-6 max-w-3xl mx-auto mb-12">
+        {aiProviders.map(({ name, desc }) => (
+          <div class="border rounded-lg p-5 text-center hover:border-primary-400 transition-colors">
+            <div class="text-lg font-semibold mb-1">{name}</div>
+            <div class="text-sm text-gray-500">{desc}</div>
+          </div>
+        ))}
+      </div>
+
+      <!-- License & GitHub -->
+      <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
+        <span class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gray-100 text-sm font-medium text-gray-700">
+          <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" />
+          </svg>
+          AGPL-3.0 开源协议
+        </span>
+        <a
+          href={GITHUB_REPO}
+          target="_blank"
+          rel="noopener noreferrer"
+          class="inline-flex items-center gap-2 px-5 py-2 rounded-lg bg-gray-900 text-white text-sm font-medium hover:bg-gray-800 transition-colors"
+        >
+          <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
+          </svg>
+          GitHub 仓库
+        </a>
       </div>
     </div>
   </section>
@@ -56,14 +213,17 @@ import BaseLayout from '../layouts/BaseLayout.astro';
   <!-- CTA Section -->
   <section class="bg-primary-50 py-20">
     <div class="container mx-auto px-6 text-center">
-      <h2 class="text-3xl font-bold mb-6">选择适合你的版本</h2>
+      <h2 class="text-3xl font-bold mb-6">开始使用 ServerPilot</h2>
       <p class="text-gray-600 mb-12 max-w-2xl mx-auto">
-        开源版本免费使用，云服务版本提供托管服务和企业级支持
+        开源免费，5 分钟完成安装，用 AI 对话管理你的服务器
       </p>
       <div class="flex gap-4 justify-center">
-        <a href="/download" class="btn-primary">下载开源版</a>
-        <a href="/pricing" class="btn-secondary">查看云服务</a>
+        <a href="/download" class="btn-primary">快速安装</a>
+        <a href="/docs/getting-started" class="btn-secondary">阅读文档</a>
       </div>
     </div>
   </section>
+
+  <script is:inline type="application/ld+json" set:html={JSON.stringify(softwareAppSchema)} />
+  <script is:inline type="application/ld+json" set:html={JSON.stringify(webSiteSchema)} />
 </BaseLayout>

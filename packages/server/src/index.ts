@@ -10,55 +10,71 @@
  * @module index
  */
 
-import { randomBytes } from 'node:crypto';
-import { createServer as createHttpServer } from 'node:http';
-import type { Server as HttpServer } from 'node:http';
-
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
-import { config } from 'dotenv';
-import { getRequestListener } from '@hono/node-server';
-
-import { InstallServer } from './api/server.js';
-import type { InstallServerOptions } from './api/server.js';
-import { routeMessage } from './api/handlers.js';
-import { createApiApp } from './api/routes/index.js';
-import { warnWildcardCorsInProduction } from './api/middleware/cors-config.js';
-import { initJwtConfig } from './api/middleware/auth.js';
-import { initDatabase, closeDatabase, createTables } from './db/connection.js';
-import { seedDefaultAdmin } from './db/seed-admin.js';
-import { getSnapshotService } from './core/snapshot/snapshot-service.js';
-import { getRollbackService } from './core/rollback/rollback-service.js';
-import { getTaskExecutor } from './core/task/executor.js';
-import { getTaskScheduler } from './core/task/scheduler.js';
-import { initAgentConnector } from './core/agent/agent-connector.js';
-import { InstallAIAgent } from './ai/agent.js';
-import { getActiveProvider, resolveProviderFromEnv, setActiveProvider } from './ai/providers/provider-factory.js';
-import { initAgenticEngine } from './ai/agentic-chat.js';
-import { ClaudeProvider } from './ai/providers/claude.js';
-import { initLogger, logger, logConnectionEvent, logError } from './utils/logger.js';
-import { initGitHubOAuth } from './utils/github-oauth.js';
-import { getMemoryMonitor } from './utils/memory-monitor.js';
-import { getAlertEvaluator } from './core/alert/alert-evaluator.js';
-import { createEmailNotifier } from './core/alert/email-notifier.js';
-import { createDocAutoFetcher, type DocAutoFetcher } from './knowledge/doc-auto-fetcher.js';
-import { initRagPipeline } from './knowledge/rag-pipeline.js';
-import { startMetricsCleanupScheduler, stopMetricsCleanupScheduler } from './core/metrics-cleanup-scheduler.js';
-import { getWebhookDispatcher } from './core/webhook/dispatcher.js';
-import { getServerRepository } from './db/repositories/server-repository.js';
-import { getServerStatusBus } from './core/server-status-bus.js';
-import { getSkillEngine } from './core/skill/engine.js';
-import { getSkillEventBus } from './core/skill/skill-event-bus.js';
-import { getSkillRepository } from './db/repositories/skill-repository.js';
-import { getTriggerManager } from './core/skill/trigger-manager.js';
-import { shutdownExecutionTracking, startExecutionSweep } from './api/routes/chat-execution.js';
+import { randomBytes } from "node:crypto";
+import { createServer as createHttpServer } from "node:http";
+import type { Server as HttpServer } from "node:http";
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { resolve, dirname } from "node:path";
+import { config } from "dotenv";
+import { getRequestListener } from "@hono/node-server";
+import { InstallServer } from "./api/server.js";
+import type { InstallServerOptions } from "./api/server.js";
+import { routeMessage } from "./api/handlers.js";
+import { createApiApp } from "./api/routes/index.js";
+import { warnWildcardCorsInProduction } from "./api/middleware/cors-config.js";
+import { initJwtConfig } from "./api/middleware/auth.js";
+import { initDatabase, closeDatabase, createTables } from "./db/connection.js";
+import { seedDefaultAdmin } from "./db/seed-admin.js";
+import { getSnapshotService } from "./core/snapshot/snapshot-service.js";
+import { getRollbackService } from "./core/rollback/rollback-service.js";
+import { getTaskExecutor } from "./core/task/executor.js";
+import { getTaskScheduler } from "./core/task/scheduler.js";
+import { initAgentConnector } from "./core/agent/agent-connector.js";
+import { InstallAIAgent } from "./ai/agent.js";
+import {
+  getActiveProvider,
+  resolveProviderFromEnv,
+  setActiveProvider,
+} from "./ai/providers/provider-factory.js";
+import { initAgenticEngine } from "./ai/agentic-chat.js";
+import { ClaudeProvider } from "./ai/providers/claude.js";
+import {
+  initLogger,
+  logger,
+  logConnectionEvent,
+  logError,
+} from "./utils/logger.js";
+import { initGitHubOAuth } from "./utils/github-oauth.js";
+import { getMemoryMonitor } from "./utils/memory-monitor.js";
+import { getAlertEvaluator } from "./core/alert/alert-evaluator.js";
+import { createEmailNotifier } from "./core/alert/email-notifier.js";
+import {
+  createDocAutoFetcher,
+  type DocAutoFetcher,
+} from "./knowledge/doc-auto-fetcher.js";
+import { initRagPipeline } from "./knowledge/rag-pipeline.js";
+import {
+  startMetricsCleanupScheduler,
+  stopMetricsCleanupScheduler,
+} from "./core/metrics-cleanup-scheduler.js";
+import { getWebhookDispatcher } from "./core/webhook/dispatcher.js";
+import { getServerRepository } from "./db/repositories/server-repository.js";
+import { getServerStatusBus } from "./core/server-status-bus.js";
+import { getSkillEngine } from "./core/skill/engine.js";
+import { getSkillEventBus } from "./core/skill/skill-event-bus.js";
+import { getSkillRepository } from "./db/repositories/skill-repository.js";
+import { getTriggerManager } from "./core/skill/trigger-manager.js";
+import {
+  shutdownExecutionTracking,
+  startExecutionSweep,
+} from "./api/routes/chat-execution.js";
 
 // ============================================================================
 // Constants
 // ============================================================================
 
-export const SERVER_NAME = '@aiinstaller/server';
-export const SERVER_VERSION = '0.1.0';
+export const SERVER_NAME = "@aiinstaller/server";
+export const SERVER_VERSION = "0.1.0";
 
 // ============================================================================
 // Global State
@@ -91,7 +107,7 @@ export interface ServerConfig {
   /** Authentication timeout in ms */
   authTimeoutMs: number;
   /** Database type: 'sqlite' (default) or 'postgres' */
-  dbType: 'sqlite' | 'postgres';
+  dbType: "sqlite" | "postgres";
   /** Path to the SQLite database file (only used when dbType=sqlite) */
   databasePath: string;
   /** JWT secret key (min 32 chars) */
@@ -133,11 +149,11 @@ function resolveJwtSecret(databasePath: string): string {
 
   // 2. Try to read persisted secret from data directory
   const dataDir = dirname(resolve(databasePath));
-  const secretPath = resolve(dataDir, '.jwt-secret');
+  const secretPath = resolve(dataDir, ".jwt-secret");
 
   try {
     if (existsSync(secretPath)) {
-      const secret = readFileSync(secretPath, 'utf-8').trim();
+      const secret = readFileSync(secretPath, "utf-8").trim();
       if (secret.length >= 32) {
         return secret;
       }
@@ -147,7 +163,7 @@ function resolveJwtSecret(databasePath: string): string {
   }
 
   // 3. Generate and persist a new secret
-  const secret = randomBytes(32).toString('base64');
+  const secret = randomBytes(32).toString("base64");
   try {
     mkdirSync(dataDir, { recursive: true });
     writeFileSync(secretPath, secret, { mode: 0o600 });
@@ -168,45 +184,68 @@ function resolveJwtSecret(databasePath: string): string {
  * @returns The resolved server configuration
  */
 export function loadConfig(): ServerConfig {
-  // Load .env.local first (higher priority), then .env as fallback.
-  // dotenv does not overwrite existing env vars, so loading order matters.
-  const envLocal = resolve(process.cwd(), '.env.local');
+  const cwd = process.cwd();
+  // 先加载 .env，再加载 .env.local（override: true 确保 .env.local 覆盖 .env 中的占位/空值）
+  config({ path: resolve(cwd, ".env") });
+  const envLocal = resolve(cwd, ".env.local");
   if (existsSync(envLocal)) {
-    config({ path: envLocal });
+    config({ path: envLocal, override: true });
   }
-  config();
 
-  // Also load from monorepo root .env (for pnpm workspace dev mode where
-  // cwd is packages/server/ but .env lives at the project root).
-  const monorepoEnv = resolve(process.cwd(), '../../.env');
-  if (existsSync(monorepoEnv)) {
-    config({ path: monorepoEnv });
+  // pnpm dev 时 server 的 cwd 多为 packages/server，需加载 monorepo 根目录的 env
+  const monorepoRoot = resolve(cwd, "../..");
+  const inServerPackage =
+    cwd.endsWith("server") && existsSync(resolve(cwd, "package.json"));
+  if (inServerPackage && existsSync(resolve(monorepoRoot, "package.json"))) {
+    const monorepoEnv = resolve(monorepoRoot, ".env");
+    const monorepoEnvLocal = resolve(monorepoRoot, ".env.local");
+    if (existsSync(monorepoEnv)) {
+      config({ path: monorepoEnv });
+    }
+    if (existsSync(monorepoEnvLocal)) {
+      config({ path: monorepoEnvLocal, override: true });
+    }
   }
 
   // Resolve JWT secret: env var → persisted file → generate new
-  const jwtSecret = resolveJwtSecret(process.env.DATABASE_PATH ?? './data/serverpilot.db');
+  const jwtSecret = resolveJwtSecret(
+    process.env.DATABASE_PATH ?? "./data/serverpilot.db",
+  );
 
   const serverConfig: ServerConfig = {
-    port: parseInt(process.env.SERVER_PORT ?? '3000', 10),
-    host: process.env.SERVER_HOST ?? '0.0.0.0',
-    heartbeatIntervalMs: parseInt(process.env.WS_HEARTBEAT_INTERVAL_MS ?? '30000', 10),
-    connectionTimeoutMs: parseInt(process.env.WS_CONNECTION_TIMEOUT_MS ?? '10000', 10),
-    logLevel: process.env.LOG_LEVEL ?? 'info',
-    requireAuth: process.env.WS_REQUIRE_AUTH !== 'false', // Default to true
-    authTimeoutMs: parseInt(process.env.WS_AUTH_TIMEOUT_MS ?? '10000', 10),
-    dbType: (process.env.DB_TYPE?.toLowerCase() === 'postgres' || process.env.DB_TYPE?.toLowerCase() === 'postgresql')
-      ? 'postgres' : 'sqlite',
-    databasePath: process.env.DATABASE_PATH ?? './data/serverpilot.db',
+    port: parseInt(process.env.SERVER_PORT ?? "3000", 10),
+    host: process.env.SERVER_HOST ?? "0.0.0.0",
+    heartbeatIntervalMs: parseInt(
+      process.env.WS_HEARTBEAT_INTERVAL_MS ?? "30000",
+      10,
+    ),
+    connectionTimeoutMs: parseInt(
+      process.env.WS_CONNECTION_TIMEOUT_MS ?? "10000",
+      10,
+    ),
+    logLevel: process.env.LOG_LEVEL ?? "info",
+    requireAuth: process.env.WS_REQUIRE_AUTH !== "false", // Default to true
+    authTimeoutMs: parseInt(process.env.WS_AUTH_TIMEOUT_MS ?? "10000", 10),
+    dbType:
+      process.env.DB_TYPE?.toLowerCase() === "postgres" ||
+      process.env.DB_TYPE?.toLowerCase() === "postgresql"
+        ? "postgres"
+        : "sqlite",
+    databasePath: process.env.DATABASE_PATH ?? "./data/serverpilot.db",
     jwtSecret,
   };
 
   // Load AI provider type
-  serverConfig.aiProvider = process.env.AI_PROVIDER ?? 'claude';
+  serverConfig.aiProvider = process.env.AI_PROVIDER ?? "claude";
 
   // Load AI agent configuration (provider is resolved via ProviderFactory)
   serverConfig.aiAgent = {
-    timeoutMs: process.env.AI_TIMEOUT_MS ? parseInt(process.env.AI_TIMEOUT_MS, 10) : undefined,
-    maxRetries: process.env.AI_MAX_RETRIES ? parseInt(process.env.AI_MAX_RETRIES, 10) : undefined,
+    timeoutMs: process.env.AI_TIMEOUT_MS
+      ? parseInt(process.env.AI_TIMEOUT_MS, 10)
+      : undefined,
+    maxRetries: process.env.AI_MAX_RETRIES
+      ? parseInt(process.env.AI_MAX_RETRIES, 10)
+      : undefined,
   };
 
   // Load knowledge base configuration
@@ -215,7 +254,7 @@ export function loadConfig(): ServerConfig {
     checkIntervalHours: process.env.KB_CHECK_INTERVAL_HOURS
       ? parseInt(process.env.KB_CHECK_INTERVAL_HOURS, 10)
       : 24, // Default: check daily
-    runOnStart: process.env.KB_RUN_ON_START !== 'false', // Default: true
+    runOnStart: process.env.KB_RUN_ON_START !== "false", // Default: true
     maxConcurrent: process.env.KB_MAX_CONCURRENT
       ? parseInt(process.env.KB_MAX_CONCURRENT, 10)
       : 3,
@@ -232,13 +271,21 @@ export function loadConfig(): ServerConfig {
  * Dispatch disconnect webhooks by looking up the server owner from the DB.
  * Runs async / fire-and-forget so it doesn't block the disconnect handler.
  */
-async function dispatchDisconnectWebhooks(serverId: string, clientId: string): Promise<void> {
-  const { getDatabase } = await import('./db/connection.js');
-  const { servers } = await import('./db/schema.js');
-  const { eq } = await import('drizzle-orm');
+async function dispatchDisconnectWebhooks(
+  serverId: string,
+  clientId: string,
+): Promise<void> {
+  const { getDatabase } = await import("./db/connection.js");
+  const { servers } = await import("./db/schema.js");
+  const { eq } = await import("drizzle-orm");
 
   const db = getDatabase();
-  const rows = db.select({ userId: servers.userId }).from(servers).where(eq(servers.id, serverId)).limit(1).all();
+  const rows = db
+    .select({ userId: servers.userId })
+    .from(servers)
+    .where(eq(servers.id, serverId))
+    .limit(1)
+    .all();
   if (rows.length === 0) return;
 
   const userId = rows[0].userId;
@@ -246,8 +293,8 @@ async function dispatchDisconnectWebhooks(serverId: string, clientId: string): P
   const data = { serverId, clientId, disconnectTime: new Date().toISOString() };
 
   await Promise.allSettled([
-    dispatcher.dispatch({ type: 'agent.disconnected', userId, data }),
-    dispatcher.dispatch({ type: 'server.offline', userId, data }),
+    dispatcher.dispatch({ type: "agent.disconnected", userId, data }),
+    dispatcher.dispatch({ type: "server.offline", userId, data }),
   ]);
 }
 
@@ -279,16 +326,22 @@ export function createServer(serverConfig: ServerConfig): InstallServer {
     try {
       setActiveProvider(providerConfig);
     } catch (err) {
-      logger.warn({
-        operation: 'initialization',
-        provider: providerConfig.provider,
-        error: err instanceof Error ? err.message : String(err),
-      }, `AI provider ${providerConfig.provider} initialization failed`);
+      logger.warn(
+        {
+          operation: "initialization",
+          provider: providerConfig.provider,
+          error: err instanceof Error ? err.message : String(err),
+        },
+        `AI provider ${providerConfig.provider} initialization failed`,
+      );
     }
   } else {
-    logger.warn({
-      operation: 'initialization',
-    }, 'No AI provider configured - set AI_PROVIDER and corresponding API key');
+    logger.warn(
+      {
+        operation: "initialization",
+      },
+      "No AI provider configured - set AI_PROVIDER and corresponding API key",
+    );
   }
 
   // Create InstallAIAgent using the active provider (for WebSocket install flows)
@@ -300,15 +353,21 @@ export function createServer(serverConfig: ServerConfig): InstallServer {
       timeoutMs: serverConfig.aiAgent?.timeoutMs,
       maxRetries: serverConfig.aiAgent?.maxRetries,
     });
-    logger.info({
-      operation: 'initialization',
-      provider: activeProvider.name,
-      tier: activeProvider.tier,
-    }, `InstallAIAgent initialized with provider: ${activeProvider.name}`);
+    logger.info(
+      {
+        operation: "initialization",
+        provider: activeProvider.name,
+        tier: activeProvider.tier,
+      },
+      `InstallAIAgent initialized with provider: ${activeProvider.name}`,
+    );
   } else {
-    logger.warn({
-      operation: 'initialization',
-    }, 'InstallAIAgent not initialized - no AI provider available');
+    logger.warn(
+      {
+        operation: "initialization",
+      },
+      "InstallAIAgent not initialized - no AI provider available",
+    );
   }
 
   // Initialize AgenticChatEngine for Claude provider (uses tool_use protocol)
@@ -316,10 +375,13 @@ export function createServer(serverConfig: ServerConfig): InstallServer {
     const anthropicClient = activeProvider.getClient();
     const model = activeProvider.getModel();
     initAgenticEngine(anthropicClient, model);
-    logger.info({
-      operation: 'initialization',
-      model,
-    }, `AgenticChatEngine initialized with model: ${model}`);
+    logger.info(
+      {
+        operation: "initialization",
+        model,
+      },
+      `AgenticChatEngine initialized with model: ${model}`,
+    );
   }
 
   // Initialize the skill engine (lazy singleton — first call sets projectRoot)
@@ -338,23 +400,23 @@ export function createServer(serverConfig: ServerConfig): InstallServer {
   getTaskExecutor(server);
   getTaskScheduler(server);
 
-  server.on('message', async (clientId, message) => {
+  server.on("message", async (clientId, message) => {
     const result = await routeMessage(server, clientId, message, aiAgent);
     if (!result.success) {
       logError(
         new Error(result.error),
-        { clientId, operation: 'message_handler' },
-        `Handler error for ${message.type}`
+        { clientId, operation: "message_handler" },
+        `Handler error for ${message.type}`,
       );
     }
   });
 
-  server.on('connection', (clientId) => {
-    logConnectionEvent('connect', { clientId });
+  server.on("connection", (clientId) => {
+    logConnectionEvent("connect", { clientId });
   });
 
-  server.on('disconnect', (clientId) => {
-    logConnectionEvent('disconnect', { clientId });
+  server.on("disconnect", (clientId) => {
+    logConnectionEvent("disconnect", { clientId });
 
     // Capture auth info before client is removed from the map
     // (disconnect is now emitted before deletion)
@@ -364,19 +426,30 @@ export function createServer(serverConfig: ServerConfig): InstallServer {
         const serverId = auth.deviceId;
 
         // Update server status to 'offline' and publish event
-        getServerRepository().updateStatus(serverId, 'offline').then(() => {
-          getServerStatusBus().publish({
-            serverId,
-            status: 'offline',
-            timestamp: new Date().toISOString(),
+        getServerRepository()
+          .updateStatus(serverId, "offline")
+          .then(() => {
+            getServerStatusBus().publish({
+              serverId,
+              status: "offline",
+              timestamp: new Date().toISOString(),
+            });
+          })
+          .catch((err) => {
+            logError(
+              err as Error,
+              { clientId, serverId },
+              "Failed to update server status to offline",
+            );
           });
-        }).catch((err) => {
-          logError(err as Error, { clientId, serverId }, 'Failed to update server status to offline');
-        });
 
         // Dispatch webhook events for agent disconnect / server offline
         dispatchDisconnectWebhooks(serverId, clientId).catch((err) => {
-          logError(err as Error, { clientId, serverId }, 'Failed to dispatch disconnect webhooks');
+          logError(
+            err as Error,
+            { clientId, serverId },
+            "Failed to dispatch disconnect webhooks",
+          );
         });
       }
     } catch {
@@ -384,8 +457,8 @@ export function createServer(serverConfig: ServerConfig): InstallServer {
     }
   });
 
-  server.on('error', (clientId, error) => {
-    logConnectionEvent('error', { clientId }, { errorMessage: error.message });
+  server.on("error", (clientId, error) => {
+    logConnectionEvent("error", { clientId }, { errorMessage: error.message });
   });
 
   return server;
@@ -400,14 +473,20 @@ export function createServer(serverConfig: ServerConfig): InstallServer {
  * @param server - The running InstallServer instance
  * @param httpServer - The HTTP server to close
  */
-export function registerShutdownHandlers(server: InstallServer, httpServer?: HttpServer): void {
+export function registerShutdownHandlers(
+  server: InstallServer,
+  httpServer?: HttpServer,
+): void {
   let shuttingDown = false;
 
   const shutdown = async (signal: string) => {
     if (shuttingDown) return;
     shuttingDown = true;
 
-    logger.info({ operation: 'shutdown', signal }, `Received ${signal}, shutting down...`);
+    logger.info(
+      { operation: "shutdown", signal },
+      `Received ${signal}, shutting down...`,
+    );
 
     try {
       getAlertEvaluator().stop();
@@ -432,16 +511,20 @@ export function registerShutdownHandlers(server: InstallServer, httpServer?: Htt
       } else {
         closeDatabase();
       }
-      logger.info({ operation: 'shutdown' }, 'Server stopped gracefully');
+      logger.info({ operation: "shutdown" }, "Server stopped gracefully");
       process.exit(0);
     } catch (err) {
-      logError(err as Error, { operation: 'shutdown' }, 'Error during shutdown');
+      logError(
+        err as Error,
+        { operation: "shutdown" },
+        "Error during shutdown",
+      );
       process.exit(1);
     }
   };
 
-  process.on('SIGINT', () => shutdown('SIGINT'));
-  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on("SIGINT", () => shutdown("SIGINT"));
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
 }
 
 /**
@@ -464,52 +547,81 @@ export async function startServer(): Promise<InstallServer> {
   initLogger({ level: serverConfig.logLevel });
 
   // 1. Initialize database
-  if (serverConfig.dbType === 'postgres') {
+  if (serverConfig.dbType === "postgres") {
     // Dynamically load @aiinstaller/cloud for PostgreSQL support
     try {
-      const { bootstrapCloud } = await import('@aiinstaller/cloud');
+      const { bootstrapCloud } = await import("@aiinstaller/cloud");
       const result = await bootstrapCloud();
       _cloudCleanup = result.close;
-      logger.info({ operation: 'startup', dbType: 'postgres' }, 'PostgreSQL (cloud) initialized');
+      logger.info(
+        { operation: "startup", dbType: "postgres" },
+        "PostgreSQL (cloud) initialized",
+      );
     } catch (err) {
       logger.error(
-        { operation: 'startup', error: err },
-        'Cloud package not available. Install @aiinstaller/cloud for PostgreSQL support.',
+        { operation: "startup", error: err },
+        "Cloud package not available. Install @aiinstaller/cloud for PostgreSQL support.",
       );
       process.exit(1);
     }
   } else {
-    logger.info({ operation: 'startup', databasePath: serverConfig.databasePath }, 'Initializing SQLite database...');
+    logger.info(
+      { operation: "startup", databasePath: serverConfig.databasePath },
+      "Initializing SQLite database...",
+    );
     initDatabase(serverConfig.databasePath);
     createTables();
-    logger.info({ operation: 'startup' }, 'SQLite database initialized with tables');
+    logger.info(
+      { operation: "startup" },
+      "SQLite database initialized with tables",
+    );
   }
 
   // 1b. Seed default admin (only on first run when users table is empty)
   await seedDefaultAdmin();
 
   // 1c. Seed local server for co-located agent (self-hosted mode)
-  const { seedLocalServer } = await import('./db/seed-local-server.js');
+  const { seedLocalServer } = await import("./db/seed-local-server.js");
   await seedLocalServer();
 
   // 2. Initialize JWT
   initJwtConfig({ secret: serverConfig.jwtSecret });
-  logger.info({ operation: 'startup' }, 'JWT configuration initialized');
+  logger.info({ operation: "startup" }, "JWT configuration initialized");
 
   // 2b. Initialize GitHub OAuth (optional — only if env vars are set)
   const ghClientId = process.env.GITHUB_OAUTH_CLIENT_ID;
   const ghClientSecret = process.env.GITHUB_OAUTH_CLIENT_SECRET;
   if (ghClientId && ghClientSecret) {
-    const ghRedirectUri = process.env.GITHUB_OAUTH_REDIRECT_URI
-      ?? `http://localhost:${serverConfig.port}/api/v1/auth/github/callback`;
-    initGitHubOAuth({ clientId: ghClientId, clientSecret: ghClientSecret, redirectUri: ghRedirectUri });
-    logger.info({ operation: 'startup' }, 'GitHub OAuth configured');
+    const ghRedirectUri =
+      process.env.GITHUB_OAUTH_REDIRECT_URI ??
+      `http://localhost:${serverConfig.port}/api/v1/auth/github/callback`;
+    initGitHubOAuth({
+      clientId: ghClientId,
+      clientSecret: ghClientSecret,
+      redirectUri: ghRedirectUri,
+    });
+    logger.info({ operation: "startup" }, "GitHub OAuth configured");
   }
 
   // 3. Create Hono REST API
   const apiApp = createApiApp();
+  // TODO: Cloud routes temporarily disabled due to merge conflicts
+  // Will be re-enabled after resolving cloud package build errors
+  // if (serverConfig.dbType === "postgres") {
+  //   try {
+  //     const { mountCloudRoutes } = await import("@aiinstaller/cloud");
+  //     const { requireAuth } = await import("./api/middleware/auth.js");
+  //     mountCloudRoutes(apiApp, requireAuth);
+  //     logger.info(
+  //       { operation: "startup" },
+  //       "Cloud Usage/Billing routes mounted",
+  //     );
+  //   } catch (err) {
+  //     logger.warn({ err }, "Cloud routes not mounted (optional)");
+  //   }
+  // }
   warnWildcardCorsInProduction(process.env.NODE_ENV, process.env.CORS_ORIGIN);
-  logger.info({ operation: 'startup' }, 'REST API created');
+  logger.info({ operation: "startup" }, "REST API created");
 
   // 4. Create WebSocket server (message routing, services)
   const server = createServer(serverConfig);
@@ -528,91 +640,107 @@ export async function startServer(): Promise<InstallServer> {
   });
 
   // Start memory monitoring (500MB threshold, sample every 30s)
-  const memoryMonitor = getMemoryMonitor({ thresholdMB: 500, intervalMs: 30000 });
+  const memoryMonitor = getMemoryMonitor({
+    thresholdMB: 500,
+    intervalMs: 30000,
+  });
   memoryMonitor.start();
   const memStats = memoryMonitor.getStats();
-  logger.info({
-    operation: 'startup',
-    rssMB: memStats.current.rssMB,
-    heapUsedMB: memStats.current.heapUsedMB,
-    thresholdMB: memStats.thresholdMB,
-  }, `Memory monitor started (RSS: ${memStats.current.rssMB}MB, threshold: ${memStats.thresholdMB}MB)`);
+  logger.info(
+    {
+      operation: "startup",
+      rssMB: memStats.current.rssMB,
+      heapUsedMB: memStats.current.heapUsedMB,
+      thresholdMB: memStats.thresholdMB,
+    },
+    `Memory monitor started (RSS: ${memStats.current.rssMB}MB, threshold: ${memStats.thresholdMB}MB)`,
+  );
 
   // Start the task scheduler for cron-based task execution
   const taskScheduler = getTaskScheduler();
   taskScheduler.start();
-  logger.info({ operation: 'startup' }, 'Task scheduler started');
+  logger.info({ operation: "startup" }, "Task scheduler started");
 
   // Start the alert evaluator for threshold monitoring
   const emailNotifier = createEmailNotifier();
   const alertEvaluator = getAlertEvaluator(emailNotifier);
   alertEvaluator.start();
   logger.info(
-    { operation: 'startup', emailEnabled: emailNotifier !== null },
-    'Alert evaluator started',
+    { operation: "startup", emailEnabled: emailNotifier !== null },
+    "Alert evaluator started",
   );
 
   // Start the webhook dispatcher for retry processing
   const webhookDispatcher = getWebhookDispatcher();
   webhookDispatcher.start();
-  logger.info({ operation: 'startup' }, 'Webhook dispatcher started');
+  logger.info({ operation: "startup" }, "Webhook dispatcher started");
 
   // Start the documentation auto-fetcher for knowledge base updates
   if (serverConfig.knowledgeBase) {
     _docAutoFetcher = createDocAutoFetcher(process.cwd(), {
       githubToken: serverConfig.knowledgeBase.githubToken,
-      checkIntervalMs: (serverConfig.knowledgeBase.checkIntervalHours ?? 24) * 60 * 60 * 1000,
+      checkIntervalMs:
+        (serverConfig.knowledgeBase.checkIntervalHours ?? 24) * 60 * 60 * 1000,
       runOnStart: serverConfig.knowledgeBase.runOnStart,
       maxConcurrent: serverConfig.knowledgeBase.maxConcurrent,
     });
     _docAutoFetcher.start();
     logger.info(
       {
-        operation: 'startup',
+        operation: "startup",
         checkIntervalHours: serverConfig.knowledgeBase.checkIntervalHours,
         runOnStart: serverConfig.knowledgeBase.runOnStart,
       },
-      'Documentation auto-fetcher started',
+      "Documentation auto-fetcher started",
     );
   }
 
   // Initialize the RAG pipeline for knowledge-augmented chat
   const ragPipeline = initRagPipeline(process.cwd());
   // Warm up the pipeline in the background (non-blocking)
-  ragPipeline.search('test').catch(() => {
+  ragPipeline.search("test").catch(() => {
     // Initialization errors are logged inside RAGPipeline — no action needed
   });
-  logger.info({ operation: 'startup' }, 'RAG pipeline initialized');
+  logger.info({ operation: "startup" }, "RAG pipeline initialized");
 
   // Start the skill engine (loads trigger registrations for enabled skills)
   const skillEngine = getSkillEngine();
   await skillEngine.start();
-  logger.info({ operation: 'startup' }, 'Skill engine started');
+  logger.info({ operation: "startup" }, "Skill engine started");
 
   // Bridge webhook dispatcher events to TriggerManager so system events
   // (task.completed, alert.triggered, server.offline, etc.) auto-trigger skills
   try {
     getTriggerManager().subscribeToDispatcher(webhookDispatcher);
-    logger.info({ operation: 'startup' }, 'Webhook→Skill event bridge established');
+    logger.info(
+      { operation: "startup" },
+      "Webhook→Skill event bridge established",
+    );
   } catch {
     // TriggerManager may not be initialized if no skills are installed
-    logger.debug({ operation: 'startup' }, 'Skipped webhook→skill bridge (TriggerManager not available)');
+    logger.debug(
+      { operation: "startup" },
+      "Skipped webhook→skill bridge (TriggerManager not available)",
+    );
   }
 
   // Start the metrics cleanup scheduler
   startMetricsCleanupScheduler();
-  logger.info({ operation: 'startup' }, 'Metrics cleanup scheduler started');
+  logger.info({ operation: "startup" }, "Metrics cleanup scheduler started");
 
   // Start execution TTL sweep (cleans orphaned activePlanExecutions entries)
   startExecutionSweep();
-  logger.info({ operation: 'startup' }, 'Execution TTL sweep started');
+  logger.info({ operation: "startup" }, "Execution TTL sweep started");
 
-  logger.info({
-    operation: 'startup',
-    version: SERVER_VERSION,
-    host: serverConfig.host,
-    port: serverConfig.port,
-  }, `Server listening on ${serverConfig.host}:${serverConfig.port} (HTTP + WebSocket)`);
+  logger.info(
+    {
+      operation: "startup",
+      version: SERVER_VERSION,
+      host: serverConfig.host,
+      port: serverConfig.port,
+    },
+    `Server listening on ${serverConfig.host}:${serverConfig.port} (HTTP + WebSocket)`,
+  );
 
   return server;
 }
@@ -629,18 +757,18 @@ async function main(): Promise<void> {
   try {
     await startServer();
   } catch (err) {
-    logError(err as Error, { operation: 'startup' }, 'Failed to start server');
+    logError(err as Error, { operation: "startup" }, "Failed to start server");
     process.exit(1);
   }
 }
 
 // Only run main when this module is executed directly (not imported)
 const isMainModule =
-  typeof process !== 'undefined' &&
+  typeof process !== "undefined" &&
   process.argv[1] &&
-  (process.argv[1].endsWith('/index.js') ||
-    process.argv[1].endsWith('/index.ts') ||
-    process.argv[1].includes('@aiinstaller/server'));
+  (process.argv[1].endsWith("/index.js") ||
+    process.argv[1].endsWith("/index.ts") ||
+    process.argv[1].includes("@aiinstaller/server"));
 
 if (isMainModule) {
   main();

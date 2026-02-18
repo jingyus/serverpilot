@@ -1,18 +1,27 @@
 // SPDX-License-Identifier: BUSL-1.1
 // Copyright (c) 2024-2026 ServerPilot Contributors
 /**
- * ServerPilot Cloud — Analytics Module (placeholder)
+ * ServerPilot Cloud — Analytics Module
  *
- * Future implementation:
- * - Advanced reporting and trend analysis
- * - Capacity planning and forecasting
- * - Cost optimization recommendations
- * - Custom dashboards and data visualization APIs
- * - Export to external analytics platforms (Grafana, Datadog)
+ * 提供 CostTracker 等与使用量/成本分析相关的能力，供 Usage 仪表盘与报表使用。
  *
  * @module cloud/analytics
  */
 
+// CostTracker 单例与类型（真实实现）
+export {
+  getCostTracker,
+  setCostTracker,
+  _resetCostTracker,
+} from '../ai/cost-tracker.js';
+export type {
+  CostTracker,
+  DailyCostEntry,
+  ModelDistributionEntry,
+  TokenUsage,
+} from '../ai/cost-tracker.js';
+
+// 占位类型（后续高级报表可扩展）
 export interface AnalyticsReport {
   id: string;
   tenantId: string;
@@ -30,8 +39,3 @@ export interface ForecastResult {
   timeHorizon: string;
   recommendation: string;
 }
-
-// TODO: Implement analytics engine
-// export async function generateReport(tenantId: string, type: string, period: object): Promise<AnalyticsReport> {}
-// export async function forecastCapacity(serverId: string, metric: string): Promise<ForecastResult> {}
-// export async function getUsageSummary(tenantId: string): Promise<UsageSummary> {}

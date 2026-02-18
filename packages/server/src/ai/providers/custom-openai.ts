@@ -11,7 +11,7 @@
  * @module ai/providers/custom-openai
  */
 
-import { z } from 'zod';
+import { z } from "zod";
 import type {
   AIProviderInterface,
   ChatOptions,
@@ -19,7 +19,7 @@ import type {
   ProviderStreamCallbacks,
   StreamResponse,
   TokenUsage,
-} from './base.js';
+} from "./base.js";
 
 // ============================================================================
 // Configuration
@@ -44,9 +44,9 @@ export interface CustomOpenAIConfig {
 
 /** Zod schema for Custom OpenAI provider configuration */
 export const CustomOpenAIConfigSchema = z.object({
-  baseUrl: z.string().url('Base URL is required and must be a valid URL'),
-  apiKey: z.string().min(1, 'API key is required'),
-  model: z.string().min(1, 'Model name is required'),
+  baseUrl: z.string().url("Base URL is required and must be a valid URL"),
+  apiKey: z.string().min(1, "API key is required"),
+  model: z.string().min(1, "Model name is required"),
   timeoutMs: z.number().int().positive().default(DEFAULTS.timeoutMs),
 });
 
@@ -55,7 +55,7 @@ export const CustomOpenAIConfigSchema = z.object({
 // ============================================================================
 
 interface OpenAIMessage {
-  role: 'user' | 'assistant' | 'system';
+  role: "user" | "assistant" | "system";
   content: string;
 }
 
@@ -68,14 +68,18 @@ interface OpenAIChatRequest {
 
 const OpenAIChatResponseSchema = z.object({
   id: z.string(),
-  choices: z.array(z.object({
-    index: z.number(),
-    message: z.object({
-      role: z.string(),
-      content: z.string(),
-    }),
-    finish_reason: z.string().nullable(),
-  })).min(1),
+  choices: z
+    .array(
+      z.object({
+        index: z.number(),
+        message: z.object({
+          role: z.string(),
+          content: z.string(),
+        }),
+        finish_reason: z.string().nullable(),
+      }),
+    )
+    .min(1),
   usage: z.object({
     prompt_tokens: z.number(),
     completion_tokens: z.number(),
@@ -85,19 +89,24 @@ const OpenAIChatResponseSchema = z.object({
 
 const OpenAIStreamChunkSchema = z.object({
   id: z.string(),
-  choices: z.array(z.object({
-    index: z.number(),
-    delta: z.object({
-      role: z.string().optional(),
-      content: z.string().optional(),
+  choices: z.array(
+    z.object({
+      index: z.number(),
+      delta: z.object({
+        role: z.string().optional(),
+        content: z.string().optional(),
+      }),
+      finish_reason: z.string().nullable(),
     }),
-    finish_reason: z.string().nullable(),
-  })),
-  usage: z.object({
-    prompt_tokens: z.number(),
-    completion_tokens: z.number(),
-    total_tokens: z.number(),
-  }).nullable().optional(),
+  ),
+  usage: z
+    .object({
+      prompt_tokens: z.number(),
+      completion_tokens: z.number(),
+      total_tokens: z.number(),
+    })
+    .nullable()
+    .optional(),
 });
 
 type OpenAIStreamChunk = z.infer<typeof OpenAIStreamChunkSchema>;
@@ -136,7 +145,7 @@ const OpenAIErrorResponseSchema = z.object({
 const DEFAULT_CUSTOM_CONTEXT_WINDOW = 128_000;
 
 export class CustomOpenAIProvider implements AIProviderInterface {
-  readonly name = 'custom-openai';
+  readonly name = "custom-openai";
   readonly tier = 2 as const;
   readonly contextWindowSize: number;
 
@@ -147,7 +156,7 @@ export class CustomOpenAIProvider implements AIProviderInterface {
 
   constructor(config: CustomOpenAIConfig) {
     const validated = CustomOpenAIConfigSchema.parse(config);
-    this.baseUrl = validated.baseUrl.replace(/\/+$/, '');
+    this.baseUrl = validated.baseUrl.replace(/\/+$/, "");
     this.apiKey = validated.apiKey;
     this.model = validated.model;
     this.timeoutMs = validated.timeoutMs;
@@ -175,10 +184,10 @@ export class CustomOpenAIProvider implements AIProviderInterface {
     const response = await this.fetchWithTimeout(
       `${this.baseUrl}/chat/completions`,
       {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${this.apiKey}`,
         },
         body: JSON.stringify(body),
       },
@@ -213,17 +222,17 @@ export class CustomOpenAIProvider implements AIProviderInterface {
       stream: true,
     };
 
-    let accumulated = '';
+    let accumulated = "";
     let usage: TokenUsage = { inputTokens: 0, outputTokens: 0 };
 
     try {
       const response = await this.fetchWithTimeout(
         `${this.baseUrl}/chat/completions`,
         {
-          method: 'POST',
+          method: "POST",
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${this.apiKey}`,
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${this.apiKey}`,
           },
           body: JSON.stringify(body),
         },
@@ -238,24 +247,24 @@ export class CustomOpenAIProvider implements AIProviderInterface {
 
       const reader = response.body?.getReader();
       if (!reader) {
-        throw new CustomOpenAIError('Response body is not readable', 0);
+        throw new CustomOpenAIError("Response body is not readable", 0);
       }
 
       const decoder = new TextDecoder();
-      let buffer = '';
+      let buffer = "";
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
 
         for (const line of lines) {
           const trimmed = line.trim();
-          if (!trimmed || trimmed === 'data: [DONE]') continue;
-          if (!trimmed.startsWith('data: ')) continue;
+          if (!trimmed || trimmed === "data: [DONE]") continue;
+          if (!trimmed.startsWith("data: ")) continue;
 
           const jsonStr = trimmed.slice(6);
           const chunk = this.parseStreamChunk(jsonStr);
@@ -276,9 +285,9 @@ export class CustomOpenAIProvider implements AIProviderInterface {
         }
       }
 
-      if (buffer.trim() && buffer.trim() !== 'data: [DONE]') {
+      if (buffer.trim() && buffer.trim() !== "data: [DONE]") {
         const trimmed = buffer.trim();
-        if (trimmed.startsWith('data: ')) {
+        if (trimmed.startsWith("data: ")) {
           const jsonStr = trimmed.slice(6);
           const chunk = this.parseStreamChunk(jsonStr);
           if (chunk) {
@@ -316,16 +325,37 @@ export class CustomOpenAIProvider implements AIProviderInterface {
       const response = await this.fetchWithTimeout(
         `${this.baseUrl}/models`,
         {
-          method: 'GET',
+          method: "GET",
           headers: {
-            'Authorization': `Bearer ${this.apiKey}`,
+            Authorization: `Bearer ${this.apiKey}`,
           },
         },
         5000,
       );
-      return response.ok;
-    } catch {
-      return false;
+      if (response.ok) return true;
+      const body = await response.text();
+      if (response.status === 401)
+        throw new Error(
+          "自定义 OpenAI 兼容 API 密钥无效或已过期，请检查 API Key。",
+        );
+      if (response.status === 403)
+        throw new Error("自定义 API 无权限访问，请检查密钥。");
+      if (response.status === 404)
+        throw new Error(
+          `自定义 API Base URL 或 /models 不可达: ${this.baseUrl}，请检查 Base URL。`,
+        );
+      throw new Error(
+        `自定义 OpenAI 健康检查失败 (${response.status}): ${body.slice(0, 200)}`,
+      );
+    } catch (err) {
+      if (
+        err instanceof Error &&
+        (err.message.startsWith("自定义") || err.message.startsWith("Custom"))
+      )
+        throw err;
+      throw new Error(
+        `无法连接自定义 OpenAI 接口（请检查 Base URL 与网络）: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }
 
@@ -337,12 +367,12 @@ export class CustomOpenAIProvider implements AIProviderInterface {
     const messages: OpenAIMessage[] = [];
 
     if (options.system) {
-      messages.push({ role: 'system', content: options.system });
+      messages.push({ role: "system", content: options.system });
     }
 
     for (const msg of options.messages) {
       messages.push({
-        role: msg.role === 'system' ? 'system' : msg.role,
+        role: msg.role === "system" ? "system" : msg.role,
         content: msg.content,
       });
     }
@@ -367,7 +397,7 @@ export class CustomOpenAIProvider implements AIProviderInterface {
       const parsed = OpenAIErrorResponseSchema.parse(raw);
       errorMessage = parsed.error.message;
     } catch {
-      errorMessage = await response.text().catch(() => 'unknown error');
+      errorMessage = await response.text().catch(() => "unknown error");
     }
 
     const status = response.status;
@@ -403,7 +433,7 @@ export class CustomOpenAIProvider implements AIProviderInterface {
     try {
       return await fetch(url, { ...init, signal: controller.signal });
     } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
+      if (err instanceof DOMException && err.name === "AbortError") {
         throw new CustomOpenAIError(
           `Custom OpenAI request timed out after ${timeoutMs}ms`,
           0,
@@ -426,6 +456,6 @@ export class CustomOpenAIError extends Error {
     public readonly statusCode: number,
   ) {
     super(message);
-    this.name = 'CustomOpenAIError';
+    this.name = "CustomOpenAIError";
   }
 }

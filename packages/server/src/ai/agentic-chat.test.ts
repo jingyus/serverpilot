@@ -2654,12 +2654,22 @@ describe("getUserFacingErrorMessage", () => {
     expect(msg).toContain("稍后重试");
   });
 
-  it("should return new session advice for 400 invalid_request errors", () => {
+  it("should return new session advice for 400 context_length_exceeded errors", () => {
     const error = Object.assign(new Error("context_length_exceeded"), {
       status: 400,
     });
     const msg = getUserFacingErrorMessage(error);
     expect(msg).toContain("新建会话");
+  });
+
+  it("should return generic invalid_request message with detail for 400 non-context errors", () => {
+    const error = Object.assign(new Error("Invalid model name"), {
+      status: 400,
+    });
+    const msg = getUserFacingErrorMessage(error);
+    expect(msg).toContain("请求无效");
+    expect(msg).toContain("详细原因");
+    expect(msg).toContain("Invalid model name");
   });
 
   it("should return network advice for network errors", () => {

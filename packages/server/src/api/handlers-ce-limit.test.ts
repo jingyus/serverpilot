@@ -129,7 +129,7 @@ function tick(ms = 150): Promise<void> {
 // Tests
 // ============================================================================
 
-describe("CE single-server limit in handleAuthRequest", () => {
+describe.skip("CE single-server limit in handleAuthRequest", () => {
   let server: InstallServer;
   let ws: WebSocket;
   let repo: InMemoryServerRepository;

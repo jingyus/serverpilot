@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 ServerPilot Contributors
 /** OpenAI AI Provider — Tier 2, supports GPT-4o/4/3.5-turbo with function calling. */
 
-import { z } from 'zod';
+import { z } from "zod";
 import type {
   AIProviderInterface,
   ChatOptions,
@@ -12,15 +12,15 @@ import type {
   ToolDefinition,
   ToolUseBlock,
   TokenUsage,
-} from './base.js';
+} from "./base.js";
 
 /** Per-token pricing in USD (per 1M tokens) by model */
 const MODEL_PRICING: Record<string, { input: number; output: number }> = {
-  'gpt-4o':             { input: 2.50,  output: 10.00 },
-  'gpt-4o-mini':        { input: 0.15,  output: 0.60 },
-  'gpt-4-turbo':        { input: 10.00, output: 30.00 },
-  'gpt-4':              { input: 30.00, output: 60.00 },
-  'gpt-3.5-turbo':      { input: 0.50,  output: 1.50 },
+  "gpt-4o": { input: 2.5, output: 10.0 },
+  "gpt-4o-mini": { input: 0.15, output: 0.6 },
+  "gpt-4-turbo": { input: 10.0, output: 30.0 },
+  "gpt-4": { input: 30.0, output: 60.0 },
+  "gpt-3.5-turbo": { input: 0.5, output: 1.5 },
 };
 
 /** Cost estimate result */
@@ -28,10 +28,13 @@ export interface CostEstimate {
   inputCost: number;
   outputCost: number;
   totalCost: number;
-  currency: 'USD';
+  currency: "USD";
 }
 
-export function estimateCost(usage: TokenUsage, model: string): CostEstimate | null {
+export function estimateCost(
+  usage: TokenUsage,
+  model: string,
+): CostEstimate | null {
   const pricing = MODEL_PRICING[model];
   if (!pricing) return null;
 
@@ -42,15 +45,20 @@ export function estimateCost(usage: TokenUsage, model: string): CostEstimate | n
     inputCost,
     outputCost,
     totalCost: inputCost + outputCost,
-    currency: 'USD',
+    currency: "USD",
   };
 }
 
 /** Parse structured JSON from AI output, stripping code fences if present. */
-export function parseStructuredOutput<T>(text: string, schema: z.ZodType<T>): T {
+export function parseStructuredOutput<T>(
+  text: string,
+  schema: z.ZodType<T>,
+): T {
   let cleaned = text.trim();
-  if (cleaned.startsWith('```')) {
-    cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
+  if (cleaned.startsWith("```")) {
+    cleaned = cleaned
+      .replace(/^```(?:json)?\s*\n?/, "")
+      .replace(/\n?```\s*$/, "");
   }
   const parsed: unknown = JSON.parse(cleaned);
   return schema.parse(parsed);
@@ -78,8 +86,8 @@ const DEFAULT_RETRY: Required<OpenAIRetryOptions> = {
 };
 
 const DEFAULTS = {
-  baseUrl: 'https://api.openai.com',
-  model: 'gpt-4o',
+  baseUrl: "https://api.openai.com",
+  model: "gpt-4o",
   timeoutMs: 60_000,
   maxTokens: 4096,
 } as const;
@@ -93,25 +101,25 @@ export interface OpenAIConfig {
 
 export const OpenAIConfigSchema = z.object({
   baseUrl: z.string().url().default(DEFAULTS.baseUrl),
-  apiKey: z.string().min(1, 'OpenAI API key is required'),
+  apiKey: z.string().min(1, "OpenAI API key is required"),
   model: z.string().min(1).default(DEFAULTS.model),
   timeoutMs: z.number().int().positive().default(DEFAULTS.timeoutMs),
 });
 
 // OpenAI API Types
 interface OpenAIMessage {
-  role: 'user' | 'assistant' | 'system' | 'tool';
+  role: "user" | "assistant" | "system" | "tool";
   content: string | null;
   tool_calls?: Array<{
     id: string;
-    type: 'function';
+    type: "function";
     function: { name: string; arguments: string };
   }>;
   tool_call_id?: string;
 }
 
 interface OpenAIToolDefinition {
-  type: 'function';
+  type: "function";
   function: {
     name: string;
     description: string;
@@ -133,7 +141,7 @@ interface OpenAIChatRequest {
 
 const OpenAIToolCallSchema = z.object({
   id: z.string(),
-  type: z.literal('function'),
+  type: z.literal("function"),
   function: z.object({
     name: z.string(),
     arguments: z.string(),
@@ -142,15 +150,19 @@ const OpenAIToolCallSchema = z.object({
 
 const OpenAIChatResponseSchema = z.object({
   id: z.string(),
-  choices: z.array(z.object({
-    index: z.number(),
-    message: z.object({
-      role: z.string(),
-      content: z.string().nullable(),
-      tool_calls: z.array(OpenAIToolCallSchema).optional(),
-    }),
-    finish_reason: z.string().nullable(),
-  })).min(1),
+  choices: z
+    .array(
+      z.object({
+        index: z.number(),
+        message: z.object({
+          role: z.string(),
+          content: z.string().nullable(),
+          tool_calls: z.array(OpenAIToolCallSchema).optional(),
+        }),
+        finish_reason: z.string().nullable(),
+      }),
+    )
+    .min(1),
   usage: z.object({
     prompt_tokens: z.number(),
     completion_tokens: z.number(),
@@ -161,29 +173,36 @@ const OpenAIChatResponseSchema = z.object({
 const OpenAIStreamToolCallDeltaSchema = z.object({
   index: z.number(),
   id: z.string().optional(),
-  type: z.literal('function').optional(),
-  function: z.object({
-    name: z.string().optional(),
-    arguments: z.string().optional(),
-  }).optional(),
+  type: z.literal("function").optional(),
+  function: z
+    .object({
+      name: z.string().optional(),
+      arguments: z.string().optional(),
+    })
+    .optional(),
 });
 
 const OpenAIStreamChunkSchema = z.object({
   id: z.string(),
-  choices: z.array(z.object({
-    index: z.number(),
-    delta: z.object({
-      role: z.string().optional(),
-      content: z.string().nullable().optional(),
-      tool_calls: z.array(OpenAIStreamToolCallDeltaSchema).optional(),
+  choices: z.array(
+    z.object({
+      index: z.number(),
+      delta: z.object({
+        role: z.string().optional(),
+        content: z.string().nullable().optional(),
+        tool_calls: z.array(OpenAIStreamToolCallDeltaSchema).optional(),
+      }),
+      finish_reason: z.string().nullable(),
     }),
-    finish_reason: z.string().nullable(),
-  })),
-  usage: z.object({
-    prompt_tokens: z.number(),
-    completion_tokens: z.number(),
-    total_tokens: z.number(),
-  }).nullable().optional(),
+  ),
+  usage: z
+    .object({
+      prompt_tokens: z.number(),
+      completion_tokens: z.number(),
+      total_tokens: z.number(),
+    })
+    .nullable()
+    .optional(),
 });
 
 type OpenAIStreamChunk = z.infer<typeof OpenAIStreamChunkSchema>;
@@ -199,18 +218,18 @@ const OpenAIErrorResponseSchema = z.object({
 
 /** Known context window sizes for OpenAI models (in tokens) */
 const OPENAI_CONTEXT_WINDOWS: Record<string, number> = {
-  'gpt-4o':        128_000,
-  'gpt-4o-mini':   128_000,
-  'gpt-4-turbo':   128_000,
-  'gpt-4':         8_192,
-  'gpt-3.5-turbo': 16_385,
+  "gpt-4o": 128_000,
+  "gpt-4o-mini": 128_000,
+  "gpt-4-turbo": 128_000,
+  "gpt-4": 8_192,
+  "gpt-3.5-turbo": 16_385,
 };
 
 /** Default context window for unknown OpenAI models */
 const DEFAULT_OPENAI_CONTEXT_WINDOW = 128_000;
 
 export class OpenAIProvider implements AIProviderInterface {
-  readonly name = 'openai';
+  readonly name = "openai";
   readonly tier = 2 as const;
   readonly contextWindowSize: number;
 
@@ -222,14 +241,15 @@ export class OpenAIProvider implements AIProviderInterface {
   constructor(config: OpenAIConfig = {}) {
     const resolved = {
       ...config,
-      apiKey: config.apiKey ?? process.env.OPENAI_API_KEY ?? '',
+      apiKey: config.apiKey ?? process.env.OPENAI_API_KEY ?? "",
     };
     const validated = OpenAIConfigSchema.parse(resolved);
-    this.baseUrl = validated.baseUrl.replace(/\/+$/, '');
+    this.baseUrl = validated.baseUrl.replace(/\/+$/, "");
     this.apiKey = validated.apiKey;
     this.model = validated.model;
     this.timeoutMs = validated.timeoutMs;
-    this.contextWindowSize = OPENAI_CONTEXT_WINDOWS[this.model] ?? DEFAULT_OPENAI_CONTEXT_WINDOW;
+    this.contextWindowSize =
+      OPENAI_CONTEXT_WINDOWS[this.model] ?? DEFAULT_OPENAI_CONTEXT_WINDOW;
   }
 
   async chat(options: ChatOptions): Promise<ChatResponse> {
@@ -248,10 +268,10 @@ export class OpenAIProvider implements AIProviderInterface {
     const response = await this.fetchWithTimeout(
       `${this.baseUrl}/v1/chat/completions`,
       {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${this.apiKey}`,
         },
         body: JSON.stringify(body),
       },
@@ -270,7 +290,7 @@ export class OpenAIProvider implements AIProviderInterface {
     const stopReason = this.mapStopReason(choice.finish_reason);
 
     return {
-      content: choice.message.content ?? '',
+      content: choice.message.content ?? "",
       usage: {
         inputTokens: data.usage.prompt_tokens,
         outputTokens: data.usage.completion_tokens,
@@ -301,20 +321,28 @@ export class OpenAIProvider implements AIProviderInterface {
       body.tools = this.convertTools(options.tools);
     }
 
-    let accumulated = '';
-    let usage: TokenUsage = { inputTokens: 0, outputTokens: 0, cacheCreationInputTokens: 0, cacheReadInputTokens: 0 };
+    let accumulated = "";
+    let usage: TokenUsage = {
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheCreationInputTokens: 0,
+      cacheReadInputTokens: 0,
+    };
     // Accumulate streaming tool calls: index → { id, name, arguments }
-    const toolCallAccumulators = new Map<number, { id: string; name: string; arguments: string }>();
+    const toolCallAccumulators = new Map<
+      number,
+      { id: string; name: string; arguments: string }
+    >();
     let finishReason: string | null = null;
 
     try {
       const response = await this.fetchWithTimeout(
         `${this.baseUrl}/v1/chat/completions`,
         {
-          method: 'POST',
+          method: "POST",
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${this.apiKey}`,
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${this.apiKey}`,
           },
           body: JSON.stringify(body),
         },
@@ -329,24 +357,24 @@ export class OpenAIProvider implements AIProviderInterface {
 
       const reader = response.body?.getReader();
       if (!reader) {
-        throw new OpenAIError('Response body is not readable', 0);
+        throw new OpenAIError("Response body is not readable", 0);
       }
 
       const decoder = new TextDecoder();
-      let buffer = '';
+      let buffer = "";
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
 
         for (const line of lines) {
           const trimmed = line.trim();
-          if (!trimmed || trimmed === 'data: [DONE]') continue;
-          if (!trimmed.startsWith('data: ')) continue;
+          if (!trimmed || trimmed === "data: [DONE]") continue;
+          if (!trimmed.startsWith("data: ")) continue;
 
           const jsonStr = trimmed.slice(6);
           const chunk = this.parseStreamChunk(jsonStr);
@@ -363,7 +391,10 @@ export class OpenAIProvider implements AIProviderInterface {
 
           // Accumulate streaming tool call deltas
           if (delta?.tool_calls) {
-            this.accumulateToolCallDeltas(delta.tool_calls, toolCallAccumulators);
+            this.accumulateToolCallDeltas(
+              delta.tool_calls,
+              toolCallAccumulators,
+            );
           }
 
           if (choice.finish_reason) {
@@ -382,9 +413,9 @@ export class OpenAIProvider implements AIProviderInterface {
       }
 
       // Process any remaining buffer
-      if (buffer.trim() && buffer.trim() !== 'data: [DONE]') {
+      if (buffer.trim() && buffer.trim() !== "data: [DONE]") {
         const trimmed = buffer.trim();
-        if (trimmed.startsWith('data: ')) {
+        if (trimmed.startsWith("data: ")) {
           const jsonStr = trimmed.slice(6);
           const chunk = this.parseStreamChunk(jsonStr);
           if (chunk) {
@@ -395,7 +426,10 @@ export class OpenAIProvider implements AIProviderInterface {
                 callbacks?.onToken?.(choice.delta.content, accumulated);
               }
               if (choice.delta?.tool_calls) {
-                this.accumulateToolCallDeltas(choice.delta.tool_calls, toolCallAccumulators);
+                this.accumulateToolCallDeltas(
+                  choice.delta.tool_calls,
+                  toolCallAccumulators,
+                );
               }
               if (choice.finish_reason) {
                 finishReason = choice.finish_reason;
@@ -413,7 +447,8 @@ export class OpenAIProvider implements AIProviderInterface {
 
       callbacks?.onComplete?.(accumulated, usage);
 
-      const toolCalls = this.buildToolCallsFromAccumulators(toolCallAccumulators);
+      const toolCalls =
+        this.buildToolCallsFromAccumulators(toolCallAccumulators);
       const stopReason = this.mapStopReason(finishReason);
 
       return {
@@ -440,17 +475,32 @@ export class OpenAIProvider implements AIProviderInterface {
       const response = await this.fetchWithTimeout(
         `${this.baseUrl}/v1/models`,
         {
-          method: 'GET',
+          method: "GET",
           headers: {
-            'Authorization': `Bearer ${this.apiKey}`,
+            Authorization: `Bearer ${this.apiKey}`,
           },
         },
         5000,
       );
 
-      return response.ok;
-    } catch {
-      return false;
+      if (response.ok) return true;
+      const body = await response.text();
+      if (response.status === 401)
+        throw new Error("OpenAI API 密钥无效或已过期，请检查 API Key。");
+      if (response.status === 403)
+        throw new Error("OpenAI API 无权限访问，请检查密钥与配额。");
+      if (response.status === 404)
+        throw new Error(
+          `OpenAI Base URL 或 /v1/models 不可达: ${this.baseUrl}，请检查 Base URL。`,
+        );
+      throw new Error(
+        `OpenAI 健康检查失败 (${response.status}): ${body.slice(0, 200)}`,
+      );
+    } catch (err) {
+      if (err instanceof Error && err.message.startsWith("OpenAI")) throw err;
+      throw new Error(
+        `无法连接 OpenAI（请检查 Base URL 与网络）: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }
 
@@ -507,7 +557,10 @@ export class OpenAIProvider implements AIProviderInterface {
     let lastError: string | undefined;
 
     for (let attempt = 0; attempt <= opts.maxRetries; attempt++) {
-      const result = await this.stream(options, attempt === 0 ? callbacks : undefined);
+      const result = await this.stream(
+        options,
+        attempt === 0 ? callbacks : undefined,
+      );
 
       if (result.success) {
         return { success: true, data: result, attempts: attempt + 1 };
@@ -515,7 +568,7 @@ export class OpenAIProvider implements AIProviderInterface {
 
       lastError = result.error;
 
-      if (!this.isRetryableErrorMessage(result.error ?? '')) {
+      if (!this.isRetryableErrorMessage(result.error ?? "")) {
         return { success: false, error: lastError, attempts: attempt + 1 };
       }
 
@@ -547,7 +600,7 @@ export class OpenAIProvider implements AIProviderInterface {
   /** Convert ToolDefinition[] to OpenAI function calling format. */
   private convertTools(tools: ToolDefinition[]): OpenAIToolDefinition[] {
     return tools.map((t) => ({
-      type: 'function' as const,
+      type: "function" as const,
       function: {
         name: t.name,
         description: t.description,
@@ -557,12 +610,16 @@ export class OpenAIProvider implements AIProviderInterface {
   }
 
   private extractToolCalls(
-    toolCalls?: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }>,
+    toolCalls?: Array<{
+      id: string;
+      type: "function";
+      function: { name: string; arguments: string };
+    }>,
   ): ToolUseBlock[] {
     if (!toolCalls?.length) return [];
 
     return toolCalls.map((tc) => ({
-      type: 'tool_use' as const,
+      type: "tool_use" as const,
       id: tc.id,
       name: tc.function.name,
       input: JSON.parse(tc.function.arguments) as Record<string, unknown>,
@@ -571,7 +628,11 @@ export class OpenAIProvider implements AIProviderInterface {
 
   /** Accumulate incremental tool call deltas from streaming chunks. */
   private accumulateToolCallDeltas(
-    deltas: Array<{ index: number; id?: string; function?: { name?: string; arguments?: string } }>,
+    deltas: Array<{
+      index: number;
+      id?: string;
+      function?: { name?: string; arguments?: string };
+    }>,
     accumulators: Map<number, { id: string; name: string; arguments: string }>,
   ): void {
     for (const delta of deltas) {
@@ -582,9 +643,9 @@ export class OpenAIProvider implements AIProviderInterface {
         }
       } else {
         accumulators.set(delta.index, {
-          id: delta.id ?? '',
-          name: delta.function?.name ?? '',
-          arguments: delta.function?.arguments ?? '',
+          id: delta.id ?? "",
+          name: delta.function?.name ?? "",
+          arguments: delta.function?.arguments ?? "",
         });
       }
     }
@@ -597,7 +658,7 @@ export class OpenAIProvider implements AIProviderInterface {
 
     const sorted = [...accumulators.entries()].sort((a, b) => a[0] - b[0]);
     return sorted.map(([, acc]) => ({
-      type: 'tool_use' as const,
+      type: "tool_use" as const,
       id: acc.id,
       name: acc.name,
       input: JSON.parse(acc.arguments) as Record<string, unknown>,
@@ -605,13 +666,19 @@ export class OpenAIProvider implements AIProviderInterface {
   }
 
   /** Map OpenAI finish_reason → unified stop reason. */
-  private mapStopReason(finishReason: string | null | undefined): string | undefined {
+  private mapStopReason(
+    finishReason: string | null | undefined,
+  ): string | undefined {
     if (!finishReason) return undefined;
     switch (finishReason) {
-      case 'stop': return 'end_turn';
-      case 'tool_calls': return 'tool_use';
-      case 'length': return 'max_tokens';
-      default: return finishReason;
+      case "stop":
+        return "end_turn";
+      case "tool_calls":
+        return "tool_use";
+      case "length":
+        return "max_tokens";
+      default:
+        return finishReason;
     }
   }
 
@@ -619,12 +686,12 @@ export class OpenAIProvider implements AIProviderInterface {
     const messages: OpenAIMessage[] = [];
 
     if (options.system) {
-      messages.push({ role: 'system', content: options.system });
+      messages.push({ role: "system", content: options.system });
     }
 
     for (const msg of options.messages) {
       messages.push({
-        role: msg.role === 'system' ? 'system' : msg.role,
+        role: msg.role === "system" ? "system" : msg.role,
         content: msg.content,
       });
     }
@@ -649,7 +716,7 @@ export class OpenAIProvider implements AIProviderInterface {
       const parsed = OpenAIErrorResponseSchema.parse(raw);
       errorMessage = parsed.error.message;
     } catch {
-      errorMessage = await response.text().catch(() => 'unknown error');
+      errorMessage = await response.text().catch(() => "unknown error");
     }
 
     const status = response.status;
@@ -669,17 +736,11 @@ export class OpenAIProvider implements AIProviderInterface {
     }
 
     if (status === 400) {
-      throw new OpenAIError(
-        `OpenAI bad request: ${errorMessage}`,
-        status,
-      );
+      throw new OpenAIError(`OpenAI bad request: ${errorMessage}`, status);
     }
 
     if (status === 404) {
-      throw new OpenAIError(
-        `OpenAI model not found: ${errorMessage}`,
-        status,
-      );
+      throw new OpenAIError(`OpenAI model not found: ${errorMessage}`, status);
     }
 
     throw new OpenAIError(
@@ -694,7 +755,7 @@ export class OpenAIProvider implements AIProviderInterface {
       if (code === 401 || code === 400 || code === 404) return false;
       if (code === 429 || code >= 500 || code === 0) return true;
     }
-    if (err instanceof DOMException && err.name === 'AbortError') return true;
+    if (err instanceof DOMException && err.name === "AbortError") return true;
     if (err instanceof Error) {
       return this.isRetryableErrorMessage(err.message);
     }
@@ -703,16 +764,27 @@ export class OpenAIProvider implements AIProviderInterface {
 
   private isRetryableErrorMessage(msg: string): boolean {
     const lower = msg.toLowerCase();
-    if (lower.includes('authentication') || lower.includes('bad request') ||
-        lower.includes('model not found')) {
+    if (
+      lower.includes("authentication") ||
+      lower.includes("bad request") ||
+      lower.includes("model not found")
+    ) {
       return false;
     }
-    return lower.includes('rate limit') || lower.includes('timed out') ||
-      lower.includes('timeout') || lower.includes('econnrefused') ||
-      lower.includes('econnreset') || lower.includes('fetch failed') ||
-      lower.includes('network') || lower.includes('500') ||
-      lower.includes('502') || lower.includes('503') ||
-      lower.includes('504') || lower.includes('not readable');
+    return (
+      lower.includes("rate limit") ||
+      lower.includes("timed out") ||
+      lower.includes("timeout") ||
+      lower.includes("econnrefused") ||
+      lower.includes("econnreset") ||
+      lower.includes("fetch failed") ||
+      lower.includes("network") ||
+      lower.includes("500") ||
+      lower.includes("502") ||
+      lower.includes("503") ||
+      lower.includes("504") ||
+      lower.includes("not readable")
+    );
   }
 
   private async fetchWithTimeout(
@@ -726,7 +798,7 @@ export class OpenAIProvider implements AIProviderInterface {
     try {
       return await fetch(url, { ...init, signal: controller.signal });
     } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
+      if (err instanceof DOMException && err.name === "AbortError") {
         throw new OpenAIError(
           `OpenAI request timed out after ${timeoutMs}ms`,
           0,
@@ -745,7 +817,7 @@ export class OpenAIError extends Error {
     public readonly statusCode: number,
   ) {
     super(message);
-    this.name = 'OpenAIError';
+    this.name = "OpenAIError";
   }
 }
 

@@ -67,6 +67,11 @@ COST_PER_1K_OUTPUT_TOKENS="${COST_PER_1K_OUTPUT_TOKENS:-0.015}"
 ENABLE_NOTIFICATION="${ENABLE_NOTIFICATION:-true}"
 NOTIFICATION_SCRIPT="${NOTIFICATION_SCRIPT:-$SCRIPT_DIR/send-notification.py}"
 
+# 双模型配置：布置任务用强模型，执行/修复用性价比模型（可通过环境变量覆盖）
+CLAUDE_MODEL_DISCOVER="${CLAUDE_MODEL_DISCOVER:-opus}"
+CLAUDE_MODEL_EXECUTE="${CLAUDE_MODEL_EXECUTE:-sonnet}"
+CLAUDE_MODEL_FIX="${CLAUDE_MODEL_FIX:-$CLAUDE_MODEL_EXECUTE}"
+
 # 加载任务队列辅助函数
 source "$SCRIPT_DIR/task-queue-helper.sh"
 
@@ -349,7 +354,7 @@ run_claude_batch_generate() {
 
     local input_tokens=$(estimate_tokens "$prompt")
 
-    if echo "$prompt" | claude -p > "$output_file" 2>&1; then
+    if echo "$prompt" | claude --model "$CLAUDE_MODEL_DISCOVER" -p > "$output_file" 2>&1; then
         # 解析策略 1: ```tasks ... ```
         local tasks_content=$(sed -n '/```tasks/,/```/p' "$output_file" | sed '1d;$d')
 
@@ -463,7 +468,7 @@ run_claude_execute() {
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
     (
-        echo "$prompt" | claude -p > "$output_file" 2>&1
+        echo "$prompt" | claude --model "$CLAUDE_MODEL_EXECUTE" -p > "$output_file" 2>&1
         echo $? > "$pid_file.exit"
     ) &
     local claude_pid=$!
@@ -569,6 +574,66 @@ _kill_process_tree() {
 }
 
 # ============================================================================
+# 带超时的命令执行（防止测试命令卡死）
+# ============================================================================
+
+run_with_timeout() {
+    local timeout_seconds="$1"
+    local command_name="$2"
+    shift 2
+    local command="$@"
+
+    local output_file=$(mktemp)
+    local pid_file=$(mktemp)
+
+    log_info "执行 $command_name (超时: $((timeout_seconds/60))分钟)..."
+
+    # 后台执行命令
+    (
+        eval "$command" > "$output_file" 2>&1
+        echo $? > "$pid_file.exit"
+    ) &
+    local cmd_pid=$!
+    echo $cmd_pid > "$pid_file"
+
+    local elapsed=0
+    local check_interval=5
+
+    # 监控执行
+    while kill -0 $cmd_pid 2>/dev/null; do
+        sleep $check_interval
+        elapsed=$((elapsed + check_interval))
+
+        # 超时检查
+        if [ $elapsed -ge $timeout_seconds ]; then
+            log_error "$command_name 执行超时 ($((timeout_seconds/60))分钟)，强制终止..."
+            _kill_process_tree $cmd_pid
+            rm -f "$output_file" "$pid_file" "$pid_file.exit"
+            return 124  # timeout exit code
+        fi
+
+        # 每 30 秒报告进度
+        if [ $((elapsed % 30)) -eq 0 ] && [ $elapsed -gt 0 ]; then
+            log_info "$command_name 执行中... 已运行 $elapsed 秒"
+        fi
+    done
+
+    # 获取退出码
+    local exit_code=1
+    if [ -f "$pid_file.exit" ]; then
+        exit_code=$(cat "$pid_file.exit")
+    fi
+
+    # 输出结果
+    if [ -f "$output_file" ]; then
+        cat "$output_file"
+    fi
+
+    rm -f "$output_file" "$pid_file" "$pid_file.exit"
+    return $exit_code
+}
+
+# ============================================================================
 # 智能测试辅助 — 解析 vitest 输出判断真实结果
 # ============================================================================
 
@@ -618,7 +683,7 @@ run_claude_fix() {
 
     log_ai "AI 正在修复测试失败..."
 
-    echo "$prompt" | claude -p > "$output_file" 2>&1
+    echo "$prompt" | claude --model "$CLAUDE_MODEL_FIX" -p > "$output_file" 2>&1
     local exit_code=$?
 
     cat "$output_file"
@@ -632,6 +697,8 @@ run_claude_fix() {
 # ============================================================================
 
 create_checkpoint() {
+    # 确保在项目根目录执行（避免 module_run_tests 等钩子 cd 到子目录导致 .git 找不到）
+    cd "$PROJECT_DIR" || { log_error "无法切换到项目目录: $PROJECT_DIR"; echo ""; return; }
     if [ ! -d ".git" ]; then
         echo ""
         return
@@ -657,6 +724,7 @@ rollback_to_checkpoint() {
     local checkpoint_sha="$1"
     local task_name="$2"
 
+    cd "$PROJECT_DIR" || { log_error "无法切换到项目目录: $PROJECT_DIR"; return 1; }
     if [ -z "$checkpoint_sha" ] || [ ! -d ".git" ]; then
         log_warning "无检查点信息，无法回滚"
         return 1
@@ -696,6 +764,7 @@ run_git_commit() {
     local task_name="$2"
     local status="$3"
 
+    cd "$PROJECT_DIR" || { log_error "无法切换到项目目录: $PROJECT_DIR"; return 1; }
     if [ ! -d ".git" ]; then
         log_warning "不是 Git 仓库，跳过提交"
         return 0

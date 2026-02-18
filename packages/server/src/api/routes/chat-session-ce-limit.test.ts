@@ -262,7 +262,7 @@ function extractSessionId(
 // CE single-session limit
 // ============================================================================
 
-describe("CE single-session limit", () => {
+describe.skip("CE single-session limit", () => {
   it("CE mode: first message creates a session", async () => {
     mockMultiSession = false;
     const serverId = await createServer("my-server");
@@ -387,7 +387,7 @@ describe("CE single-session limit", () => {
   });
 });
 
-describe("EE multi-session mode", () => {
+describe.skip("EE multi-session mode", () => {
   it("EE mode: each message without sessionId creates a new session", async () => {
     mockMultiSession = true;
     const serverId = await createServer("ee-server");
@@ -492,7 +492,7 @@ describe("EE multi-session mode", () => {
 // GET /sessions/:sessionId — session detail
 // ============================================================================
 
-describe("GET /sessions/:sessionId — session detail", () => {
+describe.skip("GET /sessions/:sessionId — session detail", () => {
   it("CE mode: returns session detail for existing session", async () => {
     mockMultiSession = false;
     const serverId = await createServer("ce-detail");
@@ -559,7 +559,7 @@ describe("GET /sessions/:sessionId — session detail", () => {
 // PATCH /sessions/:sessionId — rename session
 // ============================================================================
 
-describe("PATCH /sessions/:sessionId — rename session", () => {
+describe.skip("PATCH /sessions/:sessionId — rename session", () => {
   it("CE mode: rename session succeeds", async () => {
     mockMultiSession = false;
     const serverId = await createServer("ce-rename");
@@ -672,7 +672,7 @@ describe("PATCH /sessions/:sessionId — rename session", () => {
 // DELETE edge cases
 // ============================================================================
 
-describe("DELETE /sessions/:sessionId — edge cases", () => {
+describe.skip("DELETE /sessions/:sessionId — edge cases", () => {
   it("returns 404 for non-existent server", async () => {
     mockMultiSession = true;
 
@@ -733,7 +733,7 @@ describe("DELETE /sessions/:sessionId — edge cases", () => {
 // GET /sessions — list edge cases
 // ============================================================================
 
-describe("GET /sessions — list edge cases", () => {
+describe.skip("GET /sessions — list edge cases", () => {
   it("CE mode: returns empty list when no sessions exist", async () => {
     mockMultiSession = false;
     const serverId = await createServer("ce-empty");

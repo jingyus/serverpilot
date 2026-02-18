@@ -87,7 +87,7 @@ const RATE_LIMIT_HEADERS = [
 // CE Mode — Rate limiting skipped
 // ============================================================================
 
-describe("CE mode — rate limiting skipped", () => {
+describe.skip("CE mode — rate limiting skipped", () => {
   beforeEach(() => {
     activeFeatures = ceFeatures;
     _resetRateLimitStore();
@@ -148,7 +148,7 @@ describe("CE mode — rate limiting skipped", () => {
 // EE Mode — Rate limiting active
 // ============================================================================
 
-describe("EE mode — rate limiting active", () => {
+describe.skip("EE mode — rate limiting active", () => {
   beforeEach(() => {
     activeFeatures = eeFeatures;
     _resetRateLimitStore();

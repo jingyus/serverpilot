@@ -44,14 +44,15 @@ export interface ErrorClassification {
 
 /** Categories of API errors */
 export type ErrorCategory =
-  | 'authentication'
-  | 'rate_limit'
-  | 'server_error'
-  | 'network'
-  | 'timeout'
-  | 'invalid_request'
-  | 'overloaded'
-  | 'unknown';
+  | "authentication"
+  | "rate_limit"
+  | "server_error"
+  | "network"
+  | "timeout"
+  | "invalid_request"
+  | "context_length_exceeded"
+  | "overloaded"
+  | "unknown";
 
 /** Result of a retry operation */
 export interface RetryResult<T> {
@@ -106,8 +107,8 @@ export function classifyError(error: unknown): ErrorClassification {
   if (isAbortError(error)) {
     return {
       retryable: true,
-      category: 'timeout',
-      message: 'Request timed out',
+      category: "timeout",
+      message: "Request timed out",
     };
   }
 
@@ -115,7 +116,7 @@ export function classifyError(error: unknown): ErrorClassification {
   if (isNetworkError(error)) {
     return {
       retryable: true,
-      category: 'network',
+      category: "network",
       message: `Network error: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
@@ -123,7 +124,7 @@ export function classifyError(error: unknown): ErrorClassification {
   // Unknown errors are not retryable by default
   return {
     retryable: false,
-    category: 'unknown',
+    category: "unknown",
     message: error instanceof Error ? error.message : String(error),
   };
 }
@@ -245,14 +246,16 @@ export async function withRetry<T>(
 /**
  * Check if an error is an Anthropic SDK error (has a status property).
  */
-function isAnthropicError(
-  error: unknown,
-): error is { status: number; message: string; headers?: Record<string, string> } {
+function isAnthropicError(error: unknown): error is {
+  status: number;
+  message: string;
+  headers?: Record<string, string>;
+} {
   return (
-    typeof error === 'object' &&
+    typeof error === "object" &&
     error !== null &&
-    'status' in error &&
-    typeof (error as Record<string, unknown>).status === 'number'
+    "status" in error &&
+    typeof (error as Record<string, unknown>).status === "number"
   );
 }
 
@@ -270,31 +273,40 @@ function classifyAnthropicError(error: {
     case 401:
       return {
         retryable: false,
-        category: 'authentication',
-        message: 'Authentication failed: invalid or expired API key',
+        category: "authentication",
+        message: "Authentication failed: invalid or expired API key",
         statusCode: 401,
       };
 
     case 403:
       return {
         retryable: false,
-        category: 'authentication',
-        message: 'Access denied: insufficient permissions',
+        category: "authentication",
+        message: "Access denied: insufficient permissions",
         statusCode: 403,
       };
 
-    case 400:
+    case 400: {
+      // 仅当明确为上下文/ token 超限时归类为 context_length_exceeded，便于前端显示「对话过长，新建会话」
+      const msg = error.message ?? "";
+      const isContextLength =
+        /context_length_exceeded|context length|token.*limit|maximum context|too many token/i.test(
+          msg,
+        );
       return {
         retryable: false,
-        category: 'invalid_request',
-        message: `Invalid request: ${error.message}`,
+        category: isContextLength
+          ? "context_length_exceeded"
+          : "invalid_request",
+        message: msg || "Invalid request",
         statusCode: 400,
       };
+    }
 
     case 404:
       return {
         retryable: false,
-        category: 'invalid_request',
+        category: "invalid_request",
         message: `Resource not found: ${error.message}`,
         statusCode: 404,
       };
@@ -302,8 +314,8 @@ function classifyAnthropicError(error: {
     case 429:
       return {
         retryable: true,
-        category: 'rate_limit',
-        message: 'Rate limited: too many requests',
+        category: "rate_limit",
+        message: "Rate limited: too many requests",
         statusCode: 429,
         retryAfterMs,
       };
@@ -311,7 +323,7 @@ function classifyAnthropicError(error: {
     case 500:
       return {
         retryable: true,
-        category: 'server_error',
+        category: "server_error",
         message: `Server error: ${error.message}`,
         statusCode: 500,
       };
@@ -320,7 +332,7 @@ function classifyAnthropicError(error: {
     case 503:
       return {
         retryable: true,
-        category: 'overloaded',
+        category: "overloaded",
         message: `Service temporarily unavailable (${error.status})`,
         statusCode: error.status,
       };
@@ -328,8 +340,8 @@ function classifyAnthropicError(error: {
     case 504:
       return {
         retryable: true,
-        category: 'timeout',
-        message: 'Gateway timeout',
+        category: "timeout",
+        message: "Gateway timeout",
         statusCode: 504,
       };
 
@@ -337,14 +349,14 @@ function classifyAnthropicError(error: {
       if (error.status >= 500) {
         return {
           retryable: true,
-          category: 'server_error',
+          category: "server_error",
           message: `Server error (${error.status}): ${error.message}`,
           statusCode: error.status,
         };
       }
       return {
         retryable: false,
-        category: 'unknown',
+        category: "unknown",
         message: `Unexpected error (${error.status}): ${error.message}`,
         statusCode: error.status,
       };
@@ -357,9 +369,9 @@ function classifyAnthropicError(error: {
 function isAbortError(error: unknown): boolean {
   return (
     error instanceof Error &&
-    (error.name === 'AbortError' ||
-      error.message.includes('aborted') ||
-      error.message.includes('timeout'))
+    (error.name === "AbortError" ||
+      error.message.includes("aborted") ||
+      error.message.includes("timeout"))
   );
 }
 
@@ -370,35 +382,33 @@ function isNetworkError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
 
   const networkPatterns = [
-    'ECONNREFUSED',
-    'ECONNRESET',
-    'ENOTFOUND',
-    'ETIMEDOUT',
-    'EAI_AGAIN',
-    'EPIPE',
-    'EHOSTUNREACH',
-    'fetch failed',
-    'network',
-    'socket hang up',
+    "ECONNREFUSED",
+    "ECONNRESET",
+    "ENOTFOUND",
+    "ETIMEDOUT",
+    "EAI_AGAIN",
+    "EPIPE",
+    "EHOSTUNREACH",
+    "fetch failed",
+    "network",
+    "socket hang up",
   ];
 
   return networkPatterns.some(
     (pattern) =>
       error.message.includes(pattern) ||
-      ('code' in error && (error as NodeJS.ErrnoException).code === pattern),
+      ("code" in error && (error as NodeJS.ErrnoException).code === pattern),
   );
 }
 
 /**
  * Parse the retry-after header value to milliseconds.
  */
-function parseRetryAfter(
-  headers?: Record<string, string>,
-): number | undefined {
+function parseRetryAfter(headers?: Record<string, string>): number | undefined {
   if (!headers) return undefined;
 
   // Header names may be lowercase
-  const retryAfter = headers['retry-after'] ?? headers['Retry-After'];
+  const retryAfter = headers["retry-after"] ?? headers["Retry-After"];
   if (!retryAfter) return undefined;
 
   // Try to parse as seconds (integer)

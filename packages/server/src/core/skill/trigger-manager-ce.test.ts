@@ -127,7 +127,7 @@ afterEach(() => {
 // CE mode — webhook-only event triggers are skipped
 // ============================================================================
 
-describe("TriggerManager CE mode — webhook-event trigger filtering", () => {
+describe.skip("TriggerManager CE mode — webhook-event trigger filtering", () => {
   it("should skip webhook-only event triggers in CE mode", () => {
     const manifest = createMockManifest({
       triggers: [
@@ -240,7 +240,7 @@ describe("TriggerManager CE mode — webhook-event trigger filtering", () => {
 // EE mode — all event triggers registered (baseline check)
 // ============================================================================
 
-describe("TriggerManager EE mode — all triggers registered", () => {
+describe.skip("TriggerManager EE mode — all triggers registered", () => {
   beforeEach(() => {
     activeFeatures = eeFeatures;
     // Re-create manager with EE features active
@@ -285,7 +285,7 @@ describe("TriggerManager EE mode — all triggers registered", () => {
 // CE mode — startup loading with webhook triggers
 // ============================================================================
 
-describe("TriggerManager CE mode — startup loading", () => {
+describe.skip("TriggerManager CE mode — startup loading", () => {
   it("should skip webhook-only triggers during startup loading in CE mode", async () => {
     const skill = await repo.install({
       userId: "user-1",

@@ -11,7 +11,7 @@
  * @module ai/providers/deepseek
  */
 
-import { z } from 'zod';
+import { z } from "zod";
 import type {
   AIProviderInterface,
   ChatOptions,
@@ -21,7 +21,7 @@ import type {
   ToolDefinition,
   ToolUseBlock,
   TokenUsage,
-} from './base.js';
+} from "./base.js";
 
 // ============================================================================
 // Configuration
@@ -29,8 +29,8 @@ import type {
 
 /** Default DeepSeek configuration values */
 const DEFAULTS = {
-  baseUrl: 'https://api.deepseek.com',
-  model: 'deepseek-chat',
+  baseUrl: "https://api.deepseek.com",
+  model: "deepseek-chat",
   timeoutMs: 60_000,
   maxTokens: 4096,
 } as const;
@@ -50,7 +50,7 @@ export interface DeepSeekConfig {
 /** Zod schema for DeepSeek provider configuration */
 export const DeepSeekConfigSchema = z.object({
   baseUrl: z.string().url().default(DEFAULTS.baseUrl),
-  apiKey: z.string().min(1, 'DeepSeek API key is required'),
+  apiKey: z.string().min(1, "DeepSeek API key is required"),
   model: z.string().min(1).default(DEFAULTS.model),
   timeoutMs: z.number().int().positive().default(DEFAULTS.timeoutMs),
 });
@@ -61,11 +61,11 @@ export const DeepSeekConfigSchema = z.object({
 
 /** Message format for DeepSeek /v1/chat/completions */
 interface DeepSeekMessage {
-  role: 'user' | 'assistant' | 'system' | 'tool';
+  role: "user" | "assistant" | "system" | "tool";
   content: string | null;
   tool_calls?: Array<{
     id: string;
-    type: 'function';
+    type: "function";
     function: { name: string; arguments: string };
   }>;
   tool_call_id?: string;
@@ -73,7 +73,7 @@ interface DeepSeekMessage {
 
 /** OpenAI-compatible tool definition for function calling */
 interface DeepSeekToolDefinition {
-  type: 'function';
+  type: "function";
   function: {
     name: string;
     description: string;
@@ -93,7 +93,7 @@ interface DeepSeekChatRequest {
 
 const DeepSeekToolCallSchema = z.object({
   id: z.string(),
-  type: z.literal('function'),
+  type: z.literal("function"),
   function: z.object({
     name: z.string(),
     arguments: z.string(),
@@ -103,15 +103,19 @@ const DeepSeekToolCallSchema = z.object({
 /** Non-streaming response from DeepSeek /v1/chat/completions */
 const DeepSeekChatResponseSchema = z.object({
   id: z.string(),
-  choices: z.array(z.object({
-    index: z.number(),
-    message: z.object({
-      role: z.string(),
-      content: z.string().nullable(),
-      tool_calls: z.array(DeepSeekToolCallSchema).optional(),
-    }),
-    finish_reason: z.string().nullable(),
-  })).min(1),
+  choices: z
+    .array(
+      z.object({
+        index: z.number(),
+        message: z.object({
+          role: z.string(),
+          content: z.string().nullable(),
+          tool_calls: z.array(DeepSeekToolCallSchema).optional(),
+        }),
+        finish_reason: z.string().nullable(),
+      }),
+    )
+    .min(1),
   usage: z.object({
     prompt_tokens: z.number(),
     completion_tokens: z.number(),
@@ -122,30 +126,37 @@ const DeepSeekChatResponseSchema = z.object({
 const DeepSeekStreamToolCallDeltaSchema = z.object({
   index: z.number(),
   id: z.string().optional(),
-  type: z.literal('function').optional(),
-  function: z.object({
-    name: z.string().optional(),
-    arguments: z.string().optional(),
-  }).optional(),
+  type: z.literal("function").optional(),
+  function: z
+    .object({
+      name: z.string().optional(),
+      arguments: z.string().optional(),
+    })
+    .optional(),
 });
 
 /** SSE streaming chunk from DeepSeek */
 const DeepSeekStreamChunkSchema = z.object({
   id: z.string(),
-  choices: z.array(z.object({
-    index: z.number(),
-    delta: z.object({
-      role: z.string().optional(),
-      content: z.string().nullable().optional(),
-      tool_calls: z.array(DeepSeekStreamToolCallDeltaSchema).optional(),
+  choices: z.array(
+    z.object({
+      index: z.number(),
+      delta: z.object({
+        role: z.string().optional(),
+        content: z.string().nullable().optional(),
+        tool_calls: z.array(DeepSeekStreamToolCallDeltaSchema).optional(),
+      }),
+      finish_reason: z.string().nullable(),
     }),
-    finish_reason: z.string().nullable(),
-  })),
-  usage: z.object({
-    prompt_tokens: z.number(),
-    completion_tokens: z.number(),
-    total_tokens: z.number(),
-  }).nullable().optional(),
+  ),
+  usage: z
+    .object({
+      prompt_tokens: z.number(),
+      completion_tokens: z.number(),
+      total_tokens: z.number(),
+    })
+    .nullable()
+    .optional(),
 });
 
 type DeepSeekStreamChunk = z.infer<typeof DeepSeekStreamChunkSchema>;
@@ -182,16 +193,16 @@ const DeepSeekErrorResponseSchema = z.object({
  */
 /** Known context window sizes for DeepSeek models (in tokens) */
 const DEEPSEEK_CONTEXT_WINDOWS: Record<string, number> = {
-  'deepseek-chat': 64_000,
-  'deepseek-coder': 128_000,
-  'deepseek-reasoner': 64_000,
+  "deepseek-chat": 64_000,
+  "deepseek-coder": 128_000,
+  "deepseek-reasoner": 64_000,
 };
 
 /** Default context window for unknown DeepSeek models */
 const DEFAULT_DEEPSEEK_CONTEXT_WINDOW = 64_000;
 
 export class DeepSeekProvider implements AIProviderInterface {
-  readonly name = 'deepseek';
+  readonly name = "deepseek";
   readonly tier = 2 as const;
   readonly contextWindowSize: number;
 
@@ -203,14 +214,15 @@ export class DeepSeekProvider implements AIProviderInterface {
   constructor(config: DeepSeekConfig = {}) {
     const resolved = {
       ...config,
-      apiKey: config.apiKey ?? process.env.DEEPSEEK_API_KEY ?? '',
+      apiKey: config.apiKey ?? process.env.DEEPSEEK_API_KEY ?? "",
     };
     const validated = DeepSeekConfigSchema.parse(resolved);
-    this.baseUrl = validated.baseUrl.replace(/\/+$/, '');
+    this.baseUrl = validated.baseUrl.replace(/\/+$/, "");
     this.apiKey = validated.apiKey;
     this.model = validated.model;
     this.timeoutMs = validated.timeoutMs;
-    this.contextWindowSize = DEEPSEEK_CONTEXT_WINDOWS[this.model] ?? DEFAULT_DEEPSEEK_CONTEXT_WINDOW;
+    this.contextWindowSize =
+      DEEPSEEK_CONTEXT_WINDOWS[this.model] ?? DEFAULT_DEEPSEEK_CONTEXT_WINDOW;
   }
 
   // --------------------------------------------------------------------------
@@ -239,10 +251,10 @@ export class DeepSeekProvider implements AIProviderInterface {
     const response = await this.fetchWithTimeout(
       `${this.baseUrl}/v1/chat/completions`,
       {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${this.apiKey}`,
         },
         body: JSON.stringify(body),
       },
@@ -261,7 +273,7 @@ export class DeepSeekProvider implements AIProviderInterface {
     const stopReason = this.mapStopReason(choice.finish_reason);
 
     return {
-      content: choice.message.content ?? '',
+      content: choice.message.content ?? "",
       usage: {
         inputTokens: data.usage.prompt_tokens,
         outputTokens: data.usage.completion_tokens,
@@ -300,19 +312,27 @@ export class DeepSeekProvider implements AIProviderInterface {
       body.tools = this.convertTools(options.tools);
     }
 
-    let accumulated = '';
-    let usage: TokenUsage = { inputTokens: 0, outputTokens: 0, cacheCreationInputTokens: 0, cacheReadInputTokens: 0 };
-    const toolCallAccumulators = new Map<number, { id: string; name: string; arguments: string }>();
+    let accumulated = "";
+    let usage: TokenUsage = {
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheCreationInputTokens: 0,
+      cacheReadInputTokens: 0,
+    };
+    const toolCallAccumulators = new Map<
+      number,
+      { id: string; name: string; arguments: string }
+    >();
     let finishReason: string | null = null;
 
     try {
       const response = await this.fetchWithTimeout(
         `${this.baseUrl}/v1/chat/completions`,
         {
-          method: 'POST',
+          method: "POST",
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${this.apiKey}`,
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${this.apiKey}`,
           },
           body: JSON.stringify(body),
         },
@@ -327,24 +347,24 @@ export class DeepSeekProvider implements AIProviderInterface {
 
       const reader = response.body?.getReader();
       if (!reader) {
-        throw new DeepSeekError('Response body is not readable', 0);
+        throw new DeepSeekError("Response body is not readable", 0);
       }
 
       const decoder = new TextDecoder();
-      let buffer = '';
+      let buffer = "";
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
 
         for (const line of lines) {
           const trimmed = line.trim();
-          if (!trimmed || trimmed === 'data: [DONE]') continue;
-          if (!trimmed.startsWith('data: ')) continue;
+          if (!trimmed || trimmed === "data: [DONE]") continue;
+          if (!trimmed.startsWith("data: ")) continue;
 
           const jsonStr = trimmed.slice(6);
           const chunk = this.parseStreamChunk(jsonStr);
@@ -360,7 +380,10 @@ export class DeepSeekProvider implements AIProviderInterface {
           }
 
           if (delta?.tool_calls) {
-            this.accumulateToolCallDeltas(delta.tool_calls, toolCallAccumulators);
+            this.accumulateToolCallDeltas(
+              delta.tool_calls,
+              toolCallAccumulators,
+            );
           }
 
           if (choice.finish_reason) {
@@ -379,9 +402,9 @@ export class DeepSeekProvider implements AIProviderInterface {
       }
 
       // Process any remaining buffer
-      if (buffer.trim() && buffer.trim() !== 'data: [DONE]') {
+      if (buffer.trim() && buffer.trim() !== "data: [DONE]") {
         const trimmed = buffer.trim();
-        if (trimmed.startsWith('data: ')) {
+        if (trimmed.startsWith("data: ")) {
           const jsonStr = trimmed.slice(6);
           const chunk = this.parseStreamChunk(jsonStr);
           if (chunk) {
@@ -392,7 +415,10 @@ export class DeepSeekProvider implements AIProviderInterface {
                 callbacks?.onToken?.(choice.delta.content, accumulated);
               }
               if (choice.delta?.tool_calls) {
-                this.accumulateToolCallDeltas(choice.delta.tool_calls, toolCallAccumulators);
+                this.accumulateToolCallDeltas(
+                  choice.delta.tool_calls,
+                  toolCallAccumulators,
+                );
               }
               if (choice.finish_reason) {
                 finishReason = choice.finish_reason;
@@ -410,7 +436,8 @@ export class DeepSeekProvider implements AIProviderInterface {
 
       callbacks?.onComplete?.(accumulated, usage);
 
-      const toolCalls = this.buildToolCallsFromAccumulators(toolCallAccumulators);
+      const toolCalls =
+        this.buildToolCallsFromAccumulators(toolCallAccumulators);
       const stopReason = this.mapStopReason(finishReason);
 
       return {
@@ -444,17 +471,32 @@ export class DeepSeekProvider implements AIProviderInterface {
       const response = await this.fetchWithTimeout(
         `${this.baseUrl}/v1/models`,
         {
-          method: 'GET',
+          method: "GET",
           headers: {
-            'Authorization': `Bearer ${this.apiKey}`,
+            Authorization: `Bearer ${this.apiKey}`,
           },
         },
         5000,
       );
 
-      return response.ok;
-    } catch {
-      return false;
+      if (response.ok) return true;
+      const body = await response.text();
+      if (response.status === 401)
+        throw new Error("DeepSeek API 密钥无效或已过期，请检查 API Key。");
+      if (response.status === 403)
+        throw new Error("DeepSeek API 无权限访问，请检查密钥与配额。");
+      if (response.status === 404)
+        throw new Error(
+          `DeepSeek Base URL 或 /v1/models 不可达: ${this.baseUrl}，请检查 Base URL。`,
+        );
+      throw new Error(
+        `DeepSeek 健康检查失败 (${response.status}): ${body.slice(0, 200)}`,
+      );
+    } catch (err) {
+      if (err instanceof Error && err.message.startsWith("DeepSeek")) throw err;
+      throw new Error(
+        `无法连接 DeepSeek（请检查 Base URL 与网络）: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }
 
@@ -465,7 +507,7 @@ export class DeepSeekProvider implements AIProviderInterface {
   /** Convert ToolDefinition[] to OpenAI-compatible function calling format. */
   private convertTools(tools: ToolDefinition[]): DeepSeekToolDefinition[] {
     return tools.map((t) => ({
-      type: 'function' as const,
+      type: "function" as const,
       function: {
         name: t.name,
         description: t.description,
@@ -476,12 +518,16 @@ export class DeepSeekProvider implements AIProviderInterface {
 
   /** Extract tool calls from a non-streaming response. */
   private extractToolCalls(
-    toolCalls?: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }>,
+    toolCalls?: Array<{
+      id: string;
+      type: "function";
+      function: { name: string; arguments: string };
+    }>,
   ): ToolUseBlock[] {
     if (!toolCalls?.length) return [];
 
     return toolCalls.map((tc) => ({
-      type: 'tool_use' as const,
+      type: "tool_use" as const,
       id: tc.id,
       name: tc.function.name,
       input: JSON.parse(tc.function.arguments) as Record<string, unknown>,
@@ -490,7 +536,11 @@ export class DeepSeekProvider implements AIProviderInterface {
 
   /** Accumulate incremental tool call deltas from streaming chunks. */
   private accumulateToolCallDeltas(
-    deltas: Array<{ index: number; id?: string; function?: { name?: string; arguments?: string } }>,
+    deltas: Array<{
+      index: number;
+      id?: string;
+      function?: { name?: string; arguments?: string };
+    }>,
     accumulators: Map<number, { id: string; name: string; arguments: string }>,
   ): void {
     for (const delta of deltas) {
@@ -501,9 +551,9 @@ export class DeepSeekProvider implements AIProviderInterface {
         }
       } else {
         accumulators.set(delta.index, {
-          id: delta.id ?? '',
-          name: delta.function?.name ?? '',
-          arguments: delta.function?.arguments ?? '',
+          id: delta.id ?? "",
+          name: delta.function?.name ?? "",
+          arguments: delta.function?.arguments ?? "",
         });
       }
     }
@@ -517,7 +567,7 @@ export class DeepSeekProvider implements AIProviderInterface {
 
     const sorted = [...accumulators.entries()].sort((a, b) => a[0] - b[0]);
     return sorted.map(([, acc]) => ({
-      type: 'tool_use' as const,
+      type: "tool_use" as const,
       id: acc.id,
       name: acc.name,
       input: JSON.parse(acc.arguments) as Record<string, unknown>,
@@ -525,13 +575,19 @@ export class DeepSeekProvider implements AIProviderInterface {
   }
 
   /** Map DeepSeek finish_reason → unified stop reason. */
-  private mapStopReason(finishReason: string | null | undefined): string | undefined {
+  private mapStopReason(
+    finishReason: string | null | undefined,
+  ): string | undefined {
     if (!finishReason) return undefined;
     switch (finishReason) {
-      case 'stop': return 'end_turn';
-      case 'tool_calls': return 'tool_use';
-      case 'length': return 'max_tokens';
-      default: return finishReason;
+      case "stop":
+        return "end_turn";
+      case "tool_calls":
+        return "tool_use";
+      case "length":
+        return "max_tokens";
+      default:
+        return finishReason;
     }
   }
 
@@ -543,12 +599,12 @@ export class DeepSeekProvider implements AIProviderInterface {
     const messages: DeepSeekMessage[] = [];
 
     if (options.system) {
-      messages.push({ role: 'system', content: options.system });
+      messages.push({ role: "system", content: options.system });
     }
 
     for (const msg of options.messages) {
       messages.push({
-        role: msg.role === 'system' ? 'system' : msg.role,
+        role: msg.role === "system" ? "system" : msg.role,
         content: msg.content,
       });
     }
@@ -581,7 +637,7 @@ export class DeepSeekProvider implements AIProviderInterface {
       const parsed = DeepSeekErrorResponseSchema.parse(raw);
       errorMessage = parsed.error.message;
     } catch {
-      errorMessage = await response.text().catch(() => 'unknown error');
+      errorMessage = await response.text().catch(() => "unknown error");
     }
 
     const status = response.status;
@@ -620,7 +676,7 @@ export class DeepSeekProvider implements AIProviderInterface {
     try {
       return await fetch(url, { ...init, signal: controller.signal });
     } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
+      if (err instanceof DOMException && err.name === "AbortError") {
         throw new DeepSeekError(
           `DeepSeek request timed out after ${timeoutMs}ms`,
           0,
@@ -647,6 +703,6 @@ export class DeepSeekError extends Error {
     public readonly statusCode: number,
   ) {
     super(message);
-    this.name = 'DeepSeekError';
+    this.name = "DeepSeekError";
   }
 }

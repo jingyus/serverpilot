@@ -12,7 +12,7 @@
  * @module ai/providers/ollama
  */
 
-import { z } from 'zod';
+import { z } from "zod";
 import type {
   AIProviderInterface,
   ChatOptions,
@@ -20,7 +20,7 @@ import type {
   ProviderStreamCallbacks,
   StreamResponse,
   TokenUsage,
-} from './base.js';
+} from "./base.js";
 
 // ============================================================================
 // Configuration
@@ -28,8 +28,8 @@ import type {
 
 /** Default Ollama configuration values */
 const DEFAULTS = {
-  baseUrl: 'http://localhost:11434',
-  model: 'llama3.2',
+  baseUrl: "http://localhost:11434",
+  model: "llama3.2",
   timeoutMs: 120_000,
   maxTokens: 4096,
 } as const;
@@ -57,7 +57,7 @@ export const OllamaConfigSchema = z.object({
 
 /** Message format for Ollama /api/chat */
 interface OllamaChatMessage {
-  role: 'user' | 'assistant' | 'system';
+  role: "user" | "assistant" | "system";
   content: string;
 }
 
@@ -104,11 +104,13 @@ type OllamaStreamChunk = z.infer<typeof OllamaStreamChunkSchema>;
 
 /** Response from Ollama /api/tags (list models) */
 const OllamaTagsResponseSchema = z.object({
-  models: z.array(z.object({
-    name: z.string(),
-    modified_at: z.string().optional(),
-    size: z.number().optional(),
-  })),
+  models: z.array(
+    z.object({
+      name: z.string(),
+      modified_at: z.string().optional(),
+      size: z.number().optional(),
+    }),
+  ),
 });
 
 // ============================================================================
@@ -135,20 +137,20 @@ const OllamaTagsResponseSchema = z.object({
  */
 /** Known context window sizes for common Ollama models (in tokens) */
 const OLLAMA_CONTEXT_WINDOWS: Record<string, number> = {
-  'llama3.2': 128_000,
-  'llama3.1': 128_000,
-  'llama3': 8_192,
-  'llama2': 4_096,
-  'mistral': 32_000,
-  'mixtral': 32_000,
-  'codellama': 16_384,
-  'qwen2.5': 32_000,
-  'qwen2': 32_000,
-  'qwen': 8_192,
-  'phi3': 128_000,
-  'gemma2': 8_192,
-  'gemma': 8_192,
-  'deepseek-coder-v2': 128_000,
+  "llama3.2": 128_000,
+  "llama3.1": 128_000,
+  llama3: 8_192,
+  llama2: 4_096,
+  mistral: 32_000,
+  mixtral: 32_000,
+  codellama: 16_384,
+  "qwen2.5": 32_000,
+  qwen2: 32_000,
+  qwen: 8_192,
+  phi3: 128_000,
+  gemma2: 8_192,
+  gemma: 8_192,
+  "deepseek-coder-v2": 128_000,
 };
 
 /**
@@ -158,7 +160,7 @@ const OLLAMA_CONTEXT_WINDOWS: Record<string, number> = {
 const DEFAULT_OLLAMA_CONTEXT_WINDOW = 8_192;
 
 export class OllamaProvider implements AIProviderInterface {
-  readonly name = 'ollama';
+  readonly name = "ollama";
   readonly tier = 3 as const;
   readonly contextWindowSize: number;
 
@@ -168,7 +170,7 @@ export class OllamaProvider implements AIProviderInterface {
 
   constructor(config: OllamaConfig = {}) {
     const validated = OllamaConfigSchema.parse(config);
-    this.baseUrl = validated.baseUrl.replace(/\/+$/, '');
+    this.baseUrl = validated.baseUrl.replace(/\/+$/, "");
     this.model = validated.model;
     this.timeoutMs = validated.timeoutMs;
     this.contextWindowSize = this.resolveContextWindow(this.model);
@@ -181,7 +183,7 @@ export class OllamaProvider implements AIProviderInterface {
       return OLLAMA_CONTEXT_WINDOWS[modelName];
     }
     // Strip tag suffix (e.g. 'llama3.2:3b' → 'llama3.2')
-    const baseName = modelName.split(':')[0];
+    const baseName = modelName.split(":")[0];
     if (baseName in OLLAMA_CONTEXT_WINDOWS) {
       return OLLAMA_CONTEXT_WINDOWS[baseName];
     }
@@ -212,15 +214,15 @@ export class OllamaProvider implements AIProviderInterface {
     const response = await this.fetchWithTimeout(
       `${this.baseUrl}/api/chat`,
       {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       },
       options.timeoutMs ?? this.timeoutMs,
     );
 
     if (!response.ok) {
-      const errorText = await response.text().catch(() => 'unknown error');
+      const errorText = await response.text().catch(() => "unknown error");
       throw new OllamaError(
         `Ollama API error (${response.status}): ${errorText}`,
         response.status,
@@ -260,22 +262,27 @@ export class OllamaProvider implements AIProviderInterface {
       },
     };
 
-    let accumulated = '';
-    let usage: TokenUsage = { inputTokens: 0, outputTokens: 0, cacheCreationInputTokens: 0, cacheReadInputTokens: 0 };
+    let accumulated = "";
+    let usage: TokenUsage = {
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheCreationInputTokens: 0,
+      cacheReadInputTokens: 0,
+    };
 
     try {
       const response = await this.fetchWithTimeout(
         `${this.baseUrl}/api/chat`,
         {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         },
         options.timeoutMs ?? this.timeoutMs,
       );
 
       if (!response.ok) {
-        const errorText = await response.text().catch(() => 'unknown error');
+        const errorText = await response.text().catch(() => "unknown error");
         throw new OllamaError(
           `Ollama API error (${response.status}): ${errorText}`,
           response.status,
@@ -286,20 +293,20 @@ export class OllamaProvider implements AIProviderInterface {
 
       const reader = response.body?.getReader();
       if (!reader) {
-        throw new OllamaError('Response body is not readable', 0);
+        throw new OllamaError("Response body is not readable", 0);
       }
 
       const decoder = new TextDecoder();
-      let buffer = '';
+      let buffer = "";
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
+        const lines = buffer.split("\n");
         // Keep the last potentially incomplete line in the buffer
-        buffer = lines.pop() ?? '';
+        buffer = lines.pop() ?? "";
 
         for (const line of lines) {
           const trimmed = line.trim();
@@ -350,6 +357,9 @@ export class OllamaProvider implements AIProviderInterface {
     }
   }
 
+  /** 健康检查请求超时（毫秒），略长以便冷启动的 Ollama 能响应 */
+  private static readonly HEALTH_CHECK_TIMEOUT_MS = 10_000;
+
   /**
    * Check if the Ollama instance is available.
    *
@@ -361,19 +371,45 @@ export class OllamaProvider implements AIProviderInterface {
     try {
       const response = await this.fetchWithTimeout(
         `${this.baseUrl}/api/tags`,
-        { method: 'GET' },
-        5000,
+        { method: "GET" },
+        OllamaProvider.HEALTH_CHECK_TIMEOUT_MS,
       );
 
-      if (!response.ok) return false;
+      if (!response.ok) {
+        throw new Error(
+          `Ollama 未响应 (${response.status})，请确认 Base URL 正确且 Ollama 已启动: ${this.baseUrl}`,
+        );
+      }
 
       const raw: unknown = await response.json();
       const data = OllamaTagsResponseSchema.parse(raw);
-      return data.models.some(
+      const found = data.models.some(
         (m) => m.name === this.model || m.name.startsWith(`${this.model}:`),
       );
-    } catch {
-      return false;
+      if (!found) {
+        throw new Error(
+          `模型 "${this.model}" 未在 Ollama 中找到，请先在终端执行: ollama pull ${this.model}`,
+        );
+      }
+      return true;
+    } catch (err) {
+      // 已是友好文案则直接抛出
+      if (
+        err instanceof Error &&
+        (err.message.startsWith("Ollama") || err.message.startsWith("模型"))
+      ) {
+        throw err;
+      }
+      // 网络/超时等：给出可操作提示（含 Docker 场景）
+      const hint =
+        this.baseUrl.includes("localhost") || this.baseUrl.includes("127.0.0.1")
+          ? " 若 Server 在 Docker 中运行，请将 Base URL 改为 host.docker.internal:11434 或宿主机 IP。"
+          : "";
+      const msg = err instanceof Error ? err.message : String(err);
+      const isTimeout = msg.includes("timed out") || msg.includes("AbortError");
+      throw new Error(
+        `无法连接 Ollama（请确认 Ollama 已启动且 Base URL 可从当前环境访问，默认 http://localhost:11434）。${isTimeout ? " 请求超时，可稍后重试。" : ""}${hint} 原始错误: ${msg}`,
+      );
     }
   }
 
@@ -389,12 +425,12 @@ export class OllamaProvider implements AIProviderInterface {
     const messages: OllamaChatMessage[] = [];
 
     if (options.system) {
-      messages.push({ role: 'system', content: options.system });
+      messages.push({ role: "system", content: options.system });
     }
 
     for (const msg of options.messages) {
       messages.push({
-        role: msg.role === 'system' ? 'system' : msg.role,
+        role: msg.role === "system" ? "system" : msg.role,
         content: msg.content,
       });
     }
@@ -406,7 +442,9 @@ export class OllamaProvider implements AIProviderInterface {
    * Extract token usage from an Ollama response.
    * Ollama provides eval_count (output tokens) and prompt_eval_count (input tokens).
    */
-  private extractUsage(data: OllamaChatResponse | OllamaStreamChunk): TokenUsage {
+  private extractUsage(
+    data: OllamaChatResponse | OllamaStreamChunk,
+  ): TokenUsage {
     return {
       inputTokens: data.prompt_eval_count ?? 0,
       outputTokens: data.eval_count ?? 0,
@@ -442,7 +480,7 @@ export class OllamaProvider implements AIProviderInterface {
     try {
       return await fetch(url, { ...init, signal: controller.signal });
     } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
+      if (err instanceof DOMException && err.name === "AbortError") {
         throw new OllamaError(
           `Ollama request timed out after ${timeoutMs}ms`,
           0,
@@ -469,6 +507,6 @@ export class OllamaError extends Error {
     public readonly statusCode: number,
   ) {
     super(message);
-    this.name = 'OllamaError';
+    this.name = "OllamaError";
   }
 }

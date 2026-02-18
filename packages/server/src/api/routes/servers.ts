@@ -26,6 +26,7 @@ import { getTaskExecutor } from "../../core/task/executor.js";
 import { logger } from "../../utils/logger.js";
 import type { Server } from "../../db/repositories/server-repository.js";
 import { snapshots as snapshotsRouter } from "./snapshots.js";
+import { files as filesRouter } from "./files.js";
 import type {
   CreateServerBody,
   UpdateServerBody,
@@ -663,6 +664,12 @@ servers.get(
     return c.json({ summary: profile.historySummary });
   },
 );
+
+// ============================================================================
+// File manager sub-routes: /servers/:serverId/files/*
+// ============================================================================
+
+servers.route("/:serverId/files", filesRouter);
 
 // ============================================================================
 // Snapshot sub-routes: /servers/:serverId/snapshots/*

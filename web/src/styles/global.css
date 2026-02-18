@@ -8,6 +8,14 @@
   }
 }
 
+/* Fallback for browsers without backdrop-filter support:
+   use solid white background to prevent content bleeding through */
+@supports not (backdrop-filter: blur(4px)) {
+  header.sticky {
+    background-color: rgb(255 255 255) !important;
+  }
+}
+
 @layer components {
   .btn-primary {
     @apply px-6 py-3 bg-primary-600 text-white font-medium rounded-lg hover:bg-primary-700 transition-colors;
@@ -15,5 +23,13 @@
 
   .btn-secondary {
     @apply px-6 py-3 bg-gray-100 text-gray-900 font-medium rounded-lg hover:bg-gray-200 transition-colors;
+  }
+
+  .mobile-menu-closed {
+    @apply hidden;
+  }
+
+  .mobile-menu-open {
+    @apply block;
   }
 }

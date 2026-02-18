@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { useState, useRef, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
-import { Bot, MessageSquarePlus, Menu, Download } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import type { ExportFormat } from '@/utils/chat-export';
+import { useState, useRef, useEffect } from "react";
+import { useTranslation } from "react-i18next";
+import { Bot, MessageSquarePlus, Menu, Download } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import type { ExportFormat } from "@/utils/chat-export";
 
 export interface ChatHeaderProps {
   serverName: string;
@@ -14,6 +14,8 @@ export interface ChatHeaderProps {
   hasSessions?: boolean;
   hasMessages?: boolean;
   onExport?: (format: ExportFormat) => void;
+  /** 当前对话实际使用的 AI 提供商与模型（与设置页可能不一致，以此为准） */
+  currentAI?: { provider: string | null; model?: string } | null;
 }
 
 export function ChatHeader({
@@ -24,6 +26,7 @@ export function ChatHeader({
   hasSessions,
   hasMessages,
   onExport,
+  currentAI,
 }: ChatHeaderProps) {
   const { t } = useTranslation();
   const [showExportMenu, setShowExportMenu] = useState(false);
@@ -36,8 +39,8 @@ export function ChatHeader({
         setShowExportMenu(false);
       }
     }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showExportMenu]);
 
   return (
@@ -53,7 +56,7 @@ export function ChatHeader({
             onClick={onToggleSidebar}
             className="lg:hidden"
             data-testid="mobile-sidebar-toggle"
-            aria-label={t('chat.toggleSessions')}
+            aria-label={t("chat.toggleSessions")}
           >
             <Menu className="h-4 w-4" />
           </Button>
@@ -62,15 +65,29 @@ export function ChatHeader({
           <Bot className="h-4 w-4 sm:h-5 sm:w-5" />
         </div>
         <div className="min-w-0">
-          <h1 className="text-base font-semibold sm:text-lg">{t('chat.title')}</h1>
+          <h1 className="text-base font-semibold sm:text-lg">
+            {t("chat.title")}
+          </h1>
           <p className="truncate text-xs text-muted-foreground">
-            {t('chat.server', { name: serverName })}
+            {t("chat.server", { name: serverName })}
             {sessionId && (
               <span className="ml-2">
-                {t('chat.session', { id: `${sessionId.slice(0, 8)}...` })}
+                {t("chat.session", { id: `${sessionId.slice(0, 8)}...` })}
               </span>
             )}
           </p>
+          {currentAI !== undefined && (
+            <p
+              className="mt-0.5 truncate text-xs text-muted-foreground"
+              data-testid="chat-current-ai"
+            >
+              {currentAI?.provider
+                ? [currentAI.provider, currentAI.model]
+                    .filter(Boolean)
+                    .join(" · ") + ` ${t("chat.currentlyUsed")}`
+                : t("chat.noAIConfigured")}
+            </p>
+          )}
         </div>
       </div>
       <div className="flex items-center gap-2">
@@ -81,7 +98,7 @@ export function ChatHeader({
               size="sm"
               onClick={() => setShowExportMenu((v) => !v)}
               data-testid="export-chat-btn"
-              aria-label={t('chat.export')}
+              aria-label={t("chat.export")}
               className="shrink-0"
             >
               <Download className="h-4 w-4" />
@@ -94,22 +111,22 @@ export function ChatHeader({
                 <button
                   className="flex w-full items-center rounded-sm px-3 py-2 text-sm hover:bg-accent"
                   onClick={() => {
-                    onExport('markdown');
+                    onExport("markdown");
                     setShowExportMenu(false);
                   }}
                   data-testid="export-markdown-btn"
                 >
-                  {t('chat.exportMarkdown')}
+                  {t("chat.exportMarkdown")}
                 </button>
                 <button
                   className="flex w-full items-center rounded-sm px-3 py-2 text-sm hover:bg-accent"
                   onClick={() => {
-                    onExport('json');
+                    onExport("json");
                     setShowExportMenu(false);
                   }}
                   data-testid="export-json-btn"
                 >
-                  {t('chat.exportJson')}
+                  {t("chat.exportJson")}
                 </button>
               </div>
             )}
@@ -123,7 +140,7 @@ export function ChatHeader({
           className="shrink-0"
         >
           <MessageSquarePlus className="h-4 w-4 sm:mr-2" />
-          <span className="hidden sm:inline">{t('chat.newChat')}</span>
+          <span className="hidden sm:inline">{t("chat.newChat")}</span>
         </Button>
       </div>
     </div>

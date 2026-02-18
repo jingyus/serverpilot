@@ -21,6 +21,7 @@ export default defineConfig({
       '**/dist/**',
       'openclaw-modules/**',
       'packages/dashboard/**',
+      'packages/cloud/**',
     ],
     testTimeout: 30000,
     hookTimeout: 10000,

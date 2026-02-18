@@ -38,8 +38,8 @@ const MAX_TURNS = 25;
 /** Maximum estimated tokens for the messages array before trimming */
 const MAX_MESSAGES_TOKENS = 150_000;
 
-/** Default model */
-const DEFAULT_MODEL = "claude-sonnet-4-20250514";
+/** Default model（使用官方别名，兼容性更好） */
+const DEFAULT_MODEL = "claude-sonnet-4-5";
 
 /** Shared abort flag — set by onAbort / writeSSE failure, read at every async boundary. */
 class AbortState implements AbortStateInterface {
@@ -386,7 +386,9 @@ export class AgenticChatEngine {
 const ERROR_MESSAGES: Record<ErrorCategory, string> = {
   authentication: "请检查 AI Provider API Key 设置，当前密钥无效或已过期。",
   rate_limit: "AI 服务请求过于频繁，请稍后重试。",
-  invalid_request: "对话过长，建议新建会话后重试。",
+  invalid_request:
+    "请求无效，请检查 AI 模型与参数设置；若问题持续请查看服务端日志。",
+  context_length_exceeded: "对话过长，建议新建会话后重试。",
   timeout: "AI 服务响应超时，请稍后重试。",
   network: "网络连接异常，请检查服务器网络配置。",
   overloaded: "AI 服务暂时不可用，请稍后重试。",
@@ -394,11 +396,24 @@ const ERROR_MESSAGES: Record<ErrorCategory, string> = {
   unknown: "执行过程中发生错误",
 };
 
+/** 错误内容中若出现这些关键词，提示用户可能是代理/Base URL 导致请求被转发到错误后端 */
+const PROXY_MISROUTE_HINT =
+  "\n\n若错误中出现其他提供商名称（如 deepseek）或 claude-code-router，可能是使用了自定义 API 代理（如 ANTHROPIC_BASE_URL）将请求转发到了错误的后端，请检查环境变量与代理配置，或关闭代理直连 Anthropic。";
+
 export function getUserFacingErrorMessage(error: unknown): string {
   const classification = classifyError(error);
   const base = ERROR_MESSAGES[classification.category];
+  // unknown 与 invalid_request 时附带原始信息，便于排查「新会话仍报错」等场景
   if (classification.category === "unknown") {
     return `${base}: ${classification.message}`;
+  }
+  if (classification.category === "invalid_request" && classification.message) {
+    const detail = `详细原因：${classification.message}`;
+    const mayBeProxy =
+      /provider\s*\(|deepseek|claude-code-router|musistudio/i.test(
+        classification.message,
+      );
+    return `${base}\n\n${detail}${mayBeProxy ? PROXY_MISROUTE_HINT : ""}`;
   }
   return base;
 }

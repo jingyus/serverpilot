@@ -39,25 +39,25 @@ export interface ValidateApiKeyOptions {
  * These are values commonly seen in .env.example files or documentation.
  */
 const PLACEHOLDER_VALUES = [
-  'your_anthropic_api_key_here',
-  'your_api_key_here',
-  'sk-ant-xxxx',
-  'sk-ant-xxx',
-  'your-api-key',
-  'your_api_key',
-  'CHANGE_ME',
-  'changeme',
-  'placeholder',
-  'TODO',
-  'xxx',
-  'test',
+  "your_anthropic_api_key_here",
+  "your_api_key_here",
+  "sk-ant-xxxx",
+  "sk-ant-xxx",
+  "your-api-key",
+  "your_api_key",
+  "CHANGE_ME",
+  "changeme",
+  "placeholder",
+  "TODO",
+  "xxx",
+  "test",
 ];
 
 /**
  * Valid Anthropic API key prefixes.
  * Anthropic keys start with "sk-ant-" followed by a type indicator.
  */
-const VALID_KEY_PREFIXES = ['sk-ant-api03-', 'sk-ant-'];
+const VALID_KEY_PREFIXES = ["sk-ant-api03-", "sk-ant-"];
 
 /** Minimum length for a valid Anthropic API key */
 const MIN_KEY_LENGTH = 20;
@@ -78,12 +78,15 @@ const MIN_KEY_LENGTH = 20;
  * @param apiKey - The API key to validate
  * @returns Validation result with error message if invalid
  */
-export function validateApiKeyFormat(apiKey: string | undefined): ApiKeyValidationResult {
+export function validateApiKeyFormat(
+  apiKey: string | undefined,
+): ApiKeyValidationResult {
   // Check presence
   if (!apiKey || apiKey.trim().length === 0) {
     return {
       valid: false,
-      error: 'ANTHROPIC_API_KEY is not set. Please set it in your .env file or environment variables.',
+      error:
+        "ANTHROPIC_API_KEY is not set. Please set it in your .env file or environment variables.",
     };
   }
 
@@ -93,7 +96,8 @@ export function validateApiKeyFormat(apiKey: string | undefined): ApiKeyValidati
   if (isPlaceholder(trimmedKey)) {
     return {
       valid: false,
-      error: 'ANTHROPIC_API_KEY contains a placeholder value. Please replace it with your actual API key.',
+      error:
+        "ANTHROPIC_API_KEY contains a placeholder value. Please replace it with your actual API key.",
     };
   }
 
@@ -101,7 +105,8 @@ export function validateApiKeyFormat(apiKey: string | undefined): ApiKeyValidati
   if (!hasValidPrefix(trimmedKey)) {
     return {
       valid: false,
-      error: 'ANTHROPIC_API_KEY has an invalid format. Anthropic API keys start with "sk-ant-".',
+      error:
+        'ANTHROPIC_API_KEY has an invalid format. Anthropic API keys start with "sk-ant-".',
     };
   }
 
@@ -141,17 +146,17 @@ export async function validateApiKeyLive(
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
         headers: {
-          'x-api-key': apiKey.trim(),
-          'anthropic-version': '2023-06-01',
-          'content-type': 'application/json',
+          "x-api-key": apiKey.trim(),
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json",
         },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
+          model: "claude-sonnet-4-5",
           max_tokens: 1,
-          messages: [{ role: 'user', content: 'hi' }],
+          messages: [{ role: "user", content: "hi" }],
         }),
         signal: controller.signal,
       });
@@ -159,20 +164,26 @@ export async function validateApiKeyLive(
       if (response.status === 401) {
         return {
           valid: false,
-          error: 'ANTHROPIC_API_KEY is invalid or has been revoked. Please check your API key.',
+          error:
+            "ANTHROPIC_API_KEY is invalid or has been revoked. Please check your API key.",
         };
       }
 
       if (response.status === 403) {
         return {
           valid: false,
-          error: 'ANTHROPIC_API_KEY does not have permission to access the API. Check your account status.',
+          error:
+            "ANTHROPIC_API_KEY does not have permission to access the API. Check your account status.",
         };
       }
 
       // 200 or 429 (rate limited) means the key is valid
       // 400 is also acceptable (means auth passed but request was bad)
-      if (response.status === 200 || response.status === 429 || response.status === 400) {
+      if (
+        response.status === 200 ||
+        response.status === 429 ||
+        response.status === 400
+      ) {
         return { valid: true };
       }
 
@@ -185,7 +196,7 @@ export async function validateApiKeyLive(
       clearTimeout(timeout);
     }
   } catch (err) {
-    if (err instanceof Error && err.name === 'AbortError') {
+    if (err instanceof Error && err.name === "AbortError") {
       return {
         valid: false,
         error: `API key validation timed out after ${timeoutMs}ms. Check your network connection.`,
