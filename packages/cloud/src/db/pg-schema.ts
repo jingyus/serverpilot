@@ -73,7 +73,7 @@ export const tenants = pgTable(
     name: text('name').notNull(),
     slug: text('slug').notNull().unique(),
     ownerId: text('owner_id').notNull(),
-    plan: text('plan', { enum: ['free', 'pro', 'enterprise'] })
+    plan: text('plan', { enum: ['free', 'pro', 'team', 'enterprise'] })
       .default('free')
       .notNull(),
     maxServers: integer('max_servers').default(5).notNull(),
@@ -755,5 +755,106 @@ export const docSourceHistory = pgTable(
     index('pg_doc_source_history_source_id_idx').on(table.sourceId),
     index('pg_doc_source_history_user_id_idx').on(table.userId),
     index('pg_doc_source_history_created_at_idx').on(table.createdAt),
+  ],
+);
+
+// ============================================================================
+// Subscriptions (Stripe)
+// ============================================================================
+
+export const subscriptions = pgTable(
+  'subscriptions',
+  {
+    id: integer('id').primaryKey().generatedByDefaultAsIdentity(),
+    tenantId: text('tenant_id')
+      .references(() => tenants.id, { onDelete: 'cascade' })
+      .notNull()
+      .unique(),
+    userId: text('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+    plan: text('plan', { enum: ['free', 'pro', 'team', 'enterprise'] })
+      .default('free')
+      .notNull(),
+    status: text('status', {
+      enum: ['incomplete', 'active', 'past_due', 'canceled', 'unpaid'],
+    })
+      .default('incomplete')
+      .notNull(),
+    stripeSubscriptionId: text('stripe_subscription_id'),
+    stripeCustomerId: text('stripe_customer_id'),
+    currentPeriodStart: timestamp('current_period_start', { mode: 'date' }),
+    currentPeriodEnd: timestamp('current_period_end', { mode: 'date' }),
+    cancelAtPeriodEnd: boolean('cancel_at_period_end').default(false).notNull(),
+    createdAt: timestamp('created_at', { mode: 'date' }).notNull(),
+    updatedAt: timestamp('updated_at', { mode: 'date' }).notNull(),
+  },
+  (table) => [
+    index('pg_subscriptions_tenant_id_idx').on(table.tenantId),
+    index('pg_subscriptions_user_id_idx').on(table.userId),
+    index('pg_subscriptions_stripe_subscription_id_idx').on(table.stripeSubscriptionId),
+    index('pg_subscriptions_status_idx').on(table.status),
+  ],
+);
+
+// ============================================================================
+// AI Usage (Cost Tracking)
+// ============================================================================
+
+export const aiUsage = pgTable(
+  'ai_usage',
+  {
+    id: integer('id').primaryKey().generatedByDefaultAsIdentity(),
+    userId: text('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+    tenantId: text('tenant_id')
+      .references(() => tenants.id, { onDelete: 'cascade' })
+      .notNull(),
+    model: text('model').notNull(), // claude-haiku-4-5, claude-sonnet-4-5, claude-opus-4-6
+    inputTokens: integer('input_tokens').default(0).notNull(),
+    outputTokens: integer('output_tokens').default(0).notNull(),
+    cost: bigint('cost', { mode: 'number' }).notNull(), // stored as cents/basis points
+    createdAt: timestamp('created_at', { mode: 'date' }).notNull(),
+  },
+  (table) => [
+    index('pg_ai_usage_user_id_idx').on(table.userId),
+    index('pg_ai_usage_tenant_id_idx').on(table.tenantId),
+    index('pg_ai_usage_model_idx').on(table.model),
+    index('pg_ai_usage_created_at_idx').on(table.createdAt),
+    index('pg_ai_usage_user_created_idx').on(table.userId, table.createdAt),
+    index('pg_ai_usage_tenant_created_idx').on(table.tenantId, table.createdAt),
+  ],
+);
+
+// ============================================================================
+// Skill Executions
+// ============================================================================
+
+export const skillExecutions = pgTable(
+  'skill_executions',
+  {
+    id: integer('id').primaryKey().generatedByDefaultAsIdentity(),
+    userId: text('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+    tenantId: text('tenant_id')
+      .references(() => tenants.id, { onDelete: 'cascade' })
+      .notNull(),
+    serverId: text('server_id')
+      .references(() => servers.id, { onDelete: 'cascade' })
+      .notNull(),
+    skillName: text('skill_name').notNull(),
+    status: text('status', { enum: ['success', 'failed'] }).notNull(),
+    report: jsonb('report').$type<Record<string, unknown> | null>(),
+    duration: integer('duration'),
+    createdAt: timestamp('created_at', { mode: 'date' }).notNull(),
+  },
+  (table) => [
+    index('pg_skill_executions_user_id_idx').on(table.userId),
+    index('pg_skill_executions_tenant_id_idx').on(table.tenantId),
+    index('pg_skill_executions_server_id_idx').on(table.serverId),
+    index('pg_skill_executions_skill_name_idx').on(table.skillName),
+    index('pg_skill_executions_created_at_idx').on(table.createdAt),
   ],
 );
