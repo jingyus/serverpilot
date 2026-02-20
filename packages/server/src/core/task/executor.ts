@@ -13,26 +13,29 @@
  * @module core/task/executor
  */
 
-import { randomUUID } from 'node:crypto';
-import { z } from 'zod';
-
-import type { InstallServer } from '../../api/server.js';
-import { createMessage, MessageType } from '@aiinstaller/shared';
-import type { StepResult } from '@aiinstaller/shared';
+import { randomUUID } from "node:crypto";
+import { z } from "zod";
+import { createMessage, MessageType } from "@aiinstaller/shared";
+import type { StepResult } from "@aiinstaller/shared";
+import type { InstallServer } from "../../api/server.js";
 import {
   getOperationRepository,
   type OperationRepository,
   type RiskLevel,
   type OperationType,
-} from '../../db/repositories/operation-repository.js';
+} from "../../db/repositories/operation-repository.js";
 import {
   getTaskRepository,
   type TaskRepository,
   type TaskRunStatus,
-} from '../../db/repositories/task-repository.js';
-import type { SnapshotService } from '../snapshot/snapshot-service.js';
-import { createContextLogger, logError } from '../../utils/logger.js';
-import { getWebhookDispatcher } from '../webhook/dispatcher.js';
+} from "../../db/repositories/task-repository.js";
+import type { SnapshotService } from "../snapshot/snapshot-service.js";
+import { createContextLogger, logError } from "../../utils/logger.js";
+import { getWebhookDispatcher } from "../webhook/dispatcher.js";
+import {
+  getCommandApprovalService,
+  type CommandApprovalService,
+} from "../approvals/approval-service.js";
 
 // ============================================================================
 // Constants
@@ -58,15 +61,22 @@ export const ExecuteCommandInputSchema = z.object({
   /** Human-readable description */
   description: z.string().min(1),
   /** Risk level classification */
-  riskLevel: z.enum(['green', 'yellow', 'red', 'critical']),
+  riskLevel: z.enum(["green", "yellow", "red", "critical"]),
   /** Operation type */
-  type: z.enum(['install', 'config', 'restart', 'execute', 'backup']).default('execute'),
+  type: z
+    .enum(["install", "config", "restart", "execute", "backup"])
+    .default("execute"),
   /** Session ID (if triggered from a chat session) */
   sessionId: z.string().optional(),
   /** Task ID (if triggered from a scheduled task) */
   taskId: z.string().optional(),
   /** Timeout in milliseconds */
-  timeoutMs: z.number().int().positive().max(MAX_TIMEOUT_MS).default(DEFAULT_TIMEOUT_MS),
+  timeoutMs: z
+    .number()
+    .int()
+    .positive()
+    .max(MAX_TIMEOUT_MS)
+    .default(DEFAULT_TIMEOUT_MS),
 });
 
 export type ExecuteCommandInput = z.infer<typeof ExecuteCommandInputSchema>;
@@ -81,14 +91,23 @@ export const ExecutePlanInputSchema = z.object({
   /** Session ID */
   sessionId: z.string().optional(),
   /** Steps to execute sequentially */
-  steps: z.array(z.object({
-    command: z.string().min(1),
-    description: z.string().min(1),
-    riskLevel: z.enum(['green', 'yellow', 'red', 'critical']),
-    timeoutMs: z.number().int().positive().max(MAX_TIMEOUT_MS).default(DEFAULT_TIMEOUT_MS),
-    /** Whether to continue if this step fails */
-    continueOnError: z.boolean().default(false),
-  })).min(1),
+  steps: z
+    .array(
+      z.object({
+        command: z.string().min(1),
+        description: z.string().min(1),
+        riskLevel: z.enum(["green", "yellow", "red", "critical"]),
+        timeoutMs: z
+          .number()
+          .int()
+          .positive()
+          .max(MAX_TIMEOUT_MS)
+          .default(DEFAULT_TIMEOUT_MS),
+        /** Whether to continue if this step fails */
+        continueOnError: z.boolean().default(false),
+      }),
+    )
+    .min(1),
 });
 
 export type ExecutePlanInput = z.infer<typeof ExecutePlanInputSchema>;
@@ -98,7 +117,13 @@ export type ExecutePlanInput = z.infer<typeof ExecutePlanInputSchema>;
 // ============================================================================
 
 /** Status of a single command execution */
-export type ExecutionStatus = 'pending' | 'running' | 'success' | 'failed' | 'timeout' | 'cancelled';
+export type ExecutionStatus =
+  | "pending"
+  | "running"
+  | "success"
+  | "failed"
+  | "timeout"
+  | "cancelled";
 
 /** Tracked state of a command in flight */
 export interface ExecutionState {
@@ -187,7 +212,7 @@ export class TaskExecutor {
    * @deprecated Use `addProgressListener(listenerId, callback)` / `removeProgressListener(listenerId)` instead.
    * Kept for backward compatibility — internally stored under key '__legacy__'.
    */
-  private static readonly LEGACY_KEY = '__legacy__';
+  private static readonly LEGACY_KEY = "__legacy__";
 
   /** Optional snapshot service for pre-operation snapshots */
   private snapshotService: SnapshotService | null = null;
@@ -221,11 +246,13 @@ export class TaskExecutor {
    * @param rawInput - Command execution parameters
    * @returns The execution result
    */
-  async executeCommand(rawInput: ExecuteCommandInput): Promise<ExecutionResult> {
+  async executeCommand(
+    rawInput: ExecuteCommandInput,
+  ): Promise<ExecutionResult> {
     const input = ExecuteCommandInputSchema.parse(rawInput);
 
     if (this.executions.size >= MAX_CONCURRENT_EXECUTIONS) {
-      return this.createErrorResult('Max concurrent executions reached');
+      return this.createErrorResult("Max concurrent executions reached");
     }
 
     const logger = createContextLogger({
@@ -233,6 +260,42 @@ export class TaskExecutor {
       clientId: input.clientId,
       userId: input.userId,
     });
+
+    // 0. Check if command requires approval (RED/CRITICAL risk level)
+    const approvalService = getCommandApprovalService();
+    const approvalResult = await approvalService.checkApproval({
+      userId: input.userId,
+      serverId: input.serverId,
+      command: input.command,
+      riskLevel: input.riskLevel,
+      reason: `Command classified as ${input.riskLevel} risk`,
+      executionContext: {
+        sessionId: input.sessionId,
+        taskId: input.taskId,
+      },
+    });
+
+    if (approvalResult.required && !approvalResult.approved) {
+      logger.warn(
+        {
+          command: input.command,
+          riskLevel: input.riskLevel,
+          error: approvalResult.error,
+        },
+        "Command execution rejected - approval required but not granted",
+      );
+      return this.createErrorResult(
+        approvalResult.error ??
+          "Command requires approval but was not approved",
+      );
+    }
+
+    if (approvalResult.approved && approvalResult.approvalId) {
+      logger.info(
+        { approvalId: approvalResult.approvalId },
+        "Command approved - proceeding with execution",
+      );
+    }
 
     // 1. Create operation record for audit trail
     const operation = await this.operationRepo.create({
@@ -247,29 +310,33 @@ export class TaskExecutor {
 
     // 2. Create pre-operation snapshot if needed (YELLOW+ risk level)
     let snapshotId: string | undefined;
-    if (this.snapshotService && this.snapshotService.requiresSnapshot(input.riskLevel)) {
+    if (
+      this.snapshotService &&
+      this.snapshotService.requiresSnapshot(input.riskLevel)
+    ) {
       logger.info(
         { command: input.command, riskLevel: input.riskLevel },
-        'Creating pre-operation snapshot',
+        "Creating pre-operation snapshot",
       );
 
-      const snapshotResult = await this.snapshotService.createPreOperationSnapshot({
-        serverId: input.serverId,
-        userId: input.userId,
-        clientId: input.clientId,
-        command: input.command,
-        riskLevel: input.riskLevel,
-        operationId: operation.id,
-      });
+      const snapshotResult =
+        await this.snapshotService.createPreOperationSnapshot({
+          serverId: input.serverId,
+          userId: input.userId,
+          clientId: input.clientId,
+          command: input.command,
+          riskLevel: input.riskLevel,
+          operationId: operation.id,
+        });
 
       if (snapshotResult.success && snapshotResult.snapshot) {
         snapshotId = snapshotResult.snapshot.id;
-        logger.info({ snapshotId }, 'Pre-operation snapshot created');
+        logger.info({ snapshotId }, "Pre-operation snapshot created");
       } else if (!snapshotResult.skipped) {
         // Snapshot failed but was required — log warning, continue execution
         logger.warn(
           { error: snapshotResult.error },
-          'Pre-operation snapshot failed, proceeding without snapshot',
+          "Pre-operation snapshot failed, proceeding without snapshot",
         );
       }
     }
@@ -280,14 +347,17 @@ export class TaskExecutor {
     const executionId = randomUUID();
     const stepId = randomUUID();
 
-    logger.info({
-      executionId,
-      operationId: operation.id,
-      command: input.command,
-      riskLevel: input.riskLevel,
-      timeoutMs: input.timeoutMs,
-      snapshotId,
-    }, 'Dispatching command to agent');
+    logger.info(
+      {
+        executionId,
+        operationId: operation.id,
+        command: input.command,
+        riskLevel: input.riskLevel,
+        timeoutMs: input.timeoutMs,
+        snapshotId,
+      },
+      "Dispatching command to agent",
+    );
 
     // 4. Send command to agent and wait for result
     const result = await new Promise<ExecutionResult>((resolve) => {
@@ -298,7 +368,7 @@ export class TaskExecutor {
         serverId: input.serverId,
         userId: input.userId,
         command: input.command,
-        status: 'running',
+        status: "running",
         startedAt: Date.now(),
         timeoutHandle: null,
         resolve,
@@ -315,25 +385,29 @@ export class TaskExecutor {
 
       // Send step.execute message to the agent
       try {
-        this.server.send(input.clientId, createMessage(
-          MessageType.STEP_EXECUTE,
-          {
+        this.server.send(
+          input.clientId,
+          createMessage(MessageType.STEP_EXECUTE, {
             id: stepId,
             description: input.description,
             command: input.command,
             timeout: input.timeoutMs,
             canRollback: !!snapshotId,
-            onError: 'abort',
-          },
-        ));
-        this.notifyProgress(executionId, 'running');
+            onError: "abort",
+          }),
+        );
+        this.notifyProgress(executionId, "running");
       } catch (err) {
         this.cleanup(executionId);
-        resolve(this.createErrorResult(
-          err instanceof Error ? err.message : 'Failed to send command to agent',
-          executionId,
-          operation.id,
-        ));
+        resolve(
+          this.createErrorResult(
+            err instanceof Error
+              ? err.message
+              : "Failed to send command to agent",
+            executionId,
+            operation.id,
+          ),
+        );
       }
     });
 
@@ -341,7 +415,9 @@ export class TaskExecutor {
     result.snapshotId = snapshotId;
 
     // 5. Update operation record with result
-    const opStatus = result.success ? 'success' as const : 'failed' as const;
+    const opStatus = result.success
+      ? ("success" as const)
+      : ("failed" as const);
     const output = this.formatOutput(result);
     await this.operationRepo.markComplete(
       operation.id,
@@ -356,7 +432,7 @@ export class TaskExecutor {
       await this.taskRepo.updateRunResult(
         input.taskId,
         input.userId,
-        result.success ? 'success' : 'failed',
+        result.success ? "success" : "failed",
         null,
       );
     }
@@ -366,7 +442,7 @@ export class TaskExecutor {
       const dispatcher = getWebhookDispatcher();
       if (input.taskId) {
         await dispatcher.dispatch({
-          type: 'task.completed',
+          type: "task.completed",
           userId: input.userId,
           data: {
             taskId: input.taskId,
@@ -380,7 +456,7 @@ export class TaskExecutor {
       }
       if (!result.success) {
         await dispatcher.dispatch({
-          type: 'operation.failed',
+          type: "operation.failed",
           userId: input.userId,
           data: {
             operationId: operation.id,
@@ -393,15 +469,22 @@ export class TaskExecutor {
         });
       }
     } catch (webhookErr) {
-      logError(webhookErr as Error, { executionId }, 'Failed to dispatch webhook event');
+      logError(
+        webhookErr as Error,
+        { executionId },
+        "Failed to dispatch webhook event",
+      );
     }
 
-    logger.info({
-      executionId,
-      success: result.success,
-      exitCode: result.exitCode,
-      duration: result.duration,
-    }, 'Command execution completed');
+    logger.info(
+      {
+        executionId,
+        success: result.success,
+        exitCode: result.exitCode,
+        duration: result.duration,
+      },
+      "Command execution completed",
+    );
 
     return result;
   }
@@ -432,7 +515,7 @@ export class TaskExecutor {
         command: step.command,
         description: step.description,
         riskLevel: step.riskLevel,
-        type: 'execute',
+        type: "execute",
         timeoutMs: step.timeoutMs,
       });
 
@@ -483,7 +566,7 @@ export class TaskExecutor {
       timedOut: false,
     };
 
-    state.status = result.success ? 'success' : 'failed';
+    state.status = result.success ? "success" : "failed";
     this.notifyProgress(executionId, state.status);
     this.cleanup(executionId);
     state.resolve(result);
@@ -505,7 +588,7 @@ export class TaskExecutor {
     const executionId = this.stepToExecution.get(stepId);
     if (!executionId) return false;
 
-    this.notifyProgress(executionId, 'running', output);
+    this.notifyProgress(executionId, "running", output);
     return true;
   }
 
@@ -517,9 +600,9 @@ export class TaskExecutor {
    */
   cancelExecution(executionId: string): boolean {
     const state = this.executions.get(executionId);
-    if (!state || state.status !== 'running') return false;
+    if (!state || state.status !== "running") return false;
 
-    state.status = 'cancelled';
+    state.status = "cancelled";
     const duration = Date.now() - state.startedAt;
 
     const result: ExecutionResult = {
@@ -527,14 +610,14 @@ export class TaskExecutor {
       executionId,
       operationId: state.operationId,
       exitCode: -1,
-      stdout: '',
-      stderr: 'Execution cancelled by user',
+      stdout: "",
+      stderr: "Execution cancelled by user",
       duration,
       timedOut: false,
-      error: 'Cancelled',
+      error: "Cancelled",
     };
 
-    this.notifyProgress(executionId, 'cancelled');
+    this.notifyProgress(executionId, "cancelled");
     this.cleanup(executionId);
     state.resolve(result);
     return true;
@@ -564,7 +647,10 @@ export class TaskExecutor {
    * @param listenerId - Unique ID for this listener (e.g. planId or sessionId)
    * @param callback - Progress callback function
    */
-  addProgressListener(listenerId: string, callback: ExecutionProgressCallback): void {
+  addProgressListener(
+    listenerId: string,
+    callback: ExecutionProgressCallback,
+  ): void {
     this.progressListeners.set(listenerId, callback);
   }
 
@@ -597,8 +683,8 @@ export class TaskExecutor {
    */
   shutdown(): void {
     for (const [executionId, state] of this.executions.entries()) {
-      if (state.status === 'running') {
-        state.status = 'cancelled';
+      if (state.status === "running") {
+        state.status = "cancelled";
         const duration = Date.now() - state.startedAt;
 
         state.resolve({
@@ -606,11 +692,11 @@ export class TaskExecutor {
           executionId,
           operationId: state.operationId,
           exitCode: -1,
-          stdout: '',
-          stderr: 'Server shutting down',
+          stdout: "",
+          stderr: "Server shutting down",
           duration,
           timedOut: false,
-          error: 'Server shutdown',
+          error: "Server shutdown",
         });
       }
       this.cleanup(executionId);
@@ -624,9 +710,9 @@ export class TaskExecutor {
 
   private handleTimeout(executionId: string): void {
     const state = this.executions.get(executionId);
-    if (!state || state.status !== 'running') return;
+    if (!state || state.status !== "running") return;
 
-    state.status = 'timeout';
+    state.status = "timeout";
     const duration = Date.now() - state.startedAt;
 
     const logger = createContextLogger({
@@ -635,23 +721,26 @@ export class TaskExecutor {
       serverId: state.serverId,
     });
 
-    logger.warn({
-      command: state.command,
-      duration,
-    }, 'Command execution timed out');
+    logger.warn(
+      {
+        command: state.command,
+        duration,
+      },
+      "Command execution timed out",
+    );
 
     const result: ExecutionResult = {
       success: false,
       executionId,
       operationId: state.operationId,
       exitCode: -1,
-      stdout: '',
-      stderr: 'Command execution timed out',
+      stdout: "",
+      stderr: "Command execution timed out",
       duration,
       timedOut: true,
     };
 
-    this.notifyProgress(executionId, 'timeout');
+    this.notifyProgress(executionId, "timeout");
     this.cleanup(executionId);
     state.resolve(result);
   }
@@ -695,8 +784,8 @@ export class TaskExecutor {
     if (result.stdout) parts.push(`[stdout]\n${result.stdout}`);
     if (result.stderr) parts.push(`[stderr]\n${result.stderr}`);
     if (result.error) parts.push(`[error]\n${result.error}`);
-    if (result.timedOut) parts.push('[timed out]');
-    return parts.join('\n\n') || '(no output)';
+    if (result.timedOut) parts.push("[timed out]");
+    return parts.join("\n\n") || "(no output)";
   }
 
   private createErrorResult(
@@ -706,10 +795,10 @@ export class TaskExecutor {
   ): ExecutionResult {
     return {
       success: false,
-      executionId: executionId ?? '',
-      operationId: operationId ?? '',
+      executionId: executionId ?? "",
+      operationId: operationId ?? "",
       exitCode: -1,
-      stdout: '',
+      stdout: "",
       stderr: error,
       duration: 0,
       timedOut: false,
@@ -733,7 +822,9 @@ let _instance: TaskExecutor | null = null;
 export function getTaskExecutor(server?: InstallServer): TaskExecutor {
   if (!_instance) {
     if (!server) {
-      throw new Error('TaskExecutor not initialized — provide an InstallServer on first call');
+      throw new Error(
+        "TaskExecutor not initialized — provide an InstallServer on first call",
+      );
     }
     _instance = new TaskExecutor(server);
   }

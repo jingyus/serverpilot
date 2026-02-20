@@ -40,7 +40,8 @@
     "expandSidebar": "展开侧边栏",
     "collapseSidebar": "折叠侧边栏",
     "notifications": "通知",
-    "serverDetail": "服务器详情"
+    "serverDetail": "服务器详情",
+    "language": "语言"
   },
   "connection": {
     "connected": "已连接",
@@ -253,7 +254,11 @@
     "metadata": "元数据",
     "created": "创建时间",
     "lastUpdated": "最后更新",
-    "lastUsed": "最后使用"
+    "lastUsed": "最后使用",
+    "searchTab": "搜索",
+    "manageTab": "管理",
+    "documentSources": "文档源",
+    "documentSourcesDesc": "配置知识库的文档源"
   },
   "settings": {
     "title": "设置",
@@ -348,7 +353,12 @@
     "ragIndexedDocs": "{{count}} 个文档已索引",
     "configureProvider": "去配置",
     "lastChecked": "最后检查",
-    "systemStatusUnavailable": "无法获取系统状态"
+    "systemStatusUnavailable": "无法获取系统状态",
+    "aiProviderTab": "AI 模型",
+    "notificationsTab": "通知",
+    "profileTab": "用户资料",
+    "securityTab": "安全设置",
+    "systemTab": "系统状态"
   },
   "login": {
     "appName": "ServerPilot",
@@ -679,5 +689,9 @@
     "title": "页面未找到",
     "description": "您访问的页面不存在或已被移动。",
     "backHome": "返回仪表盘"
+  },
+  "userMenu": {
+    "profile": "用户资料",
+    "security": "安全设置"
   }
 }

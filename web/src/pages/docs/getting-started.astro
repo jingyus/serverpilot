@@ -1,0 +1,258 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import CheckIcon from '../../components/CheckIcon.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+---
+
+<BaseLayout title="快速开始" description="5 分钟内安装并配置 ServerPilot">
+  <!-- BreadcrumbList 结构化数据 -->
+  <script is:inline type="application/ld+json" set:html={JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "首页", "item": "https://serverpilot.ai/" },
+      { "@type": "ListItem", "position": 2, "name": "文档", "item": "https://serverpilot.ai/docs/" },
+      { "@type": "ListItem", "position": 3, "name": "快速开始" }
+    ]
+  })} />
+
+  <section class="container mx-auto px-6 py-20">
+    <div class="max-w-3xl mx-auto">
+      <!-- 面包屑导航 -->
+      <nav class="text-sm text-gray-500 mb-8">
+        <a href="/docs" class="hover:text-primary-600">文档</a>
+        <span class="mx-2">/</span>
+        <span class="text-gray-900">快速开始</span>
+      </nav>
+
+      <h1 class="text-4xl font-bold mb-4">快速开始（开发环境）</h1>
+      <p class="text-gray-600 text-lg mb-4">5 分钟内完成 ServerPilot 的源码安装与首次配置，开始使用 AI 驱动的服务器管理。</p>
+      <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800 mb-8">
+        <strong>提示：</strong>本指南适用于<strong>开发者和贡献者</strong>，通过源码搭建开发环境。如果你只需部署使用，推荐使用 <a href="/download" class="text-primary-600 hover:underline font-medium">Docker 快速部署</a>方式，无需安装 Node.js 环境。
+      </div>
+
+      <!-- 页内目录 -->
+      <nav class="border rounded-lg p-5 mb-12">
+        <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">目录</h2>
+        <ol class="list-decimal list-inside space-y-2 text-sm">
+          <li><a href="#requirements" class="text-primary-600 hover:text-primary-700 hover:underline">系统要求</a></li>
+          <li><a href="#installation" class="text-primary-600 hover:text-primary-700 hover:underline">安装指南</a></li>
+          <li><a href="#first-setup" class="text-primary-600 hover:text-primary-700 hover:underline">首次配置</a></li>
+        </ol>
+      </nav>
+
+      <!-- 系统要求 -->
+      <section id="requirements" class="mb-16">
+        <h2 class="text-2xl font-bold mb-6 flex items-center">
+          <span class="bg-primary-100 text-primary-600 rounded-lg w-8 h-8 flex items-center justify-center text-sm font-bold mr-3">1</span>
+          系统要求
+        </h2>
+
+        <div class="grid md:grid-cols-2 gap-6">
+          <div class="border rounded-lg p-5">
+            <h3 class="font-semibold mb-3">Server 端（控制中心）</h3>
+            <ul class="space-y-2 text-sm text-gray-600">
+              <li class="flex items-start">
+                <CheckIcon class="w-4 h-4 text-success mr-2 mt-0.5 flex-shrink-0" />
+                <span>Node.js 22 或更高版本</span>
+              </li>
+              <li class="flex items-start">
+                <CheckIcon class="w-4 h-4 text-success mr-2 mt-0.5 flex-shrink-0" />
+                <span>pnpm 9+（包管理器）</span>
+              </li>
+              <li class="flex items-start">
+                <CheckIcon class="w-4 h-4 text-success mr-2 mt-0.5 flex-shrink-0" />
+                <span>Linux / macOS（推荐 Ubuntu 22.04+）</span>
+              </li>
+              <li class="flex items-start">
+                <CheckIcon class="w-4 h-4 text-success mr-2 mt-0.5 flex-shrink-0" />
+                <span>至少 1GB 可用内存</span>
+              </li>
+            </ul>
+          </div>
+
+          <div class="border rounded-lg p-5">
+            <h3 class="font-semibold mb-3">Agent 端（被管理服务器）</h3>
+            <ul class="space-y-2 text-sm text-gray-600">
+              <li class="flex items-start">
+                <CheckIcon class="w-4 h-4 text-success mr-2 mt-0.5 flex-shrink-0" />
+                <span>Node.js 22 或更高版本</span>
+              </li>
+              <li class="flex items-start">
+                <CheckIcon class="w-4 h-4 text-success mr-2 mt-0.5 flex-shrink-0" />
+                <span>Linux / macOS / Windows (WSL)</span>
+              </li>
+              <li class="flex items-start">
+                <CheckIcon class="w-4 h-4 text-success mr-2 mt-0.5 flex-shrink-0" />
+                <span>可访问 Server 端的网络连接</span>
+              </li>
+              <li class="flex items-start">
+                <CheckIcon class="w-4 h-4 text-success mr-2 mt-0.5 flex-shrink-0" />
+                <span>至少 256MB 可用内存</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-800">
+          <strong>AI 功能提示：</strong>要使用 AI 对话驱动的运维功能，需要配置至少一个 AI 提供商的 API Key（支持 Claude、OpenAI、DeepSeek、Ollama）。
+        </div>
+      </section>
+
+      <!-- 安装指南 -->
+      <section id="installation" class="mb-16">
+        <h2 class="text-2xl font-bold mb-6 flex items-center">
+          <span class="bg-primary-100 text-primary-600 rounded-lg w-8 h-8 flex items-center justify-center text-sm font-bold mr-3">2</span>
+          安装指南
+        </h2>
+
+        <h3 class="text-lg font-semibold mb-3">克隆项目</h3>
+        <CodeBlock class="mb-6" code="git clone https://github.com/jingjinbao/ServerPilot.git\ncd ServerPilot">
+          <code>git clone https://github.com/jingjinbao/ServerPilot.git<br/>cd ServerPilot</code>
+        </CodeBlock>
+
+        <h3 class="text-lg font-semibold mb-3">安装依赖</h3>
+        <CodeBlock class="mb-6" code="pnpm install">
+          <code>pnpm install</code>
+        </CodeBlock>
+
+        <h3 class="text-lg font-semibold mb-3">配置环境变量</h3>
+        <p class="text-gray-600 text-sm mb-3">复制环境变量模板并填入必要配置：</p>
+        <CodeBlock class="mb-4" code="cp .env.example .env">
+          <code>cp .env.example .env</code>
+        </CodeBlock>
+        <div class="border rounded-lg overflow-hidden mb-6">
+          <table class="w-full text-sm">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="text-left px-4 py-2 font-semibold">变量</th>
+                <th class="text-left px-4 py-2 font-semibold">说明</th>
+                <th class="text-left px-4 py-2 font-semibold">必填</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y">
+              <tr>
+                <td class="px-4 py-2 font-mono text-xs">JWT_SECRET</td>
+                <td class="px-4 py-2 text-gray-600">JWT 签名密钥（任意随机字符串）</td>
+                <td class="px-4 py-2 text-green-600">是</td>
+              </tr>
+              <tr>
+                <td class="px-4 py-2 font-mono text-xs">AI_PROVIDER</td>
+                <td class="px-4 py-2 text-gray-600">AI 提供商：claude / openai / deepseek / ollama</td>
+                <td class="px-4 py-2 text-green-600">是</td>
+              </tr>
+              <tr>
+                <td class="px-4 py-2 font-mono text-xs">ANTHROPIC_API_KEY</td>
+                <td class="px-4 py-2 text-gray-600">Anthropic API 密钥（使用 Claude 时）</td>
+                <td class="px-4 py-2 text-gray-400">按需</td>
+              </tr>
+              <tr>
+                <td class="px-4 py-2 font-mono text-xs">OPENAI_API_KEY</td>
+                <td class="px-4 py-2 text-gray-600">OpenAI API 密钥（使用 OpenAI 时）</td>
+                <td class="px-4 py-2 text-gray-400">按需</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 class="text-lg font-semibold mb-3">启动开发服务器</h3>
+        <CodeBlock class="mb-3" code="pnpm dev">
+          <code>pnpm dev</code>
+        </CodeBlock>
+        <p class="text-gray-600 text-sm mb-3">开发模式下的访问地址：</p>
+        <ul class="text-sm text-gray-600 space-y-1 mb-6 ml-4">
+          <li>Dashboard（开发模式）: <code class="bg-gray-100 px-1.5 py-0.5 rounded text-gray-800">http://localhost:5173</code></li>
+          <li>Server API: <code class="bg-gray-100 px-1.5 py-0.5 rounded text-gray-800">http://localhost:3000</code></li>
+        </ul>
+        <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
+          <strong>注意：</strong>开发模式 Dashboard 端口为 5173（Vite 开发服务器）。Docker 生产部署时 Dashboard 端口为 3001，详见<a href="/download" class="text-primary-600 hover:underline font-medium">下载页安装说明</a>。
+        </div>
+      </section>
+
+      <!-- 首次配置 -->
+      <section id="first-setup" class="mb-16">
+        <h2 class="text-2xl font-bold mb-6 flex items-center">
+          <span class="bg-primary-100 text-primary-600 rounded-lg w-8 h-8 flex items-center justify-center text-sm font-bold mr-3">3</span>
+          首次配置
+        </h2>
+
+        <div class="space-y-8">
+          <div>
+            <h3 class="text-lg font-semibold mb-3">3.1 注册管理员账号</h3>
+            <p class="text-gray-600 text-sm mb-3">打开 Dashboard，首次访问时会跳转到注册页面。填入邮箱和密码创建管理员账号。</p>
+            <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
+              <strong>提示：</strong>第一个注册的用户自动成为 Owner（最高权限），后续用户默认为 Member 角色。
+            </div>
+          </div>
+
+          <div>
+            <h3 class="text-lg font-semibold mb-3">3.2 添加服务器</h3>
+            <p class="text-gray-600 text-sm mb-3">登录后进入 Dashboard，点击「添加服务器」按钮：</p>
+            <ol class="list-decimal list-inside space-y-2 text-sm text-gray-600 ml-4">
+              <li>输入服务器名称和描述</li>
+              <li>系统会生成一条安装命令（包含认证 Token）</li>
+              <li>在目标服务器上执行该命令，安装 Agent</li>
+              <li>Agent 启动后会自动连接 Server，服务器状态变为在线</li>
+            </ol>
+          </div>
+
+          <div>
+            <h3 class="text-lg font-semibold mb-3">3.3 开始 AI 对话</h3>
+            <p class="text-gray-600 text-sm mb-3">服务器上线后，点击进入服务器详情，选择「AI 对话」标签页。你可以用自然语言描述运维需求：</p>
+            <div class="bg-gray-50 rounded-lg p-4 space-y-3">
+              <div class="flex items-start gap-3">
+                <span class="bg-primary-100 text-primary-600 rounded-full px-2 py-0.5 text-xs font-semibold flex-shrink-0">示例</span>
+                <span class="text-sm text-gray-700">"帮我检查磁盘空间使用情况"</span>
+              </div>
+              <div class="flex items-start gap-3">
+                <span class="bg-primary-100 text-primary-600 rounded-full px-2 py-0.5 text-xs font-semibold flex-shrink-0">示例</span>
+                <span class="text-sm text-gray-700">"安装 Nginx 并配置反向代理到 3000 端口"</span>
+              </div>
+              <div class="flex items-start gap-3">
+                <span class="bg-primary-100 text-primary-600 rounded-full px-2 py-0.5 text-xs font-semibold flex-shrink-0">示例</span>
+                <span class="text-sm text-gray-700">"查看最近 1 小时的系统日志，分析是否有异常"</span>
+              </div>
+            </div>
+            <p class="text-gray-600 text-sm mt-3">AI 会自动分析需求、生成执行计划，并经过安全审核后在目标服务器上执行命令。所有操作都有完整的审计日志。</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 下一步 -->
+      <section class="bg-gray-50 rounded-lg p-8">
+        <h2 class="text-xl font-bold mb-4">下一步</h2>
+        <p class="text-gray-600 text-sm mb-6">完成基础配置后，你可以探索更多功能：</p>
+        <div class="grid sm:grid-cols-2 gap-4">
+          <div class="bg-white border rounded-lg p-4">
+            <h3 class="font-semibold text-sm mb-1">配置 AI 提供商</h3>
+            <p class="text-xs text-gray-500">在设置页面切换 AI 模型提供商，支持 Claude、OpenAI、DeepSeek 和 Ollama。</p>
+          </div>
+          <div class="bg-white border rounded-lg p-4">
+            <h3 class="font-semibold text-sm mb-1">设置 Webhook 通知</h3>
+            <p class="text-xs text-gray-500">配置 Webhook 接收任务完成、告警触发、服务器离线等事件通知。</p>
+          </div>
+          <div class="bg-white border rounded-lg p-4">
+            <h3 class="font-semibold text-sm mb-1">邀请团队成员</h3>
+            <p class="text-xs text-gray-500">通过邮件邀请团队成员加入，并分配 Owner / Admin / Member 角色。</p>
+          </div>
+          <div class="bg-white border rounded-lg p-4">
+            <h3 class="font-semibold text-sm mb-1">查看监控指标</h3>
+            <p class="text-xs text-gray-500">实时查看服务器 CPU、内存、磁盘等指标，支持 SSE 推送和历史数据。</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 页面底部导航 -->
+      <div class="mt-12 pt-8 border-t flex justify-between items-center">
+        <a href="/docs" class="text-sm text-gray-500 hover:text-primary-600 flex items-center">
+          <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+          返回文档中心
+        </a>
+        <a href="/download" class="text-sm text-primary-600 hover:text-primary-700 flex items-center">
+          Docker 部署方式
+          <svg class="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+        </a>
+      </div>
+    </div>
+  </section>
+</BaseLayout>

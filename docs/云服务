@@ -1,0 +1,613 @@
+# ServerPilot Cloud 云服务功能总结
+
+> **版本**: v2.0 (AI-Driven Platform) | **更新日期**: 2026-02-15
+
+---
+
+## 📋 目录
+
+- [核心定位](#核心定位)
+- [功能对比](#功能对比)
+- [Cloud 专属 AI Skills](#cloud-专属-ai-skills)
+- [定价策略](#定价策略)
+- [AI Gateway 方案](#ai-gateway-方案)
+- [技术架构](#技术架构)
+
+---
+
+## 🎯 核心定位
+
+### ServerPilot Cloud 是什么？
+
+**不是**传统 SaaS（服务器托管）：
+- ❌ 托管数据库（PostgreSQL）
+- ❌ 托管服务器基础设施
+- ❌ 自动备份（传统意义上的数据库备份）
+
+**而是** AI-Driven 专业运维平台：
+- ✅ 官方 AI 能力（用户无需配置 API Key）
+- ✅ 智能模型路由（自动选择最优模型，降低成本 60%）
+- ✅ 专业 Skills 库（AI 驱动的高级运维功能）
+- ✅ AI 成本优化（比用户自己购买 API 更便宜）
+
+### 核心价值主张
+
+用户付费购买的是 **AI 运维专家能力**，不是服务器托管。
+
+| 项目 | Self-Hosted | Cloud |
+|------|-------------|-------|
+| 核心功能（多服务器、团队、Webhook） | ✅ 100% 完整 | ✅ 100% 完整 |
+| AI API | ⚙️ 需要自己配置 | ✅ 官方提供（智能路由） |
+| AI Skills | ⚙️ 手动执行 | ✅ 自动巡检 + 主动告警 |
+| 成本 | $20/月（自己买 API） | $19/月（含 AI + Skills） |
+
+---
+
+## 🆚 功能对比
+
+### Self-Hosted vs Cloud
+
+| 功能类别 | Self-Hosted（开源版） | Cloud Free | Cloud Pro | Cloud Team | Cloud Enterprise |
+|---------|---------------------|-----------|-----------|-----------|-----------------|
+| **资源限制** |
+| 服务器数 | 无限 | 1 | 10 | 无限 | 无限 |
+| 用户数 | 无限 | 1 | 5 | 无限 | 无限 |
+| **核心功能** |
+| 多服务器管理 | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 团队协作（RBAC） | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Webhook 通知 | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 告警系统 | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 实时指标监控 | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 审计日志导出 | ✅ | ✅ | ✅ | ✅ | ✅ |
+| GitHub OAuth | ✅ ⚙️ | ✅ ⚙️ | ✅ | ✅ | ✅ |
+| **AI 能力** |
+| AI 对话额度 | ⚙️ 自己买 API | 100 次/月 | 2000 次/月 | 无限 | 无限 |
+| 智能模型路由 | ❌ | ❌ | ✅ | ✅ | ✅ |
+| 成本节省 | - | - | ~60% | ~60% | ~60% |
+| **AI Skills（AI Agent 自动化）** |
+| AI 日志巡检 | ⚙️ 手动执行 | ✅ 体验 | ✅ 自动每小时 | ✅ 自动每小时 | ✅ 自动每小时 |
+| AI 安全扫描 | ⚙️ 手动执行 | ✅ 体验 | ✅ 每日扫描 | ✅ 每日扫描 | ✅ 每日扫描 |
+| AI 性能优化 | ⚙️ 手动执行 | ❌ | ❌ | ✅ | ✅ |
+| AI 成本分析 | ⚙️ 手动执行 | ❌ | ❌ | ✅ | ✅ |
+| AI 备份建议 | ⚙️ 手动执行 | ❌ | ❌ | ✅ | ✅ |
+| 自动备份执行（Agent） | ❌ | ❌ | ✅ | ✅ + 测试恢复 | ✅ + DR 演练 |
+| 自定义 Skills | ❌ | ❌ | ❌ | ❌ | ✅ |
+| **AI Agent 主动运维** |
+| AI 周报生成 | ❌ | ❌ | ✅ | ✅ | ✅ |
+| AI 趋势分析 | ❌ | ❌ | ✅ | ✅ | ✅ |
+| AI 主动告警（问题预测） | ❌ | ❌ | ✅ | ✅ | ✅ |
+| AI 运维建议推送 | ❌ | ❌ | ✅ | ✅ | ✅ |
+| **Cloud 平台功能**（非 AI）|
+| 用户支持 | 社区 | 社区 | 邮件 | 邮件+Slack | 1h SLA + 专属顾问 |
+| Cloud 平台 SLA | - | - | - | - | 99.9%（我们平台） |
+| **企业增强（AI 生成）** |
+| SAML SSO 集成 | ❌ | ❌ | ❌ | ❌ | ✅ |
+| AI 合规报告生成 | ❌ | ❌ | ❌ | ❌ | ✅（基于审计数据）|
+| AI 灾难恢复演练 | ❌ | ❌ | ❌ | ❌ | ✅（完整 DR 测试）|
+| 私有 Cloud 部署 | ❌ | ❌ | ❌ | ❌ | ✅（企业专属）|
+
+⚙️ = 需要用户自己配置（如注册 GitHub OAuth App、购买 AI API）
+
+---
+
+## 🤖 Cloud 专属 AI Skills
+
+### 1. AI 日志巡检 (`/scan-logs`)
+
+**功能**：AI 自动分析服务器日志，识别潜在问题
+
+**Self-Hosted vs Cloud**：
+- Self-Hosted：用户手动执行 `/scan-logs` 命令，需要自己配置 AI API Key
+- Cloud Pro/Team：自动每小时巡检，发现 high/critical 问题自动告警
+- Cloud Team：额外提供周报邮件 + 长期趋势分析
+
+**AI 分析内容**：
+1. 性能瓶颈（慢查询、高 CPU、内存泄漏）
+2. 安全威胁（登录失败、可疑请求、权限异常）
+3. 配置错误（服务启动失败、依赖缺失、端口冲突）
+4. 容量问题（磁盘满、连接池耗尽、队列积压）
+
+**输出**：
+- 问题列表（分类、严重程度、证据、影响、修复建议）
+- 健康评分（0-100）
+- 长期趋势（仅 Cloud）
+
+### 2. AI 安全扫描 (`/security-audit`)
+
+**功能**：AI 审计服务器安全配置，检测漏洞和风险
+
+**AI 分析内容**：
+1. 已知漏洞（CVE 检测，对比 NVD 数据库）
+2. 配置风险（SSH、防火墙、权限）
+3. 异常行为（异常登录、可疑进程、未授权网络连接）
+
+**输出**：
+- 漏洞列表（CVE 编号、受影响包、修复版本）
+- 配置问题（类型、严重程度、修复步骤）
+- **自动加固脚本**（AI 生成，一键执行）
+- 合规报告（Enterprise 专属：PCI-DSS、SOC2、ISO27001）
+
+**模型选择**：安全审计使用 **Claude Opus**（最强推理，确保准确性）
+
+### 3. AI 性能优化 (`/optimize-performance`)
+
+**功能**：AI 分析 7 天性能指标，识别瓶颈
+
+**分析维度**：
+- CPU 使用率趋势
+- 内存使用率
+- 磁盘 I/O 等待
+- 网络带宽饱和
+
+**输出**：
+- 瓶颈列表（类型、证据、根因、影响）
+- 优化建议（具体操作、预期效果）
+- 成本优化建议（如：t3.large → t3.medium，节省 $38/月）
+
+**仅 Cloud Team/Enterprise**
+
+### 4. AI 成本优化 (`/cost-optimizer`)
+
+**功能**：AI 分析云账单（AWS/GCP/阿里云），识别浪费
+
+**分析策略**：
+1. 闲置资源（利用率 < 20%）
+2. 过度配置（实例类型不匹配负载）
+3. 定价优化（按需 → Reserved Instances / Spot）
+4. 存储优化（冷数据迁移至低成本存储）
+
+**输出**：
+- 当前成本
+- 潜在节省金额
+- 具体建议（资源、问题、操作、节省金额）
+
+**仅 Cloud Team/Enterprise**
+
+### 5. AI 备份建议 (`/backup-advisor`)
+
+**功能**：AI 分析服务器状态，生成最优备份策略
+
+**分析依据**：3-2-1 原则
+- 3 份数据副本（1 生产 + 2 备份）
+- 2 种不同存储介质（本地 + 云端）
+- 1 份异地备份
+
+**AI 分析过程**：
+1. 检测运行的服务（MySQL、PostgreSQL、Redis、文件服务等）
+2. 分析数据量和变更频率
+3. 评估业务优先级
+4. 生成备份策略和脚本
+
+**输出**：
+- 备份目标（数据库/文件/配置，优先级）
+- 备份计划（全量/增量频率、保留策略）
+- 存储方案（用户自己的本地/S3/Backblaze）
+- **AI 生成的备份脚本**（可直接执行）
+- 成本估算（存储费用）
+
+**Self-Hosted vs Cloud**：
+- Self-Hosted：手动执行，AI 给建议
+- Cloud Team/Enterprise：AI 给建议 + 可启用自动执行（见 Skill 6）
+
+**仅 Cloud Team/Enterprise**
+
+### 6. 自动备份执行 (`/auto-backup`) — **AI Agent 自动化**
+
+**功能**：根据 AI 建议的策略，自动执行备份任务（Cloud 专属）
+
+**重要说明**：
+- ❌ **不是**我们提供存储空间
+- ✅ **而是** AI Agent 定期执行备份到用户自己的存储（本地/S3/Backblaze）
+
+**工作流程**：
+1. 用户执行 `/backup-advisor` 获得 AI 建议
+2. 用户确认策略：`/auto-backup enable`
+3. AI Agent 根据策略定期执行备份（到用户指定的位置）
+4. 备份完成后通知用户（Webhook/邮件）
+5. AI Agent 自动清理过期备份
+6. **每周自动测试恢复**（验证备份可用）
+
+**配置选项**：
+```bash
+# 用户配置自己的存储位置
+/auto-backup config --local /backup --s3 s3://my-bucket/backups
+
+# 启用自动备份
+/auto-backup enable
+
+# AI Agent 会：
+# - 每周日凌晨 2 点全量备份（到本地 + S3）
+# - 工作日凌晨 2 点增量备份（到本地）
+# - 保留 30 天（自动清理）
+# - 每周日凌晨 3 点测试恢复（验证可用性）
+```
+
+**AI Agent 提供的增值**：
+- 自动执行（无需手动触发）
+- 备份验证（AI 每周测试恢复，确保备份可用）
+- 异常检测（备份失败、空间不足、数据损坏自动告警）
+- 趋势分析（存储增长预测、成本优化建议）
+
+**Self-Hosted vs Cloud**：
+- Self-Hosted：需要自己用 cron 执行脚本
+- Cloud Pro：AI Agent 自动执行 + 通知
+- Cloud Team：Pro + 每周测试恢复
+- Cloud Enterprise：Team + 灾难恢复演练（完整 DR 测试）
+
+**仅 Cloud Pro/Team/Enterprise**
+
+---
+
+## 💰 定价策略
+
+| 层级 | 价格 | AI 对话额度 | 核心价值 | 目标用户 |
+|------|------|------------|----------|----------|
+| **Self-Hosted** | $0（开源） | 自己买 API | 100% 核心功能 | 技术团队、隐私敏感 |
+| **Cloud Free** | $0/月 | 100 次/月 | 体验 AI 运维 | 个人用户、小项目 |
+| **Cloud Pro** | $19/月 | 2000 次/月 | 日志巡检 + 安全扫描 | 小团队、初创公司 |
+| **Cloud Team** | $49/月 | 无限* | 全部 AI Skills | 成长团队、多项目 |
+| **Cloud Enterprise** | $199/月起 | 无限 + 专属模型 | 自定义 Skills + 合规 | 大型企业、有合规需求 |
+
+\* 公平使用政策：月均 5000 次以下
+
+### AI 成本核算
+
+**模型定价**（Anthropic Claude）：
+
+| 模型 | Input ($/MTok) | Output ($/MTok) | 典型对话成本 |
+|------|----------------|-----------------|-------------|
+| Haiku 4.5 | $0.25 | $1.25 | $0.0033/次 |
+| Sonnet 4.5 | $3.00 | $15.00 | $0.039/次 |
+| Opus 4.6 | $15.00 | $75.00 | $0.195/次 |
+
+**智能路由成本优化**：
+
+| 用户类型 | 月对话次数 | 无路由成本 | 智能路由成本 | 节省 |
+|---------|-----------|-----------|-------------|------|
+| 轻度（100 次） | 100 | $3.90 | $1.11 | 71% |
+| 普通（500 次） | 500 | $19.50 | $11.31 | 42% |
+| 重度（2000 次） | 2000 | $78.00 | $74.70* | 4% |
+
+\* 重度用户因任务复杂，Sonnet/Opus 占比高，节省有限
+
+**对比用户自己购买 API**：
+
+| 方案 | 月成本 | 包含内容 |
+|------|--------|----------|
+| Self-Hosted + 自己买 API | $20 | 只有 AI 对话 |
+| Cloud Pro | $19 | AI 对话 + 日志巡检 + 安全扫描 + 周报 |
+
+**Cloud 优势**：价格相当或更低，但包含专业 AI Skills。
+
+---
+
+## 🚪 AI Gateway 方案
+
+### 为什么需要 AI Gateway？
+
+1. **高可用性**：Claude API 慢/宕机 → 自动切换到 OpenAI/Grok
+2. **成本优化**：智能路由到最优提供商（DeepSeek 最便宜，Opus 最强）
+3. **统一接口**：屏蔽不同 API 差异，统一计费和监控
+4. **熔断降级**：连续失败自动熔断，切换备选方案
+
+### 推荐方案：LiteLLM Proxy（开源）
+
+**项目**：https://github.com/BerriAI/litellm
+**许可证**：MIT（完全开源）
+**GitHub Stars**：17,000+
+
+**核心功能**：
+- ✅ 100+ LLM 支持（Claude、OpenAI、Grok、DeepSeek、Gemini 等）
+- ✅ 智能路由（负载均衡、自动回退、成本优化）
+- ✅ 熔断降级（健康检查、自动切换）
+- ✅ 成本追踪（实时 token 使用量和成本）
+- ✅ 响应缓存（Redis/内存缓存）
+- ✅ 速率限制（per-user/per-model）
+- ✅ 可观测性（日志、监控、Prometheus/Grafana）
+
+**部署**：Docker 一键部署（见 `云服务开发指南.md` 完整配置）
+
+**成本对比**（1000 次对话/月）：
+
+| 方案 | 成本 | 节省 |
+|------|------|------|
+| 无路由（全 Sonnet） | $39 | - |
+| LiteLLM 智能路由 | $6.82 | 82% |
+| LiteLLM + 缓存（20% 命中） | $5.46 | 86% |
+
+### 降级链配置
+
+```
+Claude → OpenAI → Grok → DeepSeek
+  ↓        ↓       ↓       ↓
+Opus    GPT-4   Grok   最便宜
+最强     次强     快     备选
+```
+
+**实施时间表**：
+- Phase 1（1 天）：Docker 部署 LiteLLM
+- Phase 2（3 天）：ServerPilot 集成 LiteLLM Provider
+- Phase 3（1 周）：监控、成本分析、优化配置
+
+---
+
+## 🏗️ 技术架构
+
+### Cloud 包结构
+
+```
+packages/cloud/
+├── src/
+│   ├── ai/
+│   │   ├── gateway.ts              # LiteLLM 集成（未来）
+│   │   ├── cost-tracker.ts         # AI 成本追踪
+│   │   └── usage-monitor.ts        # 配额管理
+│   ├── skills/
+│   │   ├── log-scanner.ts          # 日志巡检
+│   │   ├── security-scanner.ts     # 安全扫描
+│   │   ├── backup-advisor.ts       # 备份建议
+│   │   ├── performance-optimizer.ts # 性能优化
+│   │   └── cost-optimizer.ts       # 成本优化
+│   ├── billing/
+│   │   └── stripe-integration.ts   # Stripe 计费
+│   ├── sso/
+│   │   └── saml-provider.ts        # SAML SSO
+│   └── db/
+│       ├── pg-connection.ts        # PostgreSQL 连接
+│       └── pg-schema.ts            # Cloud 数据表
+├── package.json                    # BUSL-1.1 许可证
+└── README.md
+```
+
+### 数据库 Schema（Cloud 专属表）
+
+**AI 使用记录**：
+- 用户 ID、模型、输入/输出 token、成本、时间戳
+
+**Skills 执行记录**：
+- 用户 ID、服务器 ID、Skill 名称、状态、报告（JSON）、耗时
+
+**订阅管理**：
+- 用户 ID、计划、状态、Stripe 订阅 ID、周期时间
+
+### 环境变量配置
+
+```bash
+# Cloud 模式开关
+CLOUD_MODE=true
+
+# LiteLLM Gateway（未来）
+LITELLM_BASE_URL=http://litellm:4000
+LITELLM_API_KEY=sk-serverpilot-xxx
+
+# PostgreSQL（Cloud 用 PG，Self-Hosted 用 SQLite）
+DB_TYPE=postgres
+POSTGRES_HOST=serverpilot-db.rds.amazonaws.com
+POSTGRES_PORT=5432
+POSTGRES_DB=serverpilot
+POSTGRES_USER=serverpilot
+POSTGRES_PASSWORD=xxx
+
+# Redis（会话、限流）
+REDIS_URL=redis://serverpilot-redis:6379
+
+# S3（审计日志、报告）
+AWS_REGION=us-east-1
+S3_BUCKET=serverpilot-data
+
+# Stripe（计费）
+STRIPE_SECRET_KEY=sk_live_xxx
+STRIPE_WEBHOOK_SECRET=whsec_xxx
+
+# SMTP（邮件通知）
+SMTP_HOST=smtp.sendgrid.net
+SMTP_PORT=587
+SMTP_USER=apikey
+SMTP_PASS=SG.xxx
+```
+
+---
+
+## 🎯 实施路线图
+
+### P0（核心价值，1 周内完成）
+
+1. ✅ **官方 AI API 配置**（立即可用）
+   - Cloud 环境变量配置 `ANTHROPIC_API_KEY`
+   - 用户无需自己配置 API Key
+
+2. ✅ **AI 日志巡检 Skill**（3 天）
+   - 自动分析日志，识别问题
+   - 定时任务：每小时自动巡检
+   - 告警集成：high/critical 自动通知
+
+3. ✅ **AI 安全扫描 Skill**（3 天）
+   - CVE 检测、配置审计
+   - AI 生成加固脚本
+   - 合规报告（Enterprise）
+
+### P1（提升竞争力，2 周内完成）
+
+4. 性能优化 Skill（5 天）
+5. 成本优化 Skill（5 天）
+6. Stripe 计费集成（3 天）
+
+### P2（企业功能，1 个月内完成）
+
+7. 自定义 Skills 开发（2 周）
+8. AI 运维顾问（主动巡检 + 周报）（2 周）
+9. SAML SSO（1 周）
+
+### P3（基础设施，后续优化）
+
+10. LiteLLM Gateway 部署（1 天）
+11. PostgreSQL 迁移（1 周）
+12. Kubernetes 部署（2 周）
+
+---
+
+## 🤖 AI Agent vs 传统 SaaS（核心理念）
+
+### 传统 SaaS 思维（错误）
+
+**典型例子**：AWS RDS、Heroku、Vercel
+
+| 传统 SaaS | 说明 | 用户付费买什么 |
+|----------|------|---------------|
+| **托管基础设施** | 我们提供服务器、数据库、存储 | 基础设施租赁 |
+| **数据在我们这里** | 用户数据存储在 SaaS 提供商 | 便利性 + 锁定 |
+| **功能分级** | 免费版功能受限，付费解锁 | 功能解锁 |
+| **运维是我们的事** | SaaS 提供商负责维护 | 省心省力 |
+
+**问题**：
+- ❌ 用户已经有自己的服务器，不需要我们托管
+- ❌ 数据锁定（vendor lock-in）
+- ❌ 功能分级导致开源版"不完整"
+
+### AI Agent 思维（正确）— ServerPilot Cloud
+
+**核心理念**：我们是 AI 运维专家，不是服务器托管商
+
+| AI Agent | 说明 | 用户付费买什么 |
+|----------|------|---------------|
+| **AI 连接用户服务器** | 用户服务器在用户那里 | AI 智能能力 |
+| **数据在用户那里** | 用户完全控制数据，无锁定 | 隐私 + 控制权 |
+| **功能完全一致** | Self-Hosted 和 Cloud 核心功能 100% 相同 | AI 自动化 + 专业 Skills |
+| **AI 代替人工** | AI Agent 自动巡检、分析、告警、修复 | AI 运维专家能力 |
+
+**优势**：
+- ✅ 用户数据始终在用户自己的服务器上
+- ✅ Self-Hosted 和 Cloud 功能完全一致（无锁定）
+- ✅ Cloud 用户付费购买的是 AI 智能，不是服务器托管
+- ✅ 可随时降级到 Self-Hosted（无数据迁移）
+
+### 具体例子对比
+
+#### 1. 备份功能
+
+**传统 SaaS**（Heroku、AWS RDS）：
+- 我们提供备份存储空间
+- 用户数据备份到我们的 S3
+- 用户付费购买备份存储
+- **锁定**：数据在我们这里，迁移困难
+
+**AI Agent**（ServerPilot Cloud）：
+- AI 分析并生成备份策略
+- AI Agent 自动执行备份到**用户自己的 S3**
+- 用户付费购买 AI 智能（策略生成 + 自动执行 + 验证测试）
+- **无锁定**：数据在用户自己的存储，随时可停用 Cloud
+
+#### 2. 安全扫描功能
+
+**传统 SaaS**（Datadog、Sentry）：
+- 用户需要安装我们的 Agent
+- Agent 收集数据上传到我们的平台
+- 我们提供仪表盘展示
+- **锁定**：数据在我们这里，依赖我们的平台
+
+**AI Agent**（ServerPilot Cloud）：
+- AI Agent 连接到用户服务器（通过 ServerPilot Agent）
+- AI 分析用户服务器的安全配置（数据不离开用户服务器）
+- AI 生成加固脚本，用户直接在自己服务器上执行
+- **无锁定**：用户随时可以下载 AI 生成的脚本，在 Self-Hosted 版本执行
+
+#### 3. 成本优化功能
+
+**传统 SaaS**（CloudHealth、Spot.io）：
+- 用户授权我们访问云账单
+- 我们提供成本优化建议（需要持续订阅）
+- **锁定**：建议在我们平台上，停用后无法访问
+
+**AI Agent**（ServerPilot Cloud）：
+- AI 分析用户的云账单（通过 AWS CLI / gcloud SDK）
+- AI 生成成本优化报告（Markdown/PDF）
+- 用户可以下载报告，永久保留
+- **无锁定**：用户停用 Cloud 后，历史报告仍可访问
+
+### 总结
+
+| 维度 | 传统 SaaS | ServerPilot Cloud (AI Agent) |
+|------|----------|------------------------------|
+| **数据存储** | 在 SaaS 提供商 | 在用户服务器 |
+| **核心价值** | 基础设施租赁 | AI 智能能力 |
+| **功能分级** | 免费版功能受限 | 核心功能完全一致 |
+| **锁定程度** | 高（数据迁移困难） | 无（随时降级到 Self-Hosted）|
+| **付费理由** | 省心省力（托管） | AI 自动化 + 专业 Skills |
+| **适用场景** | 无技术团队的公司 | 有服务器的技术团队 |
+
+**ServerPilot Cloud 的定位**：
+- 不是传统 SaaS（托管服务）
+- 而是 AI-Driven 运维平台（AI Agent 自动化）
+- 用户付费购买的是 **AI 运维专家的能力**，不是服务器托管
+
+---
+
+## 📊 与竞品对比
+
+| 功能 | Datadog | PagerDuty | ServerPilot Cloud |
+|------|---------|-----------|-------------------|
+| **定价** | $15/主机 | $21/用户 | $19-$199/月（全部服务器）|
+| **监控告警** | ✅ | ✅ | ✅ |
+| **AI 分析** | ❌ | ❌ | ✅（核心差异化）|
+| **自动修复** | ❌ | ❌ | ✅（AI 生成脚本）|
+| **成本优化** | ❌ | ❌ | ✅（AI 分析账单）|
+| **安全审计** | ⚙️ 需配置 | ❌ | ✅（自动 CVE 检测）|
+| **学习曲线** | 陡峭 | 中等 | 平缓（AI 自动）|
+
+---
+
+## 📝 总结
+
+### ServerPilot Cloud 核心价值（AI Agent 思维）
+
+**不是**（传统 SaaS）：
+- ❌ 托管用户的服务器和数据
+- ❌ 提供基础设施租赁
+- ❌ 通过功能分级锁定用户
+
+**而是**（AI Agent 平台）：
+- ✅ AI 智能路由 → 降低用户 AI 成本 60%
+- ✅ 专业 Skills 库 → AI 自动巡检、分析、修复
+- ✅ 官方 AI API → 用户无需配置，开箱即用
+- ✅ 持续进化 → 每月新增 AI Skills
+
+### 商业模式
+
+**Self-Hosted**（100% 开源，永久免费）：
+- ✅ 所有核心功能完整可用（多服务器、团队、Webhook、告警）
+- ✅ 用户完全控制数据和服务器
+- ⚙️ 需要自己配置 AI API Key
+- ⚙️ 手动执行 AI Skills
+
+**Cloud**（AI-Driven Agent 平台）：
+- ✅ 同样的核心功能（100% 一致）
+- ✅ 官方 AI API（智能路由，成本更低）
+- ✅ AI Agent 自动化（定期巡检、主动告警、自动修复）
+- ✅ 专业 AI Skills（日志分析、安全扫描、性能优化、成本分析、备份策略）
+- ✅ 企业增强（SAML SSO、AI 合规报告、灾难恢复演练）
+
+### 核心理念
+
+**用户付费购买的是 AI 运维专家的能力，不是服务器托管。**
+
+- 用户的服务器和数据始终在用户自己那里
+- Cloud 和 Self-Hosted 功能完全一致，无锁定
+- 用户可随时降级到 Self-Hosted，无数据迁移
+- Cloud 用户付费买的是 AI 自动化 + 专业运维知识
+
+**这是 AI Agent 时代的 DevOps 平台，不是传统 SaaS。**
+
+---
+
+## 📚 相关文档
+
+- [云服务开发指南.md](云服务开发指南.md) - 详细设计与实现
+- [云服务实施方案.md](云服务实施方案.md) - 基础设施部署方案
+- [LICENSING.md](../LICENSING.md) - 开源许可与商业模式
+- [README.md](../README.md) - 项目概览
+
+---
+
+<p align="center">
+  <sub>Built with 🤖 AI by the ServerPilot team</sub>
+</p>

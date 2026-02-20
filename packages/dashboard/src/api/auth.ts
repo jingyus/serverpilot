@@ -1,25 +1,25 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { API_BASE_URL } from '@/utils/constants';
+import { API_BASE_URL } from "@/utils/constants";
 
 // ---------------------------------------------------------------------------
 // Token storage helpers
 // ---------------------------------------------------------------------------
 
 export function getToken(): string | null {
-  return localStorage.getItem('auth_token');
+  return localStorage.getItem("auth_token");
 }
 
 export function setToken(token: string): void {
-  localStorage.setItem('auth_token', token);
+  localStorage.setItem("auth_token", token);
 }
 
 export function clearToken(): void {
-  localStorage.removeItem('auth_token');
+  localStorage.removeItem("auth_token");
 }
 
 export function getRefreshToken(): string | null {
-  return localStorage.getItem('refresh_token');
+  return localStorage.getItem("refresh_token");
 }
 
 // ---------------------------------------------------------------------------
@@ -56,8 +56,8 @@ async function doRefresh(): Promise<string | null> {
 
   try {
     const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refreshToken }),
     });
 
@@ -65,7 +65,7 @@ async function doRefresh(): Promise<string | null> {
 
     const data = (await response.json()) as RefreshResponse;
     setToken(data.accessToken);
-    localStorage.setItem('refresh_token', data.refreshToken);
+    localStorage.setItem("refresh_token", data.refreshToken);
     return data.accessToken;
   } catch {
     return null;
@@ -79,4 +79,13 @@ async function doRefresh(): Promise<string | null> {
 /** @internal — expose current refresh promise for testing deduplication */
 export function _getRefreshPromise(): Promise<string | null> | null {
   return refreshPromise;
+}
+
+/**
+ * Get tenant ID from user data (stub for cloud features)
+ * TODO: Implement proper tenant management
+ */
+export function getTenantId(): string | null {
+  // Stub implementation - cloud features need proper tenant context
+  return null;
 }

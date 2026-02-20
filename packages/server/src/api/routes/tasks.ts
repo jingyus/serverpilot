@@ -14,116 +14,131 @@
  * @module api/routes/tasks
  */
 
-import { Hono } from 'hono';
+import { Hono } from "hono";
+import { z } from "zod";
+import { validateBody, validateQuery } from "../middleware/validate.js";
+import { requireAuth } from "../middleware/auth.js";
+import { resolveRole, requirePermission } from "../middleware/rbac.js";
+import { ApiError } from "../middleware/error-handler.js";
+import { getTaskRepository } from "../../db/repositories/task-repository.js";
+import { getNextRunDate } from "../../core/task/scheduler.js";
+import { getTaskExecutor } from "../../core/task/executor.js";
+import { getTaskScheduler } from "../../core/task/scheduler.js";
+import { logger } from "../../utils/logger.js";
 import {
   CreateTaskBodySchema,
   UpdateTaskBodySchema,
   TaskQuerySchema,
-} from './schemas.js';
-import { validateBody, validateQuery } from '../middleware/validate.js';
-import { requireAuth } from '../middleware/auth.js';
-import { resolveRole, requirePermission } from '../middleware/rbac.js';
-import { ApiError } from '../middleware/error-handler.js';
-import { getTaskRepository } from '../../db/repositories/task-repository.js';
-import { getNextRunDate } from '../../core/task/scheduler.js';
-import { getTaskExecutor } from '../../core/task/executor.js';
-import { getTaskScheduler } from '../../core/task/scheduler.js';
-import { logger } from '../../utils/logger.js';
-import type { CreateTaskBody, UpdateTaskBody, TaskQuery } from './schemas.js';
-import type { ApiEnv } from './types.js';
+} from "./schemas.js";
+import type { CreateTaskBody, UpdateTaskBody, TaskQuery } from "./schemas.js";
+import type { ApiEnv } from "./types.js";
 
 const tasks = new Hono<ApiEnv>();
 
 // All task routes require authentication
-tasks.use('*', requireAuth, resolveRole);
+tasks.use("*", requireAuth, resolveRole);
 
 // ============================================================================
 // GET /tasks — List scheduled tasks
 // ============================================================================
 
-tasks.get('/', requirePermission('task:read'), validateQuery(TaskQuerySchema), async (c) => {
-  const userId = c.get('userId');
-  const query = c.get('validatedQuery') as TaskQuery;
-  const repo = getTaskRepository();
+tasks.get(
+  "/",
+  requirePermission("task:read"),
+  validateQuery(TaskQuerySchema),
+  async (c) => {
+    const userId = c.get("userId");
+    const query = c.get("validatedQuery") as TaskQuery;
+    const repo = getTaskRepository();
 
-  if (query.serverId) {
-    const result = await repo.listByServer(
-      query.serverId,
-      userId,
-      { limit: query.limit, offset: query.offset },
-    );
+    if (query.serverId) {
+      const result = await repo.listByServer(query.serverId, userId, {
+        limit: query.limit,
+        offset: query.offset,
+      });
+      return c.json(result);
+    }
+
+    if (query.status) {
+      const result = await repo.findByStatus(userId, query.status, {
+        limit: query.limit,
+        offset: query.offset,
+      });
+      return c.json(result);
+    }
+
+    // Default: list all active tasks
+    const result = await repo.findByStatus(userId, "active", {
+      limit: query.limit,
+      offset: query.offset,
+    });
     return c.json(result);
-  }
-
-  if (query.status) {
-    const result = await repo.findByStatus(
-      userId,
-      query.status,
-      { limit: query.limit, offset: query.offset },
-    );
-    return c.json(result);
-  }
-
-  // Default: list all active tasks
-  const result = await repo.findByStatus(
-    userId,
-    'active',
-    { limit: query.limit, offset: query.offset },
-  );
-  return c.json(result);
-});
+  },
+);
 
 // ============================================================================
 // POST /tasks — Create a scheduled task
 // ============================================================================
 
-tasks.post('/', requirePermission('task:create'), validateBody(CreateTaskBodySchema), async (c) => {
-  const userId = c.get('userId');
-  const body = c.get('validatedBody') as CreateTaskBody;
-  const repo = getTaskRepository();
+tasks.post(
+  "/",
+  requirePermission("task:create"),
+  validateBody(CreateTaskBodySchema),
+  async (c) => {
+    const userId = c.get("userId");
+    const body = c.get("validatedBody") as CreateTaskBody;
+    const repo = getTaskRepository();
 
-  const nextRun = getNextRunDate(body.cron);
-  if (!nextRun) {
-    throw ApiError.badRequest('Invalid cron expression — cannot compute next run');
-  }
-
-  try {
-    const task = await repo.create({
-      serverId: body.serverId,
-      userId,
-      name: body.name,
-      cron: body.cron,
-      command: body.command,
-      description: body.description,
-      nextRun,
-    });
-
-    logger.info(
-      { operation: 'task_create', taskId: task.id, serverId: body.serverId, userId },
-      `Scheduled task created: ${task.name}`,
-    );
-
-    return c.json({ task }, 201);
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('access denied')) {
-      throw ApiError.forbidden('Cannot create task for this server');
+    const nextRun = getNextRunDate(body.cron);
+    if (!nextRun) {
+      throw ApiError.badRequest(
+        "Invalid cron expression — cannot compute next run",
+      );
     }
-    throw error;
-  }
-});
+
+    try {
+      const task = await repo.create({
+        serverId: body.serverId,
+        userId,
+        name: body.name,
+        cron: body.cron,
+        command: body.command,
+        description: body.description,
+        nextRun,
+      });
+
+      logger.info(
+        {
+          operation: "task_create",
+          taskId: task.id,
+          serverId: body.serverId,
+          userId,
+        },
+        `Scheduled task created: ${task.name}`,
+      );
+
+      return c.json({ task }, 201);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("access denied")) {
+        throw ApiError.forbidden("Cannot create task for this server");
+      }
+      throw error;
+    }
+  },
+);
 
 // ============================================================================
 // GET /tasks/:id — Get task details
 // ============================================================================
 
-tasks.get('/:id', requirePermission('task:read'), async (c) => {
-  const userId = c.get('userId');
+tasks.get("/:id", requirePermission("task:read"), async (c) => {
+  const userId = c.get("userId");
   const { id } = c.req.param();
   const repo = getTaskRepository();
 
   const task = await repo.getById(id, userId);
   if (!task) {
-    throw ApiError.notFound('Task');
+    throw ApiError.notFound("Task");
   }
 
   return c.json({ task });
@@ -133,52 +148,62 @@ tasks.get('/:id', requirePermission('task:read'), async (c) => {
 // PATCH /tasks/:id — Update a task
 // ============================================================================
 
-tasks.patch('/:id', requirePermission('task:update'), validateBody(UpdateTaskBodySchema), async (c) => {
-  const userId = c.get('userId');
-  const { id } = c.req.param();
-  const body = c.get('validatedBody') as UpdateTaskBody;
-  const repo = getTaskRepository();
+tasks.patch(
+  "/:id",
+  requirePermission("task:update"),
+  validateBody(UpdateTaskBodySchema),
+  async (c) => {
+    const userId = c.get("userId");
+    const { id } = c.req.param();
+    const body = c.get("validatedBody") as UpdateTaskBody;
+    const repo = getTaskRepository();
 
-  const task = await repo.update(id, userId, body);
-  if (!task) {
-    throw ApiError.notFound('Task');
-  }
-
-  // If cron expression changed, recalculate nextRun
-  if (body.cron) {
-    const nextRun = getNextRunDate(body.cron);
-    if (nextRun) {
-      await repo.updateRunResult(id, userId, task.lastStatus ?? 'success', nextRun);
+    const task = await repo.update(id, userId, body);
+    if (!task) {
+      throw ApiError.notFound("Task");
     }
-  }
 
-  const updated = await repo.getById(id, userId);
+    // If cron expression changed, recalculate nextRun
+    if (body.cron) {
+      const nextRun = getNextRunDate(body.cron);
+      if (nextRun) {
+        await repo.updateRunResult(
+          id,
+          userId,
+          task.lastStatus ?? "success",
+          nextRun,
+        );
+      }
+    }
 
-  logger.info(
-    { operation: 'task_update', taskId: id, userId },
-    `Scheduled task updated: ${updated?.name}`,
-  );
+    const updated = await repo.getById(id, userId);
 
-  return c.json({ task: updated });
-});
+    logger.info(
+      { operation: "task_update", taskId: id, userId },
+      `Scheduled task updated: ${updated?.name}`,
+    );
+
+    return c.json({ task: updated });
+  },
+);
 
 // ============================================================================
 // DELETE /tasks/:id — Soft-delete a task
 // ============================================================================
 
-tasks.delete('/:id', requirePermission('task:delete'), async (c) => {
-  const userId = c.get('userId');
+tasks.delete("/:id", requirePermission("task:delete"), async (c) => {
+  const userId = c.get("userId");
   const { id } = c.req.param();
   const repo = getTaskRepository();
 
   const deleted = await repo.delete(id, userId);
   if (!deleted) {
-    throw ApiError.notFound('Task');
+    throw ApiError.notFound("Task");
   }
 
   logger.info(
-    { operation: 'task_delete', taskId: id, userId },
-    'Scheduled task deleted',
+    { operation: "task_delete", taskId: id, userId },
+    "Scheduled task deleted",
   );
 
   return c.json({ success: true });
@@ -188,14 +213,14 @@ tasks.delete('/:id', requirePermission('task:delete'), async (c) => {
 // POST /tasks/:id/run — Execute task immediately
 // ============================================================================
 
-tasks.post('/:id/run', requirePermission('task:update'), async (c) => {
-  const userId = c.get('userId');
+tasks.post("/:id/run", requirePermission("task:update"), async (c) => {
+  const userId = c.get("userId");
   const { id } = c.req.param();
   const repo = getTaskRepository();
 
   const task = await repo.getById(id, userId);
   if (!task) {
-    throw ApiError.notFound('Task');
+    throw ApiError.notFound("Task");
   }
 
   // Find connected agent for the server
@@ -208,7 +233,7 @@ tasks.post('/:id/run', requirePermission('task:update'), async (c) => {
   const executor = getTaskExecutor();
 
   logger.info(
-    { operation: 'task_run', taskId: id, userId, command: task.command },
+    { operation: "task_run", taskId: id, userId, command: task.command },
     `Manual task execution: ${task.name}`,
   );
 
@@ -218,8 +243,8 @@ tasks.post('/:id/run', requirePermission('task:update'), async (c) => {
     clientId,
     command: task.command,
     description: `Manual run: ${task.name}`,
-    riskLevel: 'green',
-    type: 'execute',
+    riskLevel: "green",
+    type: "execute",
     taskId: task.id,
     timeoutMs: 60_000,
   });
@@ -229,7 +254,7 @@ tasks.post('/:id/run', requirePermission('task:update'), async (c) => {
   await repo.updateRunResult(
     id,
     userId,
-    result.success ? 'success' : 'failed',
+    result.success ? "success" : "failed",
     nextRun,
   );
 
@@ -241,5 +266,81 @@ tasks.post('/:id/run', requirePermission('task:update'), async (c) => {
     duration: result.duration,
   });
 });
+
+// ============================================================================
+// GET /tasks/templates — List available task templates (Skills)
+// ============================================================================
+
+tasks.get("/templates", requirePermission("task:read"), async (c) => {
+  const { getSkillRegistry } = await import("../../skills/skill-registry.js");
+  const registry = getSkillRegistry();
+  const templates = registry.list();
+
+  // Return templates without function references
+  const templatesData = templates.map((t) => ({
+    name: t.name,
+    description: t.description,
+    defaultSchedule: t.defaultSchedule,
+    executionMode: t.executionMode,
+    configSchema: t.configSchema,
+  }));
+
+  return c.json({ templates: templatesData });
+});
+
+// ============================================================================
+// POST /tasks/from-template — Create task from Skill template
+// ============================================================================
+
+const CreateFromTemplateBodySchema = z.object({
+  skillName: z.string().min(1),
+  taskName: z.string().min(1).optional(),
+  serverId: z.string().uuid(),
+  config: z.record(z.unknown()),
+  schedule: z.string().optional(),
+});
+
+tasks.post(
+  "/from-template",
+  requirePermission("task:create"),
+  validateBody(CreateFromTemplateBodySchema),
+  async (c) => {
+    const userId = c.get("userId");
+    const body = c.get("validatedBody") as z.infer<
+      typeof CreateFromTemplateBodySchema
+    >;
+
+    try {
+      const { createTaskFromSkill } =
+        await import("../../skills/skill-task-converter.js");
+      const task = await createTaskFromSkill({
+        skillName: body.skillName,
+        taskName: body.taskName,
+        serverId: body.serverId,
+        userId,
+        config: body.config,
+        schedule: body.schedule,
+      });
+
+      logger.info(
+        {
+          operation: "task_from_template",
+          taskId: task.id,
+          userId,
+          skillName: body.skillName,
+        },
+        `Task created from template: ${body.skillName}`,
+      );
+
+      return c.json({ task }, 201);
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Failed to create task from template";
+      throw ApiError.badRequest(message);
+    }
+  },
+);
 
 export { tasks };

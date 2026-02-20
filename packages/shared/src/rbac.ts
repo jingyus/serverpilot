@@ -14,7 +14,7 @@
 // ============================================================================
 
 /** Available user roles, ordered by privilege level (highest first). */
-export const ROLES = ['owner', 'admin', 'member'] as const;
+export const ROLES = ["owner", "admin", "member"] as const;
 
 /** A user role within a tenant. */
 export type UserRole = (typeof ROLES)[number];
@@ -26,73 +26,76 @@ export type UserRole = (typeof ROLES)[number];
 /** All permission actions available in the system. */
 export const PERMISSIONS = [
   // Server management
-  'server:create',
-  'server:read',
-  'server:update',
-  'server:delete',
+  "server:create",
+  "server:read",
+  "server:update",
+  "server:delete",
 
   // Operations & tasks
-  'operation:read',
-  'operation:create',
-  'task:create',
-  'task:read',
-  'task:update',
-  'task:delete',
+  "operation:read",
+  "operation:create",
+  "task:create",
+  "task:read",
+  "task:update",
+  "task:delete",
 
   // Chat / AI
-  'chat:use',
+  "chat:use",
+
+  // Command approvals
+  "command:approve",
 
   // Alert rules
-  'alert-rule:create',
-  'alert-rule:read',
-  'alert-rule:update',
-  'alert-rule:delete',
+  "alert-rule:create",
+  "alert-rule:read",
+  "alert-rule:update",
+  "alert-rule:delete",
 
   // Alerts (read-only for most)
-  'alert:read',
+  "alert:read",
 
   // Webhooks
-  'webhook:create',
-  'webhook:read',
-  'webhook:update',
-  'webhook:delete',
+  "webhook:create",
+  "webhook:read",
+  "webhook:update",
+  "webhook:delete",
 
   // Settings
-  'settings:read',
-  'settings:update',
+  "settings:read",
+  "settings:update",
 
   // Audit log
-  'audit-log:read',
-  'audit-log:export',
+  "audit-log:read",
+  "audit-log:export",
 
   // Knowledge & doc sources
-  'knowledge:read',
-  'knowledge:create',
-  'doc-source:create',
-  'doc-source:read',
-  'doc-source:update',
-  'doc-source:delete',
+  "knowledge:read",
+  "knowledge:create",
+  "doc-source:create",
+  "doc-source:read",
+  "doc-source:update",
+  "doc-source:delete",
 
   // Metrics & snapshots
-  'metrics:read',
-  'snapshot:read',
-  'snapshot:create',
+  "metrics:read",
+  "snapshot:read",
+  "snapshot:create",
 
   // Member management
-  'member:invite',
-  'member:read',
-  'member:update-role',
-  'member:remove',
+  "member:invite",
+  "member:read",
+  "member:update-role",
+  "member:remove",
 
   // Skills
-  'skill:view',
-  'skill:execute',
-  'skill:manage',
+  "skill:view",
+  "skill:execute",
+  "skill:manage",
 
   // Tenant management
-  'tenant:read',
-  'tenant:update',
-  'tenant:delete',
+  "tenant:read",
+  "tenant:update",
+  "tenant:delete",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -107,57 +110,58 @@ export type Permission = (typeof PERMISSIONS)[number];
  * Roles are cumulative: member < admin < owner.
  */
 const MEMBER_PERMISSIONS: readonly Permission[] = [
-  'server:read',
-  'operation:read',
-  'task:read',
-  'chat:use',
-  'alert-rule:read',
-  'alert:read',
-  'webhook:read',
-  'settings:read',
-  'audit-log:read',
-  'knowledge:read',
-  'doc-source:read',
-  'metrics:read',
-  'snapshot:read',
-  'skill:view',
-  'skill:execute',
-  'member:read',
-  'tenant:read',
+  "server:read",
+  "operation:read",
+  "task:read",
+  "chat:use",
+  "command:approve",
+  "alert-rule:read",
+  "alert:read",
+  "webhook:read",
+  "settings:read",
+  "audit-log:read",
+  "knowledge:read",
+  "doc-source:read",
+  "metrics:read",
+  "snapshot:read",
+  "skill:view",
+  "skill:execute",
+  "member:read",
+  "tenant:read",
 ];
 
 const ADMIN_PERMISSIONS: readonly Permission[] = [
   ...MEMBER_PERMISSIONS,
-  'server:create',
-  'server:update',
-  'server:delete',
-  'operation:create',
-  'task:create',
-  'task:update',
-  'task:delete',
-  'alert-rule:create',
-  'alert-rule:update',
-  'alert-rule:delete',
-  'webhook:create',
-  'webhook:update',
-  'webhook:delete',
-  'settings:update',
-  'audit-log:export',
-  'knowledge:create',
-  'doc-source:create',
-  'doc-source:update',
-  'doc-source:delete',
-  'snapshot:create',
-  'skill:manage',
-  'member:invite',
-  'member:remove',
+  "server:create",
+  "server:update",
+  "server:delete",
+  "operation:create",
+  "task:create",
+  "task:update",
+  "task:delete",
+  "alert-rule:create",
+  "alert-rule:update",
+  "alert-rule:delete",
+  "webhook:create",
+  "webhook:update",
+  "webhook:delete",
+  "settings:update",
+  "audit-log:export",
+  "knowledge:create",
+  "doc-source:create",
+  "doc-source:update",
+  "doc-source:delete",
+  "snapshot:create",
+  "skill:manage",
+  "member:invite",
+  "member:remove",
 ];
 
 const OWNER_PERMISSIONS: readonly Permission[] = [
   ...ADMIN_PERMISSIONS,
-  'member:update-role',
-  'tenant:update',
-  'tenant:delete',
+  "member:update-role",
+  "tenant:update",
+  "tenant:delete",
 ];
 
 export const ROLE_PERMISSIONS: Record<UserRole, readonly Permission[]> = {

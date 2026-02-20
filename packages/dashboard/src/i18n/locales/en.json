@@ -40,7 +40,8 @@
     "expandSidebar": "Expand sidebar",
     "collapseSidebar": "Collapse sidebar",
     "notifications": "Notifications",
-    "serverDetail": "Server Detail"
+    "serverDetail": "Server Detail",
+    "language": "Language"
   },
   "connection": {
     "connected": "Connected",
@@ -253,7 +254,11 @@
     "metadata": "Metadata",
     "created": "Created",
     "lastUpdated": "Last Updated",
-    "lastUsed": "Last Used"
+    "lastUsed": "Last Used",
+    "searchTab": "Search",
+    "manageTab": "Manage",
+    "documentSources": "Document Sources",
+    "documentSourcesDesc": "Configure documentation sources for knowledge extraction"
   },
   "settings": {
     "title": "Settings",
@@ -348,7 +353,12 @@
     "ragIndexedDocs": "{{count}} documents indexed",
     "configureProvider": "Configure",
     "lastChecked": "Last checked",
-    "systemStatusUnavailable": "Unable to retrieve system status"
+    "systemStatusUnavailable": "Unable to retrieve system status",
+    "aiProviderTab": "AI Model",
+    "notificationsTab": "Notifications",
+    "profileTab": "Profile",
+    "securityTab": "Security",
+    "systemTab": "System Status"
   },
   "login": {
     "appName": "ServerPilot",
@@ -679,5 +689,9 @@
     "title": "Page Not Found",
     "description": "The page you are looking for does not exist or has been moved.",
     "backHome": "Back to Dashboard"
+  },
+  "userMenu": {
+    "profile": "Profile",
+    "security": "Security"
   }
 }

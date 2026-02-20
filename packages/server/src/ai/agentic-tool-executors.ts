@@ -12,6 +12,9 @@ import {
   ExecuteCommandInputSchema,
   ReadFileInputSchema,
   ListFilesInputSchema,
+  SearchCodeInputSchema,
+  FindFilesInputSchema,
+  EditFileInputSchema,
 } from "./agentic-tools.js";
 
 /** Shared abort flag interface — mirrors AbortState in agentic-chat.ts */
@@ -302,18 +305,39 @@ export async function toolExecuteCommand(
 }
 
 /**
- * Tool: read_file — Read file contents via head command.
+ * Tool: read_file — Read file contents with support for line ranges.
  */
 export async function toolReadFile(
-  input: { path: string; max_lines?: number },
+  input: { path: string; max_lines?: number; offset?: number; limit?: number },
   ctx: ToolExecutorContext,
   toolCallId: string,
 ): Promise<string> {
-  const maxLines = input.max_lines ?? 200;
-  const command = `head -n ${maxLines} ${shellEscape(input.path)}`;
+  const { path, max_lines, offset, limit } = input;
+
+  let command: string;
+
+  // If offset/limit specified, use tail+head for precise range
+  if (offset !== undefined && limit !== undefined) {
+    // Read from line (offset+1) for (limit) lines
+    // tail -n +N: start from line N (1-indexed)
+    // head -n M: take first M lines
+    const startLine = offset + 1;
+    command = `tail -n +${startLine} ${shellEscape(path)} | head -n ${limit}`;
+  } else if (offset !== undefined) {
+    // Read from offset to end of file
+    const startLine = offset + 1;
+    command = `tail -n +${startLine} ${shellEscape(path)}`;
+  } else if (limit !== undefined) {
+    // Read first N lines
+    command = `head -n ${limit} ${shellEscape(path)}`;
+  } else {
+    // Default: read first max_lines (or 200)
+    const maxLines = max_lines ?? 200;
+    command = `head -n ${maxLines} ${shellEscape(path)}`;
+  }
 
   return toolExecuteCommand(
-    { command, description: `Read file: ${input.path}` },
+    { command, description: `Read file: ${path}` },
     ctx,
     toolCallId,
   );

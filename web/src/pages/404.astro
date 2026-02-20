@@ -1,0 +1,29 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+
+const links = [
+  { href: '/', label: '首页', desc: '返回首页' },
+  { href: '/docs', label: '文档', desc: '查看使用指南' },
+  { href: '/download', label: '下载', desc: '获取 ServerPilot' },
+  { href: '/pricing', label: '定价', desc: '了解版本方案' },
+];
+---
+
+<BaseLayout title="页面未找到" description="您访问的页面不存在">
+  <section class="container mx-auto px-6 py-20 text-center">
+    <p class="text-6xl font-bold text-primary-600 mb-4">404</p>
+    <h1 class="text-3xl font-bold mb-4">页面未找到</h1>
+    <p class="text-gray-600 mb-10 max-w-md mx-auto">
+      您访问的页面不存在或已被移动，请尝试以下链接：
+    </p>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-2xl mx-auto mb-10">
+      {links.map(({ href, label, desc }) => (
+        <a href={href} class="border rounded-lg p-4 hover:border-primary-400 transition-colors">
+          <div class="font-semibold">{label}</div>
+          <div class="text-sm text-gray-500">{desc}</div>
+        </a>
+      ))}
+    </div>
+    <a href="/" class="btn-primary">返回首页</a>
+  </section>
+</BaseLayout>
