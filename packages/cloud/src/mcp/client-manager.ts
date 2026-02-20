@@ -92,7 +92,8 @@ export class MCPClientManager {
         },
       });
 
-      return this.extractTextContent(result);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return this.extractTextContent(result as any);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
       throw new Error(`Context7 search failed: ${message}`);
@@ -117,7 +118,8 @@ export class MCPClientManager {
         arguments: { url },
       });
 
-      const content = this.extractTextContent(result);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const content = this.extractTextContent(result as any);
       return content.join('\n\n');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
@@ -170,7 +172,11 @@ export class MCPClientManager {
    */
   private extractTextContent(result: CallToolResult): string[] {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const content = (result as any).content;
+    const anyResult = result as any;
+
+    // Handle both old format (content field) and new format (content inside result)
+    const content = anyResult.content || anyResult.toolResult?.content || anyResult.result?.content;
+
     if (!content || !Array.isArray(content)) {
       return [];
     }

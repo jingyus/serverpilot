@@ -89,6 +89,7 @@ export class SkillExecutionRepository {
     const [row] = await this.db
       .insert(skillExecutions)
       .values({
+        createdAt: new Date(),
         userId: input.userId,
         tenantId: input.tenantId,
         serverId: input.serverId,

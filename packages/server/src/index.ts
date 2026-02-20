@@ -605,21 +605,20 @@ export async function startServer(): Promise<InstallServer> {
 
   // 3. Create Hono REST API
   const apiApp = createApiApp();
-  // TODO: Cloud routes temporarily disabled due to merge conflicts
-  // Will be re-enabled after resolving cloud package build errors
-  // if (serverConfig.dbType === "postgres") {
-  //   try {
-  //     const { mountCloudRoutes } = await import("@aiinstaller/cloud");
-  //     const { requireAuth } = await import("./api/middleware/auth.js");
-  //     mountCloudRoutes(apiApp, requireAuth);
-  //     logger.info(
-  //       { operation: "startup" },
-  //       "Cloud Usage/Billing routes mounted",
-  //     );
-  //   } catch (err) {
-  //     logger.warn({ err }, "Cloud routes not mounted (optional)");
-  //   }
-  // }
+  if (serverConfig.dbType === "postgres") {
+    try {
+      const cloud = await import("@aiinstaller/cloud");
+      const { requireAuth } = await import("./api/middleware/auth.js");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (cloud as any).mountCloudRoutes(apiApp, requireAuth);
+      logger.info(
+        { operation: "startup" },
+        "Cloud Usage/Billing routes mounted",
+      );
+    } catch (err) {
+      logger.warn({ err }, "Cloud routes not mounted (optional)");
+    }
+  }
   warnWildcardCorsInProduction(process.env.NODE_ENV, process.env.CORS_ORIGIN);
   logger.info({ operation: "startup" }, "REST API created");
 

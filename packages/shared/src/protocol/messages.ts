@@ -9,7 +9,7 @@
  * @module protocol/messages
  */
 
-import { z } from 'zod';
+import { z } from "zod";
 
 // ============================================================================
 // Message Type Constants
@@ -17,26 +17,30 @@ import { z } from 'zod';
 
 /** All valid message type strings */
 export const MessageType = {
-  AUTH_REQUEST: 'auth.request',
-  AUTH_RESPONSE: 'auth.response',
-  SESSION_CREATE: 'session.create',
-  ENV_REPORT: 'env.report',
-  PLAN_RECEIVE: 'plan.receive',
-  STEP_EXECUTE: 'step.execute',
-  STEP_OUTPUT: 'step.output',
-  STEP_COMPLETE: 'step.complete',
-  ERROR_OCCURRED: 'error.occurred',
-  FIX_SUGGEST: 'fix.suggest',
-  SESSION_COMPLETE: 'session.complete',
-  AI_STREAM_START: 'ai.stream.start',
-  AI_STREAM_TOKEN: 'ai.stream.token',
-  AI_STREAM_COMPLETE: 'ai.stream.complete',
-  AI_STREAM_ERROR: 'ai.stream.error',
-  SNAPSHOT_REQUEST: 'snapshot.request',
-  SNAPSHOT_RESPONSE: 'snapshot.response',
-  ROLLBACK_REQUEST: 'rollback.request',
-  ROLLBACK_RESPONSE: 'rollback.response',
-  METRICS_REPORT: 'metrics.report',
+  AUTH_REQUEST: "auth.request",
+  AUTH_RESPONSE: "auth.response",
+  SESSION_CREATE: "session.create",
+  ENV_REPORT: "env.report",
+  PLAN_RECEIVE: "plan.receive",
+  STEP_EXECUTE: "step.execute",
+  STEP_OUTPUT: "step.output",
+  STEP_COMPLETE: "step.complete",
+  ERROR_OCCURRED: "error.occurred",
+  FIX_SUGGEST: "fix.suggest",
+  SESSION_COMPLETE: "session.complete",
+  AI_STREAM_START: "ai.stream.start",
+  AI_STREAM_TOKEN: "ai.stream.token",
+  AI_STREAM_COMPLETE: "ai.stream.complete",
+  AI_STREAM_ERROR: "ai.stream.error",
+  SNAPSHOT_REQUEST: "snapshot.request",
+  SNAPSHOT_RESPONSE: "snapshot.response",
+  ROLLBACK_REQUEST: "rollback.request",
+  ROLLBACK_RESPONSE: "rollback.response",
+  METRICS_REPORT: "metrics.report",
+  // Skills messages
+  SKILL_EXECUTE: "skill.execute",
+  SKILL_PROGRESS: "skill.progress",
+  SKILL_RESULT: "skill.result",
 } as const;
 
 export type MessageType = (typeof MessageType)[keyof typeof MessageType];
@@ -47,14 +51,14 @@ export type MessageType = (typeof MessageType)[keyof typeof MessageType];
 
 /** Operating system information */
 const OsInfoSchema = z.object({
-  platform: z.enum(['darwin', 'linux', 'win32']),
+  platform: z.enum(["darwin", "linux", "win32"]),
   version: z.string(),
   arch: z.string(),
 });
 
 /** Shell information */
 const ShellInfoSchema = z.object({
-  type: z.enum(['bash', 'zsh', 'fish', 'powershell', 'unknown']),
+  type: z.enum(["bash", "zsh", "fish", "powershell", "unknown"]),
   version: z.string(),
 });
 
@@ -87,7 +91,7 @@ const PermissionsSchema = z.object({
 });
 
 /** Service manager type */
-export const ServiceManagerSchema = z.enum(['systemd', 'pm2', 'docker']);
+export const ServiceManagerSchema = z.enum(["systemd", "pm2", "docker"]);
 
 export type ServiceManager = z.infer<typeof ServiceManagerSchema>;
 
@@ -96,7 +100,7 @@ export const ServiceSchema = z.object({
   /** Service name (e.g. "nginx", "mysql", "node-app") */
   name: z.string(),
   /** Current service status */
-  status: z.enum(['running', 'stopped', 'failed']),
+  status: z.enum(["running", "stopped", "failed"]),
   /** Open ports used by the service */
   ports: z.array(z.number()),
   /** Which service manager manages this service */
@@ -112,7 +116,7 @@ export const OpenPortSchema = z.object({
   /** Port number (1-65535) */
   port: z.number().int().min(1).max(65535),
   /** Network protocol */
-  protocol: z.enum(['tcp', 'udp']),
+  protocol: z.enum(["tcp", "udp"]),
   /** Listening address (e.g. "0.0.0.0", "127.0.0.1", "::") */
   address: z.string(),
   /** Process name using this port */
@@ -139,10 +143,10 @@ export type EnvironmentInfo = z.infer<typeof EnvironmentInfoSchema>;
 
 /** Error handling strategy for a step */
 export const ErrorHandlingStrategySchema = z.enum([
-  'retry',
-  'skip',
-  'abort',
-  'fallback',
+  "retry",
+  "skip",
+  "abort",
+  "fallback",
 ]);
 
 export type ErrorHandlingStrategy = z.infer<typeof ErrorHandlingStrategySchema>;
@@ -162,7 +166,7 @@ export type InstallStep = z.infer<typeof InstallStepSchema>;
 
 /** Risk associated with an install plan */
 const RiskSchema = z.object({
-  level: z.enum(['low', 'medium', 'high']),
+  level: z.enum(["low", "medium", "high"]),
   description: z.string(),
 });
 
@@ -206,7 +210,7 @@ export const FixStrategySchema = z.object({
   description: z.string(),
   commands: z.array(z.string()),
   confidence: z.number().min(0).max(1),
-  risk: z.enum(['low', 'medium', 'high']).optional(),
+  risk: z.enum(["low", "medium", "high"]).optional(),
   requiresSudo: z.boolean().optional(),
   estimatedTime: z.number().optional(),
   reasoning: z.string().optional(),
@@ -250,11 +254,13 @@ export const AuthResponseMessageSchema = z.object({
     error: z.string().optional(),
     banned: z.boolean().optional(),
     banReason: z.string().optional(),
-    versionCheck: z.object({
-      compatible: z.boolean(),
-      severity: z.enum(['ok', 'warn', 'error']),
-      message: z.string(),
-    }).optional(),
+    versionCheck: z
+      .object({
+        compatible: z.boolean(),
+        severity: z.enum(["ok", "warn", "error"]),
+        message: z.string(),
+      })
+      .optional(),
   }),
   timestamp: z.number(),
   requestId: z.string().optional(),
@@ -359,7 +365,9 @@ export const SessionCompleteMessageSchema = z.object({
   requestId: z.string().optional(),
 });
 
-export type SessionCompleteMessage = z.infer<typeof SessionCompleteMessageSchema>;
+export type SessionCompleteMessage = z.infer<
+  typeof SessionCompleteMessageSchema
+>;
 
 // ============================================================================
 // AI Streaming Message Schemas
@@ -408,7 +416,9 @@ export const AIStreamCompleteMessageSchema = z.object({
   requestId: z.string().optional(),
 });
 
-export type AIStreamCompleteMessage = z.infer<typeof AIStreamCompleteMessageSchema>;
+export type AIStreamCompleteMessage = z.infer<
+  typeof AIStreamCompleteMessageSchema
+>;
 
 /** Server -> Client: AI streaming encountered an error */
 export const AIStreamErrorMessageSchema = z.object({
@@ -445,7 +455,11 @@ export type SnapshotFileEntry = z.infer<typeof SnapshotFileEntrySchema>;
 
 /** Config entry type classification */
 export const SnapshotConfigTypeSchema = z.enum([
-  'nginx', 'mysql', 'redis', 'crontab', 'other',
+  "nginx",
+  "mysql",
+  "redis",
+  "crontab",
+  "other",
 ]);
 
 export type SnapshotConfigType = z.infer<typeof SnapshotConfigTypeSchema>;
@@ -465,7 +479,9 @@ export const SnapshotRequestMessageSchema = z.object({
   requestId: z.string().optional(),
 });
 
-export type SnapshotRequestMessage = z.infer<typeof SnapshotRequestMessageSchema>;
+export type SnapshotRequestMessage = z.infer<
+  typeof SnapshotRequestMessageSchema
+>;
 
 /** Agent -> Server: Response with captured file data */
 export const SnapshotResponseMessageSchema = z.object({
@@ -484,7 +500,9 @@ export const SnapshotResponseMessageSchema = z.object({
   requestId: z.string().optional(),
 });
 
-export type SnapshotResponseMessage = z.infer<typeof SnapshotResponseMessageSchema>;
+export type SnapshotResponseMessage = z.infer<
+  typeof SnapshotResponseMessageSchema
+>;
 
 // ============================================================================
 // Rollback Message Schemas
@@ -523,7 +541,9 @@ export const RollbackRequestMessageSchema = z.object({
   requestId: z.string().optional(),
 });
 
-export type RollbackRequestMessage = z.infer<typeof RollbackRequestMessageSchema>;
+export type RollbackRequestMessage = z.infer<
+  typeof RollbackRequestMessageSchema
+>;
 
 /** Individual file rollback result */
 export const RollbackFileResultSchema = z.object({
@@ -554,7 +574,9 @@ export const RollbackResponseMessageSchema = z.object({
   requestId: z.string().optional(),
 });
 
-export type RollbackResponseMessage = z.infer<typeof RollbackResponseMessageSchema>;
+export type RollbackResponseMessage = z.infer<
+  typeof RollbackResponseMessageSchema
+>;
 
 // ============================================================================
 // Metrics (Agent → Server: System metrics reporting)
@@ -588,11 +610,71 @@ export const MetricsReportMessageSchema = z.object({
 export type MetricsReportMessage = z.infer<typeof MetricsReportMessageSchema>;
 
 // ============================================================================
+// Skills Messages
+// ============================================================================
+
+/** Skill execute message (Server → Agent) */
+export const SkillExecuteMessageSchema = z.object({
+  type: z.literal(MessageType.SKILL_EXECUTE),
+  payload: z.object({
+    skillId: z.string(),
+    skillName: z.string(),
+    commands: z.array(z.string()),
+    env: z.record(z.string()).optional(),
+    timeout: z.number().optional(),
+    cwd: z.string().optional(),
+  }),
+  timestamp: z.number(),
+  requestId: z.string().optional(),
+});
+
+export type SkillExecuteMessage = z.infer<typeof SkillExecuteMessageSchema>;
+
+/** Skill progress message (Agent → Server) */
+export const SkillProgressMessageSchema = z.object({
+  type: z.literal(MessageType.SKILL_PROGRESS),
+  payload: z.object({
+    skillId: z.string(),
+    status: z.enum([
+      "started",
+      "running",
+      "step_complete",
+      "completed",
+      "failed",
+    ]),
+    step: z.number().optional(),
+    totalSteps: z.number().optional(),
+    message: z.string().optional(),
+    error: z.string().optional(),
+  }),
+  timestamp: z.number(),
+  requestId: z.string().optional(),
+});
+
+export type SkillProgressMessage = z.infer<typeof SkillProgressMessageSchema>;
+
+/** Skill result message (Agent → Server) */
+export const SkillResultMessageSchema = z.object({
+  type: z.literal(MessageType.SKILL_RESULT),
+  payload: z.object({
+    skillId: z.string(),
+    success: z.boolean(),
+    output: z.string().optional(),
+    error: z.string().optional(),
+    duration: z.number().optional(),
+  }),
+  timestamp: z.number(),
+  requestId: z.string().optional(),
+});
+
+export type SkillResultMessage = z.infer<typeof SkillResultMessageSchema>;
+
+// ============================================================================
 // Union Message Type
 // ============================================================================
 
 /** Discriminated union of all message schemas */
-export const MessageSchema = z.discriminatedUnion('type', [
+export const MessageSchema = z.discriminatedUnion("type", [
   AuthRequestMessageSchema,
   AuthResponseMessageSchema,
   SessionCreateMessageSchema,
@@ -613,6 +695,9 @@ export const MessageSchema = z.discriminatedUnion('type', [
   RollbackRequestMessageSchema,
   RollbackResponseMessageSchema,
   MetricsReportMessageSchema,
+  SkillExecuteMessageSchema,
+  SkillProgressMessageSchema,
+  SkillResultMessageSchema,
 ]);
 
 /** Any valid message in the protocol */
@@ -639,7 +724,9 @@ export function parseMessage(data: unknown): Message {
  * @param data - The raw data to validate
  * @returns A result object with success flag and parsed data or error
  */
-export function safeParseMessage(data: unknown): z.SafeParseReturnType<unknown, Message> {
+export function safeParseMessage(
+  data: unknown,
+): z.SafeParseReturnType<unknown, Message> {
   return MessageSchema.safeParse(data);
 }
 
@@ -651,9 +738,9 @@ export function safeParseMessage(data: unknown): z.SafeParseReturnType<unknown, 
  * @param requestId - Optional request ID for request-response matching
  * @returns A fully formed message object
  */
-export function createMessage<T extends Message['type']>(
+export function createMessage<T extends Message["type"]>(
   type: T,
-  payload: Extract<Message, { type: T }>['payload'],
+  payload: Extract<Message, { type: T }>["payload"],
   requestId?: string,
 ): Extract<Message, { type: T }> {
   return {

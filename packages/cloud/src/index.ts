@@ -121,17 +121,13 @@ export type {
 // ---------------------------------------------------------------------------
 // Billing（Stripe 等）— 从 billing 模块统一导出
 // ---------------------------------------------------------------------------
-export {
-  PLANS,
-  getSubscriptionStore,
-  setSubscriptionStore,
-  createSubscription,
-  getSubscription,
-  cancelSubscription,
-  updateSubscriptionPlan,
-  handleStripeWebhook,
-} from './billing/index.js';
+export { PLANS } from './billing/index.js';
 export type { BillingPlan } from './billing/index.js';
+
+// TODO: Implement Stripe subscription management functions
+// export { getSubscriptionStore, setSubscriptionStore } from './billing/subscription-store.js';
+// export { createSubscription, getSubscription, cancelSubscription, updateSubscriptionPlan } from './billing/subscription.js';
+// export { handleStripeWebhook } from './billing/stripe-webhook.js';
 
 // ---------------------------------------------------------------------------
 // Analytics（CostTracker 已从 ai 导出；analytics 模块可单独引入）
