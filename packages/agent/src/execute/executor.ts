@@ -10,7 +10,7 @@
  * @module execute/executor
  */
 
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, ChildProcess } from "node:child_process";
 import path from "node:path";
 import type { ExecResult } from "@aiinstaller/shared";
 

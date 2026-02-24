@@ -12,7 +12,7 @@
 
 import process from "node:process";
 import os from "node:os";
-import { spawn as spawnProcess, type ChildProcess } from "node:child_process";
+import { spawn as spawnProcess, ChildProcess } from "node:child_process";
 import type {
   Message,
   InstallPlan,
