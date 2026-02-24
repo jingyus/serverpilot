@@ -1,8 +1,4 @@
-<p align="center">
-  <img src="docs/assets/logo.png" alt="ServerPilot Logo" width="120" height="120">
-</p>
-
-<h1 align="center">ServerPilot</h1>
+<h1 align="center">🚀 ServerPilot</h1>
 
 <p align="center">
   <strong>AI-Powered Server Management Platform</strong>
@@ -40,13 +36,25 @@ ServerPilot:       User → AI Chat → Plan Generated → User Confirms → Age
 
 **Core Value**: Manage servers using natural language. AI understands your intent and executes safely — no need to memorize complex commands.
 
+---
+
+<p align="center">
+  <img src="images/1771944105900.jpg" alt="ServerPilot Dashboard" width="100%">
+</p>
+
+<p align="center">
+  <em>Dashboard Overview - Server monitoring, operation trends, and real-time alerts</em>
+</p>
+
+---
+
 ## ✨ Key Features
 
 ### 🤖 AI-Powered Operations
 - **Natural Language Interface** — Describe what you need; AI generates and executes the plan automatically
-- **Multi-Model Support** — Works with Claude, OpenAI, DeepSeek, Ollama, or any Custom OpenAI-compatible API
+- **Multi-Model Support** — Works with Claude, OpenAI, DeepSeek, Ollama, or any Custom OpenAI-compatible API (OneAPI / LiteLLM / Azure)
 - **Context-Aware** — AI remembers each server's environment, installed software, and configurations for precise operations
-- **Self-Growing Knowledge Base** — Built-in documentation for common tech stacks (Nginx, MySQL, Docker, Node.js, etc.) with automatic updates
+- **Self-Growing Knowledge Base** — Built-in documentation for common tech stacks (Nginx, MySQL, Docker, Node.js, etc.) with automatic updates from GitHub/official sites
 
 ### 🛡️ Enterprise-Grade Security
 - **5-Layer Defense** — Command classification, parameter auditing, pre-operation snapshots, emergency kill switch, and complete audit trail
@@ -195,10 +203,10 @@ ServerPilot supports multiple AI model providers. Configure via environment vari
 
 | Provider | Environment Variables | Description |
 |----------|----------------------|-------------|
-| **Claude** (Default) | `AI_PROVIDER=claude`<br/>`ANTHROPIC_API_KEY=sk-...` | Anthropic Claude (Tier 1) |
+| **Claude** (Default) | `AI_PROVIDER=claude`<br/>`ANTHROPIC_API_KEY=sk-...` | Anthropic Claude (Tier 1, recommended) |
 | **OpenAI** | `AI_PROVIDER=openai`<br/>`OPENAI_API_KEY=sk-...` | GPT-4o and others (Tier 2) |
 | **DeepSeek** | `AI_PROVIDER=deepseek`<br/>`DEEPSEEK_API_KEY=sk-...` | DeepSeek Chat (Tier 2) |
-| **Ollama** | `AI_PROVIDER=ollama` | Local models (Tier 3) |
+| **Ollama** | `AI_PROVIDER=ollama` | Local models (Tier 3, no API key needed) |
 | **Custom OpenAI** | `AI_PROVIDER=custom-openai` | Any OpenAI-compatible API |
 
 **Custom OpenAI Compatible Services** (OneAPI / LiteLLM / Azure OpenAI):
@@ -216,14 +224,14 @@ You can also switch providers dynamically via the Dashboard settings page withou
 
 | Component | Technologies | License |
 |-----------|-------------|---------|
-| **Server** | Node.js 22+, TypeScript, Hono, Drizzle ORM, SQLite | AGPL-3.0 |
+| **Server** | Node.js 22+, TypeScript, Hono, Drizzle ORM, SQLite, Claude SDK | AGPL-3.0 |
 | **Agent** | TypeScript, Bun (compiled to single binary) | Apache-2.0 |
 | **Dashboard** | React 18, Vite 5, Tailwind CSS, Zustand, React Router 6 | AGPL-3.0 |
 | **Shared** | Zod schema validation | MIT |
-| **AI Providers** | Claude / OpenAI / DeepSeek / Ollama / Custom | - |
+| **AI Providers** | Claude / OpenAI / DeepSeek / Ollama / Custom OpenAI-compatible | - |
 | **Deployment** | Docker Compose, GitHub Actions CI/CD | - |
 
-## 📊 Comparison
+## 📊 Comparison with Other Tools
 
 | Feature | ServerPilot | BaoTa Panel | Ansible | Portainer |
 |---------|:-----------:|:-----------:|:-------:|:---------:|
@@ -234,29 +242,29 @@ You can also switch providers dynamically via the Dashboard settings page withou
 | 5-Layer Security | ✅ | Basic | None | None |
 | RAG Knowledge Base | ✅ | ❌ | ❌ | ❌ |
 | Context-Aware AI | ✅ | Basic Info | Inventory | Basic |
-| Built-in AI Key | ✅ | ❌ | ❌ | ❌ |
+| Bring Your Own AI Key | ✅ | ❌ | ❌ | ❌ |
 | Local Model Support | ✅ (Ollama) | ❌ | ❌ | ❌ |
+
+## 💰 Pricing
+
+**ServerPilot Community Edition is 100% open source and free forever.**
+
+- ✅ **All core features available** — Multi-server management, team collaboration, webhooks, real-time monitoring
+- ✅ **No feature limitations** — No trial periods, no paywalls, no artificial restrictions
+- ✅ **Self-hosted on your infrastructure** — Full control over your data and deployment
+- ⚙️ **Bring your own AI API Key** — Use Claude, OpenAI, DeepSeek, Ollama, or any OpenAI-compatible API
+- 🔓 **No vendor lock-in** — Standard SQLite database, Docker deployment, open protocols
+
+> 💡 **Future Plans**: We're considering a managed cloud version for users who prefer not to manage infrastructure. This would include official AI keys, automatic backups, and enterprise features (SAML SSO, compliance reports), but the self-hosted Community Edition will always remain fully-featured and free.
 
 ## 🗺️ Roadmap
 
-| Phase | Goals |
-|-------|-------|
-| **MVP (v0.1)** | Self-deploy → Install Agent → Connect → AI Operations (closed loop) |
-| **v0.2** | Snapshot rollback + Scheduled tasks + Alerts + Self-learning knowledge base |
-| **v0.3** | GitHub open source release + Community edition installer |
-| **v1.0** | ServerPilot Cloud + Team collaboration + Billing |
-
-## 💰 Deployment Modes & Pricing
-
-| Mode | Features | Price |
-|------|----------|-------|
-| **Self-Hosted** | 🎉 100% open source, all features available<br/>✅ Multi-server, team collaboration, webhooks, monitoring<br/>⚙️ Bring your own AI API Key<br/>⚙️ Manually execute AI Skills (log inspection, security scans) | **Free Forever** |
-| **Cloud Free** | ✅ All Self-Hosted features<br/>✅ Official AI (smart routing, 100 calls/month)<br/>🤖 Try AI Skills (log inspection, security scanning)<br/>📊 Limits: 1 server, 1 user | **$0/month** |
-| **Cloud Pro** | ✅ 10 servers, 5 users<br/>✅ Official AI (2000 calls/month, 60% cost reduction)<br/>🤖 AI log inspection + AI security scanning<br/>📈 Weekly reports + Trend analysis | **$19/month** |
-| **Cloud Team** | ✅ Unlimited servers & users<br/>✅ Unlimited AI calls (smart routing)<br/>🤖 All AI Skills (performance optimization, cost analysis)<br/>🔔 Auto-inspection + Proactive alerts | **$49/month** |
-| **Cloud Enterprise** | ✅ All Team features<br/>🤖 Custom AI Skills + Dedicated models<br/>🛡️ SAML SSO + Compliance reports (SOC2, ISO27001)<br/>📞 SLA guarantees + Dedicated support | **From $199/month** |
-
-**Core Philosophy**: Self-Hosted and Cloud have **identical core features** (multi-server, teams, webhooks, alerts). Cloud's value is in **AI intelligence** (official AI + smart routing + professional Skills) and **enterprise enhancements** (SAML SSO, compliance), not feature unlocking. Users pay for **AI DevOps expertise**, not server hosting.
+| Phase | Goals | Status |
+|-------|-------|--------|
+| **MVP (v0.1)** | Self-deploy → Install Agent → Connect → AI Operations (closed loop) | ✅ Done |
+| **v0.2** | Snapshot rollback + Scheduled tasks + Advanced alerts + Knowledge base auto-learning | 🚧 In Progress |
+| **v0.3** | Community installer script + Plugin system + API extensions | 📋 Planned |
+| **v1.0** | Stable APIs + Production-ready + Optional managed cloud service | 📋 Planned |
 
 ## 📚 Documentation
 
@@ -313,7 +321,6 @@ ServerPilot uses an **Open Core** model:
 | **Server + Dashboard** (CE) | [AGPL-3.0](LICENSE) | Open source core, restricts cloud providers from direct use |
 | **Agent** | [Apache-2.0](packages/agent/LICENSE) | Enterprise-friendly, 100% open source and auditable |
 | **Shared** | [MIT](packages/shared/LICENSE) | Maximum ecosystem compatibility |
-| **EE Features** | [Commercial](LICENSE-EE) | Enterprise features (multi-server, team collaboration, etc.) |
 
 See [LICENSING.md](LICENSING.md) for detailed licensing strategy.
 
