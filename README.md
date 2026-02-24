@@ -16,11 +16,11 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/jingjinbao/ServerPilot/actions/workflows/ci.yml"><img src="https://github.com/jingjinbao/ServerPilot/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/jingjinbao/ServerPilot/actions/workflows/test.yml"><img src="https://github.com/jingjinbao/ServerPilot/actions/workflows/test.yml/badge.svg" alt="Test"></a>
-  <a href="https://github.com/jingjinbao/ServerPilot/actions/workflows/docker-publish.yml"><img src="https://github.com/jingjinbao/ServerPilot/actions/workflows/docker-publish.yml/badge.svg" alt="Docker"></a>
+  <a href="https://github.com/jingyus/serverpilot/actions/workflows/ci.yml"><img src="https://github.com/jingyus/serverpilot/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/jingyus/serverpilot/actions/workflows/test.yml"><img src="https://github.com/jingyus/serverpilot/actions/workflows/test.yml/badge.svg" alt="Test"></a>
+  <a href="https://github.com/jingyus/serverpilot/actions/workflows/docker-publish.yml"><img src="https://github.com/jingyus/serverpilot/actions/workflows/docker-publish.yml/badge.svg" alt="Docker"></a>
   <a href="https://www.gnu.org/licenses/agpl-3.0"><img src="https://img.shields.io/badge/License-AGPL_v3-blue.svg" alt="License: AGPL v3"></a>
-  <a href="https://github.com/jingjinbao/ServerPilot/releases"><img src="https://img.shields.io/github/v/release/jingjinbao/ServerPilot?include_prereleases" alt="Release"></a>
+  <a href="https://github.com/jingyus/serverpilot/releases"><img src="https://img.shields.io/github/v/release/jingyus/serverpilot?include_prereleases" alt="Release"></a>
 </p>
 
 ---
@@ -111,8 +111,8 @@ Use pre-built images — no code cloning or local compilation needed:
 
 ```bash
 # 1. Download configuration files
-curl -fsSL https://raw.githubusercontent.com/jingjinbao/ServerPilot/master/docker-compose.yml -o docker-compose.yml
-curl -fsSL https://raw.githubusercontent.com/jingjinbao/ServerPilot/master/.env.example -o .env
+curl -fsSL https://raw.githubusercontent.com/jingyus/serverpilot/master/docker-compose.yml -o docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/jingyus/serverpilot/master/.env.example -o .env
 
 # 2. Edit .env (at minimum, set JWT_SECRET and AI Provider)
 #    JWT_SECRET=your-secret-key-at-least-32-chars
@@ -137,7 +137,7 @@ docker compose logs server | grep -i "password"
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/jingjinbao/ServerPilot.git
+git clone https://github.com/jingyus/serverpilot.git
 cd ServerPilot
 
 # 2. Build and start with Docker Compose
@@ -335,7 +335,7 @@ Built with ❤️ using:
 
 ## 📬 Contact & Support
 
-- **GitHub Issues**: [Report bugs or request features](https://github.com/jingjinbao/ServerPilot/issues)
+- **GitHub Issues**: [Report bugs or request features](https://github.com/jingyus/serverpilot/issues)
 - **Documentation**: [docs/](docs/)
 - **Security**: See [SECURITY.md](SECURITY.md) for vulnerability reporting
 
