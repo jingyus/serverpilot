@@ -109,11 +109,17 @@ EDITION_MATRIX.md
 
 # Internal Chinese documentation
 使用说明.md*
+开源发布-简易版.md
 
 # Temporary opensource release files (remove after release)
 OPENSOURCE_RELEASE_CHECKLIST.md
 QUICKSTART_OPENSOURCE.md
 DOCS_CLASSIFICATION.md
+SCRIPTS_CLASSIFICATION.md
+DIRECTORIES_CLASSIFICATION.md
+DOCS_SUMMARY.md
+OPENSOURCE_FINAL_SUMMARY.md
+OPENSOURCE_SIMPLE_GUIDE.md
 .gitignore.opensource-example
 
 # Internal documentation (docs/)
