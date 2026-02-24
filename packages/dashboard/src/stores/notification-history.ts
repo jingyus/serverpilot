@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { create } from 'zustand';
+import { create } from "zustand";
 
-import { apiRequest, ApiError } from '@/api/client';
-import type { Alert, AlertsResponse } from '@/types/dashboard';
-import type { WebhookDelivery, DeliveriesResponse } from '@/types/webhook';
+import { apiRequest, ApiError } from "@/api/client";
+import type { Alert, AlertsResponse } from "@/types/dashboard";
+import type { WebhookDelivery, DeliveriesResponse } from "@/types/webhook";
 import type {
   NotificationItem,
   NotificationCategory,
-} from '@/types/notification-history';
+} from "@/types/notification-history";
 
-const STORAGE_KEY = 'serverpilot_read_notifications';
+const STORAGE_KEY = "serverpilot_read_notifications";
 
 function loadReadIds(): Set<string> {
   try {
@@ -32,10 +32,13 @@ function saveReadIds(ids: Set<string>): void {
   }
 }
 
-function alertToNotification(alert: Alert, readIds: Set<string>): NotificationItem {
+function alertToNotification(
+  alert: Alert,
+  readIds: Set<string>,
+): NotificationItem {
   return {
     id: `alert-${alert.id}`,
-    category: 'alert',
+    category: "alert",
     title: `${alert.type.toUpperCase()} Alert`,
     message: alert.message,
     timestamp: alert.createdAt,
@@ -52,15 +55,16 @@ function deliveryToNotification(
   delivery: WebhookDelivery,
   readIds: Set<string>,
 ): NotificationItem {
-  const statusLabel = delivery.status === 'success' ? 'delivered' : delivery.status;
+  const statusLabel =
+    delivery.status === "success" ? "delivered" : delivery.status;
   return {
     id: `webhook-${delivery.id}`,
-    category: 'webhook',
+    category: "webhook",
     title: `Webhook: ${delivery.eventType}`,
-    message: `Delivery ${statusLabel} (${delivery.attempts} attempt${delivery.attempts !== 1 ? 's' : ''})`,
+    message: `Delivery ${statusLabel} (${delivery.attempts} attempt${delivery.attempts !== 1 ? "s" : ""})`,
     timestamp: delivery.createdAt,
     read: readIds.has(`webhook-${delivery.id}`),
-    severity: delivery.status === 'failed' ? 'warning' : 'info',
+    severity: delivery.status === "failed" ? "warning" : "info",
     meta: { webhookId: delivery.webhookId },
   };
 }
@@ -69,11 +73,12 @@ interface NotificationHistoryState {
   items: NotificationItem[];
   isLoading: boolean;
   error: string | null;
-  filter: NotificationCategory | 'all';
+  filter: NotificationCategory | "all";
   readIds: Set<string>;
+  _isFetching: boolean; // Internal flag to prevent concurrent fetches
 
   fetchNotifications: () => Promise<void>;
-  setFilter: (filter: NotificationCategory | 'all') => void;
+  setFilter: (filter: NotificationCategory | "all") => void;
   markAsRead: (id: string) => void;
   markAllAsRead: () => void;
   clearError: () => void;
@@ -84,15 +89,42 @@ export const useNotificationHistoryStore = create<NotificationHistoryState>(
     items: [],
     isLoading: false,
     error: null,
-    filter: 'all',
+    filter: "all",
     readIds: loadReadIds(),
+    _isFetching: false,
 
     fetchNotifications: async () => {
-      set({ isLoading: true, error: null });
+      // Prevent concurrent fetches
+      const state = get();
+      if (state._isFetching) {
+        return;
+      }
+
+      set({ isLoading: true, error: null, _isFetching: true });
       try {
+        // Fetch alerts and webhooks separately with graceful degradation
+        // If either fails with 404 (feature not configured), continue with empty array
+        const alertsPromise = apiRequest<AlertsResponse>(
+          "/alerts?limit=50&offset=0",
+        ).catch((err) => {
+          if (err instanceof ApiError && err.status === 404) {
+            return { alerts: [], total: 0 };
+          }
+          throw err;
+        });
+
+        const deliveriesPromise = apiRequest<DeliveriesResponse>(
+          "/webhooks/deliveries?limit=50",
+        ).catch((err) => {
+          if (err instanceof ApiError && err.status === 404) {
+            return { deliveries: [], total: 0 };
+          }
+          throw err;
+        });
+
         const [alertsData, deliveriesData] = await Promise.all([
-          apiRequest<AlertsResponse>('/alerts?limit=50&offset=0'),
-          apiRequest<DeliveriesResponse>('/webhooks/deliveries?limit=50'),
+          alertsPromise,
+          deliveriesPromise,
         ]);
 
         const readIds = get().readIds;
@@ -108,13 +140,13 @@ export const useNotificationHistoryStore = create<NotificationHistoryState>(
             new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
         );
 
-        set({ items: merged, isLoading: false });
+        set({ items: merged, isLoading: false, _isFetching: false });
       } catch (err) {
         const message =
           err instanceof ApiError
             ? err.message
-            : 'Failed to load notifications';
-        set({ error: message, isLoading: false });
+            : "Failed to load notifications";
+        set({ error: message, isLoading: false, _isFetching: false });
       }
     },
 
@@ -155,6 +187,6 @@ export function getUnreadCount(state: NotificationHistoryState): number {
 export function getFilteredItems(
   state: NotificationHistoryState,
 ): NotificationItem[] {
-  if (state.filter === 'all') return state.items;
+  if (state.filter === "all") return state.items;
   return state.items.filter((item) => item.category === state.filter);
 }

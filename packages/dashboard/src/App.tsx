@@ -15,7 +15,6 @@ import { Settings } from "./pages/Settings";
 import { Search } from "./pages/Search";
 import { Alerts } from "./pages/Alerts";
 import { AuditLog } from "./pages/AuditLog";
-import { CommandApprovals } from "./pages/CommandApprovals";
 import { Webhooks } from "./pages/Webhooks";
 import { Team } from "./pages/Team";
 import { Skills } from "./pages/Skills";
@@ -43,7 +42,6 @@ export function App() {
           <Route path="alerts" element={<Alerts />} />
           <Route path="notifications" element={<Notifications />} />
           <Route path="audit-log" element={<AuditLog />} />
-          <Route path="approvals" element={<CommandApprovals />} />
           <Route path="webhooks" element={<Webhooks />} />
           <Route path="skills" element={<Skills />} />
           <Route path="team" element={<Team />} />

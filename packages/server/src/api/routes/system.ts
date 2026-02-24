@@ -13,7 +13,7 @@ import { createRequire } from "node:module";
 import { Hono } from "hono";
 import { getLimitsForEdition, toSerializableLimits } from "@aiinstaller/shared";
 import type { SerializableEditionLimits } from "@aiinstaller/shared";
-import { EDITION, FEATURES } from "../../config/edition.js";
+import { EDITION, FEATURES, CLOUD_ONLY } from "../../config/edition.js";
 import type { FeatureFlags } from "../../config/edition.js";
 
 // Read version from package.json (avoids circular dependency with index.ts)
@@ -30,6 +30,9 @@ interface EditionResponse {
   features: FeatureFlags;
   version: string;
   limits: SerializableEditionLimits;
+  cloudFeatures: {
+    notificationHistory: boolean;
+  };
 }
 
 // ============================================================================
@@ -50,6 +53,9 @@ app.get("/edition", (c) => {
     features: FEATURES,
     version: SERVER_VERSION,
     limits: toSerializableLimits(getLimitsForEdition(EDITION.edition)),
+    cloudFeatures: {
+      notificationHistory: CLOUD_ONLY.notificationHistory,
+    },
   };
   return c.json(response);
 });

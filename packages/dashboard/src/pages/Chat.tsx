@@ -85,6 +85,15 @@ export function Chat() {
     }
   }, [servers.length, fetchServers]);
 
+  // Auto-select the first (or only) server if no serverId is specified
+  // This is especially useful for self-hosted deployments with a single local server
+  useEffect(() => {
+    if (!serverId && servers.length === 1) {
+      // Automatically navigate to the first server's chat
+      navigate(`/chat/${servers[0].id}`, { replace: true });
+    }
+  }, [serverId, servers, navigate]);
+
   // 进入对话页时拉取当前生效的 AI 提供商与模型（与 .env/设置页保存结果一致）
   useEffect(() => {
     checkProviderHealth();

@@ -1,11 +1,22 @@
 <p align="center">
-  <h1 align="center">ServerPilot</h1>
-  <p align="center">
-    <strong>AI-Powered Server Management Platform</strong>
-  </p>
-  <p align="center">
-    跟 AI 聊天就能管服务器 — 开源、安全、自主可控
-  </p>
+  <img src="docs/assets/logo.png" alt="ServerPilot Logo" width="120" height="120">
+</p>
+
+<h1 align="center">ServerPilot</h1>
+
+<p align="center">
+  <strong>AI-Powered Server Management Platform</strong>
+</p>
+
+<p align="center">
+  Manage your servers through natural language conversations — Open Source, Secure, Self-Hosted
+</p>
+
+<p align="center">
+  <a href="README.zh-CN.md">简体中文</a> •
+  <a href="#quick-start">Quick Start</a> •
+  <a href="#documentation">Documentation</a> •
+  <a href="#contributing">Contributing</a>
 </p>
 
 <p align="center">
@@ -18,109 +29,140 @@
 
 ---
 
-## ServerPilot 是什么？
+## What is ServerPilot?
 
-ServerPilot 是**宝塔面板的 AI 时代替代品**。同样一行命令安装，但用 AI 对话取代表单点击，用开源透明取代闭源黑盒。
+**ServerPilot** is the AI-era replacement for traditional server management panels. Install with a single command, manage through AI conversations instead of clicking forms, and enjoy open-source transparency instead of closed-source black boxes.
 
 ```
-传统运维:   用户 → 写脚本/敲命令/点面板 → 服务器
-ServerPilot: 用户 → 对话 AI → AI 生成计划 → 用户确认 → Agent 执行 → 结果反馈
+Traditional DevOps: User → Scripts/Commands/Panel → Server
+ServerPilot:       User → AI Chat → Plan Generated → User Confirms → Agent Executes → Feedback
 ```
 
-**核心价值**：用自然语言管理服务器，AI 理解你的意图并安全执行，无需记忆复杂命令。
+**Core Value**: Manage servers using natural language. AI understands your intent and executes safely — no need to memorize complex commands.
 
-## 功能特性
+## ✨ Key Features
 
-- **AI 对话运维** — 用自然语言描述需求，AI 自动生成执行计划并完成操作
-- **多 AI 模型支持** — Claude / OpenAI / DeepSeek / Ollama / Custom OpenAI 兼容接口（OneAPI / LiteLLM / Azure），自带 Key 或本地模型
-- **五级安全防护** — 命令分级审核 + 参数审计 + 操作快照 + 紧急终止 + 完整审计日志
-- **服务器档案** — AI 记住每台服务器的环境、软件、配置，上下文精准不出错
-- **内置知识库** — 覆盖 Nginx / MySQL / Docker / Node.js / PostgreSQL / Redis 等常见技术栈
-- **文档自动抓取** — 从 GitHub / 官网自动同步文档，知识库自成长
-- **实时监控** — CPU / 内存 / 磁盘 / 网络实时指标采集与图表展示
-- **轻量 Agent** — 单一二进制、<50MB、<1% CPU 占用，对服务器几乎零负担
-- **完整 API 文档** — OpenAPI 3.0 规范，内置 Swagger UI 在线调试
+### 🤖 AI-Powered Operations
+- **Natural Language Interface** — Describe what you need; AI generates and executes the plan automatically
+- **Multi-Model Support** — Works with Claude, OpenAI, DeepSeek, Ollama, or any Custom OpenAI-compatible API
+- **Context-Aware** — AI remembers each server's environment, installed software, and configurations for precise operations
+- **Self-Growing Knowledge Base** — Built-in documentation for common tech stacks (Nginx, MySQL, Docker, Node.js, etc.) with automatic updates
 
-## 架构总览
+### 🛡️ Enterprise-Grade Security
+- **5-Layer Defense** — Command classification, parameter auditing, pre-operation snapshots, emergency kill switch, and complete audit trail
+- **726+ Security Rules** — Commands classified into 5 risk levels (GREEN/YELLOW/RED/CRITICAL/FORBIDDEN)
+- **45+ Parameter Patterns** — Automatic detection of dangerous flags and protected paths
+- **Full Audit Trail** — Every operation tracked with user, timestamp, risk level, and outcome
+
+### 📊 Real-Time Monitoring
+- **Live Metrics** — CPU, memory, disk, and network monitoring with SSE streaming
+- **Instant Alerts** — Webhook notifications for task completion, server offline, operation failures
+- **Interactive Dashboards** — Real-time charts and historical trend analysis
+
+### 🪶 Lightweight & Efficient
+- **Minimal Footprint** — Single binary agent (<50MB, <1% CPU usage)
+- **Zero-Config Deployment** — Works out of the box; customize only when needed
+- **Cross-Platform** — Supports linux/amd64 and linux/arm64 architectures
+
+## 🏗️ Architecture Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                        Web Dashboard                            │
 │              React + Vite + Tailwind CSS + Zustand              │
-│         服务器列表 · AI 对话 · 实时监控 · 知识库搜索              │
+│         Server List · AI Chat · Monitoring · Knowledge Base     │
 └───────────────────────────┬─────────────────────────────────────┘
-                            │ REST API + SSE 流式响应
+                            │ REST API + SSE Streaming
 ┌───────────────────────────┴─────────────────────────────────────┐
 │                          Server                                  │
-│                    Node.js + Hono + SQLite                        │
+│                    Node.js + Hono + SQLite                       │
 │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌────────────────────┐  │
-│  │ AI 引擎   │ │ API 服务  │ │ 知识库    │ │ 安全 · 审计 · 监控  │  │
-│  │(多模型)   │ │(REST+WS) │ │(RAG)     │ │(五级命令分级)       │  │
+│  │ AI Engine │ │ API Layer │ │ Knowledge│ │ Security & Audit   │  │
+│  │(Multi-M.) │ │(REST+WS)  │ │Base(RAG) │ │(5-Layer Defense)   │  │
 │  └──────────┘ └──────────┘ └──────────┘ └────────────────────┘  │
 └───────────────────────────┬─────────────────────────────────────┘
-                            │ WSS 加密长连接
+                            │ WSS Encrypted Connection
           ┌─────────────────┼─────────────────┐
           │                 │                 │
-    ┌─────┴─────┐     ┌────┴──────┐    ┌─────┴─────┐
+    ┌─────┴─────┐     ┌─────┴─────┐    ┌─────┴─────┐
     │  Agent A   │     │  Agent B   │    │  Agent C   │
-    │ 生产服务器  │     │ 测试服务器  │    │ 开发机     │
+    │ Production │     │  Staging   │    │    Dev     │
     │            │     │            │    │            │
-    │ · 环境探测  │     │ · 环境探测  │    │ · 环境探测  │
-    │ · 命令执行  │     │ · 命令执行  │    │ · 命令执行  │
-    │ · 安全沙箱  │     │ · 安全沙箱  │    │ · 安全沙箱  │
-    │ · 指标上报  │     │ · 指标上报  │    │ · 指标上报  │
+    │ · Env Scan │     │ · Env Scan │    │ · Env Scan │
+    │ · Exec Cmd │     │ · Exec Cmd │    │ · Exec Cmd │
+    │ · Security │     │ · Security │    │ · Security │
+    │ · Metrics  │     │ · Metrics  │    │ · Metrics  │
     └───────────┘     └───────────┘    └───────────┘
 ```
 
-## 快速开始
+## 🚀 Quick Start
 
-### 30 秒 Docker 部署（推荐）
+### Option 1: Docker Deployment (Recommended)
 
-使用预构建镜像，无需克隆代码，无需本地编译：
+Use pre-built images — no code cloning or local compilation needed:
 
 ```bash
-# 1. 下载配置文件
+# 1. Download configuration files
 curl -fsSL https://raw.githubusercontent.com/jingjinbao/ServerPilot/master/docker-compose.yml -o docker-compose.yml
 curl -fsSL https://raw.githubusercontent.com/jingjinbao/ServerPilot/master/.env.example -o .env
 
-# 2. 编辑 .env 配置（至少设置 JWT_SECRET 和 AI Provider）
+# 2. Edit .env (at minimum, set JWT_SECRET and AI Provider)
 #    JWT_SECRET=your-secret-key-at-least-32-chars
 #    AI_PROVIDER=claude
 #    ANTHROPIC_API_KEY=sk-ant-...
 
-# 3. 拉取镜像并启动
+# 3. Pull images and start services
 docker compose pull && docker compose up -d
 
-# 4. 打开浏览器
+# 4. Open your browser
 #    Dashboard: http://localhost:3001
-#    API 文档:  http://localhost:3001/api-docs
+#    API Docs:  http://localhost:3001/api-docs
 ```
 
-### 从源码构建
-
-```bash
-# 1. 克隆仓库
-git clone https://github.com/jingjinbao/ServerPilot.git
-cd ServerPilot
-
-# 2. 从源码构建并启动
-docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
-
-# 3. 打开浏览器
-#    Dashboard: http://localhost:3001
-```
-
-首次启动会自动创建管理员账户（密码在日志中查看）：
+View the auto-generated admin password in logs:
 
 ```bash
 docker compose logs server | grep -i "password"
 ```
 
-> 如需配置 AI 功能，运行引导式初始化：`./init.sh`
+### Option 2: Build from Source
 
-### Docker 镜像
+```bash
+# 1. Clone the repository
+git clone https://github.com/jingjinbao/ServerPilot.git
+cd ServerPilot
 
-镜像同时发布到 Docker Hub 和 GitHub Container Registry，支持 `linux/amd64` 和 `linux/arm64` 架构。
+# 2. Build and start with Docker Compose
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+
+# 3. Open http://localhost:3001 in your browser
+```
+
+For guided setup with AI configuration:
+
+```bash
+./init.sh
+```
+
+### Option 3: Local Development
+
+```bash
+# Install dependencies
+pnpm install
+
+# Start in development mode (hot reload)
+pnpm dev
+
+# Run tests
+pnpm test
+
+# Build agent binary
+bun scripts/build-binary.ts
+```
+
+## 🐳 Docker Images
+
+Images are published to both Docker Hub and GitHub Container Registry, supporting `linux/amd64` and `linux/arm64` architectures.
 
 **Docker Hub:**
 
@@ -138,199 +180,160 @@ docker pull ghcr.io/jingjinbao/serverpilot/agent:latest
 docker pull ghcr.io/jingjinbao/serverpilot/dashboard:latest
 ```
 
-**版本标签说明:**
+**Tag Formats:**
 
-| 标签格式 | 示例 | 说明 |
-|---------|------|------|
-| `latest` | `serverpilot/server:latest` | 最新的 master 分支构建 |
-| `{version}` | `serverpilot/server:0.1.0` | 语义化版本（推荐生产使用） |
-| `{major}.{minor}` | `serverpilot/server:0.1` | 主次版本号 |
+| Tag Format | Example | Description |
+|------------|---------|-------------|
+| `latest` | `serverpilot/server:latest` | Latest master branch build |
+| `{version}` | `serverpilot/server:0.1.0` | Semantic version (recommended for production) |
+| `{major}.{minor}` | `serverpilot/server:0.1` | Major.minor version |
 | `sha-{hash}` | `serverpilot/server:sha-a1b2c3d` | Git commit hash |
 
-### 本地开发
+## 🎨 AI Provider Configuration
 
-```bash
-# 安装依赖
-pnpm install
+ServerPilot supports multiple AI model providers. Configure via environment variables:
 
-# 开发模式（热重载）
-pnpm dev
+| Provider | Environment Variables | Description |
+|----------|----------------------|-------------|
+| **Claude** (Default) | `AI_PROVIDER=claude`<br/>`ANTHROPIC_API_KEY=sk-...` | Anthropic Claude (Tier 1) |
+| **OpenAI** | `AI_PROVIDER=openai`<br/>`OPENAI_API_KEY=sk-...` | GPT-4o and others (Tier 2) |
+| **DeepSeek** | `AI_PROVIDER=deepseek`<br/>`DEEPSEEK_API_KEY=sk-...` | DeepSeek Chat (Tier 2) |
+| **Ollama** | `AI_PROVIDER=ollama` | Local models (Tier 3) |
+| **Custom OpenAI** | `AI_PROVIDER=custom-openai` | Any OpenAI-compatible API |
 
-# 运行测试
-pnpm test
-
-# 构建 Agent 二进制
-bun scripts/build-binary.ts
-```
-
-### AI Provider 配置
-
-ServerPilot 支持多种 AI 模型提供商，通过环境变量选择：
-
-| Provider | 环境变量 | 说明 |
-|----------|---------|------|
-| Claude (默认) | `AI_PROVIDER=claude` `ANTHROPIC_API_KEY=sk-...` | Anthropic Claude，Tier 1 |
-| OpenAI | `AI_PROVIDER=openai` `OPENAI_API_KEY=sk-...` | GPT-4o 等，Tier 2 |
-| DeepSeek | `AI_PROVIDER=deepseek` `DEEPSEEK_API_KEY=sk-...` | DeepSeek Chat，Tier 2 |
-| Ollama | `AI_PROVIDER=ollama` | 本地模型，Tier 3 |
-| **Custom OpenAI** | `AI_PROVIDER=custom-openai` | 兼容 OpenAI 接口的第三方服务 |
-
-**Custom OpenAI 兼容接口** 支持 OneAPI / LiteLLM / Azure OpenAI 等任何提供标准 `/v1/chat/completions` 端点的服务：
+**Custom OpenAI Compatible Services** (OneAPI / LiteLLM / Azure OpenAI):
 
 ```bash
 AI_PROVIDER=custom-openai
 CUSTOM_OPENAI_API_KEY=sk-your-api-key
 CUSTOM_OPENAI_BASE_URL=https://your-api.example.com/v1
-AI_MODEL=gpt-4o  # 可选，按你的服务支持的模型名
+AI_MODEL=gpt-4o  # Optional: specify your model name
 ```
 
-也可以在 Dashboard 的设置页面中动态切换 Provider，无需重启服务。
+You can also switch providers dynamically via the Dashboard settings page without restarting services.
 
-## 技术栈
+## 🛠️ Tech Stack
 
-| 组件 | 技术 | 许可证 |
-|------|------|--------|
-| **Server** | Node.js 22+ · TypeScript · Hono · Drizzle ORM · SQLite | AGPL-3.0 |
-| **Agent** | TypeScript · Bun (编译为单一二进制) | Apache-2.0 |
-| **Dashboard** | React 18 · Vite 5 · Tailwind CSS · Zustand · React Router 6 | AGPL-3.0 |
-| **Shared** | Zod 协议验证 | MIT |
-| **AI Provider** | Claude / OpenAI / DeepSeek / Ollama / Custom OpenAI 兼容 | - |
-| **部署** | Docker Compose · GitHub Actions CI/CD | - |
+| Component | Technologies | License |
+|-----------|-------------|---------|
+| **Server** | Node.js 22+, TypeScript, Hono, Drizzle ORM, SQLite | AGPL-3.0 |
+| **Agent** | TypeScript, Bun (compiled to single binary) | Apache-2.0 |
+| **Dashboard** | React 18, Vite 5, Tailwind CSS, Zustand, React Router 6 | AGPL-3.0 |
+| **Shared** | Zod schema validation | MIT |
+| **AI Providers** | Claude / OpenAI / DeepSeek / Ollama / Custom | - |
+| **Deployment** | Docker Compose, GitHub Actions CI/CD | - |
 
-## 与其他工具对比
+## 📊 Comparison
 
-| 特性 | ServerPilot | 宝塔面板 | Ansible | Portainer |
-|------|:-----------:|:-------:|:-------:|:---------:|
-| AI 对话运维 | :white_check_mark: | :x: | :x: | :x: |
-| 无需学习命令 | :white_check_mark: | :white_check_mark: | :x: | :white_check_mark: |
-| 开源透明 | :white_check_mark: | :x: | :white_check_mark: | 部分 |
-| 轻量 Agent | :white_check_mark: | :x: | 无 Agent | :x: |
-| 命令安全审计 | 五级分类 | 基础 | 无 | 无 |
-| 知识库 RAG | :white_check_mark: | :x: | :x: | :x: |
-| 服务器档案 | AI 上下文注入 | 基础信息 | Inventory | 基础 |
-| 自带 AI Key | :white_check_mark: | :x: | :x: | :x: |
-| 本地模型支持 | Ollama | :x: | :x: | :x: |
+| Feature | ServerPilot | BaoTa Panel | Ansible | Portainer |
+|---------|:-----------:|:-----------:|:-------:|:---------:|
+| AI-Powered Operations | ✅ | ❌ | ❌ | ❌ |
+| No Command Memorization | ✅ | ✅ | ❌ | ✅ |
+| Open Source | ✅ | ❌ | ✅ | Partial |
+| Lightweight Agent | ✅ | ❌ | No Agent | ❌ |
+| 5-Layer Security | ✅ | Basic | None | None |
+| RAG Knowledge Base | ✅ | ❌ | ❌ | ❌ |
+| Context-Aware AI | ✅ | Basic Info | Inventory | Basic |
+| Built-in AI Key | ✅ | ❌ | ❌ | ❌ |
+| Local Model Support | ✅ (Ollama) | ❌ | ❌ | ❌ |
 
-## 项目路线图
+## 🗺️ Roadmap
 
-| 阶段 | 目标 |
-|------|------|
-| **MVP (v0.1)** | 自部署 → 安装 Agent → 连接 → 对话运维 闭环 |
-| **v0.2** | 快照回滚 + 定时任务 + 告警 + 知识库自学习 |
-| **v0.3** | GitHub 开源发布 + 社区版安装脚本 |
-| **v1.0** | ServerPilot Cloud + 团队协作 + 计费 |
+| Phase | Goals |
+|-------|-------|
+| **MVP (v0.1)** | Self-deploy → Install Agent → Connect → AI Operations (closed loop) |
+| **v0.2** | Snapshot rollback + Scheduled tasks + Alerts + Self-learning knowledge base |
+| **v0.3** | GitHub open source release + Community edition installer |
+| **v1.0** | ServerPilot Cloud + Team collaboration + Billing |
 
-## 部署模式与定价
+## 💰 Deployment Modes & Pricing
 
-| 模式 | 特性 | 价格 |
-|------|------|------|
-| **Self-Hosted（自部署）** | 🎉 100% 开源，所有功能完整可用<br/>✅ 多服务器管理、团队协作、Webhook、监控等<br/>⚙️ 需要自己申请 AI API Key<br/>⚙️ 手动执行 AI Skills（日志巡检、安全扫描等） | **永久免费** |
-| **Cloud Free（云免费版）** | ✅ Self-Hosted 全部功能<br/>✅ 官方 AI（智能路由，100 次/月）<br/>🤖 体验 AI Skills（日志巡检、安全扫描）<br/>📊 限制：1 台服务器，1 个用户 | **$0/月** |
-| **Cloud Pro（云专业版）** | ✅ 10 台服务器，5 个用户<br/>✅ 官方 AI（2000 次/月，智能路由降本 60%）<br/>🤖 AI 日志巡检 + AI 安全扫描<br/>📈 周报邮件 + 趋势分析 | **$19/月** |
-| **Cloud Team（云团队版）** | ✅ 无限服务器、无限用户<br/>✅ 无限 AI 调用（智能路由）<br/>🤖 全部 AI Skills（性能优化、成本分析、备份建议）<br/>🔔 自动巡检 + 主动告警 | **$49/月** |
-| **Cloud Enterprise（云企业版）** | ✅ Team 全部功能<br/>🤖 自定义 AI Skills + 专属模型<br/>🛡️ SAML SSO + 合规报告（SOC2、ISO27001）<br/>📞 SLA 保障 + 专属支持 | **$199/月起** |
+| Mode | Features | Price |
+|------|----------|-------|
+| **Self-Hosted** | 🎉 100% open source, all features available<br/>✅ Multi-server, team collaboration, webhooks, monitoring<br/>⚙️ Bring your own AI API Key<br/>⚙️ Manually execute AI Skills (log inspection, security scans) | **Free Forever** |
+| **Cloud Free** | ✅ All Self-Hosted features<br/>✅ Official AI (smart routing, 100 calls/month)<br/>🤖 Try AI Skills (log inspection, security scanning)<br/>📊 Limits: 1 server, 1 user | **$0/month** |
+| **Cloud Pro** | ✅ 10 servers, 5 users<br/>✅ Official AI (2000 calls/month, 60% cost reduction)<br/>🤖 AI log inspection + AI security scanning<br/>📈 Weekly reports + Trend analysis | **$19/month** |
+| **Cloud Team** | ✅ Unlimited servers & users<br/>✅ Unlimited AI calls (smart routing)<br/>🤖 All AI Skills (performance optimization, cost analysis)<br/>🔔 Auto-inspection + Proactive alerts | **$49/month** |
+| **Cloud Enterprise** | ✅ All Team features<br/>🤖 Custom AI Skills + Dedicated models<br/>🛡️ SAML SSO + Compliance reports (SOC2, ISO27001)<br/>📞 SLA guarantees + Dedicated support | **From $199/month** |
 
-**核心理念**：Self-Hosted 和 Cloud 的**核心功能完全一致**（多服务器、团队、Webhook、告警）。Cloud 的价值是 **AI 智能化**（官方 AI + 智能路由 + 专业 Skills）和**企业增强**（SAML SSO、合规报告），而非功能解锁。用户付费购买的是 **AI 运维专家能力**，不是服务器托管。
+**Core Philosophy**: Self-Hosted and Cloud have **identical core features** (multi-server, teams, webhooks, alerts). Cloud's value is in **AI intelligence** (official AI + smart routing + professional Skills) and **enterprise enhancements** (SAML SSO, compliance), not feature unlocking. Users pay for **AI DevOps expertise**, not server hosting.
 
-## 文档
+## 📚 Documentation
 
-| 文档 | 说明 |
-|------|------|
-| [Architecture](docs/ARCHITECTURE.md) | 系统架构、模块职责、数据流、通信协议 |
-| [Security White Paper](docs/SECURITY.md) | 五层纵深防御架构详细说明 |
-| [Security Policy](SECURITY.md) | 漏洞报告流程和安全策略 |
-| [Deployment Guide](docs/deployment.md) | Docker Compose 部署指南 |
+| Document | Description |
+|----------|-------------|
+| [Architecture](docs/ARCHITECTURE.md) | System architecture, module responsibilities, data flows, communication protocols |
+| [Security White Paper](docs/SECURITY.md) | Detailed five-layer defense-in-depth architecture |
+| [Security Policy](SECURITY.md) | Vulnerability reporting process and security policy |
+| [Deployment Guide](docs/deployment.md) | Docker Compose deployment guide |
+| [API Documentation](http://localhost:3001/api-docs) | OpenAPI 3.0 specification with Swagger UI (when server is running) |
 
-## 安全
+## 🔒 Security
 
-ServerPilot 采用**五层纵深防御**策略保护你的服务器：
+ServerPilot implements a **five-layer defense-in-depth** strategy to protect your servers:
 
-1. **命令分级** — GREEN / YELLOW / RED / CRITICAL / FORBIDDEN 五级分类，726+ 条规则
-2. **参数审计** — 45+ 危险参数识别，40+ 保护路径
-3. **操作快照** — 关键操作前自动创建回滚点
-4. **紧急终止** — 一键停止所有运行中的操作
-5. **审计日志** — 完整的操作追踪和可审计记录
+1. **Command Classification** — 726+ rules across 5 risk levels (GREEN / YELLOW / RED / CRITICAL / FORBIDDEN)
+2. **Parameter Auditing** — 45+ dangerous parameter patterns, 40+ protected paths
+3. **Pre-Operation Snapshots** — Automatic rollback points before critical operations
+4. **Emergency Kill Switch** — One-click termination of all running operations
+5. **Audit Trail** — Complete operation tracking and auditable records
 
-Agent 以非 root 用户运行，仅经审批的操作获得提权。详见 [Security White Paper](docs/SECURITY.md) 和 [Security Policy](SECURITY.md)。
+The agent runs as a non-root user; only pre-approved operations receive elevated privileges. See [Security White Paper](docs/SECURITY.md) and [Security Policy](SECURITY.md) for details.
 
-## 参与贡献
+## 🤝 Contributing
 
-欢迎提交 Issue 和 Pull Request！
+We welcome Issues and Pull Requests!
 
 ```bash
-# Fork 并克隆仓库
+# Fork and clone the repository
 git clone https://github.com/your-username/ServerPilot.git
 cd ServerPilot
 
-# 安装依赖
+# Install dependencies
 pnpm install
 
-# 开发模式
+# Development mode
 pnpm dev
 
-# 运行测试
+# Run tests
 pnpm test
 
-# 提交 PR 前确保通过
+# Before submitting PR, ensure all checks pass
 pnpm lint && pnpm typecheck && pnpm test
 ```
 
-详细指南请参考项目中的贡献文档。
+For detailed contribution guidelines, please refer to the contributing documentation in the project.
 
-## 许可证
+## 📄 License
 
-ServerPilot 采用 **Open Core** 模式：
+ServerPilot uses an **Open Core** model:
 
-| 组件 | 许可证 | 说明 |
-|------|--------|------|
-| **Server + Dashboard** (CE) | [AGPL-3.0](LICENSE) | 开源核心，限制云服务商直接使用 |
-| **Agent** | [Apache-2.0](packages/agent/LICENSE) | 企业友好，100% 开源可审计 |
-| **Shared** | [MIT](packages/shared/LICENSE) | 最大生态兼容性 |
-| **EE 企业功能** | [Commercial](LICENSE-EE) | 多服务器、团队协作等企业级功能 |
+| Component | License | Description |
+|-----------|---------|-------------|
+| **Server + Dashboard** (CE) | [AGPL-3.0](LICENSE) | Open source core, restricts cloud providers from direct use |
+| **Agent** | [Apache-2.0](packages/agent/LICENSE) | Enterprise-friendly, 100% open source and auditable |
+| **Shared** | [MIT](packages/shared/LICENSE) | Maximum ecosystem compatibility |
+| **EE Features** | [Commercial](LICENSE-EE) | Enterprise features (multi-server, team collaboration, etc.) |
 
-详细策略见 [LICENSING.md](LICENSING.md)。
+See [LICENSING.md](LICENSING.md) for detailed licensing strategy.
+
+## 🙏 Acknowledgments
+
+Built with ❤️ using:
+- [Anthropic Claude](https://www.anthropic.com/) — AI provider
+- [Hono](https://hono.dev/) — Ultrafast web framework
+- [Drizzle ORM](https://orm.drizzle.team/) — TypeScript ORM
+- [Bun](https://bun.sh/) — Fast JavaScript runtime
+- [Vite](https://vitejs.dev/) — Next generation frontend tooling
+
+## 📬 Contact & Support
+
+- **GitHub Issues**: [Report bugs or request features](https://github.com/jingjinbao/ServerPilot/issues)
+- **Documentation**: [docs/](docs/)
+- **Security**: See [SECURITY.md](SECURITY.md) for vulnerability reporting
 
 ---
 
 <p align="center">
-  <sub>Built with :heart: by the ServerPilot team</sub>
+  <sub>Built with ❤️ by the ServerPilot team</sub>
 </p>
-
----
-
-## English
-
-**ServerPilot** is an open-source, AI-powered server management platform. Think of it as the AI-era replacement for traditional server panels — manage your servers through natural language conversations instead of memorizing commands or clicking through forms.
-
-### Key Features
-
-- **AI-Driven Operations** — Describe what you need in natural language; AI generates and executes the plan
-- **Multi-Model Support** — Claude, OpenAI, DeepSeek, Ollama, Custom OpenAI Compatible (OneAPI / LiteLLM / Azure) — bring your own API key or use local models
-- **5-Layer Security** — Command classification, parameter auditing, pre-op snapshots, kill switch, audit trail
-- **Self-Growing Knowledge Base** — Built-in docs for common stacks + automatic doc fetching from GitHub/websites
-- **Lightweight Agent** — Single binary, <50MB, <1% CPU overhead
-
-### Quick Start
-
-```bash
-# Pre-built images (fastest — no build needed)
-curl -fsSL https://raw.githubusercontent.com/jingjinbao/ServerPilot/master/docker-compose.yml -o docker-compose.yml
-curl -fsSL https://raw.githubusercontent.com/jingjinbao/ServerPilot/master/.env.example -o .env
-# Edit .env, then:
-docker compose pull && docker compose up -d
-# Open http://localhost:3001
-
-# Or build from source:
-git clone https://github.com/jingjinbao/ServerPilot.git && cd ServerPilot
-docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
-```
-
-### Documentation
-
-- [Architecture](docs/ARCHITECTURE.md) — System architecture, module responsibilities, data flows
-- [Security White Paper](docs/SECURITY.md) — Five-layer defense-in-depth architecture
-- [Security Policy](SECURITY.md) — Vulnerability reporting and security policy
-
-### License
-
-Open Core model — CE: AGPL-3.0 | Agent: Apache-2.0 | Shared: MIT | EE: [Commercial](LICENSE-EE) | See [LICENSING.md](LICENSING.md)

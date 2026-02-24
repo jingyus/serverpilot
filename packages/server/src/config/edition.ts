@@ -58,6 +58,8 @@ export interface CloudOnlyFeatures {
   readonly billing: boolean;
   /** Managed infrastructure (PostgreSQL, Redis, S3, K8s) */
   readonly managedInfra: boolean;
+  /** Notification history (aggregated alerts + webhooks) */
+  readonly notificationHistory: boolean;
 }
 
 /**
@@ -140,6 +142,7 @@ export function resolveCloudOnlyFeatures(
     multiTenant: info.isCloud, // Cloud uses multi-tenant, Self-Hosted typically single-tenant
     billing: info.isCloud, // Stripe subscription billing
     managedInfra: info.isCloud, // PostgreSQL, Redis, S3, K8s
+    notificationHistory: info.isCloud, // Aggregated notification center
   };
 }
 

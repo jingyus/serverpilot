@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { useEffect, useCallback } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Bell,
   AlertCircle,
@@ -12,19 +12,22 @@ import {
   AlertTriangle,
   Info,
   Monitor,
-} from 'lucide-react';
+} from "lucide-react";
 
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   useNotificationHistoryStore,
   getUnreadCount,
   getFilteredItems,
-} from '@/stores/notification-history';
-import { cn } from '@/lib/utils';
-import type { NotificationCategory, NotificationItem } from '@/types/notification-history';
-import { NOTIFICATION_CATEGORIES } from '@/types/notification-history';
+} from "@/stores/notification-history";
+import { cn } from "@/lib/utils";
+import type {
+  NotificationCategory,
+  NotificationItem,
+} from "@/types/notification-history";
+import { NOTIFICATION_CATEGORIES } from "@/types/notification-history";
 
 const CATEGORY_CONFIG: Record<
   NotificationCategory,
@@ -32,15 +35,15 @@ const CATEGORY_CONFIG: Record<
 > = {
   alert: {
     icon: AlertTriangle,
-    className: 'text-yellow-600 dark:text-yellow-400',
+    className: "text-yellow-600 dark:text-yellow-400",
   },
   webhook: {
     icon: Webhook,
-    className: 'text-blue-600 dark:text-blue-400',
+    className: "text-blue-600 dark:text-blue-400",
   },
   system: {
     icon: Monitor,
-    className: 'text-gray-600 dark:text-gray-400',
+    className: "text-gray-600 dark:text-gray-400",
   },
 };
 
@@ -58,7 +61,7 @@ function formatTimestamp(iso: string): string {
   const diffHour = Math.floor(diffMs / 3_600_000);
   const diffDay = Math.floor(diffMs / 86_400_000);
 
-  if (diffMin < 1) return 'Just now';
+  if (diffMin < 1) return "Just now";
   if (diffMin < 60) return `${diffMin}m ago`;
   if (diffHour < 24) return `${diffHour}h ago`;
   if (diffDay < 7) return `${diffDay}d ago`;
@@ -80,27 +83,27 @@ function NotificationRow({
     <Card
       data-testid="notification-item"
       className={cn(
-        'transition-colors cursor-pointer',
-        !item.read && 'border-primary/30 bg-primary/5',
+        "transition-colors cursor-pointer",
+        !item.read && "border-primary/30 bg-primary/5",
       )}
       onClick={() => !item.read && onMarkRead(item.id)}
     >
       <CardContent className="flex items-start gap-3 p-3 sm:p-4">
         <div
           className={cn(
-            'mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full',
-            item.read ? 'bg-muted' : 'bg-primary/10',
+            "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
+            item.read ? "bg-muted" : "bg-primary/10",
           )}
         >
-          <Icon className={cn('h-4 w-4', config.className)} />
+          <Icon className={cn("h-4 w-4", config.className)} />
         </div>
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span
               className={cn(
-                'text-sm font-medium',
-                item.read ? 'text-muted-foreground' : 'text-foreground',
+                "text-sm font-medium",
+                item.read ? "text-muted-foreground" : "text-foreground",
               )}
             >
               {item.title}
@@ -111,7 +114,7 @@ function NotificationRow({
             {item.severity && SeverityIcon && (
               <Badge
                 variant={
-                  item.severity === 'critical' ? 'destructive' : 'outline'
+                  item.severity === "critical" ? "destructive" : "outline"
                 }
                 className="text-xs"
               >
@@ -138,23 +141,30 @@ function NotificationRow({
 
 export function Notifications() {
   const { t } = useTranslation();
-  const {
-    isLoading,
-    error,
-    filter,
-    fetchNotifications,
-    setFilter,
-    markAsRead,
-    markAllAsRead,
-    clearError,
-  } = useNotificationHistoryStore();
 
+  // Use selectors to prevent unnecessary re-renders
+  const isLoading = useNotificationHistoryStore((state) => state.isLoading);
+  const error = useNotificationHistoryStore((state) => state.error);
+  const filter = useNotificationHistoryStore((state) => state.filter);
   const unreadCount = useNotificationHistoryStore(getUnreadCount);
   const filteredItems = useNotificationHistoryStore(getFilteredItems);
 
+  // Get actions separately - they don't change
+  const fetchNotifications = useNotificationHistoryStore(
+    (state) => state.fetchNotifications,
+  );
+  const setFilter = useNotificationHistoryStore((state) => state.setFilter);
+  const markAsRead = useNotificationHistoryStore((state) => state.markAsRead);
+  const markAllAsRead = useNotificationHistoryStore(
+    (state) => state.markAllAsRead,
+  );
+  const clearError = useNotificationHistoryStore((state) => state.clearError);
+
+  // Fetch notifications only on mount, not on every store update
   useEffect(() => {
     fetchNotifications();
-  }, [fetchNotifications]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleMarkRead = useCallback(
     (id: string) => {
@@ -169,10 +179,10 @@ export function Notifications() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl font-bold text-foreground sm:text-2xl">
-            {t('notifications.title')}
+            {t("notifications.title")}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {t('notifications.description')}
+            {t("notifications.description")}
           </p>
         </div>
         <Button
@@ -183,7 +193,7 @@ export function Notifications() {
           data-testid="mark-all-read"
         >
           <CheckCircle2 className="mr-2 h-4 w-4" />
-          {t('notifications.markAllRead')}
+          {t("notifications.markAllRead")}
           {unreadCount > 0 && (
             <Badge variant="secondary" className="ml-2">
               {unreadCount}
@@ -206,7 +216,7 @@ export function Notifications() {
             className="ml-auto"
             onClick={clearError}
           >
-            {t('common.dismiss')}
+            {t("common.dismiss")}
           </Button>
         </div>
       )}
@@ -219,24 +229,24 @@ export function Notifications() {
         <button
           type="button"
           className={cn(
-            'rounded-md px-4 py-1.5 text-sm font-medium transition-colors',
-            filter === 'all'
-              ? 'bg-background text-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground',
+            "rounded-md px-4 py-1.5 text-sm font-medium transition-colors",
+            filter === "all"
+              ? "bg-background text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground",
           )}
-          onClick={() => setFilter('all')}
+          onClick={() => setFilter("all")}
         >
-          {t('notifications.all')}
+          {t("notifications.all")}
         </button>
         {NOTIFICATION_CATEGORIES.map((cat) => (
           <button
             key={cat}
             type="button"
             className={cn(
-              'rounded-md px-4 py-1.5 text-sm font-medium transition-colors capitalize',
+              "rounded-md px-4 py-1.5 text-sm font-medium transition-colors capitalize",
               filter === cat
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground',
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
             )}
             onClick={() => setFilter(cat)}
           >
@@ -257,10 +267,10 @@ export function Notifications() {
         >
           <Inbox className="h-12 w-12 text-muted-foreground/50" />
           <h3 className="mt-4 text-lg font-medium text-foreground">
-            {t('notifications.noNotifications')}
+            {t("notifications.noNotifications")}
           </h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            {t('notifications.noNotificationsDesc')}
+            {t("notifications.noNotificationsDesc")}
           </p>
         </div>
       ) : (

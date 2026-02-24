@@ -82,10 +82,19 @@ export function _getRefreshPromise(): Promise<string | null> | null {
 }
 
 /**
- * Get tenant ID from user data (stub for cloud features)
- * TODO: Implement proper tenant management
+ * Get tenant ID from localStorage
  */
 export function getTenantId(): string | null {
-  // Stub implementation - cloud features need proper tenant context
-  return null;
+  return localStorage.getItem("tenant_id");
+}
+
+/**
+ * Set tenant ID in localStorage
+ */
+export function setTenantId(tenantId: string | null): void {
+  if (tenantId === null) {
+    localStorage.removeItem("tenant_id");
+  } else {
+    localStorage.setItem("tenant_id", tenantId);
+  }
 }

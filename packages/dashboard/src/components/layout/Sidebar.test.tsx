@@ -212,7 +212,6 @@ describe("Sidebar", () => {
         "/alerts",
         "/notifications",
         "/audit-log",
-        "/approvals",
         "/webhooks",
         "/skills",
         "/team",

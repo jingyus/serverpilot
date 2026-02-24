@@ -13,9 +13,9 @@ import { VerboseLogger } from "../ui/verbose.js";
 
 export interface SkillDefinition {
   /** Skill ID */
-  id: string;
+  skillId: string;
   /** Skill 名称 */
-  name: string;
+  skillName: string;
   /** 要执行的命令列表 */
   commands: string[];
   /** 环境变量 */
@@ -23,7 +23,7 @@ export interface SkillDefinition {
   /** 超时时间(毫秒) */
   timeout?: number;
   /** 工作目录 */
-  workingDir?: string;
+  cwd?: string;
 }
 
 export interface SkillResult {
@@ -61,10 +61,10 @@ export class SkillClient {
 
   constructor(
     private client: AuthenticatedClient,
-    options: { verbose?: boolean } = {},
+    options: { verbose?: boolean; timeout?: number } = {},
   ) {
-    this.executor = new CommandExecutor(options);
-    this.verbose = new VerboseLogger(options.verbose ?? false);
+    this.executor = new CommandExecutor(options.timeout);
+    this.verbose = new VerboseLogger({ enabled: options.verbose ?? false });
   }
 
   /**
@@ -75,7 +75,8 @@ export class SkillClient {
    */
   async executeSkill(skill: SkillDefinition): Promise<SkillResult> {
     this.verbose.log(
-      `[SkillClient] Executing skill: ${skill.name} (${skill.id})`,
+      "general",
+      `[SkillClient] Executing skill: ${skill.skillName} (${skill.skillId})`,
     );
 
     const startTime = Date.now();
@@ -87,9 +88,8 @@ export class SkillClient {
       // 发送开始通知
       this.client.send(
         createMessage("skill.progress", {
-          skillId: skill.id,
+          skillId: skill.skillId,
           status: "started",
-          timestamp: Date.now(),
         }),
       );
 
@@ -98,29 +98,32 @@ export class SkillClient {
         const command = skill.commands[i];
 
         this.verbose.log(
+          "general",
           `[SkillClient] Step ${i + 1}/${skill.commands.length}: ${command}`,
         );
 
         // 发送步骤开始通知
         this.client.send(
           createMessage("skill.progress", {
-            skillId: skill.id,
+            skillId: skill.skillId,
             status: "running",
             step: i + 1,
             totalSteps: skill.commands.length,
-            command,
-            timestamp: Date.now(),
+            message: command,
           }),
         );
 
         const stepStartTime = Date.now();
 
         try {
-          // 执行命令
-          const result = await this.executor.execute(command, {
+          // 执行命令（parse shell command into command + args）
+          const parts = command.split(/\s+/);
+          const cmd = parts[0];
+          const args = parts.slice(1);
+          const result = await this.executor.execute(cmd, args, {
             env: skill.env,
-            cwd: skill.workingDir,
-            timeout: skill.timeout,
+            cwd: skill.cwd,
+            timeoutMs: skill.timeout,
           });
 
           const duration = Date.now() - stepStartTime;
@@ -140,16 +143,15 @@ export class SkillClient {
             allSuccess = false;
             errorMessage = `Step ${i + 1} failed: ${result.stderr || result.stdout}`;
 
-            this.verbose.error(`[SkillClient] ${errorMessage}`);
+            this.verbose.log("error", `[SkillClient] ${errorMessage}`);
 
             // 发送步骤失败通知
             this.client.send(
               createMessage("skill.progress", {
-                skillId: skill.id,
+                skillId: skill.skillId,
                 status: "failed",
                 step: i + 1,
                 error: errorMessage,
-                timestamp: Date.now(),
               }),
             );
 
@@ -157,15 +159,14 @@ export class SkillClient {
             break;
           }
 
-          this.verbose.log(`[SkillClient] Step ${i + 1} succeeded`);
+          this.verbose.log("general", `[SkillClient] Step ${i + 1} succeeded`);
 
           // 发送步骤成功通知
           this.client.send(
             createMessage("skill.progress", {
-              skillId: skill.id,
+              skillId: skill.skillId,
               status: "step_complete",
               step: i + 1,
-              timestamp: Date.now(),
             }),
           );
         } catch (err) {
@@ -185,16 +186,15 @@ export class SkillClient {
           allSuccess = false;
           errorMessage = `Step ${i + 1} threw error: ${error}`;
 
-          this.verbose.error(`[SkillClient] ${errorMessage}`);
+          this.verbose.log("error", `[SkillClient] ${errorMessage}`);
 
           // 发送步骤失败通知
           this.client.send(
             createMessage("skill.progress", {
-              skillId: skill.id,
+              skillId: skill.skillId,
               status: "failed",
               step: i + 1,
               error: errorMessage,
-              timestamp: Date.now(),
             }),
           );
 
@@ -207,9 +207,8 @@ export class SkillClient {
       // 发送完成通知
       this.client.send(
         createMessage("skill.progress", {
-          skillId: skill.id,
+          skillId: skill.skillId,
           status: allSuccess ? "completed" : "failed",
-          timestamp: Date.now(),
         }),
       );
 
@@ -223,15 +222,17 @@ export class SkillClient {
       const totalDuration = Date.now() - startTime;
       const error = err instanceof Error ? err.message : String(err);
 
-      this.verbose.error(`[SkillClient] Skill execution error: ${error}`);
+      this.verbose.log(
+        "error",
+        `[SkillClient] Skill execution error: ${error}`,
+      );
 
       // 发送失败通知
       this.client.send(
         createMessage("skill.progress", {
-          skillId: skill.id,
+          skillId: skill.skillId,
           status: "failed",
           error,
-          timestamp: Date.now(),
         }),
       );
 
@@ -257,28 +258,33 @@ export class SkillClient {
           const payload = message.payload as SkillDefinition;
 
           this.verbose.log(
-            `[SkillClient] Received skill.execute: ${payload.name}`,
+            "general",
+            `[SkillClient] Received skill.execute: ${payload.skillName}`,
           );
 
           try {
             const result = await this.executeSkill(payload);
 
-            // 发送最终结果
+            // 发送最终结果（构建输出摘要）
+            const outputLines: string[] = [];
+            for (const r of result.results) {
+              outputLines.push(`Command: ${r.command}`);
+              outputLines.push(`Exit Code: ${r.exitCode}`);
+              if (r.stdout) {
+                outputLines.push(`Output: ${r.stdout.slice(0, 500)}`);
+              }
+              if (r.stderr) {
+                outputLines.push(`Error: ${r.stderr.slice(0, 500)}`);
+              }
+            }
+
             this.client.send(
               createMessage("skill.result", {
-                skillId: payload.id,
+                skillId: payload.skillId,
                 success: result.success,
                 duration: result.duration,
                 error: result.error,
-                results: result.results.map((r) => ({
-                  command: r.command,
-                  success: r.success,
-                  exitCode: r.exitCode,
-                  duration: r.duration,
-                  // 限制输出大小
-                  stdout: r.stdout.slice(0, 1000),
-                  stderr: r.stderr.slice(0, 1000),
-                })),
+                output: outputLines.join("\n"),
               }),
             );
           } catch (err) {
@@ -286,7 +292,7 @@ export class SkillClient {
 
             this.client.send(
               createMessage("skill.result", {
-                skillId: payload.id,
+                skillId: payload.skillId,
                 success: false,
                 error,
               }),
@@ -296,6 +302,6 @@ export class SkillClient {
       },
     );
 
-    this.verbose.log("[SkillClient] Skill handlers registered");
+    this.verbose.log("general", "[SkillClient] Skill handlers registered");
   }
 }

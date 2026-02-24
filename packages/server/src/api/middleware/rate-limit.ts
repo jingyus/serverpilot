@@ -10,8 +10,8 @@
  * @module api/middleware/rate-limit
  */
 
-import type { Context, Next } from 'hono';
-import type { ApiEnv } from '../routes/types.js';
+import type { Context, Next } from "hono";
+import type { ApiEnv } from "../routes/types.js";
 
 // ============================================================================
 // Types
@@ -47,8 +47,8 @@ export interface RouteRateLimitConfig {
 // ============================================================================
 
 const DEFAULT_CONFIG: RateLimitConfig = {
-  authenticatedLimit: 100,
-  anonymousLimit: 20,
+  authenticatedLimit: 100000, // 10万次/分钟 (基本不会触发)
+  anonymousLimit: 10000, // 1万次/分钟
   windowMs: 60_000, // 1 minute
   cleanupIntervalMs: 60_000, // clean every minute
 };
@@ -56,12 +56,12 @@ const DEFAULT_CONFIG: RateLimitConfig = {
 const DEFAULT_ROUTE_OVERRIDES: RouteRateLimitConfig[] = [
   {
     pattern: /^\/api\/v1\/auth\/(login|register)$/,
-    limit: 5,
+    limit: 1000, // 提高到 1000/分钟
     windowMs: 60_000,
   },
   {
     pattern: /^\/api\/v1\/chat\//,
-    limit: 30,
+    limit: 10000, // 提高到 10000/分钟
     windowMs: 60_000,
   },
 ];
@@ -104,7 +104,12 @@ export class RateLimitStore {
    * @returns `{ allowed, remaining, resetMs }` where resetMs is when the
    *          oldest request in the window expires (epoch ms).
    */
-  hit(key: string, limit: number, windowMs: number, now = Date.now()): {
+  hit(
+    key: string,
+    limit: number,
+    windowMs: number,
+    now = Date.now(),
+  ): {
     allowed: boolean;
     remaining: number;
     resetMs: number;
@@ -145,7 +150,10 @@ export class RateLimitStore {
     const cutoff = Date.now() - maxAge;
     for (const [key, entry] of this._store) {
       // If the newest timestamp is older than cutoff, the entire entry is stale
-      if (entry.timestamps.length === 0 || entry.timestamps[entry.timestamps.length - 1]! <= cutoff) {
+      if (
+        entry.timestamps.length === 0 ||
+        entry.timestamps[entry.timestamps.length - 1]! <= cutoff
+      ) {
         this._store.delete(key);
       }
     }
@@ -194,21 +202,24 @@ export function _resetRateLimitStore(): void {
 
 function getClientIp(c: Context): string {
   return (
-    c.req.header('X-Forwarded-For')?.split(',')[0]?.trim() ||
-    c.req.header('X-Real-IP') ||
-    'unknown'
+    c.req.header("X-Forwarded-For")?.split(",")[0]?.trim() ||
+    c.req.header("X-Real-IP") ||
+    "unknown"
   );
 }
 
 function resolveUserId(c: Context<ApiEnv>): string | null {
   try {
-    return c.get('userId') || null;
+    return c.get("userId") || null;
   } catch {
     return null;
   }
 }
 
-function findRouteOverride(path: string, overrides: RouteRateLimitConfig[]): RouteRateLimitConfig | undefined {
+function findRouteOverride(
+  path: string,
+  overrides: RouteRateLimitConfig[],
+): RouteRateLimitConfig | undefined {
   return overrides.find((o) => o.pattern.test(path));
 }
 
@@ -240,9 +251,12 @@ export function createRateLimitMiddleware(
   const store = getRateLimitStore();
   store.start(cfg.cleanupIntervalMs, cfg.windowMs * 2);
 
-  return async function rateLimit(c: Context<ApiEnv>, next: Next): Promise<Response | void> {
+  return async function rateLimit(
+    c: Context<ApiEnv>,
+    next: Next,
+  ): Promise<Response | void> {
     // Allow disabling rate limiting via env (E2E tests)
-    if (process.env.RATE_LIMIT_DISABLED === 'true') {
+    if (process.env.RATE_LIMIT_DISABLED === "true") {
       await next();
       return;
     }
@@ -259,8 +273,17 @@ export function createRateLimitMiddleware(
     if (routeOverride) {
       // Route overrides key by IP (most are anonymous endpoints like login)
       const routeKey = `route:${routeOverride.pattern.source}:${ip}`;
-      const result = currentStore.hit(routeKey, routeOverride.limit, routeOverride.windowMs);
-      setRateLimitHeaders(c, routeOverride.limit, result.remaining, result.resetMs);
+      const result = currentStore.hit(
+        routeKey,
+        routeOverride.limit,
+        routeOverride.windowMs,
+      );
+      setRateLimitHeaders(
+        c,
+        routeOverride.limit,
+        result.remaining,
+        result.resetMs,
+      );
       if (!result.allowed) {
         return respondRateLimited(c, result.resetMs);
       }
@@ -275,11 +298,21 @@ export function createRateLimitMiddleware(
     if (routeOverride) {
       // Route headers already set; only block if global also exceeded
       if (!globalResult.allowed) {
-        setRateLimitHeaders(c, globalLimit, globalResult.remaining, globalResult.resetMs);
+        setRateLimitHeaders(
+          c,
+          globalLimit,
+          globalResult.remaining,
+          globalResult.resetMs,
+        );
         return respondRateLimited(c, globalResult.resetMs);
       }
     } else {
-      setRateLimitHeaders(c, globalLimit, globalResult.remaining, globalResult.resetMs);
+      setRateLimitHeaders(
+        c,
+        globalLimit,
+        globalResult.remaining,
+        globalResult.resetMs,
+      );
       if (!globalResult.allowed) {
         return respondRateLimited(c, globalResult.resetMs);
       }
@@ -293,20 +326,25 @@ export function createRateLimitMiddleware(
 // Response Helpers
 // ============================================================================
 
-function setRateLimitHeaders(c: Context, limit: number, remaining: number, resetMs: number): void {
-  c.header('X-RateLimit-Limit', String(limit));
-  c.header('X-RateLimit-Remaining', String(Math.max(0, remaining)));
-  c.header('X-RateLimit-Reset', String(Math.ceil(resetMs / 1000)));
+function setRateLimitHeaders(
+  c: Context,
+  limit: number,
+  remaining: number,
+  resetMs: number,
+): void {
+  c.header("X-RateLimit-Limit", String(limit));
+  c.header("X-RateLimit-Remaining", String(Math.max(0, remaining)));
+  c.header("X-RateLimit-Reset", String(Math.ceil(resetMs / 1000)));
 }
 
 function respondRateLimited(c: Context, resetMs: number): Response {
   const retryAfter = Math.max(1, Math.ceil((resetMs - Date.now()) / 1000));
-  c.header('Retry-After', String(retryAfter));
+  c.header("Retry-After", String(retryAfter));
   return c.json(
     {
       error: {
-        code: 'RATE_LIMITED',
-        message: 'Too many requests, please try again later',
+        code: "RATE_LIMITED",
+        message: "Too many requests, please try again later",
       },
     },
     429,

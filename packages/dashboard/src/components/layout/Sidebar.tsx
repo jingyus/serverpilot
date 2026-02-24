@@ -11,7 +11,6 @@ import {
   Bell,
   Inbox,
   Shield,
-  ShieldCheck,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -27,6 +26,7 @@ import {
   useNotificationHistoryStore,
   getUnreadCount,
 } from "@/stores/notification-history";
+import { useSystemStore } from "@/stores/system";
 import { cn } from "@/lib/utils";
 import { APP_NAME } from "@/utils/constants";
 import { useIsMobile } from "@/hooks/useMediaQuery";
@@ -47,7 +47,6 @@ const navItems: NavItem[] = [
   { to: "/alerts", labelKey: "nav.alerts", icon: Bell },
   { to: "/notifications", labelKey: "nav.notifications", icon: Inbox },
   { to: "/audit-log", labelKey: "nav.auditLog", icon: Shield },
-  { to: "/approvals", labelKey: "nav.approvals", icon: ShieldCheck },
   { to: "/webhooks", labelKey: "nav.webhooks", icon: Webhook },
   { to: "/skills", labelKey: "nav.skills", icon: Puzzle },
   { to: "/team", labelKey: "nav.team", icon: Users },
@@ -60,10 +59,19 @@ export function Sidebar() {
   const toggleSidebar = useUiStore((s) => s.toggleSidebar);
   const setMobileSidebarOpen = useUiStore((s) => s.setMobileSidebarOpen);
   const notifUnread = useNotificationHistoryStore(getUnreadCount);
+  const cloudFeatures = useSystemStore((s) => s.cloudFeatures);
   const isMobile = useIsMobile();
 
   // On mobile, sidebar is always expanded (shown as overlay)
   const isCollapsed = isMobile ? false : collapsed;
+
+  // Filter nav items: remove notifications if not a cloud feature
+  const visibleNavItems = navItems.filter((item) => {
+    if (item.to === "/notifications") {
+      return cloudFeatures.notificationHistory;
+    }
+    return true;
+  });
 
   return (
     <aside
@@ -112,7 +120,7 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 space-y-1 px-2 py-4" aria-label="Main navigation">
-        {navItems.map((item) => {
+        {visibleNavItems.map((item) => {
           const isNotif = item.to === "/notifications";
           const badge = isNotif && notifUnread > 0 ? notifUnread : 0;
           return (

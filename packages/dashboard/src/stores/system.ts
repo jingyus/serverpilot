@@ -30,8 +30,15 @@ export type {
   SerializableEditionLimits,
 };
 
+/** Cloud-only features from the server. */
+export interface CloudFeatures {
+  notificationHistory: boolean;
+}
+
 /** Shape of the GET /api/v1/system/edition response (alias). */
-export type EditionResponse = EditionInfo;
+export type EditionResponse = EditionInfo & {
+  cloudFeatures?: CloudFeatures;
+};
 
 /** Zustand store state and actions. */
 export interface SystemState {
@@ -43,6 +50,8 @@ export interface SystemState {
   version: string | null;
   /** Resource limits for the current edition, null until fetched. */
   limits: SerializableEditionLimits | null;
+  /** Cloud-only features, empty object until fetched. */
+  cloudFeatures: CloudFeatures;
   /** Whether the edition fetch is in-flight. */
   isLoading: boolean;
   /** Error message from the most recent fetch attempt, if any. */
@@ -62,6 +71,7 @@ export const useSystemStore = create<SystemState>((set, get) => ({
   features: {},
   version: null,
   limits: null,
+  cloudFeatures: { notificationHistory: false },
   isLoading: false,
   error: null,
 
@@ -80,6 +90,7 @@ export const useSystemStore = create<SystemState>((set, get) => ({
         features: data.features,
         version: data.version,
         limits: data.limits,
+        cloudFeatures: data.cloudFeatures || { notificationHistory: false },
         isLoading: false,
       });
     } catch (err) {

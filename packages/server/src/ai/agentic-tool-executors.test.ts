@@ -54,6 +54,9 @@ import {
   toolReadFile,
   toolListFiles,
   toolExecuteCommand,
+  toolSearchCode,
+  toolFindFiles,
+  toolEditFile,
   type AbortStateInterface,
   type ToolExecutorContext,
 } from "./agentic-tool-executors.js";
@@ -653,5 +656,370 @@ describe("toolExecuteCommand — abort during execution", () => {
     // The abort check happens inside toolExecuteCommand after validation/audit
     // but before dispatch
     expect(result).toContain("Client disconnected");
+  });
+});
+
+// ============================================================================
+// toolSearchCode — command construction
+// ============================================================================
+
+describe("toolSearchCode", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("should build basic grep command with pattern", async () => {
+    const { stream, sseEvents } = createMockStream();
+    const ctx = createContext({ stream });
+
+    await toolSearchCode({ pattern: "ERROR" }, ctx, "t-search-1");
+
+    const executing = sseEvents.find((e) => e.event === "tool_executing");
+    expect(executing!.data.command).toContain("grep -rniC2 'ERROR' '.'");
+    expect(executing!.data.command).toContain("| head -n 50");
+  });
+
+  it("should add file pattern filter", async () => {
+    const { stream, sseEvents } = createMockStream();
+    const ctx = createContext({ stream });
+
+    await toolSearchCode(
+      { pattern: "function", file_pattern: "*.js" },
+      ctx,
+      "t-search-2",
+    );
+
+    const executing = sseEvents.find((e) => e.event === "tool_executing");
+    expect(executing!.data.command).toContain("--include='*.js'");
+  });
+
+  it("should support case-sensitive search", async () => {
+    const { stream, sseEvents } = createMockStream();
+    const ctx = createContext({ stream });
+
+    await toolSearchCode(
+      { pattern: "WARN", case_sensitive: true },
+      ctx,
+      "t-search-3",
+    );
+
+    const executing = sseEvents.find((e) => e.event === "tool_executing");
+    // grep -rn (no 'i' flag for case-sensitive)
+    expect(executing!.data.command).toMatch(/grep -rn[^i]/);
+  });
+
+  it("should use custom context lines", async () => {
+    const { stream, sseEvents } = createMockStream();
+    const ctx = createContext({ stream });
+
+    await toolSearchCode(
+      { pattern: "error", context_lines: 5 },
+      ctx,
+      "t-search-4",
+    );
+
+    const executing = sseEvents.find((e) => e.event === "tool_executing");
+    expect(executing!.data.command).toContain("C5");
+  });
+
+  it("should limit results to max_results", async () => {
+    const { stream, sseEvents } = createMockStream();
+    const ctx = createContext({ stream });
+
+    await toolSearchCode(
+      { pattern: "test", max_results: 100 },
+      ctx,
+      "t-search-5",
+    );
+
+    const executing = sseEvents.find((e) => e.event === "tool_executing");
+    expect(executing!.data.command).toContain("| head -n 100");
+  });
+});
+
+// ============================================================================
+// toolFindFiles — command construction
+// ============================================================================
+
+describe("toolFindFiles", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("should build basic find command with pattern", async () => {
+    const { stream, sseEvents } = createMockStream();
+    const ctx = createContext({ stream });
+
+    await toolFindFiles({ pattern: "*.log" }, ctx, "t-find-1");
+
+    const executing = sseEvents.find((e) => e.event === "tool_executing");
+    expect(executing!.data.command).toContain("find '.' -maxdepth 5");
+    expect(executing!.data.command).toContain("-type f");
+    expect(executing!.data.command).toContain("-name '*.log'");
+  });
+
+  it("should search in custom path", async () => {
+    const { stream, sseEvents } = createMockStream();
+    const ctx = createContext({ stream });
+
+    await toolFindFiles(
+      { pattern: "nginx.conf", path: "/etc" },
+      ctx,
+      "t-find-2",
+    );
+
+    const executing = sseEvents.find((e) => e.event === "tool_executing");
+    expect(executing!.data.command).toContain("find '/etc'");
+  });
+
+  it("should use custom max_depth", async () => {
+    const { stream, sseEvents } = createMockStream();
+    const ctx = createContext({ stream });
+
+    await toolFindFiles({ pattern: "*.js", max_depth: 3 }, ctx, "t-find-3");
+
+    const executing = sseEvents.find((e) => e.event === "tool_executing");
+    expect(executing!.data.command).toContain("-maxdepth 3");
+  });
+
+  it("should filter by file type (directories only)", async () => {
+    const { stream, sseEvents } = createMockStream();
+    const ctx = createContext({ stream });
+
+    await toolFindFiles(
+      { pattern: "node_modules", file_type: "d" },
+      ctx,
+      "t-find-4",
+    );
+
+    const executing = sseEvents.find((e) => e.event === "tool_executing");
+    expect(executing!.data.command).toContain("-type d");
+  });
+
+  it("should search all types when file_type is all", async () => {
+    const { stream, sseEvents } = createMockStream();
+    const ctx = createContext({ stream });
+
+    await toolFindFiles(
+      { pattern: "data*", file_type: "all" },
+      ctx,
+      "t-find-5",
+    );
+
+    const executing = sseEvents.find((e) => e.event === "tool_executing");
+    expect(executing!.data.command).not.toContain("-type");
+  });
+});
+
+// ============================================================================
+// toolEditFile — edit logic
+// ============================================================================
+
+describe("toolEditFile", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("should verify pattern exists before editing", async () => {
+    const { stream, sseEvents } = createMockStream();
+    const ctx = createContext({ stream });
+
+    await toolEditFile(
+      {
+        path: "/etc/nginx/nginx.conf",
+        old_string: "worker_processes 2",
+        new_string: "worker_processes 4",
+      },
+      ctx,
+      "t-edit-1",
+    );
+
+    // Should execute two commands: check + sed
+    const executingEvents = sseEvents.filter(
+      (e) => e.event === "tool_executing",
+    );
+    expect(executingEvents.length).toBeGreaterThanOrEqual(1);
+
+    // First command should be grep check
+    expect(executingEvents[0].data.command).toContain("grep -F");
+  });
+
+  it("should use sed for replacement", async () => {
+    const { stream, sseEvents } = createMockStream();
+    const ctx = createContext({ stream });
+
+    await toolEditFile(
+      {
+        path: "/app/config.txt",
+        old_string: "DEBUG=false",
+        new_string: "DEBUG=true",
+      },
+      ctx,
+      "t-edit-2",
+    );
+
+    const executingEvents = sseEvents.filter(
+      (e) => e.event === "tool_executing",
+    );
+    // Last command should be sed replacement
+    const sedCmd = executingEvents[executingEvents.length - 1].data.command;
+    expect(sedCmd).toContain("sed");
+    expect(sedCmd).toContain("/app/config.txt");
+  });
+
+  it("should support replace_all flag", async () => {
+    const { stream, sseEvents } = createMockStream();
+    const ctx = createContext({ stream });
+
+    await toolEditFile(
+      {
+        path: "/var/www/index.html",
+        old_string: "old",
+        new_string: "new",
+        replace_all: true,
+      },
+      ctx,
+      "t-edit-3",
+    );
+
+    const executingEvents = sseEvents.filter(
+      (e) => e.event === "tool_executing",
+    );
+    const sedCmd = executingEvents[executingEvents.length - 1].data.command;
+    // Should have 'g' flag for global replacement
+    expect(sedCmd).toMatch(/s\/.*\/.*\/g/);
+  });
+
+  it("should escape special characters in old_string", async () => {
+    const { stream, sseEvents } = createMockStream();
+    const ctx = createContext({ stream });
+
+    await toolEditFile(
+      {
+        path: "/test.txt",
+        old_string: "a/b&c",
+        new_string: "replaced",
+      },
+      ctx,
+      "t-edit-4",
+    );
+
+    const executingEvents = sseEvents.filter(
+      (e) => e.event === "tool_executing",
+    );
+    const sedCmd = executingEvents[executingEvents.length - 1].data.command;
+    // Sed command should escape / and &
+    expect(sedCmd).toBeDefined();
+  });
+});
+
+// ============================================================================
+// executeToolCall — new tools routing
+// ============================================================================
+
+describe("executeToolCall — new tools", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("should route search_code to toolSearchCode", async () => {
+    const { stream } = createMockStream();
+    const ctx = createContext({ stream });
+
+    const result = await executeToolCall(
+      { id: "tc-1", name: "search_code", input: { pattern: "ERROR" } },
+      ctx,
+    );
+
+    expect(result).toContain("[Exit code:");
+  });
+
+  it("should route find_files to toolFindFiles", async () => {
+    const { stream } = createMockStream();
+    const ctx = createContext({ stream });
+
+    const result = await executeToolCall(
+      { id: "tc-2", name: "find_files", input: { pattern: "*.log" } },
+      ctx,
+    );
+
+    expect(result).toContain("[Exit code:");
+  });
+
+  it("should route edit_file to toolEditFile", async () => {
+    const { stream } = createMockStream();
+    const ctx = createContext({ stream });
+
+    const result = await executeToolCall(
+      {
+        id: "tc-3",
+        name: "edit_file",
+        input: {
+          path: "/test.txt",
+          old_string: "old",
+          new_string: "new",
+        },
+      },
+      ctx,
+    );
+
+    expect(result).toBeDefined();
+  });
+
+  it("should validate search_code input schema", async () => {
+    const { stream, sseEvents } = createMockStream();
+    const ctx = createContext({ stream });
+
+    await executeToolCall(
+      {
+        id: "tc-4",
+        name: "search_code",
+        input: { pattern: "" }, // Invalid: empty pattern
+      },
+      ctx,
+    );
+
+    const validationError = sseEvents.find(
+      (e) => e.data.status === "validation_error",
+    );
+    expect(validationError).toBeDefined();
+  });
+
+  it("should validate find_files input schema", async () => {
+    const { stream, sseEvents } = createMockStream();
+    const ctx = createContext({ stream });
+
+    await executeToolCall(
+      {
+        id: "tc-5",
+        name: "find_files",
+        input: { pattern: "", path: "/tmp" }, // Invalid: empty pattern
+      },
+      ctx,
+    );
+
+    const validationError = sseEvents.find(
+      (e) => e.data.status === "validation_error",
+    );
+    expect(validationError).toBeDefined();
+  });
+
+  it("should validate edit_file input schema", async () => {
+    const { stream, sseEvents } = createMockStream();
+    const ctx = createContext({ stream });
+
+    await executeToolCall(
+      {
+        id: "tc-6",
+        name: "edit_file",
+        input: { path: "/test.txt", old_string: "" }, // Missing new_string, empty old_string
+      },
+      ctx,
+    );
+
+    const validationError = sseEvents.find(
+      (e) => e.data.status === "validation_error",
+    );
+    expect(validationError).toBeDefined();
   });
 });

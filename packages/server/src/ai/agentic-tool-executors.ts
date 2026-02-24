@@ -362,6 +362,144 @@ export async function toolListFiles(
 }
 
 /**
+ * Tool: search_code — Search for patterns in files using grep.
+ */
+export async function toolSearchCode(
+  input: {
+    pattern: string;
+    path?: string;
+    file_pattern?: string;
+    context_lines?: number;
+    case_sensitive?: boolean;
+    max_results?: number;
+  },
+  ctx: ToolExecutorContext,
+  toolCallId: string,
+): Promise<string> {
+  const {
+    pattern,
+    path = ".",
+    file_pattern,
+    context_lines = 2,
+    case_sensitive = false,
+    max_results = 50,
+  } = input;
+
+  // Build grep command with options
+  let grepFlags = "-rn"; // recursive + line numbers
+  if (!case_sensitive) grepFlags += "i"; // case-insensitive
+  if (context_lines > 0) grepFlags += `C${context_lines}`; // context lines
+
+  let command = `grep ${grepFlags} ${shellEscape(pattern)} ${shellEscape(path)}`;
+
+  // Add file pattern filter if specified
+  if (file_pattern) {
+    command += ` --include=${shellEscape(file_pattern)}`;
+  }
+
+  // Limit results
+  command += ` | head -n ${max_results}`;
+
+  return toolExecuteCommand(
+    {
+      command,
+      description: `Search for pattern "${pattern}" in ${path}${file_pattern ? ` (${file_pattern})` : ""}`,
+    },
+    ctx,
+    toolCallId,
+  );
+}
+
+/**
+ * Tool: find_files — Find files by name pattern.
+ */
+export async function toolFindFiles(
+  input: {
+    pattern: string;
+    path?: string;
+    max_depth?: number;
+    file_type?: "f" | "d" | "all";
+  },
+  ctx: ToolExecutorContext,
+  toolCallId: string,
+): Promise<string> {
+  const { pattern, path = ".", max_depth = 5, file_type = "f" } = input;
+
+  // Build find command
+  let command = `find ${shellEscape(path)}`;
+
+  // Add depth limit
+  command += ` -maxdepth ${max_depth}`;
+
+  // Add type filter
+  if (file_type !== "all") {
+    command += ` -type ${file_type}`;
+  }
+
+  // Add name pattern
+  command += ` -name ${shellEscape(pattern)}`;
+
+  // Limit results to prevent overwhelming output
+  command += ` | head -n 100`;
+
+  return toolExecuteCommand(
+    {
+      command,
+      description: `Find files matching "${pattern}" in ${path}`,
+    },
+    ctx,
+    toolCallId,
+  );
+}
+
+/**
+ * Tool: edit_file — Edit file by replacing exact text matches.
+ */
+export async function toolEditFile(
+  input: {
+    path: string;
+    old_string: string;
+    new_string: string;
+    replace_all?: boolean;
+  },
+  ctx: ToolExecutorContext,
+  toolCallId: string,
+): Promise<string> {
+  const { path, old_string, new_string, replace_all = false } = input;
+
+  // Step 1: Verify file exists and contains old_string
+  const checkCmd = `grep -F ${shellEscape(old_string)} ${shellEscape(path)} || echo "PATTERN_NOT_FOUND"`;
+  const checkResult = await toolExecuteCommand(
+    { command: checkCmd, description: `Verify pattern exists in ${path}` },
+    ctx,
+    `${toolCallId}_check`,
+  );
+
+  if (checkResult.includes("PATTERN_NOT_FOUND")) {
+    return `Error: Pattern not found in file ${path}. Cannot edit.`;
+  }
+
+  // Step 2: Perform the replacement using sed
+  // Note: sed -i works differently on macOS vs Linux
+  // Use a portable approach: create temp file then move
+  const escapedOld = old_string.replace(/[\/&]/g, "\\$&").replace(/\n/g, "\\n");
+  const escapedNew = new_string.replace(/[\/&]/g, "\\$&").replace(/\n/g, "\\n");
+
+  const sedFlag = replace_all ? "g" : ""; // global flag for replace all
+  const command = `sed 's/${escapedOld}/${escapedNew}/${sedFlag}' ${shellEscape(path)} > ${shellEscape(path)}.tmp && mv ${shellEscape(path)}.tmp ${shellEscape(path)}`;
+
+  return toolExecuteCommand(
+    {
+      command,
+      description: `Edit ${path}: replace "${old_string.substring(0, 50)}..." with "${new_string.substring(0, 50)}..."`,
+      timeout_seconds: 10,
+    },
+    ctx,
+    toolCallId,
+  );
+}
+
+/**
  * Execute a single tool call and return the result string.
  * This is the router function that dispatches to specific tool executors.
  */
@@ -428,6 +566,51 @@ export async function executeToolCall(
           );
         }
         return await toolListFiles(parsed.data, ctx, toolCall.id);
+      }
+
+      case "search_code": {
+        const parsed = SearchCodeInputSchema.safeParse(input);
+        if (!parsed.success) {
+          return await handleValidationError(
+            name,
+            toolCall.id,
+            parsed.error.issues,
+            input,
+            stream,
+            abort,
+          );
+        }
+        return await toolSearchCode(parsed.data, ctx, toolCall.id);
+      }
+
+      case "find_files": {
+        const parsed = FindFilesInputSchema.safeParse(input);
+        if (!parsed.success) {
+          return await handleValidationError(
+            name,
+            toolCall.id,
+            parsed.error.issues,
+            input,
+            stream,
+            abort,
+          );
+        }
+        return await toolFindFiles(parsed.data, ctx, toolCall.id);
+      }
+
+      case "edit_file": {
+        const parsed = EditFileInputSchema.safeParse(input);
+        if (!parsed.success) {
+          return await handleValidationError(
+            name,
+            toolCall.id,
+            parsed.error.issues,
+            input,
+            stream,
+            abort,
+          );
+        }
+        return await toolEditFile(parsed.data, ctx, toolCall.id);
       }
 
       default:
