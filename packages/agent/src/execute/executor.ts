@@ -10,9 +10,9 @@
  * @module execute/executor
  */
 
-import { spawn } from 'node:child_process';
-import path from 'node:path';
-import type { ExecResult } from '@aiinstaller/shared';
+import { spawn, type ChildProcess } from "node:child_process";
+import path from "node:path";
+import type { ExecResult } from "@aiinstaller/shared";
 
 // ============================================================================
 // Types
@@ -46,7 +46,7 @@ const DEFAULT_TIMEOUT_MS = 30_000;
  * On Windows, npm-related commands require .cmd extension.
  */
 function resolveCommand(command: string): string {
-  if (process.platform !== 'win32') {
+  if (process.platform !== "win32") {
     return command;
   }
   const basename = path.basename(command).toLowerCase();
@@ -54,7 +54,7 @@ function resolveCommand(command: string): string {
   if (ext) {
     return command;
   }
-  const cmdCommands = ['npm', 'pnpm', 'yarn', 'npx'];
+  const cmdCommands = ["npm", "pnpm", "yarn", "npx"];
   if (cmdCommands.includes(basename)) {
     return `${command}.cmd`;
   }
@@ -68,7 +68,7 @@ function formatCommand(command: string, args: string[]): string {
   if (args.length === 0) {
     return command;
   }
-  return `${command} ${args.join(' ')}`;
+  return `${command} ${args.join(" ")}`;
 }
 
 // ============================================================================
@@ -143,35 +143,33 @@ export class CommandExecutor {
       onStderr,
     } = options;
 
-    const resolvedEnv = env
-      ? { ...process.env, ...env }
-      : { ...process.env };
+    const resolvedEnv = env ? { ...process.env, ...env } : { ...process.env };
 
     // Suppress npm fund messages
     const cmd = path.basename(command).toLowerCase();
-    if (cmd === 'npm' || cmd === 'npm.cmd' || cmd === 'npm.exe') {
-      resolvedEnv.NPM_CONFIG_FUND ??= 'false';
-      resolvedEnv.npm_config_fund ??= 'false';
+    if (cmd === "npm" || cmd === "npm.cmd" || cmd === "npm.exe") {
+      resolvedEnv.NPM_CONFIG_FUND ??= "false";
+      resolvedEnv.npm_config_fund ??= "false";
     }
 
     const startTime = Date.now();
 
     return new Promise<ExecResult>((resolve) => {
-      let stdout = '';
-      let stderr = '';
+      let stdout = "";
+      let stderr = "";
       let timedOut = false;
       let settled = false;
 
-      const child = spawn(resolveCommand(command), args, {
-        stdio: 'pipe',
+      const child: ChildProcess = spawn(resolveCommand(command), args, {
+        stdio: "pipe",
         cwd,
         env: resolvedEnv,
       });
 
       const timer = setTimeout(() => {
         timedOut = true;
-        if (typeof child.kill === 'function') {
-          child.kill('SIGKILL');
+        if (typeof child.kill === "function") {
+          child.kill("SIGKILL");
         }
       }, timeoutMs);
 
@@ -180,13 +178,13 @@ export class CommandExecutor {
         child.stdin.end();
       }
 
-      child.stdout?.on('data', (chunk: Buffer) => {
+      child.stdout?.on("data", (chunk: Buffer) => {
         const text = chunk.toString();
         stdout += text;
         onStdout?.(text);
       });
 
-      child.stderr?.on('data', (chunk: Buffer) => {
+      child.stderr?.on("data", (chunk: Buffer) => {
         const text = chunk.toString();
         stderr += text;
         onStderr?.(text);
@@ -207,13 +205,13 @@ export class CommandExecutor {
         });
       };
 
-      child.on('error', (err) => {
+      child.on("error", (err: Error) => {
         // Spawn errors (e.g. command not found) resolve with exitCode 1
         stderr += err.message;
         finish(1);
       });
 
-      child.on('close', (code) => {
+      child.on("close", (code: number | null) => {
         finish(code ?? 1);
       });
     });
