@@ -257,8 +257,13 @@ describe('Client WSS Connection Support', () => {
   });
 
   it('should handle connection error for invalid wss:// host gracefully', async () => {
+    // Use 10.255.255.1 — a non-routable private IP where TCP handshake
+    // hangs (never completes), so connectionTimeoutMs fires while
+    // readyState is still CONNECTING and properly rejects the promise.
+    // Avoid .local (mDNS/Avahi hangs on Linux CI) and localhost
+    // (ECONNREFUSED skips the timeout path).
     const client = new InstallClient({
-      serverUrl: 'wss://invalid.nonexistent.local:9999',
+      serverUrl: 'wss://10.255.255.1:9999',
       autoReconnect: false,
       connectionTimeoutMs: 2000,
     });
@@ -268,7 +273,7 @@ describe('Client WSS Connection Support', () => {
 
     await expect(client.connect()).rejects.toThrow();
     expect(client.state).toBe(ConnectionState.DISCONNECTED);
-  }, 60_000);
+  }, 10_000);
 
   it('should distinguish ws:// for local dev vs wss:// for production', () => {
     const localUrl = 'ws://localhost:3000';
