@@ -256,24 +256,27 @@ describe('Client WSS Connection Support', () => {
     expect(client.state).toBe(ConnectionState.DISCONNECTED);
   });
 
-  it('should handle connection error for invalid wss:// host gracefully', async () => {
-    // Use 10.255.255.1 — a non-routable private IP where TCP handshake
-    // hangs (never completes), so connectionTimeoutMs fires while
-    // readyState is still CONNECTING and properly rejects the promise.
-    // Avoid .local (mDNS/Avahi hangs on Linux CI) and localhost
-    // (ECONNREFUSED skips the timeout path).
-    const client = new InstallClient({
-      serverUrl: 'wss://10.255.255.1:9999',
-      autoReconnect: false,
-      connectionTimeoutMs: 2000,
-    });
+  // Skip on CI: real network tests are unreliable across platforms.
+  // DNS resolution for .local hangs on Linux (mDNS/Avahi), ECONNREFUSED
+  // skips the client timeout path, and cloud IPs may be unexpectedly routable.
+  // Connection error handling is tested via mocks in index-network-errors.test.ts.
+  it.skipIf(!!process.env.CI)(
+    'should handle connection error for invalid wss:// host gracefully',
+    async () => {
+      const client = new InstallClient({
+        serverUrl: 'wss://10.255.255.1:9999',
+        autoReconnect: false,
+        connectionTimeoutMs: 2000,
+      });
 
-    const errors: Error[] = [];
-    client.on('error', (err) => errors.push(err));
+      const errors: Error[] = [];
+      client.on('error', (err) => errors.push(err));
 
-    await expect(client.connect()).rejects.toThrow();
-    expect(client.state).toBe(ConnectionState.DISCONNECTED);
-  }, 10_000);
+      await expect(client.connect()).rejects.toThrow();
+      expect(client.state).toBe(ConnectionState.DISCONNECTED);
+    },
+    10_000,
+  );
 
   it('should distinguish ws:// for local dev vs wss:// for production', () => {
     const localUrl = 'ws://localhost:3000';
