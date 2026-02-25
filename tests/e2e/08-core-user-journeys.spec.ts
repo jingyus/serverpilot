@@ -106,8 +106,8 @@ test.describe('Journey 1: Register → Login → Add Server → View Key', () =>
     // Step 3: Fill registration form
     await page.getByLabel('Name').fill('Journey Test User');
     await page.getByLabel('Email').fill(email);
-    await page.getByLabel('Password', { exact: true }).fill(password);
-    await page.getByLabel('Confirm Password').fill(password);
+    await page.locator('#password').fill(password);
+    await page.locator('#confirmPassword').fill(password);
 
     // Step 4: Submit registration
     await page.getByRole('button', { name: 'Create Account' }).click();

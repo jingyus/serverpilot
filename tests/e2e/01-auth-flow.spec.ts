@@ -64,8 +64,8 @@ test.describe('User Registration & Login Flow', () => {
 
     await page.getByLabel('Name').fill('E2E Test User');
     await page.getByLabel('Email').fill(email);
-    await page.getByLabel('Password', { exact: true }).fill(testPassword);
-    await page.getByLabel('Confirm Password').fill(testPassword);
+    await page.locator('#password').fill(testPassword);
+    await page.locator('#confirmPassword').fill(testPassword);
 
     await page.getByRole('button', { name: 'Create Account' }).click();
 
@@ -116,8 +116,8 @@ test.describe('User Registration & Login Flow', () => {
 
     await page.getByLabel('Name').fill('Duplicate User');
     await page.getByLabel('Email').fill(email);
-    await page.getByLabel('Password', { exact: true }).fill(testPassword);
-    await page.getByLabel('Confirm Password').fill(testPassword);
+    await page.locator('#password').fill(testPassword);
+    await page.locator('#confirmPassword').fill(testPassword);
     await page.getByRole('button', { name: 'Create Account' }).click();
 
     // Should show error about duplicate email
@@ -133,8 +133,8 @@ test.describe('User Registration & Login Flow', () => {
 
     await page.getByLabel('Name').fill('Mismatch Test');
     await page.getByLabel('Email').fill(uniqueEmail());
-    await page.getByLabel('Password', { exact: true }).fill(testPassword);
-    await page.getByLabel('Confirm Password').fill('DifferentPass123!');
+    await page.locator('#password').fill(testPassword);
+    await page.locator('#confirmPassword').fill('DifferentPass123!');
     await page.getByRole('button', { name: 'Create Account' }).click();
 
     // Should show password mismatch error
