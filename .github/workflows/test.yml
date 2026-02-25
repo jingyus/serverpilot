@@ -82,7 +82,7 @@ jobs:
   test:
     name: Test (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 8
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
@@ -92,9 +92,6 @@ jobs:
             node-version: 22
           - os: macos-latest
             name: macOS (arm64)
-            node-version: 22
-          - os: macos-13
-            name: macOS (x64)
             node-version: 22
 
     steps:
@@ -113,6 +110,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build better-sqlite3 native bindings
+        run: |
+          cd node_modules/.pnpm/better-sqlite3@*/node_modules/better-sqlite3
+          npm run build-release
+
       - name: Show platform info
         run: |
           echo "OS: $(uname -s)"
@@ -129,7 +131,7 @@ jobs:
   coverage:
     name: Coverage Gate
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -145,6 +147,11 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Build better-sqlite3 native bindings
+        run: |
+          cd node_modules/.pnpm/better-sqlite3@*/node_modules/better-sqlite3
+          npm run build-release
 
       - name: Run tests with coverage
         run: pnpm test:coverage
