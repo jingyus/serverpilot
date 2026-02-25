@@ -15,7 +15,7 @@ RUN corepack enable && corepack prepare pnpm@10.13.1 --activate
 WORKDIR /app
 
 # Copy workspace config and lockfile first for layer caching
-COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.json ./
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.json .npmrc ./
 COPY packages/shared/package.json packages/shared/package.json
 COPY packages/agent/package.json packages/agent/package.json
 COPY packages/server/package.json packages/server/package.json
@@ -32,8 +32,8 @@ COPY packages/agent/ packages/agent/
 RUN pnpm --filter @aiinstaller/shared build && \
     pnpm --filter @aiinstaller/agent build
 
-# Prune devDependencies
-RUN pnpm prune --prod
+# Prune devDependencies (skip prepare hook for husky)
+RUN pnpm prune --prod --ignore-scripts
 
 # --------------------------------------------------------------------------
 # Stage 2: Production runtime (minimal)

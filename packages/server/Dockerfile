@@ -21,7 +21,7 @@ RUN corepack enable && corepack prepare pnpm@10.13.1 --activate
 WORKDIR /app
 
 # Copy workspace config and lockfile first for layer caching
-COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.json ./
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.json .npmrc ./
 COPY packages/shared/package.json packages/shared/package.json
 COPY packages/server/package.json packages/server/package.json
 COPY packages/agent/package.json packages/agent/package.json
@@ -66,11 +66,13 @@ WORKDIR /app
 COPY --from=build /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/pnpm-lock.yaml ./pnpm-lock.yaml
+COPY --from=build /app/.npmrc ./.npmrc
 COPY --from=build /app/packages/shared/package.json ./packages/shared/package.json
 COPY --from=build /app/packages/server/package.json ./packages/server/package.json
 
 # Install production dependencies and rebuild native modules for Alpine Linux
-RUN pnpm install --frozen-lockfile --prod && \
+# Skip prepare hook (husky not in prod deps) but allow build scripts via .npmrc
+RUN pnpm install --frozen-lockfile --prod --ignore-scripts && \
     pnpm rebuild better-sqlite3
 
 # Copy built TypeScript output
