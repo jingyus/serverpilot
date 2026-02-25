@@ -59,8 +59,10 @@ export default defineConfig({
     {
       command: 'pnpm dev:dashboard',
       port: 5173,
-      timeout: 30_000,
+      timeout: 60_000,
       reuseExistingServer: !CI,
+      stdout: 'pipe',
+      stderr: 'pipe',
     },
   ],
 });
