@@ -8,6 +8,7 @@ on:
       - 'packages/agent/**'
       - 'packages/dashboard/**'
       - 'packages/shared/**'
+      - 'tests/**'
       - 'docker-compose.yml'
       - 'packages/server/Dockerfile'
       - 'packages/agent/Dockerfile'
