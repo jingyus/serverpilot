@@ -168,6 +168,9 @@ jobs:
           cd node_modules/.pnpm/better-sqlite3@*/node_modules/better-sqlite3
           npm run build-release
 
+      - name: Build shared package
+        run: pnpm --filter @aiinstaller/shared build
+
       - name: Run tests with coverage
         run: |
           timeout 600 pnpm test:coverage || {
