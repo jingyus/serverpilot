@@ -66,7 +66,16 @@ export function getSkillTemplateForAI(skillName: string) {
  * 为 AI 生成示例配置
  */
 function generateExampleConfig(
-  schema: Record<string, any>,
+  schema: Record<
+    string,
+    {
+      type: string;
+      default?: unknown;
+      enum?: unknown[];
+      min?: number;
+      optional?: boolean;
+    }
+  >,
 ): Record<string, unknown> {
   const example: Record<string, unknown> = {};
 

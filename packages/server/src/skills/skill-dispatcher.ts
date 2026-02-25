@@ -6,7 +6,6 @@
  * 负责将 Skill 推送到指定的 Agent 执行
  */
 
-import { createMessage } from "@aiinstaller/shared";
 import type { InstallServer } from "../api/server.js";
 
 // TODO: 协议层面需要添加 skill.execute, skill.progress, skill.result 等消息类型
