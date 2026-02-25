@@ -101,6 +101,7 @@ test.describe('Journey 1: Register → Login → Add Server → View Key', () =>
     // Step 2: Switch to register mode
     await page.getByRole('button', { name: /Register/ }).click();
     await expect(page.getByLabel('Name')).toBeVisible();
+    await expect(page.getByLabel('Confirm Password')).toBeVisible();
 
     // Step 3: Fill registration form
     await page.getByLabel('Name').fill('Journey Test User');

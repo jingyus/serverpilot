@@ -58,6 +58,10 @@ test.describe('User Registration & Login Flow', () => {
     await page.goto('/login');
     await page.getByRole('button', { name: /Register/ }).click();
 
+    // Wait for register form to be visible
+    await expect(page.getByLabel('Name')).toBeVisible();
+    await expect(page.getByLabel('Confirm Password')).toBeVisible();
+
     await page.getByLabel('Name').fill('E2E Test User');
     await page.getByLabel('Email').fill(email);
     await page.getByLabel('Password', { exact: true }).fill(testPassword);
@@ -86,6 +90,11 @@ test.describe('User Registration & Login Flow', () => {
 
   test('should show error for invalid credentials', async ({ page }) => {
     await page.goto('/login');
+
+    // Wait for login form to be visible
+    await expect(page.getByLabel('Email')).toBeVisible();
+    await expect(page.getByLabel('Password')).toBeVisible();
+
     await page.getByLabel('Email').fill('nonexistent@test.local');
     await page.getByLabel('Password').fill('WrongPassword123!');
     await page.getByRole('button', { name: 'Sign In' }).click();
@@ -102,6 +111,9 @@ test.describe('User Registration & Login Flow', () => {
     await page.goto('/login');
     await page.getByRole('button', { name: /Register/ }).click();
 
+    // Wait for register form to be visible
+    await expect(page.getByLabel('Name')).toBeVisible();
+
     await page.getByLabel('Name').fill('Duplicate User');
     await page.getByLabel('Email').fill(email);
     await page.getByLabel('Password', { exact: true }).fill(testPassword);
@@ -115,6 +127,9 @@ test.describe('User Registration & Login Flow', () => {
   test('should validate password confirmation mismatch', async ({ page }) => {
     await page.goto('/login');
     await page.getByRole('button', { name: /Register/ }).click();
+
+    // Wait for register form to be visible
+    await expect(page.getByLabel('Name')).toBeVisible();
 
     await page.getByLabel('Name').fill('Mismatch Test');
     await page.getByLabel('Email').fill(uniqueEmail());
