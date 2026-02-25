@@ -336,11 +336,11 @@ describe('execute/executor.ts - code quality', () => {
   const content = readFileSync(filePath, 'utf-8');
 
   it('should use node:child_process import', () => {
-    expect(content).toContain("from 'node:child_process'");
+    expect(content).toContain('from "node:child_process"');
   });
 
   it('should use node:path import', () => {
-    expect(content).toContain("from 'node:path'");
+    expect(content).toContain('from "node:path"');
   });
 
   it('should import ExecResult type from @aiinstaller/shared', () => {
