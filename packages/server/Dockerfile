@@ -11,7 +11,7 @@
 # --------------------------------------------------------------------------
 # Stage 1: Install all dependencies and build TypeScript
 # --------------------------------------------------------------------------
-FROM node:22-alpine AS build
+FROM node:25-alpine AS build
 
 # Install build tools for native modules (better-sqlite3)
 RUN apk add --no-cache python3 make g++
@@ -42,7 +42,7 @@ RUN pnpm --filter @aiinstaller/shared build && \
 # --------------------------------------------------------------------------
 # Stage 2: Production runtime (minimal)
 # --------------------------------------------------------------------------
-FROM node:22-alpine AS runtime
+FROM node:25-alpine AS runtime
 
 LABEL maintainer="ServerPilot Team"
 LABEL description="ServerPilot Server - REST API + WebSocket with AI agent integration"
