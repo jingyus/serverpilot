@@ -47,6 +47,12 @@ LABEL maintainer="ServerPilot Team"
 LABEL description="ServerPilot Server - REST API + WebSocket with AI agent integration"
 LABEL version="0.1.0"
 
+# Install runtime dependencies for better-sqlite3
+RUN apk add --no-cache python3 make g++
+
+# Enable pnpm
+RUN corepack enable && corepack prepare pnpm@10.13.1 --activate
+
 # Create non-root user for security
 RUN addgroup -g 1001 -S serverpilot && \
     adduser -S serverpilot -u 1001 -G serverpilot
@@ -56,20 +62,20 @@ RUN mkdir -p /data && chown serverpilot:serverpilot /data
 
 WORKDIR /app
 
-# Copy all node_modules (includes native modules)
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/packages/shared/node_modules ./packages/shared/node_modules
-COPY --from=build /app/packages/server/node_modules ./packages/server/node_modules
+# Copy workspace config and package.json files
+COPY --from=build /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
+COPY --from=build /app/package.json ./package.json
+COPY --from=build /app/pnpm-lock.yaml ./pnpm-lock.yaml
+COPY --from=build /app/packages/shared/package.json ./packages/shared/package.json
+COPY --from=build /app/packages/server/package.json ./packages/server/package.json
+
+# Install production dependencies and rebuild native modules for Alpine Linux
+RUN pnpm install --frozen-lockfile --prod && \
+    pnpm rebuild better-sqlite3
 
 # Copy built TypeScript output
 COPY --from=build /app/packages/shared/dist ./packages/shared/dist
 COPY --from=build /app/packages/server/dist ./packages/server/dist
-
-# Copy package.json files (needed for module resolution)
-COPY --from=build /app/package.json ./package.json
-COPY --from=build /app/packages/shared/package.json ./packages/shared/package.json
-COPY --from=build /app/packages/server/package.json ./packages/server/package.json
-COPY --from=build /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
 
 # Copy knowledge-base (built-in documentation for AI agent)
 COPY knowledge-base/ ./knowledge-base/
