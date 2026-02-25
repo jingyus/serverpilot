@@ -9,21 +9,20 @@
  * @module core/skill/skill-archive
  */
 
-import { exec, spawn } from 'node:child_process';
-import { join, basename, resolve, normalize } from 'node:path';
-import { access, mkdir, rm, readdir, stat, rename } from 'node:fs/promises';
-import { promisify } from 'node:util';
-import { randomUUID } from 'node:crypto';
-
-import { createContextLogger } from '../../utils/logger.js';
-import { loadSkillFromDir } from './loader.js';
-import { scanManifestSecurity } from './git-installer.js';
-import { getSkillRepository } from '../../db/repositories/skill-repository.js';
-import { getSkillEngine } from './engine.js';
-import type { InstalledSkill } from './types.js';
+import { exec, spawn, ChildProcess } from "node:child_process";
+import { join, basename, resolve, normalize } from "node:path";
+import { access, mkdir, rm, readdir, stat, rename } from "node:fs/promises";
+import { promisify } from "node:util";
+import { randomUUID } from "node:crypto";
+import { createContextLogger } from "../../utils/logger.js";
+import { getSkillRepository } from "../../db/repositories/skill-repository.js";
+import { loadSkillFromDir } from "./loader.js";
+import { scanManifestSecurity } from "./git-installer.js";
+import { getSkillEngine } from "./engine.js";
+import type { InstalledSkill } from "./types.js";
 
 const execAsync = promisify(exec);
-const logger = createContextLogger({ module: 'skill-archive' });
+const logger = createContextLogger({ module: "skill-archive" });
 
 // ============================================================================
 // Constants
@@ -31,17 +30,17 @@ const logger = createContextLogger({ module: 'skill-archive' });
 
 /** Patterns excluded from the archive. */
 const EXCLUDE_PATTERNS = [
-  '.git',
-  'node_modules',
-  '.DS_Store',
-  '.env',
-  '.env.*',
-  '*.test.ts',
-  '*.test.js',
-  '*.spec.ts',
-  '*.spec.js',
-  'dist',
-  '*.log',
+  ".git",
+  "node_modules",
+  ".DS_Store",
+  ".env",
+  ".env.*",
+  "*.test.ts",
+  "*.test.js",
+  "*.spec.ts",
+  "*.spec.js",
+  "dist",
+  "*.log",
 ];
 
 /** Tar command timeout in milliseconds. */
@@ -95,23 +94,27 @@ export async function exportSkill(skillId: string): Promise<ExportResult> {
   const filename = `${manifest.metadata.name}-${manifest.metadata.version}.tar.gz`;
 
   // Build tar exclude flags
-  const excludeFlags = EXCLUDE_PATTERNS
-    .map((p) => `--exclude='${p}'`)
-    .join(' ');
+  const excludeFlags = EXCLUDE_PATTERNS.map((p) => `--exclude='${p}'`).join(
+    " ",
+  );
 
   // Create tar.gz from skill directory
   // Use `-C parentDir dirName` to get a clean relative path in the archive
-  const parentDir = join(skill.skillPath, '..');
+  const parentDir = join(skill.skillPath, "..");
   const dirName = basename(skill.skillPath);
 
   const { stdout } = await execAsync(
     `tar czf - ${excludeFlags} -C '${parentDir}' '${dirName}'`,
-    { encoding: 'buffer', timeout: TAR_TIMEOUT_MS, maxBuffer: 50 * 1024 * 1024 },
+    {
+      encoding: "buffer",
+      timeout: TAR_TIMEOUT_MS,
+      maxBuffer: 50 * 1024 * 1024,
+    },
   );
 
   logger.info(
     { skillId, name: manifest.metadata.name, size: stdout.length },
-    'Skill exported as archive',
+    "Skill exported as archive",
   );
 
   return { filename, buffer: stdout };
@@ -161,7 +164,7 @@ export async function importSkill(
     const scanResult = scanManifestSecurity(manifest);
     if (!scanResult.passed) {
       throw new Error(
-        `Security scan failed for imported skill: ${scanResult.errors.join('; ')}`,
+        `Security scan failed for imported skill: ${scanResult.errors.join("; ")}`,
       );
     }
 
@@ -178,12 +181,10 @@ export async function importSkill(
     const finalDir = join(communityDir, manifest.metadata.name);
     try {
       await access(finalDir);
-      throw new Error(
-        `Target directory already exists: ${finalDir}`,
-      );
+      throw new Error(`Target directory already exists: ${finalDir}`);
     } catch (err) {
       // Directory should NOT exist — this is the expected path
-      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
         throw err;
       }
     }
@@ -196,14 +197,18 @@ export async function importSkill(
 
     // Install via engine
     const engine = getSkillEngine();
-    const skill = await engine.install(userId, finalDir, 'community');
+    const skill = await engine.install(userId, finalDir, "community");
 
     // Cleanup temp dir (may still have empty dirs after mv)
     await safeRemoveDir(tempDir);
 
     logger.info(
-      { userId, name: manifest.metadata.name, version: manifest.metadata.version },
-      'Skill imported from archive',
+      {
+        userId,
+        name: manifest.metadata.name,
+        version: manifest.metadata.version,
+      },
+      "Skill imported from archive",
     );
 
     return { skill, warnings: scanResult.warnings };
@@ -228,16 +233,19 @@ export async function importSkill(
  *
  * @throws Error if any entry escapes the target directory
  */
-export function validateArchivePaths(entries: string[], targetDir: string): void {
+export function validateArchivePaths(
+  entries: string[],
+  targetDir: string,
+): void {
   const resolvedTarget = resolve(targetDir);
 
   for (const entry of entries) {
     // Strip trailing slashes for directory entries
-    const cleaned = entry.replace(/\/+$/, '');
+    const cleaned = entry.replace(/\/+$/, "");
     if (cleaned.length === 0) continue;
 
     // Reject absolute paths
-    if (cleaned.startsWith('/')) {
+    if (cleaned.startsWith("/")) {
       throw new Error(
         `Archive path traversal detected: absolute path '${entry}'`,
       );
@@ -245,7 +253,11 @@ export function validateArchivePaths(entries: string[], targetDir: string): void
 
     // Reject entries containing .. components
     const normalized = normalize(cleaned);
-    if (normalized.startsWith('..') || normalized.includes('/..') || normalized.includes('\\..')) {
+    if (
+      normalized.startsWith("..") ||
+      normalized.includes("/..") ||
+      normalized.includes("\\..")
+    ) {
       throw new Error(
         `Archive path traversal detected: '${entry}' escapes target directory`,
       );
@@ -253,7 +265,10 @@ export function validateArchivePaths(entries: string[], targetDir: string): void
 
     // Final check: resolved path must be under targetDir
     const resolvedEntry = resolve(resolvedTarget, cleaned);
-    if (!resolvedEntry.startsWith(resolvedTarget + '/') && resolvedEntry !== resolvedTarget) {
+    if (
+      !resolvedEntry.startsWith(resolvedTarget + "/") &&
+      resolvedEntry !== resolvedTarget
+    ) {
       throw new Error(
         `Archive path traversal detected: '${entry}' resolves outside target directory`,
       );
@@ -266,35 +281,43 @@ export function validateArchivePaths(entries: string[], targetDir: string): void
  */
 function listArchiveEntries(buffer: Buffer): Promise<string[]> {
   return new Promise((resolvePromise, reject) => {
-    const child = spawn('tar', ['-tzf', '-'], { stdio: ['pipe', 'pipe', 'pipe'] });
+    const child: ChildProcess = spawn("tar", ["-tzf", "-"], {
+      stdio: ["pipe", "pipe", "pipe"],
+    });
 
-    let stdout = '';
-    let stderr = '';
-    child.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
-    child.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
+    let stdout = "";
+    let stderr = "";
+    child.stdout!.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString();
+    });
+    child.stderr!.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
 
     const timer = setTimeout(() => {
-      child.kill('SIGTERM');
-      reject(new Error('tar listing timed out'));
+      child.kill("SIGTERM");
+      reject(new Error("tar listing timed out"));
     }, TAR_TIMEOUT_MS);
 
-    child.on('close', (code) => {
+    child.on("close", (code: number | null) => {
       clearTimeout(timer);
       if (code === 0) {
-        const entries = stdout.split('\n').filter((line) => line.length > 0);
+        const entries = stdout.split("\n").filter((line) => line.length > 0);
         resolvePromise(entries);
       } else {
-        reject(new Error(`tar listing failed (exit ${code}): ${stderr.trim()}`));
+        reject(
+          new Error(`tar listing failed (exit ${code}): ${stderr.trim()}`),
+        );
       }
     });
 
-    child.on('error', (err) => {
+    child.on("error", (err: Error) => {
       clearTimeout(timer);
       reject(err);
     });
 
-    child.stdin.write(buffer);
-    child.stdin.end();
+    child.stdin!.write(buffer);
+    child.stdin!.end();
   });
 }
 
@@ -311,36 +334,40 @@ async function extractTarGz(buffer: Buffer, cwd: string): Promise<void> {
 
   // Extract with security flags
   return new Promise((resolvePromise, reject) => {
-    const child = spawn(
-      'tar',
-      ['xzf', '-', '--no-same-owner', '--no-same-permissions'],
-      { cwd, stdio: ['pipe', 'ignore', 'pipe'] },
+    const child: ChildProcess = spawn(
+      "tar",
+      ["xzf", "-", "--no-same-owner", "--no-same-permissions"],
+      { cwd, stdio: ["pipe", "ignore", "pipe"] },
     );
 
-    let stderr = '';
-    child.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
+    let stderr = "";
+    child.stderr!.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
 
     const timer = setTimeout(() => {
-      child.kill('SIGTERM');
-      reject(new Error('tar extraction timed out'));
+      child.kill("SIGTERM");
+      reject(new Error("tar extraction timed out"));
     }, TAR_TIMEOUT_MS);
 
-    child.on('close', (code) => {
+    child.on("close", (code: number | null) => {
       clearTimeout(timer);
       if (code === 0) {
         resolvePromise();
       } else {
-        reject(new Error(`tar extraction failed (exit ${code}): ${stderr.trim()}`));
+        reject(
+          new Error(`tar extraction failed (exit ${code}): ${stderr.trim()}`),
+        );
       }
     });
 
-    child.on('error', (err) => {
+    child.on("error", (err: Error) => {
       clearTimeout(timer);
       reject(err);
     });
 
-    child.stdin.write(buffer);
-    child.stdin.end();
+    child.stdin!.write(buffer);
+    child.stdin!.end();
   });
 }
 
@@ -352,13 +379,13 @@ async function extractTarGz(buffer: Buffer, cwd: string): Promise<void> {
 async function findSkillRoot(extractDir: string, depth = 0): Promise<string> {
   if (depth > 2) {
     throw new Error(
-      'Imported archive does not contain a valid skill: no skill.yaml found',
+      "Imported archive does not contain a valid skill: no skill.yaml found",
     );
   }
 
   // Check if skill.yaml is directly in this directory
   try {
-    await access(join(extractDir, 'skill.yaml'));
+    await access(join(extractDir, "skill.yaml"));
     return extractDir;
   } catch {
     // Not directly here — look in subdirectories
@@ -368,7 +395,7 @@ async function findSkillRoot(extractDir: string, depth = 0): Promise<string> {
   // Filter out hidden files and __MACOSX
   const dirs = [];
   for (const entry of entries) {
-    if (entry.startsWith('.') || entry === '__MACOSX') continue;
+    if (entry.startsWith(".") || entry === "__MACOSX") continue;
     const entryStat = await stat(join(extractDir, entry));
     if (entryStat.isDirectory()) {
       dirs.push(entry);
@@ -381,7 +408,7 @@ async function findSkillRoot(extractDir: string, depth = 0): Promise<string> {
   }
 
   throw new Error(
-    'Imported archive does not contain a valid skill: no skill.yaml found',
+    "Imported archive does not contain a valid skill: no skill.yaml found",
   );
 }
 
@@ -390,6 +417,6 @@ async function safeRemoveDir(dir: string): Promise<void> {
   try {
     await rm(dir, { recursive: true, force: true });
   } catch {
-    logger.warn({ dir }, 'Failed to cleanup directory');
+    logger.warn({ dir }, "Failed to cleanup directory");
   }
 }
