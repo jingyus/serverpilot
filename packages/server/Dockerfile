@@ -5,7 +5,7 @@
 # Uses pnpm workspace with only the server and shared packages.
 # SQLite database stored in /data volume for persistence.
 #
-# Target image size: < 200MB
+# Target image size: < 250MB (with all dependencies)
 # ==============================================================================
 
 # --------------------------------------------------------------------------
@@ -38,9 +38,6 @@ COPY packages/server/ packages/server/
 RUN pnpm --filter @aiinstaller/shared build && \
     pnpm --filter @aiinstaller/server build
 
-# Prune devDependencies after build to keep only production deps
-RUN pnpm prune --prod
-
 # --------------------------------------------------------------------------
 # Stage 2: Production runtime (minimal)
 # --------------------------------------------------------------------------
@@ -59,12 +56,12 @@ RUN mkdir -p /data && chown serverpilot:serverpilot /data
 
 WORKDIR /app
 
-# Copy pruned production node_modules from build stage
+# Copy all node_modules (includes native modules)
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/packages/shared/node_modules ./packages/shared/node_modules
 COPY --from=build /app/packages/server/node_modules ./packages/server/node_modules
 
-# Copy built output from build stage
+# Copy built TypeScript output
 COPY --from=build /app/packages/shared/dist ./packages/shared/dist
 COPY --from=build /app/packages/server/dist ./packages/server/dist
 
