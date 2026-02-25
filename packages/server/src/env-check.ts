@@ -230,16 +230,25 @@ export function checkPortAvailable(
 ): Promise<CheckResult> {
   return new Promise((resolve) => {
     const tester: Server = createServer();
+    // Prevent the server handle from keeping the process alive (avoids Linux hang)
+    tester.unref();
+    let resolved = false;
+
+    const done = (result: CheckResult) => {
+      if (resolved) return;
+      resolved = true;
+      resolve(result);
+    };
 
     tester.once("error", (err: NodeJS.ErrnoException) => {
       if (err.code === "EADDRINUSE") {
-        resolve({
+        done({
           name: "port-available",
           level: "error",
           message: `Port ${port} on ${host} is already in use — choose a different SERVER_PORT or stop the conflicting process`,
         });
       } else {
-        resolve({
+        done({
           name: "port-available",
           level: "error",
           message: `Cannot bind to ${host}:${port} — ${err.message}`,
@@ -254,18 +263,17 @@ export function checkPortAvailable(
       } catch {
         /* ignore */
       }
-      resolve({
+      done({
         name: "port-available",
         level: "pass",
         message: `Port ${port} on ${host} is available`,
       });
     }, 3000);
-    timeout.unref();
 
     tester.listen(port, host, () => {
       tester.close(() => {
         clearTimeout(timeout);
-        resolve({
+        done({
           name: "port-available",
           level: "pass",
           message: `Port ${port} on ${host} is available`,
