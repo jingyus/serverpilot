@@ -12,7 +12,8 @@
 # --------------------------------------------------------------------------
 FROM node:22-alpine AS build
 
-RUN corepack enable && corepack prepare pnpm@10.13.1 --activate
+# Install pnpm globally
+RUN npm install -g pnpm@10.13.1
 
 WORKDIR /app
 

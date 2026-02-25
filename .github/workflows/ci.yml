@@ -34,8 +34,10 @@ jobs:
       - name: Build shared package
         run: pnpm --filter @aiinstaller/shared build
 
-      - name: Rebuild native modules for E2E
-        run: pnpm rebuild better-sqlite3
+      - name: Build native modules for E2E
+        run: |
+          cd node_modules/.pnpm/better-sqlite3@*/node_modules/better-sqlite3
+          npm run build-release
 
       - name: Install Playwright browsers
         run: npx playwright install chromium --with-deps

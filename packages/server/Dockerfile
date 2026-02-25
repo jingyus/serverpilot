@@ -16,7 +16,8 @@ FROM node:22-alpine AS build
 # Install build tools for native modules (better-sqlite3)
 RUN apk add --no-cache python3 make g++
 
-RUN corepack enable && corepack prepare pnpm@10.13.1 --activate
+# Install pnpm globally
+RUN npm install -g pnpm@10.13.1
 
 WORKDIR /app
 
@@ -50,8 +51,8 @@ LABEL version="0.1.0"
 # Install runtime dependencies for better-sqlite3
 RUN apk add --no-cache python3 make g++
 
-# Enable pnpm
-RUN corepack enable && corepack prepare pnpm@10.13.1 --activate
+# Install pnpm globally
+RUN npm install -g pnpm@10.13.1
 
 # Create non-root user for security
 RUN addgroup -g 1001 -S serverpilot && \
@@ -73,7 +74,8 @@ COPY --from=build /app/packages/server/package.json ./packages/server/package.js
 # Install production dependencies and rebuild native modules for Alpine Linux
 # Skip prepare hook (husky not in prod deps) but allow build scripts via .npmrc
 RUN pnpm install --frozen-lockfile --prod --ignore-scripts && \
-    pnpm rebuild better-sqlite3
+    cd node_modules/.pnpm/better-sqlite3@*/node_modules/better-sqlite3 && \
+    npm run build-release
 
 # Copy built TypeScript output
 COPY --from=build /app/packages/shared/dist ./packages/shared/dist
