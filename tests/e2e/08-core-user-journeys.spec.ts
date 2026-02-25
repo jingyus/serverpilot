@@ -128,8 +128,8 @@ test.describe('Journey 1: Register → Login → Add Server → View Key', () =>
     await setAuthInBrowser(page, user);
     await page.goto('/servers');
 
-    // Wait for page to load
-    await page.waitForLoadState('networkidle');
+    // Wait for page to load (use 'load' instead of 'networkidle' due to persistent SSE connections)
+    await page.waitForLoadState('load');
 
     // Click Add Server button (use first() — there are two: header + empty-state)
     const addButton = page.getByRole('button', { name: /Add Server/i }).first();
@@ -230,7 +230,7 @@ test.describe('Journey 2: Select Server → Chat → AI Reply → View Plan', ()
 
     // Navigate to chat page — should show server selector
     await page.goto('/chat');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('load');
 
     // The chat page with no serverId should show a server selector
     const chatPage = page.locator('[data-testid="chat-page"]');
@@ -253,7 +253,7 @@ test.describe('Journey 2: Select Server → Chat → AI Reply → View Plan', ()
     await page.goto(`/chat/${server.id}`);
 
     // Wait for chat to load
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('load');
 
     // Type a message in the chat input
     const textarea = page.locator('[data-testid="message-textarea"]');
@@ -419,7 +419,7 @@ test.describe('Journey 3: Settings → AI Provider → Health Check', () => {
     await page.goto('/settings');
 
     // Wait for the page to load
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('load');
     const settingsPage = page.locator('[data-testid="settings-page"]');
     await expect(settingsPage).toBeVisible({ timeout: 10_000 });
 
