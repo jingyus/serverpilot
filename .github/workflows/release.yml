@@ -90,7 +90,7 @@ jobs:
         run: bun scripts/build-binary.ts --target ${{ matrix.target }}
 
       - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: agent-${{ matrix.name }}
           path: packages/agent/dist/bin/install-agent-*
