@@ -517,27 +517,19 @@ describe('GitHub Actions CI 配置', () => {
       });
     });
 
-    describe('双注册中心发布', () => {
+    describe('GHCR 注册中心发布', () => {
       it('登录 GHCR', () => {
         content = readFileSync(dockerPublishYmlPath, 'utf-8');
         expect(content).toContain('ghcr.io');
       });
 
-      it('登录 Docker Hub', () => {
-        content = readFileSync(dockerPublishYmlPath, 'utf-8');
-        expect(content).toContain('DOCKERHUB_USERNAME');
-        expect(content).toContain('DOCKERHUB_TOKEN');
-      });
-
-      it('同时推送到 GHCR 和 Docker Hub', () => {
+      it('推送到 GHCR', () => {
         content = readFileSync(dockerPublishYmlPath, 'utf-8');
         config = parseYaml(content);
         const env = config.env as Record<string, string>;
         expect(env.GHCR_SERVER_IMAGE).toContain('ghcr.io');
         expect(env.GHCR_AGENT_IMAGE).toContain('ghcr.io');
-        expect(env.DOCKERHUB_SERVER_IMAGE).toBe('serverpilot/server');
-        expect(env.DOCKERHUB_AGENT_IMAGE).toBe('serverpilot/agent');
-        expect(env.DOCKERHUB_DASHBOARD_IMAGE).toBe('serverpilot/dashboard');
+        expect(env.GHCR_DASHBOARD_IMAGE).toContain('ghcr.io');
       });
     });
 

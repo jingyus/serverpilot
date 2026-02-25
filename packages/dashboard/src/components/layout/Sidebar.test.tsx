@@ -7,6 +7,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { Sidebar } from "./Sidebar";
 import { useAuthStore } from "@/stores/auth";
 import { useUiStore } from "@/stores/ui";
+import { useSystemStore } from "@/stores/system";
 
 const mockNavigate = vi.fn();
 vi.mock("react-router-dom", async () => {
@@ -65,6 +66,7 @@ describe("Sidebar", () => {
       error: null,
     });
     useUiStore.setState({ sidebarCollapsed: false, mobileSidebarOpen: false });
+    useSystemStore.setState({ cloudFeatures: { notificationHistory: true } });
   });
 
   afterEach(() => {

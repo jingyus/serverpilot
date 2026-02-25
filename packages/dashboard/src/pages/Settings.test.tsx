@@ -1,39 +1,53 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { Settings } from './Settings';
-import { useSettingsStore } from '@/stores/settings';
-import { useAuthStore } from '@/stores/auth';
-import { useUiStore } from '@/stores/ui';
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
+import userEvent from "@testing-library/user-event";
+import { Settings } from "./Settings";
+import { useSettingsStore } from "@/stores/settings";
+import { useAuthStore } from "@/stores/auth";
 
-vi.mock('@/stores/settings');
-vi.mock('@/stores/auth');
-vi.mock('@/components/knowledge/DocSourceSection', () => ({
-  DocSourceSection: () => <div data-testid="doc-source-section">DocSourceSection</div>,
+function renderSettings() {
+  return render(
+    <MemoryRouter>
+      <Settings />
+    </MemoryRouter>,
+  );
+}
+
+vi.mock("@/stores/settings");
+vi.mock("@/stores/auth");
+vi.mock("@/components/knowledge/DocSourceSection", () => ({
+  DocSourceSection: () => (
+    <div data-testid="doc-source-section">DocSourceSection</div>
+  ),
 }));
-vi.mock('@/components/settings/SystemStatus', () => ({
-  SystemStatus: () => <div data-testid="system-status-section">SystemStatus</div>,
+vi.mock("@/components/settings/SystemStatus", () => ({
+  SystemStatus: () => (
+    <div data-testid="system-status-section">SystemStatus</div>
+  ),
 }));
-vi.mock('@/components/settings/PasswordChangeSection', () => ({
-  PasswordChangeSection: () => <div data-testid="password-change-section">PasswordChangeSection</div>,
+vi.mock("@/components/settings/PasswordChangeSection", () => ({
+  PasswordChangeSection: () => (
+    <div data-testid="password-change-section">PasswordChangeSection</div>
+  ),
 }));
 
 const mockUseSettingsStore = vi.mocked(useSettingsStore);
 const mockUseAuthStore = vi.mocked(useAuthStore);
 
-describe('Settings', () => {
+describe("Settings", () => {
   const mockSettings = {
     aiProvider: {
-      provider: 'claude' as const,
-      apiKey: 'sk-test',
-      model: 'claude-3-opus-20240229',
+      provider: "claude" as const,
+      apiKey: "sk-test",
+      model: "claude-3-opus-20240229",
     },
     userProfile: {
-      name: 'Test User',
-      email: 'test@example.com',
-      timezone: 'UTC',
+      name: "Test User",
+      email: "test@example.com",
+      timezone: "UTC",
     },
     notifications: {
       emailNotifications: true,
@@ -48,10 +62,10 @@ describe('Settings', () => {
   };
 
   const mockUser = {
-    id: 'user-1',
-    email: 'test@example.com',
-    name: 'Test User',
-    timezone: 'UTC',
+    id: "user-1",
+    email: "test@example.com",
+    name: "Test User",
+    timezone: "UTC",
   };
 
   const defaultStoreValue = {
@@ -92,73 +106,90 @@ describe('Settings', () => {
     mockUseSettingsStore.mockReturnValue({ ...defaultStoreValue });
   });
 
-  it('should render loading state', () => {
+  it("should render loading state", () => {
     mockUseSettingsStore.mockReturnValue({
       ...defaultStoreValue,
       settings: null,
       isLoading: true,
     });
 
-    const { container } = render(<Settings />);
-    const spinner = container.querySelector('.animate-spin');
+    const { container } = renderSettings();
+    const spinner = container.querySelector(".animate-spin");
     expect(spinner).toBeInTheDocument();
   });
 
-  it('should render settings page with all sections', () => {
-    render(<Settings />);
+  it("should render settings page with all tabs", () => {
+    renderSettings();
 
-    expect(screen.getByText('Settings')).toBeInTheDocument();
-    expect(screen.getByText('AI Provider')).toBeInTheDocument();
-    expect(screen.getByText('User Profile')).toBeInTheDocument();
-    expect(screen.getByText('Notifications')).toBeInTheDocument();
-    expect(screen.getByTestId('password-change-section')).toBeInTheDocument();
-    expect(screen.getByText('Theme')).toBeInTheDocument();
-    expect(screen.getByText('Knowledge Base')).toBeInTheDocument();
-    expect(screen.getByTestId('system-status-section')).toBeInTheDocument();
+    expect(screen.getByText("Settings")).toBeInTheDocument();
+    expect(screen.getByTestId("tab-trigger-ai-provider")).toBeInTheDocument();
+    expect(screen.getByTestId("tab-trigger-notifications")).toBeInTheDocument();
+    expect(screen.getByTestId("tab-trigger-profile")).toBeInTheDocument();
+    expect(screen.getByTestId("tab-trigger-security")).toBeInTheDocument();
+    expect(screen.getByTestId("tab-trigger-system")).toBeInTheDocument();
   });
 
-  it('should display error message', () => {
+  it("should display error message", () => {
     mockUseSettingsStore.mockReturnValue({
       ...defaultStoreValue,
-      error: 'Failed to load settings',
+      error: "Failed to load settings",
     });
 
-    render(<Settings />);
-    expect(screen.getByRole('alert')).toHaveTextContent('Failed to load settings');
+    renderSettings();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Failed to load settings",
+    );
   });
 
-  it('should populate AI provider form with existing settings', () => {
-    render(<Settings />);
+  it("should populate AI provider form with existing settings", () => {
+    renderSettings();
 
-    const providerSelect = screen.getByLabelText('Provider') as HTMLSelectElement;
-    expect(providerSelect.value).toBe('claude');
+    const providerSelect = screen.getByLabelText(
+      "Provider",
+    ) as HTMLSelectElement;
+    expect(providerSelect.value).toBe("claude");
 
-    const modelInput = screen.getByLabelText('Model (optional)') as HTMLInputElement;
-    expect(modelInput.value).toBe('claude-3-opus-20240229');
+    const modelInput = screen.getByLabelText(
+      "Model (optional)",
+    ) as HTMLInputElement;
+    expect(modelInput.value).toBe("claude-3-opus-20240229");
   });
 
-  it('should list all 5 AI providers including custom-openai', () => {
-    render(<Settings />);
+  it("should list all 5 AI providers including custom-openai", () => {
+    renderSettings();
 
-    const providerSelect = screen.getByLabelText('Provider') as HTMLSelectElement;
+    const providerSelect = screen.getByLabelText(
+      "Provider",
+    ) as HTMLSelectElement;
     const options = Array.from(providerSelect.options).map((o) => o.value);
-    expect(options).toEqual(['claude', 'openai', 'deepseek', 'ollama', 'custom-openai']);
+    expect(options).toEqual([
+      "claude",
+      "openai",
+      "deepseek",
+      "ollama",
+      "custom-openai",
+    ]);
   });
 
-  it('should populate user profile form with existing settings', () => {
-    render(<Settings />);
+  it("should populate user profile form with existing settings", async () => {
+    const user = userEvent.setup();
+    renderSettings();
 
-    const nameInput = screen.getByLabelText('Name') as HTMLInputElement;
-    expect(nameInput.value).toBe('Test User');
+    await user.click(screen.getByTestId("tab-trigger-profile"));
 
-    const emailInput = screen.getByLabelText('Email') as HTMLInputElement;
-    expect(emailInput.value).toBe('test@example.com');
+    const nameInput = screen.getByLabelText("Name") as HTMLInputElement;
+    expect(nameInput.value).toBe("Test User");
 
-    const timezoneSelect = screen.getByLabelText('Timezone') as HTMLSelectElement;
-    expect(timezoneSelect.value).toBe('UTC');
+    const emailInput = screen.getByLabelText("Email") as HTMLInputElement;
+    expect(emailInput.value).toBe("test@example.com");
+
+    const timezoneSelect = screen.getByLabelText(
+      "Timezone",
+    ) as HTMLSelectElement;
+    expect(timezoneSelect.value).toBe("UTC");
   });
 
-  it('should handle AI provider save', async () => {
+  it("should handle AI provider save", async () => {
     const user = userEvent.setup();
     const updateAIProvider = vi.fn().mockResolvedValue(undefined);
 
@@ -167,69 +198,71 @@ describe('Settings', () => {
       updateAIProvider,
     });
 
-    render(<Settings />);
+    renderSettings();
 
-    const providerSelect = screen.getByLabelText('Provider');
-    await user.selectOptions(providerSelect, 'openai');
+    const providerSelect = screen.getByLabelText("Provider");
+    await user.selectOptions(providerSelect, "openai");
 
     // Need to type API key since openai requires it
-    const apiKeyInput = screen.getByLabelText('API Key');
+    const apiKeyInput = screen.getByLabelText("API Key");
     await user.clear(apiKeyInput);
-    await user.type(apiKeyInput, 'sk-openai-test');
+    await user.type(apiKeyInput, "sk-openai-test");
 
-    const saveButton = screen.getAllByRole('button', { name: /Save AI Provider/i })[0];
+    const saveButton = screen.getAllByRole("button", {
+      name: /Save AI Provider/i,
+    })[0];
     await user.click(saveButton);
 
     await waitFor(() => {
       expect(updateAIProvider).toHaveBeenCalledWith(
         expect.objectContaining({
-          provider: 'openai',
-        })
+          provider: "openai",
+        }),
       );
     });
   });
 
-  it('should show API key field for DeepSeek', async () => {
+  it("should show API key field for DeepSeek", async () => {
     const user = userEvent.setup();
-    render(<Settings />);
+    renderSettings();
 
-    const providerSelect = screen.getByLabelText('Provider');
-    await user.selectOptions(providerSelect, 'deepseek');
+    const providerSelect = screen.getByLabelText("Provider");
+    await user.selectOptions(providerSelect, "deepseek");
 
-    expect(screen.getByLabelText('API Key')).toBeInTheDocument();
+    expect(screen.getByLabelText("API Key")).toBeInTheDocument();
   });
 
-  it('should hide API key field for Ollama', async () => {
+  it("should hide API key field for Ollama", async () => {
     const user = userEvent.setup();
-    render(<Settings />);
+    renderSettings();
 
-    const providerSelect = screen.getByLabelText('Provider');
-    await user.selectOptions(providerSelect, 'ollama');
+    const providerSelect = screen.getByLabelText("Provider");
+    await user.selectOptions(providerSelect, "ollama");
 
-    expect(screen.queryByLabelText('API Key')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("API Key")).not.toBeInTheDocument();
   });
 
-  it('should show base URL field for Ollama', async () => {
+  it("should show base URL field for Ollama", async () => {
     const user = userEvent.setup();
-    render(<Settings />);
+    renderSettings();
 
-    const providerSelect = screen.getByLabelText('Provider');
-    await user.selectOptions(providerSelect, 'ollama');
+    const providerSelect = screen.getByLabelText("Provider");
+    await user.selectOptions(providerSelect, "ollama");
 
-    expect(screen.getByLabelText('Base URL')).toBeInTheDocument();
+    expect(screen.getByLabelText("Base URL")).toBeInTheDocument();
   });
 
-  it('should show base URL field for DeepSeek', async () => {
+  it("should show base URL field for DeepSeek", async () => {
     const user = userEvent.setup();
-    render(<Settings />);
+    renderSettings();
 
-    const providerSelect = screen.getByLabelText('Provider');
-    await user.selectOptions(providerSelect, 'deepseek');
+    const providerSelect = screen.getByLabelText("Provider");
+    await user.selectOptions(providerSelect, "deepseek");
 
-    expect(screen.getByLabelText('Base URL (optional)')).toBeInTheDocument();
+    expect(screen.getByLabelText("Base URL (optional)")).toBeInTheDocument();
   });
 
-  it('should validate API key is required for providers needing one', async () => {
+  it("should validate API key is required for providers needing one", async () => {
     const user = userEvent.setup();
     const updateAIProvider = vi.fn().mockResolvedValue(undefined);
 
@@ -237,49 +270,55 @@ describe('Settings', () => {
       ...defaultStoreValue,
       settings: {
         ...mockSettings,
-        aiProvider: { provider: 'claude' as const, apiKey: '' },
+        aiProvider: { provider: "claude" as const, apiKey: "" },
       },
       updateAIProvider,
     });
 
-    render(<Settings />);
+    renderSettings();
 
     // Clear the API key field
-    const apiKeyInput = screen.getByLabelText('API Key');
+    const apiKeyInput = screen.getByLabelText("API Key");
     await user.clear(apiKeyInput);
 
-    const saveButton = screen.getAllByRole('button', { name: /Save AI Provider/i })[0];
+    const saveButton = screen.getAllByRole("button", {
+      name: /Save AI Provider/i,
+    })[0];
     await user.click(saveButton);
 
     // Should NOT have called updateAIProvider since key is empty
     expect(updateAIProvider).not.toHaveBeenCalled();
   });
 
-  it('should display health status when available (connected)', () => {
+  it("should display health status when available (connected)", () => {
     mockUseSettingsStore.mockReturnValue({
       ...defaultStoreValue,
-      healthStatus: { provider: 'claude', available: true, tier: 1 },
+      healthStatus: { provider: "claude", available: true, tier: 1 },
     });
 
-    render(<Settings />);
+    renderSettings();
 
-    const healthStatus = screen.getByTestId('health-status');
-    expect(healthStatus).toHaveTextContent('claude is connected');
+    const healthStatus = screen.getByTestId("health-status");
+    expect(healthStatus).toHaveTextContent("claude is connected");
   });
 
-  it('should display health status when unavailable', () => {
+  it("should display health status when unavailable", () => {
     mockUseSettingsStore.mockReturnValue({
       ...defaultStoreValue,
-      healthStatus: { provider: null, available: false, error: 'No API key configured' },
+      healthStatus: {
+        provider: null,
+        available: false,
+        error: "No API key configured",
+      },
     });
 
-    render(<Settings />);
+    renderSettings();
 
-    const healthStatus = screen.getByTestId('health-status');
-    expect(healthStatus).toHaveTextContent('No API key configured');
+    const healthStatus = screen.getByTestId("health-status");
+    expect(healthStatus).toHaveTextContent("No API key configured");
   });
 
-  it('should call checkProviderHealth on mount', () => {
+  it("should call checkProviderHealth on mount", () => {
     const checkProviderHealth = vi.fn();
 
     mockUseSettingsStore.mockReturnValue({
@@ -287,24 +326,26 @@ describe('Settings', () => {
       checkProviderHealth,
     });
 
-    render(<Settings />);
+    renderSettings();
 
     expect(checkProviderHealth).toHaveBeenCalledTimes(1);
   });
 
-  it('should have refresh button for health status', async () => {
+  it("should have refresh button for health status", async () => {
     const user = userEvent.setup();
     const checkProviderHealth = vi.fn();
 
     mockUseSettingsStore.mockReturnValue({
       ...defaultStoreValue,
-      healthStatus: { provider: 'claude', available: true, tier: 1 },
+      healthStatus: { provider: "claude", available: true, tier: 1 },
       checkProviderHealth,
     });
 
-    render(<Settings />);
+    renderSettings();
 
-    const refreshButton = screen.getByRole('button', { name: /Refresh health status/i });
+    const refreshButton = screen.getByRole("button", {
+      name: /Refresh health status/i,
+    });
     // One call from mount
     expect(checkProviderHealth).toHaveBeenCalledTimes(1);
 
@@ -312,7 +353,7 @@ describe('Settings', () => {
     expect(checkProviderHealth).toHaveBeenCalledTimes(2);
   });
 
-  it('should handle profile save', async () => {
+  it("should handle profile save", async () => {
     const user = userEvent.setup();
     const updateUserProfile = vi.fn().mockResolvedValue(undefined);
 
@@ -321,36 +362,42 @@ describe('Settings', () => {
       updateUserProfile,
     });
 
-    render(<Settings />);
+    renderSettings();
 
-    const nameInput = screen.getByLabelText('Name');
+    await user.click(screen.getByTestId("tab-trigger-profile"));
+
+    const nameInput = screen.getByLabelText("Name");
     await user.clear(nameInput);
-    await user.type(nameInput, 'Updated Name');
+    await user.type(nameInput, "Updated Name");
 
-    const saveButton = screen.getAllByRole('button', { name: /Save Profile/i })[0];
+    const saveButton = screen.getAllByRole("button", {
+      name: /Save Profile/i,
+    })[0];
     await user.click(saveButton);
 
     await waitFor(() => {
       expect(updateUserProfile).toHaveBeenCalledWith({
-        name: 'Updated Name',
-        email: 'test@example.com',
-        timezone: 'UTC',
+        name: "Updated Name",
+        email: "test@example.com",
+        timezone: "UTC",
       });
     });
   });
 
-  it('should handle notification toggle', async () => {
+  it("should handle notification toggle", async () => {
     const user = userEvent.setup();
-    render(<Settings />);
+    renderSettings();
 
-    const emailSwitch = screen.getByLabelText('Email Notifications');
+    await user.click(screen.getByTestId("tab-trigger-notifications"));
+
+    const emailSwitch = screen.getByLabelText("Email Notifications");
     expect(emailSwitch).toBeChecked();
 
     await user.click(emailSwitch);
     expect(emailSwitch).not.toBeChecked();
   });
 
-  it('should handle notification preferences save', async () => {
+  it("should handle notification preferences save", async () => {
     const user = userEvent.setup();
     const updateNotifications = vi.fn().mockResolvedValue(undefined);
 
@@ -359,9 +406,13 @@ describe('Settings', () => {
       updateNotifications,
     });
 
-    render(<Settings />);
+    renderSettings();
 
-    const saveButton = screen.getAllByRole('button', { name: /Save Preferences/i })[0];
+    await user.click(screen.getByTestId("tab-trigger-notifications"));
+
+    const saveButton = screen.getAllByRole("button", {
+      name: /Save Preferences/i,
+    })[0];
     await user.click(saveButton);
 
     await waitFor(() => {
@@ -374,44 +425,8 @@ describe('Settings', () => {
     });
   });
 
-  it('should handle knowledge base toggle', async () => {
-    const user = userEvent.setup();
-    render(<Settings />);
-
-    const autoLearningSwitch = screen.getByLabelText('Automatic Learning');
-    expect(autoLearningSwitch).not.toBeChecked();
-
-    await user.click(autoLearningSwitch);
-    expect(autoLearningSwitch).toBeChecked();
-  });
-
-  it('should handle knowledge base settings save', async () => {
-    const user = userEvent.setup();
-    const updateKnowledgeBase = vi.fn().mockResolvedValue(undefined);
-
-    mockUseSettingsStore.mockReturnValue({
-      ...defaultStoreValue,
-      updateKnowledgeBase,
-    });
-
-    render(<Settings />);
-
-    const autoLearningSwitch = screen.getByLabelText('Automatic Learning');
-    await user.click(autoLearningSwitch);
-
-    const saveButton = screen.getAllByRole('button', { name: /Save Settings/i })[0];
-    await user.click(saveButton);
-
-    await waitFor(() => {
-      expect(updateKnowledgeBase).toHaveBeenCalledWith({
-        autoLearning: true,
-        documentSources: [],
-      });
-    });
-  });
-
-  it('should show success toast after save', async () => {
-    const { useNotificationsStore } = await import('@/stores/notifications');
+  it("should show success toast after save", async () => {
+    const { useNotificationsStore } = await import("@/stores/notifications");
     useNotificationsStore.setState({ notifications: [] });
 
     const user = userEvent.setup();
@@ -422,18 +437,22 @@ describe('Settings', () => {
       updateUserProfile,
     });
 
-    render(<Settings />);
+    renderSettings();
 
-    const saveButton = screen.getAllByRole('button', { name: /Save Profile/i })[0];
+    await user.click(screen.getByTestId("tab-trigger-profile"));
+
+    const saveButton = screen.getAllByRole("button", {
+      name: /Save Profile/i,
+    })[0];
     await user.click(saveButton);
 
     await waitFor(() => {
       const notifications = useNotificationsStore.getState().notifications;
-      expect(notifications.some((n) => n.type === 'success')).toBe(true);
+      expect(notifications.some((n) => n.type === "success")).toBe(true);
     });
   });
 
-  it('should call fetchSettings on mount', () => {
+  it("should call fetchSettings on mount", () => {
     const fetchSettings = vi.fn();
 
     mockUseSettingsStore.mockReturnValue({
@@ -441,61 +460,65 @@ describe('Settings', () => {
       fetchSettings,
     });
 
-    render(<Settings />);
+    renderSettings();
 
     expect(fetchSettings).toHaveBeenCalledTimes(1);
   });
 
-  it('should show saving state on button', () => {
+  it("should show saving state on button", () => {
     mockUseSettingsStore.mockReturnValue({
       ...defaultStoreValue,
       isSaving: true,
     });
 
-    render(<Settings />);
+    renderSettings();
 
-    const saveButton = screen.getAllByRole('button', { name: /Saving/i })[0];
+    const saveButton = screen.getAllByRole("button", { name: /Saving/i })[0];
     expect(saveButton).toBeDisabled();
   });
 
-  describe('custom-openai provider', () => {
-    it('should show API key, model, and base URL fields when custom-openai is selected', async () => {
+  describe("custom-openai provider", () => {
+    it("should show API key, model, and base URL fields when custom-openai is selected", async () => {
       const user = userEvent.setup();
-      render(<Settings />);
+      renderSettings();
 
-      const providerSelect = screen.getByLabelText('Provider');
-      await user.selectOptions(providerSelect, 'custom-openai');
+      const providerSelect = screen.getByLabelText("Provider");
+      await user.selectOptions(providerSelect, "custom-openai");
 
-      expect(screen.getByLabelText('API Key')).toBeInTheDocument();
-      expect(screen.getByLabelText('Model')).toBeInTheDocument();
-      expect(screen.getByLabelText('Base URL')).toBeInTheDocument();
+      expect(screen.getByLabelText("API Key")).toBeInTheDocument();
+      expect(screen.getByLabelText("Model")).toBeInTheDocument();
+      expect(screen.getByLabelText("Base URL")).toBeInTheDocument();
     });
 
     it('should show model as required (no "optional" label) for custom-openai', async () => {
       const user = userEvent.setup();
-      render(<Settings />);
+      renderSettings();
 
-      const providerSelect = screen.getByLabelText('Provider');
-      await user.selectOptions(providerSelect, 'custom-openai');
+      const providerSelect = screen.getByLabelText("Provider");
+      await user.selectOptions(providerSelect, "custom-openai");
 
       // Model label should be "Model" without "(optional)"
-      expect(screen.getByLabelText('Model')).toBeInTheDocument();
-      expect(screen.queryByLabelText('Model (optional)')).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Model")).toBeInTheDocument();
+      expect(
+        screen.queryByLabelText("Model (optional)"),
+      ).not.toBeInTheDocument();
     });
 
     it('should show base URL as required (no "optional" label) for custom-openai', async () => {
       const user = userEvent.setup();
-      render(<Settings />);
+      renderSettings();
 
-      const providerSelect = screen.getByLabelText('Provider');
-      await user.selectOptions(providerSelect, 'custom-openai');
+      const providerSelect = screen.getByLabelText("Provider");
+      await user.selectOptions(providerSelect, "custom-openai");
 
       // Base URL label should be "Base URL" without "(optional)"
-      expect(screen.getByLabelText('Base URL')).toBeInTheDocument();
-      expect(screen.queryByLabelText('Base URL (optional)')).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Base URL")).toBeInTheDocument();
+      expect(
+        screen.queryByLabelText("Base URL (optional)"),
+      ).not.toBeInTheDocument();
     });
 
-    it('should validate base URL is required for custom-openai', async () => {
+    it("should validate base URL is required for custom-openai", async () => {
       const user = userEvent.setup();
       const updateAIProvider = vi.fn().mockResolvedValue(undefined);
 
@@ -503,22 +526,28 @@ describe('Settings', () => {
         ...defaultStoreValue,
         settings: {
           ...mockSettings,
-          aiProvider: { provider: 'custom-openai' as const, apiKey: 'sk-test', model: 'gpt-4o' },
+          aiProvider: {
+            provider: "custom-openai" as const,
+            apiKey: "sk-test",
+            model: "gpt-4o",
+          },
         },
         updateAIProvider,
       });
 
-      render(<Settings />);
+      renderSettings();
 
       // Base URL is empty, model and apiKey are set
-      const saveButton = screen.getAllByRole('button', { name: /Save AI Provider/i })[0];
+      const saveButton = screen.getAllByRole("button", {
+        name: /Save AI Provider/i,
+      })[0];
       await user.click(saveButton);
 
       // Should NOT have called updateAIProvider since baseUrl is empty
       expect(updateAIProvider).not.toHaveBeenCalled();
     });
 
-    it('should validate model is required for custom-openai', async () => {
+    it("should validate model is required for custom-openai", async () => {
       const user = userEvent.setup();
       const updateAIProvider = vi.fn().mockResolvedValue(undefined);
 
@@ -527,25 +556,27 @@ describe('Settings', () => {
         settings: {
           ...mockSettings,
           aiProvider: {
-            provider: 'custom-openai' as const,
-            apiKey: 'sk-test',
-            baseUrl: 'https://api.example.com/v1',
+            provider: "custom-openai" as const,
+            apiKey: "sk-test",
+            baseUrl: "https://api.example.com/v1",
           },
         },
         updateAIProvider,
       });
 
-      render(<Settings />);
+      renderSettings();
 
       // model is empty, baseUrl and apiKey are set
-      const saveButton = screen.getAllByRole('button', { name: /Save AI Provider/i })[0];
+      const saveButton = screen.getAllByRole("button", {
+        name: /Save AI Provider/i,
+      })[0];
       await user.click(saveButton);
 
       // Should NOT have called updateAIProvider since model is empty
       expect(updateAIProvider).not.toHaveBeenCalled();
     });
 
-    it('should save custom-openai with all required fields', async () => {
+    it("should save custom-openai with all required fields", async () => {
       const user = userEvent.setup();
       const updateAIProvider = vi.fn().mockResolvedValue(undefined);
 
@@ -554,117 +585,87 @@ describe('Settings', () => {
         settings: {
           ...mockSettings,
           aiProvider: {
-            provider: 'custom-openai' as const,
-            apiKey: 'sk-custom',
-            model: 'gpt-4o',
-            baseUrl: 'https://api.example.com/v1',
+            provider: "custom-openai" as const,
+            apiKey: "sk-custom",
+            model: "gpt-4o",
+            baseUrl: "https://api.example.com/v1",
           },
         },
         updateAIProvider,
       });
 
-      render(<Settings />);
+      renderSettings();
 
-      const saveButton = screen.getAllByRole('button', { name: /Save AI Provider/i })[0];
+      const saveButton = screen.getAllByRole("button", {
+        name: /Save AI Provider/i,
+      })[0];
       await user.click(saveButton);
 
       await waitFor(() => {
         expect(updateAIProvider).toHaveBeenCalledWith({
-          provider: 'custom-openai',
-          apiKey: 'sk-custom',
-          model: 'gpt-4o',
-          baseUrl: 'https://api.example.com/v1',
+          provider: "custom-openai",
+          apiKey: "sk-custom",
+          model: "gpt-4o",
+          baseUrl: "https://api.example.com/v1",
         });
       });
     });
 
-    it('should display correct placeholders for custom-openai', async () => {
+    it("should display correct placeholders for custom-openai", async () => {
       const user = userEvent.setup();
 
       mockUseSettingsStore.mockReturnValue({
         ...defaultStoreValue,
         settings: {
           ...mockSettings,
-          aiProvider: { provider: 'custom-openai' as const },
+          aiProvider: { provider: "custom-openai" as const },
         },
       });
 
-      render(<Settings />);
+      renderSettings();
 
-      const providerSelect = screen.getByLabelText('Provider');
-      await user.selectOptions(providerSelect, 'custom-openai');
+      const providerSelect = screen.getByLabelText("Provider");
+      await user.selectOptions(providerSelect, "custom-openai");
 
-      const modelInput = screen.getByLabelText('Model') as HTMLInputElement;
-      expect(modelInput.placeholder).toBe('gpt-4o / deepseek-chat / ...');
+      const modelInput = screen.getByLabelText("Model") as HTMLInputElement;
+      expect(modelInput.placeholder).toBe("gpt-4o / deepseek-chat / ...");
 
-      const baseUrlInput = screen.getByLabelText('Base URL') as HTMLInputElement;
-      expect(baseUrlInput.placeholder).toBe('https://your-api.example.com/v1');
+      const baseUrlInput = screen.getByLabelText(
+        "Base URL",
+      ) as HTMLInputElement;
+      expect(baseUrlInput.placeholder).toBe("https://your-api.example.com/v1");
     });
 
-    it('should display health status for custom-openai provider', () => {
-      mockUseSettingsStore.mockReturnValue({
-        ...defaultStoreValue,
-        healthStatus: { provider: 'custom-openai' as const, available: true, tier: 2 },
-      });
-
-      render(<Settings />);
-
-      const healthStatus = screen.getByTestId('health-status');
-      expect(healthStatus).toHaveTextContent('custom-openai is connected');
-    });
-
-    it('should display health error for custom-openai provider', () => {
+    it("should display health status for custom-openai provider", () => {
       mockUseSettingsStore.mockReturnValue({
         ...defaultStoreValue,
         healthStatus: {
-          provider: 'custom-openai' as const,
-          available: false,
-          error: 'Connection refused',
+          provider: "custom-openai" as const,
+          available: true,
+          tier: 2,
         },
       });
 
-      render(<Settings />);
+      renderSettings();
 
-      const healthStatus = screen.getByTestId('health-status');
-      expect(healthStatus).toHaveTextContent('Connection refused');
-    });
-  });
-
-  describe('theme selector', () => {
-    beforeEach(() => {
-      useUiStore.setState({ theme: 'system' });
+      const healthStatus = screen.getByTestId("health-status");
+      expect(healthStatus).toHaveTextContent("custom-openai is connected");
     });
 
-    it('should render theme selector with three options', () => {
-      render(<Settings />);
-      expect(screen.getByTestId('theme-selector')).toBeInTheDocument();
-      expect(screen.getByTestId('theme-option-light')).toBeInTheDocument();
-      expect(screen.getByTestId('theme-option-dark')).toBeInTheDocument();
-      expect(screen.getByTestId('theme-option-system')).toBeInTheDocument();
-    });
+    it("should display health error for custom-openai provider", () => {
+      mockUseSettingsStore.mockReturnValue({
+        ...defaultStoreValue,
+        healthStatus: {
+          provider: "custom-openai" as const,
+          available: false,
+          error: "Connection refused",
+        },
+      });
 
-    it('should highlight the active theme', () => {
-      useUiStore.setState({ theme: 'dark' });
-      render(<Settings />);
+      renderSettings();
 
-      const darkButton = screen.getByTestId('theme-option-dark');
-      expect(darkButton.className).toContain('border-primary');
-    });
-
-    it('should switch theme on click', async () => {
-      const user = userEvent.setup();
-      render(<Settings />);
-
-      await user.click(screen.getByTestId('theme-option-dark'));
-      expect(useUiStore.getState().theme).toBe('dark');
-    });
-
-    it('should persist theme choice to localStorage', async () => {
-      const user = userEvent.setup();
-      render(<Settings />);
-
-      await user.click(screen.getByTestId('theme-option-light'));
-      expect(localStorage.getItem('ui_theme')).toBe('light');
+      const healthStatus = screen.getByTestId("health-status");
+      expect(healthStatus).toHaveTextContent("Connection refused");
     });
   });
 });

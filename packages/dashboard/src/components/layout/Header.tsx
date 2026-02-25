@@ -54,6 +54,7 @@ export function Header() {
   return (
     <header
       data-testid="header"
+      role="banner"
       className="flex h-14 items-center justify-between border-b border-border bg-card px-3 sm:h-16 sm:px-6"
     >
       <div className="flex items-center gap-2 sm:gap-4">
@@ -89,6 +90,7 @@ export function Header() {
             <span
               className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-bold text-destructive-foreground"
               data-testid="alert-count-badge"
+              aria-label={`${unresolvedCount} unresolved alerts`}
             >
               {unresolvedCount > 99 ? "99+" : unresolvedCount}
             </span>

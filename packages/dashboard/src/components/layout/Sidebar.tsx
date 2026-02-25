@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0
 // Copyright (c) 2024-2026 ServerPilot Contributors
-import { NavLink } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   LayoutDashboard,
@@ -19,8 +19,10 @@ import {
   Webhook,
   Puzzle,
   Users,
+  LogOut,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { useAuthStore } from "@/stores/auth";
 import { useUiStore } from "@/stores/ui";
 import {
   useNotificationHistoryStore,
@@ -59,6 +61,8 @@ export function Sidebar() {
   const toggleSidebar = useUiStore((s) => s.toggleSidebar);
   const setMobileSidebarOpen = useUiStore((s) => s.setMobileSidebarOpen);
   const notifUnread = useNotificationHistoryStore(getUnreadCount);
+  const logout = useAuthStore((s) => s.logout);
+  const navigate = useNavigate();
   const cloudFeatures = useSystemStore((s) => s.cloudFeatures);
   const isMobile = useIsMobile();
 
@@ -76,6 +80,8 @@ export function Sidebar() {
   return (
     <aside
       data-testid="sidebar"
+      role="navigation"
+      aria-label="Main navigation"
       className={cn(
         "flex h-full flex-col border-r border-border bg-card transition-[width] duration-200",
         isCollapsed ? "w-16" : "w-64",
@@ -128,6 +134,7 @@ export function Sidebar() {
               key={item.to}
               to={item.to}
               title={isCollapsed ? t(item.labelKey) : undefined}
+              aria-label={isCollapsed ? t(item.labelKey) : undefined}
               className={({ isActive }) =>
                 cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
@@ -163,6 +170,25 @@ export function Sidebar() {
           );
         })}
       </nav>
+
+      {/* Logout */}
+      <div className="border-t border-border px-2 py-2">
+        <button
+          type="button"
+          onClick={() => {
+            logout();
+            navigate("/login");
+          }}
+          aria-label={t("nav.logout")}
+          className={cn(
+            "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors",
+            isCollapsed && "justify-center px-2",
+          )}
+        >
+          <LogOut className="h-5 w-5 shrink-0" />
+          {!isCollapsed && <span>{t("nav.logout")}</span>}
+        </button>
+      </div>
     </aside>
   );
 }

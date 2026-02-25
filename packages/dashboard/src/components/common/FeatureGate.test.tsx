@@ -197,7 +197,7 @@ describe("FeatureGate", () => {
       );
 
       const link = screen.getByTestId("feature-gate-upgrade-link");
-      expect(link).toHaveAttribute("href", "https://serverpilot.io");
+      expect(link).toHaveAttribute("href", "https://serverpilot.io/pricing");
       expect(link).toHaveAttribute("target", "_blank");
       expect(link).toHaveAttribute("rel", "noopener noreferrer");
     });
@@ -365,12 +365,27 @@ describe("FeatureGate", () => {
     });
   });
 
-  describe("before edition is fetched (all features false)", () => {
-    it("shows upgrade card when features default to false", () => {
+  describe("before edition is fetched (core features default to true)", () => {
+    it("renders children for core features even before fetch", () => {
       // Edition not yet fetched — store is in initial state
+      // Core features default to true via ALL_TRUE in useFeatures()
       render(
         <FeatureGate feature="multiServer">
           <div data-testid="child">Servers Page</div>
+        </FeatureGate>,
+      );
+
+      expect(screen.getByTestId("child")).toBeInTheDocument();
+      expect(
+        screen.queryByTestId("feature-gate-upgrade"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("shows upgrade card for cloud-only features before fetch", () => {
+      // Cloud-only features (multiTenant, billing) default to false
+      render(
+        <FeatureGate feature="multiTenant">
+          <div data-testid="child">Tenant Selector</div>
         </FeatureGate>,
       );
 

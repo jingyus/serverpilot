@@ -728,5 +728,57 @@
   "userMenu": {
     "profile": "用户资料",
     "security": "安全设置"
+  },
+  "featureGate": {
+    "cloudOnly": "企业版功能",
+    "highlights": "功能亮点",
+    "upgradeButton": "升级到企业版",
+    "features": {
+      "multiServer": {
+        "name": "多服务器管理",
+        "description": "通过统一控制面板管理多台服务器，支持集中监控和批量操作。",
+        "highlights": [
+          "所有服务器的集中仪表盘",
+          "跨服务器批量操作",
+          "服务器分组和标签管理"
+        ]
+      },
+      "teamCollaboration": {
+        "name": "团队协作",
+        "description": "邀请团队成员，分配角色，共同管理服务器。",
+        "highlights": [
+          "通过邮件邀请成员",
+          "基于角色的访问控制（RBAC）",
+          "团队活动审计跟踪"
+        ]
+      },
+      "webhooks": {
+        "name": "Webhook 通知",
+        "description": "配置自定义 Webhook 端点，实时接收事件通知。",
+        "highlights": [
+          "自定义 Webhook 端点",
+          "事件过滤和路由",
+          "投递历史和重试"
+        ]
+      },
+      "alerts": {
+        "name": "告警系统",
+        "description": "为服务器指标设置自定义告警，当超过阈值时接收通知。",
+        "highlights": [
+          "按指标自定义告警规则",
+          "多渠道通知",
+          "告警历史和分析"
+        ]
+      },
+      "auditExport": {
+        "name": "审计日志导出",
+        "description": "以 CSV 格式导出审计日志，用于合规和分析。",
+        "highlights": [
+          "按日期筛选的 CSV 导出",
+          "合规就绪格式",
+          "完整命令历史"
+        ]
+      }
+    }
   }
 }

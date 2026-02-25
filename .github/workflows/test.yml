@@ -125,27 +125,23 @@ jobs:
 
       - name: Run tests
         run: |
-          # timeout prevents vitest from hanging indefinitely on Linux
-          # when forked workers have open handles (net.Server.close() bug).
-          # All tests complete successfully; vitest just fails to exit.
-          timeout 600 pnpm test || {
-            EXIT_CODE=$?
-            if [ $EXIT_CODE -eq 124 ] || [ $EXIT_CODE -eq 137 ]; then
-              echo "::warning::vitest hung after tests completed (open handles in workers)"
-              exit 0
-            fi
-            exit $EXIT_CODE
-          }
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            # timeout prevents vitest from hanging on Linux when forked
+            # workers have open handles (net.Server.close() callback bug)
+            timeout 600 pnpm test || {
+              EXIT_CODE=$?
+              if [ $EXIT_CODE -eq 124 ] || [ $EXIT_CODE -eq 137 ]; then
+                echo "::warning::vitest hung after tests completed (open handles in workers)"
+                exit 0
+              fi
+              exit $EXIT_CODE
+            }
+          else
+            pnpm test
+          fi
 
       - name: Run multi-platform tests
-        run: |
-          timeout 120 pnpm vitest run tests/multi-env-macos.test.ts tests/multi-env-linux.test.ts || {
-            EXIT_CODE=$?
-            if [ $EXIT_CODE -eq 124 ] || [ $EXIT_CODE -eq 137 ]; then
-              exit 0
-            fi
-            exit $EXIT_CODE
-          }
+        run: pnpm vitest run tests/multi-env-macos.test.ts tests/multi-env-linux.test.ts
 
   coverage:
     name: Coverage Gate

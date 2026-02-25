@@ -24,9 +24,6 @@ concurrency:
 
 env:
   GHCR_REGISTRY: ghcr.io
-  DOCKERHUB_SERVER_IMAGE: serverpilot/server
-  DOCKERHUB_AGENT_IMAGE: serverpilot/agent
-  DOCKERHUB_DASHBOARD_IMAGE: serverpilot/dashboard
   GHCR_SERVER_IMAGE: ghcr.io/${{ github.repository }}/server
   GHCR_AGENT_IMAGE: ghcr.io/${{ github.repository }}/agent
   GHCR_DASHBOARD_IMAGE: ghcr.io/${{ github.repository }}/dashboard
@@ -104,20 +101,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Log in to Docker Hub
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
       - name: Extract metadata (Server)
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: |
-            ${{ env.GHCR_SERVER_IMAGE }}
-            ${{ env.DOCKERHUB_SERVER_IMAGE }}
+          images: ${{ env.GHCR_SERVER_IMAGE }}
           tags: |
             type=sha,prefix=sha-
             type=ref,event=branch
@@ -163,20 +151,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Log in to Docker Hub
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
       - name: Extract metadata (Agent)
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: |
-            ${{ env.GHCR_AGENT_IMAGE }}
-            ${{ env.DOCKERHUB_AGENT_IMAGE }}
+          images: ${{ env.GHCR_AGENT_IMAGE }}
           tags: |
             type=sha,prefix=sha-
             type=ref,event=branch
@@ -222,20 +201,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Log in to Docker Hub
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
       - name: Extract metadata (Dashboard)
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: |
-            ${{ env.GHCR_DASHBOARD_IMAGE }}
-            ${{ env.DOCKERHUB_DASHBOARD_IMAGE }}
+          images: ${{ env.GHCR_DASHBOARD_IMAGE }}
           tags: |
             type=sha,prefix=sha-
             type=ref,event=branch

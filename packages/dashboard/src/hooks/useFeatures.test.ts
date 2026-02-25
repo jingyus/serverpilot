@@ -92,15 +92,18 @@ describe("useFeatures", () => {
     resetStore();
   });
 
-  it("should return all features as false before fetch", () => {
+  it("should return core features as true and cloud-only as false before fetch", () => {
     const { result } = renderHook(() => useFeatures());
 
     expect(result.current.isLoading).toBe(false);
-    expect(result.current.features.chat).toBe(false);
-    expect(result.current.features.multiServer).toBe(false);
-    expect(result.current.features.webhooks).toBe(false);
-    expect(result.current.features.teamCollaboration).toBe(false);
+    // Core features default to true (ALL_TRUE)
+    expect(result.current.features.chat).toBe(true);
+    expect(result.current.features.multiServer).toBe(true);
+    expect(result.current.features.webhooks).toBe(true);
+    expect(result.current.features.teamCollaboration).toBe(true);
+    // Cloud-only features default to false
     expect(result.current.features.billing).toBe(false);
+    expect(result.current.features.multiTenant).toBe(false);
   });
 
   it("should return correct CE features after fetch", async () => {
@@ -176,8 +179,8 @@ describe("useFeatures", () => {
     });
 
     expect(result.current.isLoading).toBe(true);
-    // Features still all false while loading
-    expect(result.current.features.chat).toBe(false);
+    // Core features are true even while loading (ALL_TRUE defaults)
+    expect(result.current.features.chat).toBe(true);
 
     // Resolve
     await act(async () => {
@@ -219,7 +222,7 @@ describe("useFeatures", () => {
     }
   });
 
-  it("should fill missing keys with false when store has partial features", () => {
+  it("should fill missing keys with ALL_TRUE defaults when store has partial features", () => {
     // Simulate a partial feature set (only some keys present)
     useSystemStore.setState({
       edition: "ce",
@@ -231,10 +234,12 @@ describe("useFeatures", () => {
 
     expect(result.current.features.chat).toBe(true);
     expect(result.current.features.commandExecution).toBe(true);
-    // Missing keys default to false
-    expect(result.current.features.multiServer).toBe(false);
-    expect(result.current.features.webhooks).toBe(false);
+    // Missing core keys default to true (ALL_TRUE)
+    expect(result.current.features.multiServer).toBe(true);
+    expect(result.current.features.webhooks).toBe(true);
+    // Cloud-only features default to false
     expect(result.current.features.billing).toBe(false);
+    expect(result.current.features.multiTenant).toBe(false);
   });
 
   it("should return stable reference when features do not change", () => {

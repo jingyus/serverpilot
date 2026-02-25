@@ -271,24 +271,24 @@ describe("CommandPalette", () => {
       }
     });
 
-    it("CE mode shows exactly 8 items", () => {
+    it("CE mode shows exactly 10 items", () => {
       setEdition("ce");
       useUiStore.setState({ commandPaletteOpen: true });
       renderPalette();
 
       const list = screen.getByTestId("command-palette-list");
       const items = within(list).getAllByRole("option");
-      expect(items).toHaveLength(8);
+      expect(items).toHaveLength(10);
     });
 
-    it("EE mode shows all 14 items", () => {
+    it("EE mode shows all 16 items", () => {
       setEdition("ee");
       useUiStore.setState({ commandPaletteOpen: true });
       renderPalette();
 
       const list = screen.getByTestId("command-palette-list");
       const items = within(list).getAllByRole("option");
-      expect(items).toHaveLength(14);
+      expect(items).toHaveLength(16);
     });
 
     it("EE mode shows EE-only commands", () => {

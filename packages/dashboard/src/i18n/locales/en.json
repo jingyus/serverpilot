@@ -728,5 +728,57 @@
   "userMenu": {
     "profile": "Profile",
     "security": "Security"
+  },
+  "featureGate": {
+    "cloudOnly": "Enterprise Edition",
+    "highlights": "What you get",
+    "upgradeButton": "Upgrade to Enterprise",
+    "features": {
+      "multiServer": {
+        "name": "Multi-Server Management",
+        "description": "Manage multiple servers from a single dashboard with centralized monitoring and batch operations.",
+        "highlights": [
+          "Centralized dashboard for all servers",
+          "Batch operations across servers",
+          "Server groups and tags for organization"
+        ]
+      },
+      "teamCollaboration": {
+        "name": "Team Collaboration",
+        "description": "Invite team members, assign roles, and collaborate on server management.",
+        "highlights": [
+          "Invite members via email",
+          "Role-based access control (RBAC)",
+          "Team activity audit trail"
+        ]
+      },
+      "webhooks": {
+        "name": "Webhook Notifications",
+        "description": "Configure custom webhook endpoints for real-time event notifications.",
+        "highlights": [
+          "Custom webhook endpoints",
+          "Event filtering and routing",
+          "Delivery history and retry"
+        ]
+      },
+      "alerts": {
+        "name": "Alert System",
+        "description": "Set up custom alerts for server metrics and receive notifications when thresholds are exceeded.",
+        "highlights": [
+          "Custom alert rules per metric",
+          "Multi-channel notifications",
+          "Alert history and analytics"
+        ]
+      },
+      "auditExport": {
+        "name": "Audit Log Export",
+        "description": "Export audit logs in CSV format for compliance and analysis.",
+        "highlights": [
+          "CSV export with date filters",
+          "Compliance-ready format",
+          "Full command history"
+        ]
+      }
+    }
   }
 }

@@ -31,7 +31,11 @@ export function LanguageSelector() {
   );
 
   return (
-    <DropdownMenu trigger={trigger} align="right">
+    <DropdownMenu
+      trigger={trigger}
+      align="right"
+      triggerAriaLabel={t("header.language")}
+    >
       {supportedLanguages.map((lang) => (
         <DropdownMenuItem
           key={lang.code}

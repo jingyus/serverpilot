@@ -8,6 +8,7 @@ interface DropdownMenuProps {
   children: ReactNode;
   align?: "left" | "right";
   className?: string;
+  triggerAriaLabel?: string;
 }
 
 export function DropdownMenu({
@@ -15,6 +16,7 @@ export function DropdownMenu({
   children,
   align = "right",
   className,
+  triggerAriaLabel,
 }: DropdownMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -44,7 +46,12 @@ export function DropdownMenu({
 
   return (
     <div className="relative" ref={menuRef}>
-      <div onClick={() => setIsOpen(!isOpen)} role="button" tabIndex={0}>
+      <div
+        onClick={() => setIsOpen(!isOpen)}
+        role="button"
+        tabIndex={0}
+        aria-label={triggerAriaLabel}
+      >
         {trigger}
       </div>
       {isOpen && (
