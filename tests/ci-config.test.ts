@@ -183,7 +183,8 @@ describe('GitHub Actions CI 配置', () => {
 
       it('上传覆盖率 artifact', () => {
         content = readFileSync(testYmlPath, 'utf-8');
-        expect(content).toContain('actions/upload-artifact@v4');
+        // Accept v4 or higher (Dependabot may upgrade to v5, v6, etc.)
+        expect(content).toMatch(/actions\/upload-artifact@v[4-9]/);
         expect(content).toContain('coverage-report');
       });
 

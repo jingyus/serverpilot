@@ -8,6 +8,16 @@ const ROOT_DIR = path.resolve(import.meta.dirname, '..');
 // Skip all tests if .git directory doesn't exist (project not yet a git repo)
 const gitDirExists = fs.existsSync(path.join(ROOT_DIR, '.git'));
 
+// Detect if we're in a shallow clone (CI environments)
+const isShallowClone = (() => {
+  try {
+    const shallowFile = path.join(ROOT_DIR, '.git', 'shallow');
+    return fs.existsSync(shallowFile);
+  } catch {
+    return false;
+  }
+})();
+
 describe.skipIf(!gitDirExists)('Git 仓库初始化', () => {
   describe('.git 目录验证', () => {
     it('.git 目录应存在', () => {
@@ -34,6 +44,15 @@ describe.skipIf(!gitDirExists)('Git 仓库初始化', () => {
         cwd: ROOT_DIR,
         encoding: 'utf-8',
       }).trim();
+
+      // In shallow clones (CI), git branch --list may return empty
+      if (isShallowClone && !branches) {
+        // At least verify current branch from HEAD
+        const headContent = fs.readFileSync(path.join(ROOT_DIR, '.git', 'HEAD'), 'utf-8');
+        expect(headContent).toMatch(/ref: refs\/heads\/(main|master)/);
+        return;
+      }
+
       // Should have either main or master as default branch
       const hasMain = branches.includes('main');
       const hasMaster = branches.includes('master');
@@ -170,13 +189,18 @@ describe.skipIf(!gitDirExists)('Git 仓库初始化', () => {
     });
   });
 
-  describe('分支跟踪', () => {
+  describe.skipIf(isShallowClone)('分支跟踪', () => {
     it('默认分支应跟踪远程分支', () => {
       // Get current branch name
       const currentBranch = execSync('git branch --show-current', {
         cwd: ROOT_DIR,
         encoding: 'utf-8',
       }).trim();
+
+      // Skip if in detached HEAD state (common in CI shallow clones)
+      if (!currentBranch) {
+        return;
+      }
 
       const remote = execSync(`git config --local branch.${currentBranch}.remote`, {
         cwd: ROOT_DIR,
@@ -191,6 +215,11 @@ describe.skipIf(!gitDirExists)('Git 仓库初始化', () => {
         cwd: ROOT_DIR,
         encoding: 'utf-8',
       }).trim();
+
+      // Skip if in detached HEAD state (common in CI shallow clones)
+      if (!currentBranch) {
+        return;
+      }
 
       const merge = execSync(`git config --local branch.${currentBranch}.merge`, {
         cwd: ROOT_DIR,
