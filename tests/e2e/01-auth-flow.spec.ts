@@ -100,7 +100,7 @@ test.describe('User Registration & Login Flow', () => {
     await page.getByRole('button', { name: 'Sign In' }).click();
 
     // Should show error message
-    await expect(page.getByRole('alert')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('alert').first()).toBeVisible({ timeout: 10_000 });
   });
 
   test('should prevent duplicate registration', async ({ page, request }) => {
@@ -121,7 +121,7 @@ test.describe('User Registration & Login Flow', () => {
     await page.getByRole('button', { name: 'Create Account' }).click();
 
     // Should show error about duplicate email
-    await expect(page.getByRole('alert')).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByRole('alert').first()).toBeVisible({ timeout: 10_000 });
   });
 
   test('should validate password confirmation mismatch', async ({ page }) => {
