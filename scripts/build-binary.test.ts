@@ -160,7 +160,17 @@ describe('parseBuildArgs', () => {
 // Integration tests — actual compilation
 // ============================================================================
 
-describe('buildForTarget (integration)', () => {
+// Check if bun is available in CI environment
+const isBunAvailable = (() => {
+  try {
+    execSync('bun --version', { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+})();
+
+describe.skipIf(!isBunAvailable)('buildForTarget (integration)', () => {
   const testOutDir = join(PROJECT_ROOT, 'packages/agent/dist/bin-test');
   const entryPoint = join(PROJECT_ROOT, 'packages/agent/src/index.ts');
 
@@ -255,7 +265,7 @@ describe('buildForTarget (integration)', () => {
 // Binary size optimization tests
 // ============================================================================
 
-describe('binary size optimization', () => {
+describe.skipIf(!isBunAvailable)('binary size optimization', () => {
   it('minified binary is smaller than non-minified', () => {
     const target = getCurrentTarget();
     const testOutDir2 = join(PROJECT_ROOT, 'packages/agent/dist/bin-size-test');
@@ -488,7 +498,7 @@ describe('compressBinary', () => {
 // Binary size acceptance test — compressed distributable < 50 MB
 // ============================================================================
 
-describe('binary size acceptance: compressed distributable < 50 MB', () => {
+describe.skipIf(!isBunAvailable)('binary size acceptance: compressed distributable < 50 MB', () => {
   const testOutDir = join(PROJECT_ROOT, 'packages/agent/dist/bin-acceptance');
   const entryPoint = join(PROJECT_ROOT, 'packages/agent/src/index.ts');
 

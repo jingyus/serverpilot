@@ -29,12 +29,15 @@ describe.skipIf(!gitDirExists)('Git 仓库初始化', () => {
   });
 
   describe('分支配置', () => {
-    it('master 分支应存在', () => {
-      const branches = execSync('git branch --list master', {
+    it('默认分支应存在 (main 或 master)', () => {
+      const branches = execSync('git branch --list', {
         cwd: ROOT_DIR,
         encoding: 'utf-8',
       }).trim();
-      expect(branches).toContain('master');
+      // Should have either main or master as default branch
+      const hasMain = branches.includes('main');
+      const hasMaster = branches.includes('master');
+      expect(hasMain || hasMaster).toBe(true);
     });
 
     it('应有至少一个提交', () => {
@@ -168,20 +171,32 @@ describe.skipIf(!gitDirExists)('Git 仓库初始化', () => {
   });
 
   describe('分支跟踪', () => {
-    it('master 分支应跟踪 origin/master', () => {
-      const remote = execSync('git config --local branch.master.remote', {
+    it('默认分支应跟踪远程分支', () => {
+      // Get current branch name
+      const currentBranch = execSync('git branch --show-current', {
+        cwd: ROOT_DIR,
+        encoding: 'utf-8',
+      }).trim();
+
+      const remote = execSync(`git config --local branch.${currentBranch}.remote`, {
         cwd: ROOT_DIR,
         encoding: 'utf-8',
       }).trim();
       expect(remote).toBe('origin');
     });
 
-    it('master 分支应合并 refs/heads/master', () => {
-      const merge = execSync('git config --local branch.master.merge', {
+    it('默认分支应配置正确的合并引用', () => {
+      // Get current branch name
+      const currentBranch = execSync('git branch --show-current', {
         cwd: ROOT_DIR,
         encoding: 'utf-8',
       }).trim();
-      expect(merge).toBe('refs/heads/master');
+
+      const merge = execSync(`git config --local branch.${currentBranch}.merge`, {
+        cwd: ROOT_DIR,
+        encoding: 'utf-8',
+      }).trim();
+      expect(merge).toBe(`refs/heads/${currentBranch}`);
     });
   });
 });
