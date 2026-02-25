@@ -5,17 +5,14 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { AuthRequestMessage } from "@aiinstaller/shared";
 import { MessageType, PROTOCOL_VERSION } from "@aiinstaller/shared";
 import {
-  authenticateDevice,
   createAuthResponse,
   hasQuota,
   createAuthTimeout,
 } from "./auth-handler.js";
-import { DeviceClient } from "./device-client.js";
 
-// Mock DeviceClient
+// Mock DeviceClient (no longer used but kept for potential future use)
 vi.mock("./device-client.js", () => ({
   DeviceClient: {
     verify: vi.fn(),

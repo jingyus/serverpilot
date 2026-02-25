@@ -101,7 +101,7 @@ export interface AICallInfo {
  */
 export async function checkRateLimit(
   deviceId: string,
-  deviceToken: string,
+  _deviceToken: string,
 ): Promise<RateLimitCheckResult> {
   logger.debug(
     { deviceId, operation: "rate_limit_check" },

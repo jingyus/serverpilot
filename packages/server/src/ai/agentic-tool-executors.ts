@@ -482,8 +482,8 @@ export async function toolEditFile(
   // Step 2: Perform the replacement using sed
   // Note: sed -i works differently on macOS vs Linux
   // Use a portable approach: create temp file then move
-  const escapedOld = old_string.replace(/[\/&]/g, "\\$&").replace(/\n/g, "\\n");
-  const escapedNew = new_string.replace(/[\/&]/g, "\\$&").replace(/\n/g, "\\n");
+  const escapedOld = old_string.replace(/[/&]/g, "\\$&").replace(/\n/g, "\\n");
+  const escapedNew = new_string.replace(/[/&]/g, "\\$&").replace(/\n/g, "\\n");
 
   const sedFlag = replace_all ? "g" : ""; // global flag for replace all
   const command = `sed 's/${escapedOld}/${escapedNew}/${sedFlag}' ${shellEscape(path)} > ${shellEscape(path)}.tmp && mv ${shellEscape(path)}.tmp ${shellEscape(path)}`;

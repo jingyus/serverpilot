@@ -4,12 +4,8 @@ import { describe, it, expect } from "vitest";
 import {
   resolveDeployment,
   resolveFeatures,
-  resolveCloudOnlyFeatures,
-  isFeatureEnabled,
-  isCloudOnlyFeature,
   DEPLOYMENT,
   FEATURES,
-  CLOUD_ONLY,
   EDITION, // Legacy export
 } from "./edition.js";
 
