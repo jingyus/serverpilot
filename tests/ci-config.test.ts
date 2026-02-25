@@ -132,19 +132,22 @@ describe('GitHub Actions CI 配置', () => {
         expect(content).toContain('pnpm test');
       });
 
-      it('使用 actions/checkout@v4', () => {
+      it('使用 actions/checkout', () => {
         content = readFileSync(testYmlPath, 'utf-8');
-        expect(content).toContain('actions/checkout@v4');
+        // Accept v4 or higher (Dependabot may upgrade)
+        expect(content).toMatch(/actions\/checkout@v[4-9]/);
       });
 
-      it('使用 actions/setup-node@v4', () => {
+      it('使用 actions/setup-node', () => {
         content = readFileSync(testYmlPath, 'utf-8');
-        expect(content).toContain('actions/setup-node@v4');
+        // Accept v4 or higher (Dependabot may upgrade)
+        expect(content).toMatch(/actions\/setup-node@v[4-9]/);
       });
 
-      it('使用 pnpm/action-setup@v4', () => {
+      it('使用 pnpm/action-setup', () => {
         content = readFileSync(testYmlPath, 'utf-8');
-        expect(content).toContain('pnpm/action-setup@v4');
+        // Accept v4 or higher (Dependabot may upgrade)
+        expect(content).toMatch(/pnpm\/action-setup@v[4-9]/);
       });
 
       it('配置 pnpm 缓存', () => {
