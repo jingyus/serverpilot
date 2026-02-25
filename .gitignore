@@ -71,9 +71,6 @@ playwright-report/
 # Fly.io
 .fly/
 
-# Docker
-.dockerignore
-
 # ============================================================================
 # ⚠️ Cloud Edition (Enterprise Features) - NOT INCLUDED IN OPEN SOURCE
 # ============================================================================

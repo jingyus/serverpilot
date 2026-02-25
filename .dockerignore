@@ -1,0 +1,58 @@
+# Dependencies
+node_modules
+packages/*/node_modules
+
+# Build output (rebuilt inside Docker)
+dist
+packages/*/dist
+
+# Development files
+*.test.ts
+*.test.tsx
+**/*.test.ts
+**/*.test.tsx
+tests/
+coverage/
+.nyc_output/
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Git
+.git
+.gitignore
+
+# Environment (secrets should not be in the image)
+.env
+.env.local
+.env.*.local
+
+# Documentation (not needed in image, except knowledge-base)
+docs/
+*.md
+!knowledge-base/**/*.md
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# Misc
+.github/
+openclaw-modules/
+PROMPT.md
+TODO.md
+STATE.md
+
+# Packages not needed for Docker build (keep package.json for pnpm workspace resolution)
+packages/agent/src/
+packages/agent/dist/
+packages/agent/tests/
+packages/agent/tsconfig.json
