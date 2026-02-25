@@ -79,7 +79,7 @@ jobs:
     name: Build & Push Server Image
     needs: test
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
