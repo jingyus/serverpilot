@@ -51,8 +51,5 @@ PROMPT.md
 TODO.md
 STATE.md
 
-# Packages not needed for Docker build (keep package.json for pnpm workspace resolution)
-packages/agent/src/
-packages/agent/dist/
-packages/agent/tests/
-packages/agent/tsconfig.json
+# Note: agent package is built inside Docker, so we need its source code
+# Tests and tsconfig are already excluded by the general rules above
