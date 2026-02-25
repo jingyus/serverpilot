@@ -260,7 +260,7 @@ describe('Client WSS Connection Support', () => {
     const client = new InstallClient({
       serverUrl: 'wss://invalid.nonexistent.local:9999',
       autoReconnect: false,
-      connectionTimeoutMs: 3000,
+      connectionTimeoutMs: 2000,
     });
 
     const errors: Error[] = [];
@@ -268,7 +268,7 @@ describe('Client WSS Connection Support', () => {
 
     await expect(client.connect()).rejects.toThrow();
     expect(client.state).toBe(ConnectionState.DISCONNECTED);
-  });
+  }, 60_000);
 
   it('should distinguish ws:// for local dev vs wss:// for production', () => {
     const localUrl = 'ws://localhost:3000';

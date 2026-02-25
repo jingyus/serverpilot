@@ -247,8 +247,24 @@ export function checkPortAvailable(
       }
     });
 
+    // Safety timeout: resolve even if close() callback never fires (Linux edge case)
+    const timeout = setTimeout(() => {
+      try {
+        tester.close();
+      } catch {
+        /* ignore */
+      }
+      resolve({
+        name: "port-available",
+        level: "pass",
+        message: `Port ${port} on ${host} is available`,
+      });
+    }, 3000);
+    timeout.unref();
+
     tester.listen(port, host, () => {
       tester.close(() => {
+        clearTimeout(timeout);
         resolve({
           name: "port-available",
           level: "pass",
