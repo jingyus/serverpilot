@@ -47,8 +47,12 @@ describe.skipIf(!gitDirExists)('Git 仓库初始化', () => {
 
       // In shallow clones (CI), git branch --list may return empty
       if (isShallowClone && !branches) {
-        // At least verify current branch from HEAD
-        const headContent = fs.readFileSync(path.join(ROOT_DIR, '.git', 'HEAD'), 'utf-8');
+        const headContent = fs.readFileSync(path.join(ROOT_DIR, '.git', 'HEAD'), 'utf-8').trim();
+        // Detached HEAD (e.g. PR merge ref checkout in CI) — skip branch name check
+        if (!headContent.startsWith('ref:')) {
+          return;
+        }
+        // Symbolic ref — verify it points to main or master
         expect(headContent).toMatch(/ref: refs\/heads\/(main|master)/);
         return;
       }

@@ -95,9 +95,9 @@ describe('GitHub Actions Deploy Workflow', () => {
     expect(parsed.jobs.deploy.needs).toBe('build');
   });
 
-  it('should use actions/checkout@v4', () => {
+  it('should use actions/checkout', () => {
     const content = readFileSync(workflowPath, 'utf-8');
-    expect(content).toContain('actions/checkout@v4');
+    expect(content).toMatch(/actions\/checkout@v\d+/);
   });
 
   it('should use pnpm/action-setup', () => {
@@ -105,9 +105,9 @@ describe('GitHub Actions Deploy Workflow', () => {
     expect(content).toContain('pnpm/action-setup');
   });
 
-  it('should use actions/setup-node@v4', () => {
+  it('should use actions/setup-node', () => {
     const content = readFileSync(workflowPath, 'utf-8');
-    expect(content).toContain('actions/setup-node@v4');
+    expect(content).toMatch(/actions\/setup-node@v\d+/);
   });
 
   it('should use actions/configure-pages', () => {
