@@ -179,9 +179,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download all artifacts
+      - name: Download agent artifacts
         uses: actions/download-artifact@v4
         with:
+          pattern: agent-*
           path: artifacts/
 
       - name: Prepare release assets
