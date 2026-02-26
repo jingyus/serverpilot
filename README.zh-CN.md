@@ -21,6 +21,7 @@
   <a href="https://github.com/jingyus/serverpilot/actions/workflows/docker-publish.yml"><img src="https://github.com/jingyus/serverpilot/actions/workflows/docker-publish.yml/badge.svg" alt="Docker"></a>
   <a href="https://www.gnu.org/licenses/agpl-3.0"><img src="https://img.shields.io/badge/License-AGPL_v3-blue.svg" alt="License: AGPL v3"></a>
   <a href="https://github.com/jingyus/serverpilot/releases"><img src="https://img.shields.io/github/v/release/jingyus/serverpilot?include_prereleases" alt="Release"></a>
+  <a href="https://github.com/jingyus/serverpilot/stargazers"><img src="https://img.shields.io/github/stars/jingyus/serverpilot?style=social" alt="GitHub Stars"></a>
 </p>
 
 ---
@@ -170,32 +171,22 @@ bun scripts/build-binary.ts
 
 ## 🐳 Docker 镜像
 
-镜像同时发布到 Docker Hub 和 GitHub Container Registry,支持 `linux/amd64` 和 `linux/arm64` 架构。
-
-**Docker Hub:**
+镜像发布到 GitHub Container Registry (GHCR),支持 `linux/amd64` 和 `linux/arm64` 架构。
 
 ```bash
-docker pull serverpilot/server:latest
-docker pull serverpilot/agent:latest
-docker pull serverpilot/dashboard:latest
-```
-
-**GitHub Container Registry:**
-
-```bash
-docker pull ghcr.io/jingjinbao/serverpilot/server:latest
-docker pull ghcr.io/jingjinbao/serverpilot/agent:latest
-docker pull ghcr.io/jingjinbao/serverpilot/dashboard:latest
+docker pull ghcr.io/jingyus/serverpilot/server:latest
+docker pull ghcr.io/jingyus/serverpilot/agent:latest
+docker pull ghcr.io/jingyus/serverpilot/dashboard:latest
 ```
 
 **版本标签说明:**
 
 | 标签格式 | 示例 | 说明 |
 |---------|------|------|
-| `latest` | `serverpilot/server:latest` | 最新的 master 分支构建 |
-| `{version}` | `serverpilot/server:0.1.0` | 语义化版本(推荐生产使用) |
-| `{major}.{minor}` | `serverpilot/server:0.1` | 主次版本号 |
-| `sha-{hash}` | `serverpilot/server:sha-a1b2c3d` | Git commit hash |
+| `latest` | `ghcr.io/jingyus/serverpilot/server:latest` | 最新的 main 分支构建 |
+| `{version}` | `ghcr.io/jingyus/serverpilot/server:0.1.0` | 语义化版本(推荐生产使用) |
+| `{major}.{minor}` | `ghcr.io/jingyus/serverpilot/server:0.1` | 主次版本号 |
+| `sha-{hash}` | `ghcr.io/jingyus/serverpilot/server:sha-a1b2c3d` | Git commit hash |
 
 ## 🎨 AI Provider 配置
 
@@ -340,6 +331,16 @@ ServerPilot 采用 **Open Core** 模式:
 - **安全**: 查看 [SECURITY.md](SECURITY.md) 了解漏洞报告流程
 
 ---
+
+<p align="center">
+  如果 ServerPilot 对你有帮助,请点个 Star ⭐ 支持一下,让更多人发现这个项目!
+</p>
+
+<p align="center">
+  <a href="https://star-history.com/#jingyus/serverpilot&Date">
+    <img src="https://api.star-history.com/svg?repos=jingyus/serverpilot&type=Date" alt="Star History Chart" width="600">
+  </a>
+</p>
 
 <p align="center">
   <sub>Built with ❤️ by the ServerPilot team</sub>

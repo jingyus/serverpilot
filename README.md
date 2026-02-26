@@ -21,6 +21,7 @@
   <a href="https://github.com/jingyus/serverpilot/actions/workflows/docker-publish.yml"><img src="https://github.com/jingyus/serverpilot/actions/workflows/docker-publish.yml/badge.svg" alt="Docker"></a>
   <a href="https://www.gnu.org/licenses/agpl-3.0"><img src="https://img.shields.io/badge/License-AGPL_v3-blue.svg" alt="License: AGPL v3"></a>
   <a href="https://github.com/jingyus/serverpilot/releases"><img src="https://img.shields.io/github/v/release/jingyus/serverpilot?include_prereleases" alt="Release"></a>
+  <a href="https://github.com/jingyus/serverpilot/stargazers"><img src="https://img.shields.io/github/stars/jingyus/serverpilot?style=social" alt="GitHub Stars"></a>
 </p>
 
 ---
@@ -170,32 +171,22 @@ bun scripts/build-binary.ts
 
 ## 🐳 Docker Images
 
-Images are published to both Docker Hub and GitHub Container Registry, supporting `linux/amd64` and `linux/arm64` architectures.
-
-**Docker Hub:**
+Images are published to GitHub Container Registry (GHCR), supporting `linux/amd64` and `linux/arm64` architectures.
 
 ```bash
-docker pull serverpilot/server:latest
-docker pull serverpilot/agent:latest
-docker pull serverpilot/dashboard:latest
-```
-
-**GitHub Container Registry:**
-
-```bash
-docker pull ghcr.io/jingjinbao/serverpilot/server:latest
-docker pull ghcr.io/jingjinbao/serverpilot/agent:latest
-docker pull ghcr.io/jingjinbao/serverpilot/dashboard:latest
+docker pull ghcr.io/jingyus/serverpilot/server:latest
+docker pull ghcr.io/jingyus/serverpilot/agent:latest
+docker pull ghcr.io/jingyus/serverpilot/dashboard:latest
 ```
 
 **Tag Formats:**
 
 | Tag Format | Example | Description |
 |------------|---------|-------------|
-| `latest` | `serverpilot/server:latest` | Latest master branch build |
-| `{version}` | `serverpilot/server:0.1.0` | Semantic version (recommended for production) |
-| `{major}.{minor}` | `serverpilot/server:0.1` | Major.minor version |
-| `sha-{hash}` | `serverpilot/server:sha-a1b2c3d` | Git commit hash |
+| `latest` | `ghcr.io/jingyus/serverpilot/server:latest` | Latest main branch build |
+| `{version}` | `ghcr.io/jingyus/serverpilot/server:0.1.0` | Semantic version (recommended for production) |
+| `{major}.{minor}` | `ghcr.io/jingyus/serverpilot/server:0.1` | Major.minor version |
+| `sha-{hash}` | `ghcr.io/jingyus/serverpilot/server:sha-a1b2c3d` | Git commit hash |
 
 ## 🎨 AI Provider Configuration
 
@@ -340,6 +331,16 @@ Built with ❤️ using:
 - **Security**: See [SECURITY.md](SECURITY.md) for vulnerability reporting
 
 ---
+
+<p align="center">
+  If you find ServerPilot useful, please consider giving it a star ⭐ — it helps others discover the project!
+</p>
+
+<p align="center">
+  <a href="https://star-history.com/#jingyus/serverpilot&Date">
+    <img src="https://api.star-history.com/svg?repos=jingyus/serverpilot&type=Date" alt="Star History Chart" width="600">
+  </a>
+</p>
 
 <p align="center">
   <sub>Built with ❤️ by the ServerPilot team</sub>
