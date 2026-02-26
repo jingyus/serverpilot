@@ -628,15 +628,14 @@ describe('GitHub Actions CI 配置', () => {
         expect(content).toContain('linux/amd64,linux/arm64');
       });
 
-      it('同时推送到 GHCR 和 Docker Hub', () => {
+      it('推送到 GHCR', () => {
         content = readFileSync(releaseYmlPath, 'utf-8');
         config = parseYaml(content);
         const jobs = config.jobs as Record<string, unknown>;
         const dockerRelease = jobs['docker-release'] as Record<string, unknown>;
         const env = dockerRelease.env as Record<string, string>;
         expect(env.GHCR_SERVER_IMAGE).toContain('ghcr.io');
-        expect(env.DOCKERHUB_SERVER_IMAGE).toBe('serverpilot/server');
-        expect(env.DOCKERHUB_DASHBOARD_IMAGE).toBe('serverpilot/dashboard');
+        expect(env.GHCR_DASHBOARD_IMAGE).toContain('ghcr.io');
       });
 
       it('配置了超时时间', () => {
