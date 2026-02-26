@@ -60,7 +60,7 @@ describe("Dockerfile ↔ docker-compose.yml consistency", () => {
 
   it("compose should use pre-built image (no build section)", () => {
     expect(compose).toContain(
-      "image: ghcr.io/jingjinbao/serverpilot/server:latest",
+      "image: ghcr.io/jingyus/serverpilot/server:latest",
     );
   });
 

@@ -368,7 +368,7 @@ describe('Docker Compose Production Deployment', () => {
       const config = parseYaml(content);
 
       expect(config.services.server.build).toBeUndefined();
-      expect(config.services.server.image).toBe('ghcr.io/jingjinbao/serverpilot/server:latest');
+      expect(config.services.server.image).toBe('ghcr.io/jingyus/serverpilot/server:latest');
     });
 
     it('should use pre-built dashboard image', () => {
@@ -376,7 +376,7 @@ describe('Docker Compose Production Deployment', () => {
       const config = parseYaml(content);
 
       expect(config.services.dashboard.build).toBeUndefined();
-      expect(config.services.dashboard.image).toBe('ghcr.io/jingjinbao/serverpilot/dashboard:latest');
+      expect(config.services.dashboard.image).toBe('ghcr.io/jingyus/serverpilot/dashboard:latest');
     });
 
     it.skip('should use MySQL official image (Legacy MySQL test)', () => {
