@@ -33,7 +33,7 @@
   "dependencies": {
     "@aiinstaller/shared": "workspace:*",
     "@anthropic-ai/sdk": "^0.39.0",
-    "@asteasolutions/zod-to-openapi": "^7.3.4",
+    "@asteasolutions/zod-to-openapi": "^8.4.1",
     "@hono/node-server": "^1.19.9",
     "better-sqlite3": "^12.6.2",
     "cron-parser": "^5.5.0",
