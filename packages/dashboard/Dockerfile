@@ -10,7 +10,7 @@
 # --------------------------------------------------------------------------
 # Stage 1: Build the React application
 # --------------------------------------------------------------------------
-FROM node:22-alpine AS build
+FROM node:25-alpine AS build
 
 # Install pnpm globally
 RUN npm install -g pnpm@10.13.1
